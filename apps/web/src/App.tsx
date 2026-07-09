@@ -209,7 +209,7 @@ export function App() {
     Object.values(state.tasks).map((t) => [t.root_message_id, t]),
   );
   const boardCount = Object.values(state.tasks)
-    .filter((t) => !['done', 'closed'].includes(t.status)).length;
+    .filter((t) => !['done', 'closed'].includes(t.status ?? 'todo')).length;
 
   const unreadCount = (ch: ChannelPublic): number => {
     const msgs = state.messages[ch.id] ?? [];
@@ -314,6 +314,9 @@ export function App() {
               && m.kind === 'user' && prev.kind === 'user';
             const pres = author ? state.presence[author.id] : undefined;
             const usage = task ? state.usageByTask[task.id] : undefined;
+            const taskStatus = task?.status ?? 'todo';
+            const ownerId = task?.owner_member_id ?? undefined;
+            const owner = ownerId ? memberById[ownerId] : undefined;
             return (
               <div key={m.id}>
                 {newDay && <div className="datesep"><span>{date}</span></div>}
@@ -354,13 +357,13 @@ export function App() {
                       {task && (
                         <div className="taskchip">
                           <span className="bar"
-                                style={{ background: `var(${STATUS_VAR[task.status]})` }} />
+                                style={{ background: `var(${STATUS_VAR[taskStatus]})` }} />
                           <span className="no">#{task.number}</span>
-                          <span className="stw">{STATUS_WORD[task.status]}</span>
-                          {task.owner_member_id && memberById[task.owner_member_id] && (
+                          <span className="stw">{STATUS_WORD[taskStatus]}</span>
+                          {owner && (
                             <span className="who">
-                              <Avatar name={memberById[task.owner_member_id].name} size="nav" />
-                              {memberById[task.owner_member_id].name}
+                              <Avatar name={owner.name} size="nav" />
+                              {owner.name}
                             </span>
                           )}
                           <span className="ttl">{task.title}</span>
