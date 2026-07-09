@@ -8,7 +8,7 @@ requires-python = ">=3.12"
 package = false
 
 [tool.uv.workspace]
-members = ["packages/contracts", "apps/mock-server"]
+members = ["packages/contracts", "apps/mock-server", "apps/server"]
 
 [dependency-groups]
 dev = [
@@ -19,14 +19,16 @@ dev = [
     "pyright>=1.1.380",
     "coagentia-contracts",
     "coagentia-mock-server",
+    "coagentia-server",
 ]
 
 [tool.uv.sources]
 coagentia-contracts = { workspace = true }
 coagentia-mock-server = { workspace = true }
+coagentia-server = { workspace = true }
 
 [tool.pytest.ini_options]
-testpaths = ["packages/contracts/tests", "apps/mock-server/tests"]
+testpaths = ["packages/contracts/tests", "apps/mock-server/tests", "apps/server/tests"]
 asyncio_mode = "auto"
 
 [tool.ruff]
@@ -37,6 +39,6 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pyright]
-include = ["packages/contracts/src", "apps/mock-server/src"]
+include = ["packages/contracts/src", "apps/mock-server/src", "apps/server/src"]
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
