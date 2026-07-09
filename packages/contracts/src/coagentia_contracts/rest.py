@@ -8,10 +8,12 @@ from enum import StrEnum
 from pydantic import JsonValue
 
 from coagentia_contracts.entities import (
+    ChannelPublic,
     ComputerPublic,
     ContractModel,
     HeldDraftPublic,
     MessagePublic,
+    ReadPositionPublic,
     TaskPublic,
 )
 from coagentia_contracts.enums import (
@@ -171,6 +173,13 @@ class ReminderCreate(ContractModel):
 
 
 # ------------------------------------------------------------ 4.5 频道与 DM
+
+
+class ChannelsSnapshot(ContractModel):
+    """GET /channels：全量频道 + **自身** read-position 附带（契约 B §4.5/§6）。"""
+
+    items: list[ChannelPublic]
+    read_positions: list[ReadPositionPublic]
 
 
 class ChannelCreate(ContractModel):

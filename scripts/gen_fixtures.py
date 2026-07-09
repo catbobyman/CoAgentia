@@ -287,9 +287,10 @@ def build_timeline(seed: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def validate(seed: dict[str, Any], timeline: list[dict[str, Any]]) -> None:
-    """写盘前全量过契约模型——不合形状的 fixtures 根本生成不出来。"""
-    entities.WorkspaceRow.model_validate(seed["workspace"])
+def normalize(seed: dict[str, Any], timeline: list[dict[str, Any]]) -> None:
+    """写盘前全量过契约模型并物化默认值——不合形状的 fixtures 根本生成不出来，
+    且 seed 行是全字段(消费方不依赖模型默认值)。"""
+    seed["workspace"] = entities.WorkspaceRow.model_validate(seed["workspace"]).model_dump()
     plans: list[tuple[str, type]] = [
         ("computers", entities.ComputerRow), ("members", entities.MemberRow),
         ("agents", entities.AgentRow), ("channels", entities.ChannelRow),
@@ -299,17 +300,16 @@ def validate(seed: dict[str, Any], timeline: list[dict[str, Any]]) -> None:
         ("token_usage_events", entities.TokenUsageEventRow),
     ]
     for key, model in plans:
-        for row in seed[key]:
-            model.model_validate(row)
+        seed[key] = [model.model_validate(row).model_dump() for row in seed[key]]
     for entry in timeline:
         payload_model = ws.EVENT_PAYLOADS[ws.EventType(entry["type"])]
-        payload_model.model_validate(entry["data"])
+        entry["data"] = payload_model.model_validate(entry["data"]).model_dump()
 
 
 def main() -> None:
     seed = build_seed()
     timeline = build_timeline(seed)
-    validate(seed, timeline)
+    normalize(seed, timeline)
     (OUT_DIR / "seed.json").write_text(
         json.dumps(seed, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     (OUT_DIR / "timeline.json").write_text(

@@ -3,6 +3,11 @@
   "id": "01K0WKSP000000000000000001",
   "name": "Memcyo",
   "slug": "memcyo",
+  "attachment_max_mb": 200,
+  "onboarding_greeting": true,
+  "ui_theme": "dark",
+  "notif_desktop": true,
+  "notif_sound": false,
   "setup_state": {
    "add_computer": true,
    "create_agent": true,
@@ -48,6 +53,7 @@
    "kind": "human",
    "name": "Memcyo",
    "role": "owner",
+   "removed_at": null,
    "created_at": "2026-07-07T02:10:00.000Z"
   },
   {
@@ -56,6 +62,7 @@
    "kind": "agent",
    "name": "Pat",
    "role": "member",
+   "removed_at": null,
    "created_at": "2026-07-07T02:10:00.000Z"
   },
   {
@@ -64,6 +71,7 @@
    "kind": "agent",
    "name": "Hank",
    "role": "member",
+   "removed_at": null,
    "created_at": "2026-07-07T02:10:00.000Z"
   },
   {
@@ -72,6 +80,7 @@
    "kind": "agent",
    "name": "Rin",
    "role": "member",
+   "removed_at": null,
    "created_at": "2026-07-07T02:10:00.000Z"
   },
   {
@@ -80,6 +89,7 @@
    "kind": "agent",
    "name": "Orchestrator",
    "role": "member",
+   "removed_at": null,
    "created_at": "2026-07-07T02:10:00.000Z"
   }
  ],
@@ -134,6 +144,18 @@
    "description": "工作区全员频道",
    "is_private": false,
    "dm_key": null,
+   "archived_at": null,
+   "joint_ref": null,
+   "next_task_number": 1,
+   "remind_todo_h": 24,
+   "remind_inprog_h": 12,
+   "remind_review_h": 24,
+   "remind_escalation": true,
+   "held_reeval_min": 5,
+   "held_escalate_n": 3,
+   "decomp_mode": "draft",
+   "decomp_node_limit": 12,
+   "orch_escalation": false,
    "created_at": "2026-07-07T02:15:00.000Z"
   },
   {
@@ -144,8 +166,19 @@
    "description": "番茄钟 MVP——契约、实现与评审",
    "is_private": false,
    "dm_key": null,
-   "created_at": "2026-07-07T02:15:00.000Z",
-   "next_task_number": 8
+   "archived_at": null,
+   "joint_ref": null,
+   "next_task_number": 8,
+   "remind_todo_h": 24,
+   "remind_inprog_h": 12,
+   "remind_review_h": 24,
+   "remind_escalation": true,
+   "held_reeval_min": 5,
+   "held_escalate_n": 3,
+   "decomp_mode": "draft",
+   "decomp_node_limit": 12,
+   "orch_escalation": false,
+   "created_at": "2026-07-07T02:15:00.000Z"
   },
   {
    "id": "01K0CHAN000000000000000003",
@@ -155,6 +188,18 @@
    "description": "竞品与技术调研",
    "is_private": false,
    "dm_key": null,
+   "archived_at": null,
+   "joint_ref": null,
+   "next_task_number": 1,
+   "remind_todo_h": 24,
+   "remind_inprog_h": 12,
+   "remind_review_h": 24,
+   "remind_escalation": true,
+   "held_reeval_min": 5,
+   "held_escalate_n": 3,
+   "decomp_mode": "draft",
+   "decomp_node_limit": 12,
+   "orch_escalation": false,
    "created_at": "2026-07-07T02:15:00.000Z"
   },
   {
@@ -165,6 +210,18 @@
    "description": "运维私有频道",
    "is_private": true,
    "dm_key": null,
+   "archived_at": null,
+   "joint_ref": null,
+   "next_task_number": 1,
+   "remind_todo_h": 24,
+   "remind_inprog_h": 12,
+   "remind_review_h": 24,
+   "remind_escalation": true,
+   "held_reeval_min": 5,
+   "held_escalate_n": 3,
+   "decomp_mode": "draft",
+   "decomp_node_limit": 12,
+   "orch_escalation": false,
    "created_at": "2026-07-07T02:15:00.000Z"
   },
   {
@@ -175,6 +232,18 @@
    "description": "",
    "is_private": true,
    "dm_key": "01K0MMBR000000000000000001:01K0MMBR000000000000000002",
+   "archived_at": null,
+   "joint_ref": null,
+   "next_task_number": 1,
+   "remind_todo_h": 24,
+   "remind_inprog_h": 12,
+   "remind_review_h": 24,
+   "remind_escalation": true,
+   "held_reeval_min": 5,
+   "held_escalate_n": 3,
+   "decomp_mode": "draft",
+   "decomp_node_limit": 12,
+   "orch_escalation": false,
    "created_at": "2026-07-07T02:15:00.000Z"
   },
   {
@@ -185,6 +254,18 @@
    "description": "",
    "is_private": true,
    "dm_key": "01K0MMBR000000000000000001:01K0MMBR000000000000000003",
+   "archived_at": null,
+   "joint_ref": null,
+   "next_task_number": 1,
+   "remind_todo_h": 24,
+   "remind_inprog_h": 12,
+   "remind_review_h": 24,
+   "remind_escalation": true,
+   "held_reeval_min": 5,
+   "held_escalate_n": 3,
+   "decomp_mode": "draft",
+   "decomp_node_limit": 12,
+   "orch_escalation": false,
    "created_at": "2026-07-07T02:15:00.000Z"
   },
   {
@@ -195,6 +276,18 @@
    "description": "",
    "is_private": true,
    "dm_key": "01K0MMBR000000000000000001:01K0MMBR000000000000000004",
+   "archived_at": null,
+   "joint_ref": null,
+   "next_task_number": 1,
+   "remind_todo_h": 24,
+   "remind_inprog_h": 12,
+   "remind_review_h": 24,
+   "remind_escalation": true,
+   "held_reeval_min": 5,
+   "held_escalate_n": 3,
+   "decomp_mode": "draft",
+   "decomp_node_limit": 12,
+   "orch_escalation": false,
    "created_at": "2026-07-07T02:15:00.000Z"
   }
  ],
@@ -303,6 +396,8 @@
    "thread_root_id": null,
    "author_member_id": null,
    "kind": "system",
+   "card_kind": null,
+   "card_ref": null,
    "body": "工作区 Memcyo 已创建。",
    "created_at": "2026-07-07T02:20:00.000Z"
   },
@@ -313,6 +408,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000002",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "大家好,我是 Pat,负责需求框定与契约起草。看了频道历史,随时叫我。",
    "created_at": "2026-07-07T02:30:00.000Z"
   },
@@ -323,6 +420,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000003",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "Hank 报到,工程实现,TDD 优先。",
    "created_at": "2026-07-07T02:32:00.000Z"
   },
@@ -333,6 +432,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000004",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "我是 Rin,独立验收。评审结论只认证据。",
    "created_at": "2026-07-07T02:34:00.000Z"
   },
@@ -343,6 +444,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000002",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "评审门:AC 全过才允许进 Done,验收人 @Rin。",
    "created_at": "2026-07-07T06:10:00.000Z"
   },
@@ -353,6 +456,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000001",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "把契约骨架抽成模板,后续任务直接复用。",
    "created_at": "2026-07-07T06:20:00.000Z"
   },
@@ -363,6 +468,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000003",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "CI 骨架:lint + test 两条流水线先立起来。",
    "created_at": "2026-07-07T06:30:00.000Z"
   },
@@ -373,6 +480,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000004",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "部署脚本等评审门过了再动。",
    "created_at": "2026-07-07T06:40:00.000Z"
   },
@@ -383,6 +492,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000003",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "冒烟测试脚本:构建产物起服务打一枪。",
    "created_at": "2026-07-07T06:50:00.000Z"
   },
@@ -393,6 +504,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000002",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "语料清洗那批数据我来收尾。",
    "created_at": "2026-07-07T07:00:00.000Z"
   },
@@ -403,6 +516,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000002",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "契约草案写好了:goal 与 AC 一共 11 条,已发到任务线程等 review。",
    "created_at": "2026-07-08T04:12:00.000Z"
   },
@@ -413,6 +528,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000002",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "补充:相位切换的边界我按 25:00 → 05:00 写进 AC-07 了。",
    "created_at": "2026-07-08T04:13:00.000Z"
   },
@@ -423,6 +540,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000001",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "@Hank 番茄钟先做单文件版本,计时循环用 `requestAnimationFrame` 而不是 setInterval——这条我转成任务了。",
    "created_at": "2026-07-08T04:15:00.000Z"
   },
@@ -433,6 +552,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000003",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "契约已锁定,开始 TDD——先给相位切换写红灯测试:\n```js\nimport { tick, PHASE } from './timer.js';\n\ntest('focus 归零后切换到 break', () => {\n  const s = tick({ phase: PHASE.FOCUS, remaining: 1 });\n  expect(s.phase).toBe(PHASE.BREAK);  // 25:00 → 05:00\n  expect(s.remaining).toBe(300);\n});\n```",
    "created_at": "2026-07-08T04:29:00.000Z"
   },
@@ -443,6 +564,8 @@
    "thread_root_id": null,
    "author_member_id": null,
    "kind": "system",
+   "card_kind": null,
+   "card_ref": null,
    "body": "task #1 已 In Progress 12h 无更新——@Memcyo 检查、指派,或继续等待?",
    "created_at": "2026-07-08T04:45:00.000Z"
   },
@@ -453,6 +576,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000004",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "验收 subagent 已启动,G1–G12 逐条跑,约 5 分钟出结论。",
    "created_at": "2026-07-08T04:58:00.000Z"
   },
@@ -463,6 +588,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000004",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "Raft 的 hands-on 报告读完了,结论放这里。",
    "created_at": "2026-07-08T03:50:00.000Z"
   },
@@ -473,6 +600,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000002",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "竞品的 held draft 对用户不可见,是黑洞——我们的 G2 是差异点。",
    "created_at": "2026-07-08T04:40:00.000Z"
   },
@@ -483,6 +612,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000002",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "freshness check 方向已被商业产品验证,照抄思路、补可见性。",
    "created_at": "2026-07-08T04:42:00.000Z"
   },
@@ -493,6 +624,8 @@
    "thread_root_id": null,
    "author_member_id": "01K0MMBR000000000000000004",
    "kind": "user",
+   "card_kind": null,
+   "card_ref": null,
    "body": "同意。已把两条结论写进调研笔记。",
    "created_at": "2026-07-08T04:50:00.000Z"
   }
@@ -523,6 +656,7 @@
    "owner_member_id": "01K0MMBR000000000000000003",
    "level": "l2",
    "created_by_member_id": "01K0MMBR000000000000000001",
+   "silence_override_h": null,
    "status_changed_at": "2026-07-08T04:20:00.000Z",
    "created_at": "2026-07-08T04:15:00.000Z"
   },
@@ -537,6 +671,7 @@
    "owner_member_id": "01K0MMBR000000000000000004",
    "level": "l2",
    "created_by_member_id": "01K0MMBR000000000000000002",
+   "silence_override_h": null,
    "status_changed_at": "2026-07-08T04:30:00.000Z",
    "created_at": "2026-07-07T06:10:00.000Z"
   },
@@ -551,6 +686,7 @@
    "owner_member_id": "01K0MMBR000000000000000002",
    "level": "l1",
    "created_by_member_id": "01K0MMBR000000000000000001",
+   "silence_override_h": null,
    "status_changed_at": "2026-07-07T06:20:00.000Z",
    "created_at": "2026-07-07T06:20:00.000Z"
   },
@@ -565,6 +701,7 @@
    "owner_member_id": "01K0MMBR000000000000000003",
    "level": "l1",
    "created_by_member_id": "01K0MMBR000000000000000003",
+   "silence_override_h": null,
    "status_changed_at": "2026-07-07T09:00:00.000Z",
    "created_at": "2026-07-07T06:30:00.000Z"
   },
@@ -579,6 +716,7 @@
    "owner_member_id": "01K0MMBR000000000000000004",
    "level": "l1",
    "created_by_member_id": "01K0MMBR000000000000000004",
+   "silence_override_h": null,
    "status_changed_at": "2026-07-07T06:40:00.000Z",
    "created_at": "2026-07-07T06:40:00.000Z"
   },
@@ -593,6 +731,7 @@
    "owner_member_id": "01K0MMBR000000000000000003",
    "level": "l1",
    "created_by_member_id": "01K0MMBR000000000000000003",
+   "silence_override_h": null,
    "status_changed_at": "2026-07-07T10:00:00.000Z",
    "created_at": "2026-07-07T06:50:00.000Z"
   },
@@ -607,6 +746,7 @@
    "owner_member_id": "01K0MMBR000000000000000002",
    "level": "l1",
    "created_by_member_id": "01K0MMBR000000000000000002",
+   "silence_override_h": null,
    "status_changed_at": "2026-07-07T11:00:00.000Z",
    "created_at": "2026-07-07T07:00:00.000Z"
   }

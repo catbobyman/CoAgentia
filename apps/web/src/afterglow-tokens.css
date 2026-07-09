@@ -1,0 +1,54 @@
+/* Afterglow(余辉)design tokens —— 与《设计规范》§2.7 逐字一致,唯一权威 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap');
+[data-theme="dark"] { /* CRT Ink(默认主题) */
+  --bg:#0D0E0C; --surface-1:#141612; --surface-2:#1A1D18; --surface-hover:#20241E;
+  --border:#2A2E27; --border-strong:#3A4036;
+  --text:#E9E7DC; --text-secondary:#A5A69A; --text-muted:#6F7168;
+  --accent:#F49B6A; --accent-bg:#E8763A; --accent-bg-hover:#F28A50;
+  --on-accent:#161009; --on-danger:#FFFFFF; --accent-subtle:#2A1A10;
+  --success:#46D98A; --warning:#F2B33D; --danger:#F0524A;
+  --success-bg:#10291B; --warning-bg:#332708; --danger-bg:#38130F;
+  --glow-accent:0 0 6px rgba(232,118,58,.35);
+  --focus-ring:rgba(244,155,106,.25);
+  --blink:1s steps(2,jump-none) infinite; --scrim:rgba(4,5,4,.6);
+  --st-todo:#8F9288; --st-progress:#35C4D0; --st-review:#B98BF2;
+  --st-done:#46D98A; --st-closed:#63665C;
+  --avatar-ink:#1A1B16;
+  --avatar-1:#7E9271; --avatar-2:#9C9663; --avatar-3:#6E8CA0; --avatar-4:#6D9A94;
+  --avatar-5:#9B84A8; --avatar-6:#A8807E; --avatar-7:#B39B72; --avatar-8:#8189A8;
+  --font-pixel:"Departure Mono","Silkscreen",monospace;
+  --font-sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono","Cascadia Code",Consolas,monospace;
+  --radius-0:0; --radius-s:2px; --radius-m:4px; --radius-round:999px;
+  --shadow-overlay:0 8px 24px rgba(0,0,0,.5);
+  --shadow-popover:0 4px 12px rgba(0,0,0,.45);
+  --ease:cubic-bezier(.2,0,0,1); --ease-step:steps(4,end);
+  --t-fast:120ms; --t-mid:180ms; --t-slow:240ms;
+  --presence-offline:#565A50; --presence-starting:#8F9288;
+}
+[data-theme="light"] { /* Paper */
+  --bg:#F2EFE6; --surface-1:#EAE6DA; --surface-2:#F8F6EF; --surface-hover:#E4E0D3;
+  --border:#D3CEBE; --border-strong:#B9B4A2;
+  --text:#191A17; --text-secondary:#57584F; --text-muted:#8B8C80;
+  --accent:#B44A17; --accent-bg:#D9622B; --accent-bg-hover:#C5511D;
+  --on-accent:#1A130B; --on-danger:#FFFFFF; --accent-subtle:#F4E0CF;
+  --success:#17874C; --warning:#A8730A; --danger:#C42B1C;
+  --success-bg:#DEF0E2; --warning-bg:#F5E9C9; --danger-bg:#F6DAD3;
+  --glow-accent:none;
+  --focus-ring:rgba(180,74,23,.25);
+  --blink:1s steps(2,jump-none) infinite; --scrim:rgba(25,26,23,.4);
+  --st-todo:#8F9288; --st-progress:#35C4D0; --st-review:#B98BF2;
+  --st-done:#46D98A; --st-closed:#63665C;
+  --avatar-ink:#1A1B16;
+  --avatar-1:#7E9271; --avatar-2:#9C9663; --avatar-3:#6E8CA0; --avatar-4:#6D9A94;
+  --avatar-5:#9B84A8; --avatar-6:#A8807E; --avatar-7:#B39B72; --avatar-8:#8189A8;
+  --font-pixel:"Departure Mono","Silkscreen",monospace;
+  --font-sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono","Cascadia Code",Consolas,monospace;
+  --radius-0:0; --radius-s:2px; --radius-m:4px; --radius-round:999px;
+  --shadow-overlay:0 8px 24px rgba(25,26,23,.16);
+  --shadow-popover:0 4px 12px rgba(25,26,23,.12);
+  --ease:cubic-bezier(.2,0,0,1); --ease-step:steps(4,end);
+  --t-fast:120ms; --t-mid:180ms; --t-slow:240ms;
+  --presence-offline:#565A50; --presence-starting:#8F9288;
+}
