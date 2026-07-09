@@ -104,16 +104,19 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "create_reminder",
-        "description": "创建提醒（recurring 缺 LoopContract → 422 原样透传）。",
+        "description": "创建提醒（recurring 缺 LoopContract → 422 原样透传）。"
+        "once 的时刻 / recurring 的 cron 均写入 cadence。",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "channel_id": {"type": "string"},
                 "kind": {"type": "string", "enum": ["once", "recurring"]},
-                "fire_at": {"type": "string"},
-                "body": {"type": "string"},
+                "cadence": {"type": "string"},
+                "anchor_channel_id": {"type": "string"},
+                "anchor_message_id": {"type": "string"},
+                "anchor_task_id": {"type": "string"},
+                "loop_contract_id": {"type": "string"},
             },
-            "required": ["kind", "body"],
+            "required": ["kind", "cadence", "anchor_channel_id"],
         },
     },
     {
@@ -160,7 +163,15 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
     if tool == "get_file":
         return ToolRequest("GET", f"/api/files/{a['file_id']}/content", download=True)
     if tool == "create_reminder":
-        body = {k: a[k] for k in ("channel_id", "kind", "fire_at", "body") if a.get(k) is not None}
+        fields = (
+            "kind",
+            "cadence",
+            "anchor_channel_id",
+            "anchor_message_id",
+            "anchor_task_id",
+            "loop_contract_id",
+        )
+        body = {k: a[k] for k in fields if a.get(k) is not None}
         return ToolRequest("POST", "/api/reminders", json_body=body)
     if tool == "cancel_reminder":
         return ToolRequest("DELETE", f"/api/reminders/{a['reminder_id']}")

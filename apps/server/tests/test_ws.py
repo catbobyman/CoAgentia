@@ -281,3 +281,26 @@ def test_owner_presence_online_first_offline_last(server_client: TestClient) -> 
         hub._broadcast_owner_presence = original
 
     assert recorded == [PresenceStatus.ONLINE, PresenceStatus.OFFLINE]
+
+
+# ---------------------------------------------------------------- _load_scope 不缓存空作用域（#9）
+
+
+def test_ws_scope_recovers_after_late_workspace(empty_server_client: TestClient) -> None:
+    """fresh install：WS 先于 POST /workspace 建立时不缓存空串——建区后重连能拿到真 workspace_id。"""
+    c = empty_server_client
+    # 1) 未 bootstrap 就连 WS：hello 携空作用域（workspace_id 未加载），不得永久封印。
+    with c.websocket_connect("/api/ws") as sock:
+        hello = sock.receive_json()  # 原始帧：此刻 workspace 尚不存在，用 Envelope 强模型会拒 null
+        assert hello["type"] == ws.EventType.SYS_HELLO.value
+        assert not hello["data"]["workspace_id"]  # None/"" 皆算未加载
+    # 2) 建工作区。
+    r = c.post("/api/workspace", json={"name": "Late", "slug": "late"})
+    assert r.status_code == 201
+    ws_id = r.json()["id"]
+    # 3) 重连：_load_scope 应重试并缓存真 workspace_id（旧 bug 会卡在空串到进程结束）。
+    with c.websocket_connect("/api/ws") as sock:
+        hello = recv(sock)
+        assert hello.type is ws.EventType.SYS_HELLO
+        assert hello.data["workspace_id"] == ws_id
+        assert hello.workspace_id == ws_id

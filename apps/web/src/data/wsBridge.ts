@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type {
   ChannelsSnapshot,
   Envelope,
+  MemberPublic,
   MessagePublic,
   PresenceEntry,
   ReadPositionPublic,
@@ -72,6 +73,12 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
 
     case 'read.updated': {
       const r = data as { channel_id: string; member_id: string; last_read_message_id: string };
+      // MVP 单人类:ChannelsSnapshot.read_positions 只反映当前 human owner 的已读游标
+      // (契约 B §4.5「自身 read-position」)。read.updated 会为每个成员(含 agent)广播,
+      // 若不过滤,agent 游标会污染快照并在 readPositionsMap 折叠时覆盖 owner→未读计数错(#6/#7)。
+      const members = qc.getQueryData<MemberPublic[]>(qk.members());
+      const owner = members?.find((m) => m.kind === 'human' && m.role === 'owner');
+      if (!owner || r.member_id !== owner.id) break;
       qc.setQueryData<ChannelsSnapshot>(qk.channels(), (prev) => {
         if (!prev) return prev;
         const positions = (prev.read_positions as ReadPositionPublic[]) ?? [];

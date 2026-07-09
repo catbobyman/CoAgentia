@@ -294,3 +294,60 @@ def test_gc_keeps_fresh_staging(
     store = FileStore(tmp_path / "data")
     assert run_gc(seeded_engine, store) == 0
     assert store.is_staged(fid)
+
+
+# ---------------------------------------------------------------- 路由回归（code-review #4/#8/#10）
+
+
+def test_open_dm_with_self_rejected(server_client: TestClient) -> None:
+    """#4：与自己建 DM → 422 而非 PK 冲突 500。"""
+    owner = _member(server_client, "Memcyo")
+    r = server_client.post("/api/dms", json={"member_id": owner["id"]})
+    assert r.status_code == 422
+    assert (
+        rest.ErrorResponse.model_validate(r.json()).error.code
+        is rest.ErrorCode.VALIDATION_FAILED
+    )
+
+
+def test_open_dm_nonexistent_member_404(server_client: TestClient) -> None:
+    """#4：member_id 指向不存在成员 → 404 而非 FK 500。"""
+    r = server_client.post("/api/dms", json={"member_id": "01K0MMBR0000000000000000ZZ"})
+    assert r.status_code == 404
+    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
+
+
+def test_acting_member_removed_falls_back_to_owner(server_client: TestClient) -> None:
+    """#8：已删成员的 X-Acting-Member 不被采用（回退 Owner），不产生幽灵作者。"""
+    owner = _member(server_client, "Memcyo")
+    pat = _member(server_client, PAT)
+    assert server_client.delete(f"/api/agents/{pat['id']}").status_code == 204
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "ghost?"},
+        headers={"X-Acting-Member": pat["id"]},
+    )
+    assert r.status_code == 201
+    # 作者回退到 Owner，而非已删的 Pat。
+    assert r.json()["message"]["author_member_id"] == owner["id"]
+
+
+def test_delete_channel_with_messages_conflicts(server_client: TestClient) -> None:
+    """#10：含消息的频道硬删 → 409 CHANNEL_NOT_EMPTY 而非 FK 500。"""
+    build = _channel(server_client, BUILD_CHANNEL)
+    server_client.post(f"/api/channels/{build['id']}/messages", json={"body": "留痕"})
+    r = server_client.delete(f"/api/channels/{build['id']}")
+    assert r.status_code == 409
+    assert (
+        rest.ErrorResponse.model_validate(r.json()).error.code
+        is rest.ErrorCode.CHANNEL_NOT_EMPTY
+    )
+
+
+def test_delete_empty_channel_succeeds(server_client: TestClient) -> None:
+    """#10 反向：无消息的频道仍可硬删（不误伤空频道）。"""
+    r = server_client.post("/api/channels", json={"name": "temp-empty", "member_ids": []})
+    assert r.status_code == 201
+    cid = r.json()["id"]
+    assert server_client.delete(f"/api/channels/{cid}").status_code == 204

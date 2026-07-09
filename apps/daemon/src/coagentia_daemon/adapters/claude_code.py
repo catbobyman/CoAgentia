@@ -279,7 +279,9 @@ class _AgentEntry:
         self.boot = boot
         self.process = process
         self.status = AgentStatus.STARTING
-        self.last_delivered: str | None = None
+        # 去重游标**按 channel_id 维度**：不同频道各自"已喂过的最大 message_id"，避免频道 A 的较大
+        # message_id 误压制频道 B 较早消息的投递（契约 D §5.2；跨频道乱序丢消息 #2）。
+        self.last_delivered: dict[str, str] = {}
         self.stopping = False
         self.resume_used = False
         self.reached_idle = False
@@ -432,9 +434,10 @@ class ClaudeCodeAdapter:
         if entry is None or not messages:
             return False
         max_id = max(m["id"] for m in messages)
-        if entry.last_delivered is not None and max_id <= entry.last_delivered:
-            return False  # 已喂过的最大 message_id → noop 去重（§5.2）
-        entry.last_delivered = max_id
+        prev = entry.last_delivered.get(channel_id)
+        if prev is not None and max_id <= prev:
+            return False  # 该频道已喂过的最大 message_id → noop 去重（§5.2，按频道）
+        entry.last_delivered[channel_id] = max_id
         entry.process.set_turn_context(channel_id, thread_root_id)
         await self._emit(entry, AgentStatus.BUSY)
         await entry.process.feed(

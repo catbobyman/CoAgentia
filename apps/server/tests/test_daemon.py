@@ -313,6 +313,82 @@ def test_delivery_offline_agent_no_frames(ctx: tuple[TestClient, Env, Any]) -> N
         assert env.read_position(a, ch) is None
 
 
+# ------------------------- 投递引擎正确性回归（#2 NOOP / #3 自我回环 / #5 并发重复）
+
+
+def test_deliver_noop_does_not_advance_read_position(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """#2b：deliver ack(noop) 不推进 read_position（noop=已投过，原 done 已推进）。
+
+    否则跨频道 daemon 全局去重误判 noop 时会把落后频道 read_position 错误推进 → 消息被标记
+    已读却从未投递 → 永久丢失。契约 D §5.2「仅 done 后写 read_positions」。
+    """
+    client, env, _hub = ctx
+    a, ch = _mention_setup(env, "busy")
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(a, "busy")])
+        d.recv_hello_ack()
+        client.post(f"/api/channels/{ch}/messages", json={"body": "work", "file_ids": []})
+        deliver = d.recv_instr()
+        assert deliver["type"] == "message.deliver"
+        d.ack(deliver, "noop")  # 已喂过 → noop
+        d.sync()
+        assert env.read_position(a, ch) is None  # noop 不推进
+
+
+def test_backlog_excludes_agent_own_messages(ctx: tuple[TestClient, Env, Any]) -> None:
+    """#3：积压批排除收件 Agent 自己发的消息（自己发的不回喂，避免自我应答回环）。"""
+    client, env, _hub = ctx
+    a, ch = _mention_setup(env, "busy")
+    m_own = env.add_message(ch, author=a, body="my own note")  # Agent 自己发的
+    m_owner = env.add_message(ch, author=env.owner_id, body="@A ping", mentions=(a,))
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(a, "busy")])
+        d.recv_hello_ack()
+        deliver = d.recv_instr()  # 握手对账：busy 直投积压
+        assert deliver["type"] == "message.deliver"
+        ids = [m["id"] for m in deliver["data"]["messages"]]
+        assert m_owner in ids
+        assert m_own not in ids  # 自己发的不回喂
+        d.ack(deliver, "done")
+        d.sync()
+
+
+def test_busy_concurrent_delivery_no_duplicate(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """#5：busy 期相邻投递批在锁内重算积压，不重复喂较低 message_id。
+
+    task1 直投 [m1] 后持 agent_lock 等 ack；task2（m2）阻塞在锁。ack1(done) 推进 read_position=m1
+    并释放锁 → task2 取锁**重算**积压 → 仅 [m2]（不含已投的 m1）。修前 task2 会发锁外预算的 [m1,m2]。
+    """
+    client, env, _hub = ctx
+    a, ch = _mention_setup(env, "busy")
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(a, "busy")])
+        d.recv_hello_ack()
+        r1 = client.post(f"/api/channels/{ch}/messages", json={"body": "one", "file_ids": []})
+        m1 = r1.json()["message"]["id"]
+        deliver1 = d.recv_instr()
+        assert deliver1["type"] == "message.deliver"
+        assert [m["id"] for m in deliver1["data"]["messages"]] == [m1]
+        # m2 到达：task2 阻塞在 agent_lock（task1 尚未 ack）
+        r2 = client.post(f"/api/channels/{ch}/messages", json={"body": "two", "file_ids": []})
+        m2 = r2.json()["message"]["id"]
+        d.ack(deliver1, "done")
+        assert _poll(lambda: env.read_position(a, ch) == m1)
+        deliver2 = d.recv_instr()
+        assert deliver2["type"] == "message.deliver"
+        assert [m["id"] for m in deliver2["data"]["messages"]] == [m2]  # 不重投 m1
+        d.ack(deliver2, "done")
+        d.sync()
+        assert _poll(lambda: env.read_position(a, ch) == m2)
+
+
 # ---------------------------------------------------------------- 对账 #3 投递补投（离线积压）
 
 

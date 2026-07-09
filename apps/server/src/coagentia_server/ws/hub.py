@@ -113,8 +113,12 @@ class WsHub:
     # ---------------------------------------------------------------- 连接生命周期
 
     def _load_scope(self) -> None:
-        """缓存 workspace_id 与 owner_member_id（信封作用域 + owner presence）。"""
-        if self._workspace_id is not None:
+        """缓存 workspace_id 与 owner_member_id（信封作用域 + owner presence）。
+
+        仅当库中真有 workspace 行时才缓存——否则保持未加载态（None），下次连接重试。
+        避免 fresh install（WS 先于 POST /workspace 建立）把空串永久缓存（坑：缓存即封印）。
+        """
+        if self._workspace_id:
             return
         with self._engine.connect() as conn:
             ws = conn.execute(select(_WS.c.id).limit(1)).first()
@@ -123,8 +127,9 @@ class WsHub:
                 .where(_MEMBER.c.kind == MemberKind.HUMAN, _MEMBER.c.role == "owner")
                 .limit(1)
             ).first()
-        self._workspace_id = ws[0] if ws is not None else ""
-        self._owner_member_id = owner[0] if owner is not None else None
+        if ws is not None:
+            self._workspace_id = ws[0]
+            self._owner_member_id = owner[0] if owner is not None else None
 
     async def attach(self, sock: WebSocket) -> Connection:
         """接受连接 → 立发 sys.hello（seq 1）→ 注册 → 首条连接广播 owner online（契约 C §2）。"""

@@ -35,6 +35,7 @@ _CHANNEL_MEMBER = models.ChannelMember.__table__
 _READ = models.ReadPosition.__table__
 _MSG = models.Message.__table__
 _CANVAS = models.Canvas.__table__
+_MEMBER = models.Member.__table__
 
 EMPTY_CANVAS_HASH = fingerprint({"edges": [], "nodes": []})
 
@@ -172,7 +173,17 @@ def unarchive_channel(channel_id: str, request: Request, tx: Tx = Depends(get_tx
 def delete_channel(channel_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Response:
     require_admin(acting_member(request, tx.conn))
     channel = _fetch_channel(tx, channel_id)
-    # 清理非不可变依赖行后删频道（messages/files 不可变——含消息的频道不可硬删，见 open_issues）。
+    # 消息不可变、无法级联删——含任何消息的频道不可硬删；干净回 409 而非 FK 500（改用归档）。
+    has_message = tx.conn.execute(
+        select(_MSG.c.id).where(_MSG.c.channel_id == channel_id).limit(1)
+    ).first()
+    if has_message is not None:
+        raise ApiError(
+            409,
+            rest.ErrorCode.CHANNEL_NOT_EMPTY,
+            "频道含消息，无法删除（消息不可变）——请改用归档",
+        )
+    # 清理非不可变依赖行后删频道。
     tx.conn.execute(delete(_CANVAS).where(_CANVAS.c.channel_id == channel_id))
     tx.conn.execute(delete(_CHANNEL_MEMBER).where(_CHANNEL_MEMBER.c.channel_id == channel_id))
     tx.conn.execute(delete(_READ).where(_READ.c.channel_id == channel_id))
@@ -231,6 +242,15 @@ def remove_channel_member(
 def open_dm(body: rest.DmCreate, tx: Tx = Depends(get_tx)) -> Any:
     ws = require_workspace(tx.conn)
     me = owner_member(tx.conn)
+    if body.member_id == me["id"]:
+        raise ApiError(422, rest.ErrorCode.VALIDATION_FAILED, "不能与自己建立 DM")
+    target = tx.conn.execute(
+        select(_MEMBER.c.id).where(
+            _MEMBER.c.id == body.member_id, _MEMBER.c.removed_at.is_(None)
+        )
+    ).first()
+    if target is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "成员不存在")
     key = ":".join(sorted([me["id"], body.member_id]))
     existing = tx.conn.execute(select(_CHANNEL).where(_CHANNEL.c.dm_key == key)).mappings().first()
     if existing is not None:
@@ -249,7 +269,7 @@ def open_dm(body: rest.DmCreate, tx: Tx = Depends(get_tx)) -> Any:
             created_at=ts,
         )
     )
-    for mid in (me["id"], body.member_id):
+    for mid in dict.fromkeys((me["id"], body.member_id)):  # 去重 (channel_id, member_id)
         tx.conn.execute(
             insert(_CHANNEL_MEMBER).values(channel_id=channel_id, member_id=mid, joined_at=ts)
         )

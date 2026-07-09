@@ -2,13 +2,13 @@
 
 from coagentia_contracts import daemon, rest, ws
 
-# 契约 B §3 全集（转录自 02-REST-API契约.md v1.0；实际 20 个，头表"19"为统计笔误）
+# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.0.2 起 21 个，新增 CHANNEL_NOT_EMPTY）
 ERROR_CODES = {
     "VALIDATION_FAILED", "TASK_IN_DM", "NOT_TOP_LEVEL_MESSAGE", "CLAIM_RACE",
     "HANDOFF_INCOMPLETE", "GRAPH_CYCLE", "STALE_CONFIRM", "DELTA_BASE_MISMATCH",
     "NODE_ACTIVE", "NO_ORCHESTRATOR", "IDEMPOTENCY_MISMATCH", "NAME_TAKEN",
-    "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS", "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS",
-    "DAEMON_OFFLINE", "FILE_TOO_LARGE", "PERMISSION_DENIED", "NOT_FOUND",
+    "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS", "WORKSPACE_EXISTS",
+    "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE", "PERMISSION_DENIED", "NOT_FOUND",
 }
 
 # 契约 C §6/§7/§8 全集（转录自 03-WS事件协议.md v1.0）
@@ -59,7 +59,7 @@ REPORT_TYPES = {
 
 def test_error_codes_exact() -> None:
     assert {c.value for c in rest.ErrorCode} == ERROR_CODES
-    assert len(ERROR_CODES) == 20
+    assert len(ERROR_CODES) == 21
 
 
 def test_ws_event_catalog_exact() -> None:

@@ -64,9 +64,43 @@ def test_call_tool_unknown_tool() -> None:
 
 def test_call_tool_error_status() -> None:
     http = StubHttp(status=422, data={"code": "LOOP_CONTRACT_REQUIRED"})
-    out = mcp.call_tool("create_reminder", {"kind": "recurring", "body": "x"}, http)
+    out = mcp.call_tool(
+        "create_reminder",
+        {"kind": "recurring", "cadence": "0 9 * * *", "anchor_channel_id": "01K5CHAN00000000000000000A"},
+        http,
+    )
     assert out["isError"] is True
     assert json.loads(out["content"][0]["text"])["status"] == 422
+
+
+def test_create_reminder_body_matches_contract() -> None:
+    """回归 #1：create_reminder 构造的 body 必须过 ReminderCreate 契约校验（曾字段全错→422）。"""
+    from coagentia_contracts.rest import ReminderCreate
+
+    ulid = "01K5CHAN00000000000000000A"
+    # once：时刻写入 cadence，最小必填集
+    once = mcp.build_request(
+        "create_reminder",
+        {"kind": "once", "cadence": "2026-07-10T09:00:00Z", "anchor_channel_id": ulid},
+    )
+    assert once.path == "/api/reminders"
+    assert once.method == "POST"
+    assert once.json_body == {"kind": "once", "cadence": "2026-07-10T09:00:00Z", "anchor_channel_id": ulid}
+    ReminderCreate.model_validate(once.json_body)  # 不抛 = 字段名/必填/extra 全对齐
+
+    # recurring + 全部可选锚点
+    rec = mcp.build_request(
+        "create_reminder",
+        {
+            "kind": "recurring",
+            "cadence": "0 9 * * *",
+            "anchor_channel_id": ulid,
+            "anchor_message_id": "01K5MSG100000000000000000A",
+            "anchor_task_id": "01K5TASK00000000000000000A",
+            "loop_contract_id": "01K5RMDR00000000000000000A",
+        },
+    )
+    ReminderCreate.model_validate(rec.json_body)
 
 
 def test_jsonrpc_initialize_and_tools_list() -> None:

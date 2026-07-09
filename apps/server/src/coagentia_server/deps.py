@@ -100,7 +100,14 @@ def acting_member(request: Request, conn: Connection) -> dict[str, Any]:
     """当前主体：X-Acting-Member 头指向的有效成员，否则 Owner 人类（契约 B §2）。"""
     hdr = request.headers.get("X-Acting-Member")
     if hdr:
-        row = conn.execute(select(_MEMBER).where(_MEMBER.c.id == hdr)).mappings().first()
+        # 已删成员不能行为（removed_at IS NULL 过滤，与 members/hub 既有软删门一致）；否则回退 Owner。
+        row = (
+            conn.execute(
+                select(_MEMBER).where(_MEMBER.c.id == hdr, _MEMBER.c.removed_at.is_(None))
+            )
+            .mappings()
+            .first()
+        )
         if row is not None:
             return dict(row)
     return owner_member(conn)

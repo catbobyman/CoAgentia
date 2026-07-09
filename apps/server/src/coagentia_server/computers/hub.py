@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import hashlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -328,9 +329,15 @@ class DaemonHub:
             # instr / query 仅 server→daemon，daemon 侧不应发；忽略
 
     def _handle_ack(self, conn: DaemonConnection, ack: AckFrame) -> None:
-        """ack 到达：deliver 帧先写 read_positions（§8.3）再唤醒等待方。"""
+        """ack 到达：deliver 帧先写 read_positions（§8.3）再唤醒等待方。
+
+        仅 result=DONE 推进 read_position（契约 D §5.2「deliver ack(done) 后写 read_positions」）。
+        NOOP = 该批已喂过（daemon 按频道去重命中，或原帧 at-least-once 重发命中 frame_id 短窗）——
+        原 DONE（TCP 有序 + daemon 处理后才记 frame_id）必已先到并推进过，NOOP 不应再推
+        （否则跨频道 daemon 全局去重误判 NOOP 时会把落后频道的 read_position 错误推进 → 丢消息）。
+        """
         meta = conn.deliver_meta.pop(ack.ref, None)
-        if meta is not None and ack.result in (AckResult.DONE, AckResult.NOOP):
+        if meta is not None and ack.result == AckResult.DONE:
             self._write_read_position(meta)
         fut = conn.pending_acks.get(ack.ref)
         if fut is not None and not fut.done():
@@ -529,16 +536,27 @@ class DaemonHub:
         conn: DaemonConnection,
         agent_id: str,
         itype: InstrType,
-        data: Any,
+        data: Any = None,
         *,
         deliver_meta: DeliverMeta | None = None,
-    ) -> AckFrame:
-        """同 Agent 串行 + at-least-once（10s ack 超时原帧重发；契约 D §3/§8）。"""
-        frame = InstrFrame(
-            frame_id=new_ulid(), type=itype, at=now_iso(), data=data.model_dump(mode="json")
-        )
-        payload = frame.model_dump(mode="json")
+        prepare: Callable[[], tuple[Any, DeliverMeta | None] | None] | None = None,
+    ) -> AckFrame | None:
+        """同 Agent 串行 + at-least-once（10s ack 超时原帧重发；契约 D §3/§8）。
+
+        `prepare`（可选）在**取得 agent_lock 之后、构帧之前**重算 (data, deliver_meta)：投递引擎
+        用它让 busy 期并发投递任务在锁内重算积压，反映此前 ack 已推进的 read_position，避免发送
+        陈旧重叠批（#5 重复投递）。返回 None ⇒ 无内容可投（并发任务已投完）→ 不发帧，返回 None。
+        """
         async with conn.agent_lock(agent_id):
+            if prepare is not None:
+                prepared = prepare()
+                if prepared is None:
+                    return None
+                data, deliver_meta = prepared
+            frame = InstrFrame(
+                frame_id=new_ulid(), type=itype, at=now_iso(), data=data.model_dump(mode="json")
+            )
+            payload = frame.model_dump(mode="json")
             while True:
                 fut: asyncio.Future = self._loop.create_future()  # type: ignore[union-attr]
                 conn.pending_acks[frame.frame_id] = fut
@@ -650,26 +668,31 @@ class DaemonHub:
     async def _deliver_backlog(
         self, conn: DaemonConnection, agent_id: str, channel_id: str
     ) -> None:
-        """投递积压批 = read_position 之后全部应投消息，一次喂齐（§8.2）。"""
-        with self._engine.connect() as c:
-            backlog = self._backlog(c, agent_id, channel_id)
-        if not backlog:
-            return
-        messages = [message_public(m) for m in backlog]
-        meta = DeliverMeta(
-            agent_member_id=agent_id,
-            channel_id=channel_id,
-            workspace_id=conn.workspace_id,
-            last_message_id=backlog[-1]["id"],
-        )
-        await self.send_instr(
-            conn,
-            agent_id,
-            InstrType.MESSAGE_DELIVER,
-            MessageDeliverData(
+        """投递积压批 = read_position 之后全部应投消息，一次喂齐（§8.2）。
+
+        积压在 send_instr 取得 agent_lock **之后**重算（prepare）：busy 期每条新消息各起一个并发
+        投递任务，若在锁外先算批、锁内后发，相邻批会重叠重投较低 message_id（#5）。锁内重算使
+        后到任务反映此前 ack 已推进的 read_position——已投完则返回 None 不发帧。
+        """
+        def _prepare() -> tuple[MessageDeliverData, DeliverMeta] | None:
+            with self._engine.connect() as c:
+                backlog = self._backlog(c, agent_id, channel_id)
+            if not backlog:
+                return None
+            messages = [message_public(m) for m in backlog]
+            meta = DeliverMeta(
+                agent_member_id=agent_id,
+                channel_id=channel_id,
+                workspace_id=conn.workspace_id,
+                last_message_id=backlog[-1]["id"],
+            )
+            data = MessageDeliverData(
                 agent_member_id=agent_id, channel_id=channel_id, messages=messages
-            ),
-            deliver_meta=meta,
+            )
+            return data, meta
+
+        await self.send_instr(
+            conn, agent_id, InstrType.MESSAGE_DELIVER, prepare=_prepare
         )
 
     def _compute_trigger(
@@ -716,7 +739,12 @@ class DaemonHub:
                 _READ.c.member_id == agent_id, _READ.c.channel_id == channel_id
             )
         ).first()
-        stmt = select(_MSG).where(_MSG.c.channel_id == channel_id)
+        # 排除收件 Agent 自己发的消息（§8：自己发的不回喂，避免自我应答回环 #3）；系统消息
+        # author=NULL 仍投。与 _compute_trigger 的 self-author 排除同源。
+        stmt = select(_MSG).where(
+            _MSG.c.channel_id == channel_id,
+            (_MSG.c.author_member_id.is_(None)) | (_MSG.c.author_member_id != agent_id),
+        )
         if read is not None:
             stmt = stmt.where(_MSG.c.id > read[0])  # ULID 单调 ⇒ 字典序即时序
         rows = c.execute(stmt.order_by(_MSG.c.created_at, _MSG.c.id)).mappings()

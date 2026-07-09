@@ -114,6 +114,21 @@ async def test_deliver_dedup_by_max_message_id(tmp_path: Path) -> None:
     assert await adapter.deliver(AID, "C", [msg], None) is False  # 同批 → noop
 
 
+async def test_deliver_dedup_is_per_channel(tmp_path: Path) -> None:
+    """#2：去重游标按 channel_id 维度——频道 A 的较大 id 不压制频道 B 较早消息的投递。"""
+    adapter, sink, spawn, paths = _make(tmp_path)
+    boot = _boot(tmp_path / "home")
+    await adapter.start(boot)
+    # 频道 A 先投较大 message_id。
+    msg_a = {"id": "01K5MSG900000000000000000A", "channel_id": "A", "body": "a"}
+    assert await adapter.deliver(AID, "A", [msg_a], None) is True
+    # 频道 B 投较早（更小）message_id：跨频道独立游标 → 不被 A 误判 noop。
+    msg_b = {"id": "01K5MSG100000000000000000A", "channel_id": "B", "body": "b"}
+    assert await adapter.deliver(AID, "B", [msg_b], None) is True
+    # 同频道 B 重投同批 → 按频道去重仍 noop。
+    assert await adapter.deliver(AID, "B", [msg_b], None) is False
+
+
 async def test_stop_emits_offline(tmp_path: Path) -> None:
     adapter, sink, spawn, paths = _make(tmp_path)
     boot = _boot(tmp_path / "home")
