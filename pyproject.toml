@@ -38,6 +38,10 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 依赖注入惯用 `= Depends(...)` / `= Header(...)` 作参数默认值（非可变默认坑，B008 误报）。
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query", "fastapi.Path"]
+
 [tool.pyright]
 include = ["packages/contracts/src", "apps/mock-server/src", "apps/server/src"]
 typeCheckingMode = "standard"
