@@ -1,5 +1,7 @@
 /* Afterglow(余辉)design tokens —— 与《设计规范》§2.7 逐字一致,唯一权威 */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap');
+/* 字体加载已本地化(复发点 5):IBM Plex Sans/Mono + Silkscreen 走 @fontsource(main.tsx),
+   Departure Mono 走 src/fonts/fonts.css @font-face。此处不再引 Google Fonts CDN。
+   token 变量值一字未改。 */
 [data-theme="dark"] { /* CRT Ink(默认主题) */
   --bg:#0D0E0C; --surface-1:#141612; --surface-2:#1A1D18; --surface-hover:#20241E;
   --border:#2A2E27; --border-strong:#3A4036;

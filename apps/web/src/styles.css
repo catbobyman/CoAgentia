@@ -102,3 +102,39 @@ body { background: var(--bg); font-family: var(--font-sans); color: var(--text);
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .pulse { animation: pulse 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
+/* ===== lucide-react 图标基线(等价设计稿 svg.lucide) ===== */
+svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
+
+/* ===== rail 导航项(从设计稿 .rit 补入基座) ===== */
+.rail .rit { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); border-radius: var(--radius-s); cursor: pointer; position: relative; }
+.rail .rit:hover { background: var(--surface-hover); color: var(--text); }
+.rail .rit.active { background: var(--accent-subtle); color: var(--accent); }
+.rail .rit .dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: var(--danger); }
+.rail .me { margin-top: 4px; cursor: pointer; }
+
+/* ===== 频道侧栏:锁标 / 已归档 / 新建频道 ===== */
+.ch .lock { color: var(--text-muted); width: 12px; flex: none; display: inline-flex; }
+.ch .lock svg.lucide { width: 14px; height: 14px; }
+.arch { height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 12px; margin: 0 4px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-radius: var(--radius-s); }
+.arch:hover { background: var(--surface-hover); }
+.arch svg.lucide { width: 14px; height: 14px; }
+.newch { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 12px; margin: 0 4px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-radius: var(--radius-s); }
+.newch:hover { background: var(--surface-hover); color: var(--text); }
+.newch svg.lucide { width: 16px; height: 16px; }
+
+/* ===== 顶栏图标按钮 ===== */
+.stack { cursor: pointer; }
+.icobtn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); border-radius: var(--radius-s); cursor: pointer; flex: none; }
+.icobtn:hover { background: var(--surface-hover); color: var(--text); }
+.icobtn svg.lucide { width: 18px; height: 18px; }
+
+/* ===== 任务牌:深链 ?task= 命中高亮 ===== */
+.taskchip:hover { background: var(--surface-hover); }
+.taskchip.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* ===== WS 重连 UI(契约 C §2 / 交互 §13):顶部 2px --warning 进度条 + toast ===== */
+.wsbar { position: fixed; top: 0; left: 0; right: 0; height: 2px; background: var(--warning); z-index: 50; overflow: hidden; }
+.wsbar::after { content: ""; position: absolute; top: 0; left: 0; height: 100%; width: 40%; background: var(--bg); opacity: .35; animation: wsbar-slide 1.1s var(--ease, ease) infinite; }
+@keyframes wsbar-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+.wstoast { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 51; font-family: var(--font-mono); font-size: 12px; color: var(--text); background: var(--surface-2); border: 1px solid var(--warning); border-radius: var(--radius-s); padding: 6px 12px; box-shadow: var(--shadow-popover); }
