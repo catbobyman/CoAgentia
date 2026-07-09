@@ -15,7 +15,7 @@ from sqlalchemy import insert, select, update
 
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
-from coagentia_server.deps import Tx, get_tx, owner_member, require_workspace
+from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, require_workspace
 from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.ledger import service
 from coagentia_server.routes.serialize import message_public, read_position_public
@@ -125,7 +125,9 @@ def post_message(
     if body.as_task is not None and body.thread_root_id is not None:
         raise ApiError(422, rest.ErrorCode.NOT_TOP_LEVEL_MESSAGE, "仅顶级消息可转任务", rule="T3")
 
-    me = owner_member(tx.conn)
+    # 主体身份（契约 B §2）：浏览器=Owner；daemon 代理 Agent 发消息附 X-Acting-Member。
+    # 必须用 acting_member 而非 owner_member——否则 Agent 发言全被记成 Owner（A8 实测暴露）。
+    me = acting_member(request, tx.conn)
     msg_id = service.new_ulid()
 
     # 幂等（契约 B §1）：同键同 body → 返回首次结果；同键异 body → 409。
