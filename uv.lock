@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "coagentia-contracts",
+    "coagentia-daemon",
     "coagentia-mock-server",
     "coagentia-server",
     "coagentia-workspace",
@@ -88,6 +89,21 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
 
 [[package]]
+name = "coagentia-daemon"
+version = "0.1.0"
+source = { editable = "apps/daemon" }
+dependencies = [
+    { name = "coagentia-contracts" },
+    { name = "websockets" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "coagentia-contracts", editable = "packages/contracts" },
+    { name = "websockets", specifier = ">=13" },
+]
+
+[[package]]
 name = "coagentia-mock-server"
 version = "0.1.0"
 source = { editable = "apps/mock-server" }
@@ -141,6 +157,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "coagentia-contracts" },
+    { name = "coagentia-daemon" },
     { name = "coagentia-mock-server" },
     { name = "coagentia-server" },
     { name = "httpx" },
@@ -155,6 +172,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "coagentia-contracts", editable = "packages/contracts" },
+    { name = "coagentia-daemon", editable = "apps/daemon" },
     { name = "coagentia-mock-server", editable = "apps/mock-server" },
     { name = "coagentia-server", editable = "apps/server" },
     { name = "httpx", specifier = ">=0.27" },

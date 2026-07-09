@@ -18,6 +18,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from coagentia_server import __version__
 from coagentia_server.api import install_error_handlers
+from coagentia_server.computers import DaemonHub
 from coagentia_server.db.engine import DEFAULT_DB_PATH, make_engine
 from coagentia_server.events import EventBus
 from coagentia_server.files import FileStore
@@ -42,11 +43,14 @@ def create_app(
     file_store.ensure_dirs()
     bus = EventBus()
     ws_hub = WsHub(engine, bus, __version__)
+    daemon_hub = DaemonHub(engine, bus, __version__)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # WS 消费任务挂 lifespan（坑 3：不在 handler 内 create_task；捕获运行 loop 供跨线程投递）。
-        ws_task = ws_hub.start(asyncio.get_running_loop())
+        loop = asyncio.get_running_loop()
+        ws_task = ws_hub.start(loop)
+        daemon_hub.start(loop)  # daemon 网关：bus 订阅 + 周期对账/reminder/心跳 loop
         # 启动时 GC 一次 + 每小时定时（坑 3：任务挂 lifespan，随应用生命周期收放）。
         await asyncio.to_thread(run_gc, engine, file_store)
         gc_task = asyncio.create_task(_gc_loop(engine, file_store))
@@ -54,6 +58,7 @@ def create_app(
             yield
         finally:
             ws_hub.stop()
+            await daemon_hub.stop()
             for task in (gc_task, ws_task):
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -65,6 +70,7 @@ def create_app(
     app.state.file_store = file_store
     app.state.server_url = server_url
     app.state.ws_hub = ws_hub
+    app.state.daemon_hub = daemon_hub
 
     install_error_handlers(app)
     install_routes(app)
@@ -72,6 +78,11 @@ def create_app(
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.websocket("/api/daemon/ws")
+    async def daemon_ws_endpoint(sock: WebSocket) -> None:
+        # daemon 线协议端点（契约 D §2）：认证 → 握手 → 对账 → 收帧循环，全在 hub.serve。
+        await daemon_hub.serve(sock)
 
     @app.websocket("/api/ws")
     async def ws_endpoint(sock: WebSocket) -> None:

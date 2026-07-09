@@ -228,7 +228,7 @@ def delete_agent(member_id: str, request: Request, tx: Tx = Depends(get_tx)) -> 
     return Response(status_code=204)
 
 
-@router.post("/agents/{member_id}/lifecycle", status_code=503)
+@router.post("/agents/{member_id}/lifecycle")
 def agent_lifecycle(
     member_id: str, body: rest.LifecycleRequest, request: Request, tx: Tx = Depends(get_tx)
 ) -> Any:
@@ -239,20 +239,41 @@ def agent_lifecycle(
         raise ApiError(
             403, rest.ErrorCode.PERMISSION_DENIED, "Agent 不能操作生命周期", rule="R2"
         )
-    # A3 阶段无 daemon 连接 → DAEMON_OFFLINE（A5 接线真实指令下发，契约 D §5）。
-    raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法执行生命周期指令")
+    # 生命周期同步语义：连接的 daemon 下发指令等 ack；无连接 → 503（不参与对账补发，契约 D §4.3）。
+    from coagentia_server.computers import DaemonOffline
+
+    hub = request.app.state.daemon_hub
+    try:
+        result = hub.send_lifecycle(member_id, body.action)
+    except DaemonOffline as exc:
+        raise ApiError(
+            503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法执行生命周期指令"
+        ) from exc
+    return {"result": result}
 
 
-@router.get("/agents/{member_id}/home/tree", status_code=503)
-def home_tree(member_id: str, tx: Tx = Depends(get_tx), path: str = "/") -> Any:
+@router.get("/agents/{member_id}/home/tree")
+def home_tree(member_id: str, request: Request, tx: Tx = Depends(get_tx), path: str = "/") -> Any:
     _fetch_agent(tx, member_id)
-    raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法浏览 Home")
+    from coagentia_server.computers import DaemonOffline
+
+    hub = request.app.state.daemon_hub
+    try:
+        return hub.query_home_tree(member_id, path)
+    except DaemonOffline as exc:
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法浏览 Home") from exc
 
 
-@router.get("/agents/{member_id}/home/file", status_code=503)
-def home_file(member_id: str, path: str, tx: Tx = Depends(get_tx)) -> Any:
+@router.get("/agents/{member_id}/home/file")
+def home_file(member_id: str, path: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
     _fetch_agent(tx, member_id)
-    raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法读取文件")
+    from coagentia_server.computers import DaemonOffline
+
+    hub = request.app.state.daemon_hub
+    try:
+        return hub.query_home_file(member_id, path)
+    except DaemonOffline as exc:
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法读取文件") from exc
 
 
 # ---------------------------------------------------------------- 技能
