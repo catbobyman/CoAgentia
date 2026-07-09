@@ -1,0 +1,42 @@
+[project]
+name = "coagentia-workspace"
+version = "0.0.0"
+description = "CoAgentia monorepo root (uv workspace)"
+requires-python = ">=3.12"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/contracts", "apps/mock-server"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "pyright>=1.1.380",
+    "coagentia-contracts",
+    "coagentia-mock-server",
+]
+
+[tool.uv.sources]
+coagentia-contracts = { workspace = true }
+coagentia-mock-server = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["packages/contracts/tests", "apps/mock-server/tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+include = ["packages/contracts/src", "apps/mock-server/src"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"

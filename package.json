@@ -1,0 +1,12 @@
+{
+  "name": "coagentia-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "gen:schemas": "uv run python scripts/export_schemas.py",
+    "gen:ts": "pnpm --filter @coagentia/contracts-ts gen",
+    "gen": "pnpm gen:schemas && pnpm gen:ts",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@10.6.2"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@coagentia/contracts-ts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated TS mirror of coagentia-contracts (do not hand-edit src/generated)",
+  "types": "src/index.ts",
+  "scripts": {
+    "gen": "node gen.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.0",
+    "openapi-typescript": "^7.4.0",
+    "typescript": "^5.6.0"
+  }
+}
