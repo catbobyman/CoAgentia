@@ -46,6 +46,53 @@ export const useTasks = (channelId: string | undefined) =>
     enabled: !!channelId,
   });
 
+// 线程流(P5):root + 回复(GET /api/messages/{root}/thread)。
+export const useThread = (rootMessageId: string | undefined) =>
+  useQuery({
+    queryKey: qk.thread(rootMessageId ?? '_'),
+    queryFn: () => api.thread(rootMessageId!),
+    enabled: !!rootMessageId,
+  });
+
+// 机器(P7)与 Agent 详情(P6)只读查询。
+export const useComputers = () =>
+  useQuery({ queryKey: qk.computers(), queryFn: () => api.computers() });
+
+export const useAgent = (memberId: string | undefined) =>
+  useQuery({
+    queryKey: qk.agent(memberId ?? '_'),
+    queryFn: () => api.agent(memberId!),
+    enabled: !!memberId,
+  });
+
+export const useAgentSkills = (memberId: string | undefined) =>
+  useQuery({
+    queryKey: qk.agentSkills(memberId ?? '_'),
+    queryFn: () => api.agentSkills(memberId!),
+    enabled: !!memberId,
+  });
+
+export const useAgentReminders = (memberId: string | undefined) =>
+  useQuery({
+    queryKey: qk.agentReminders(memberId ?? '_'),
+    queryFn: () => api.agentReminders(memberId!),
+    enabled: !!memberId,
+  });
+
+export const useAgentDiagnostics = (memberId: string | undefined) =>
+  useQuery({
+    queryKey: qk.agentDiagnostics(memberId ?? '_'),
+    queryFn: () => api.agentDiagnostics(memberId!),
+    enabled: !!memberId,
+  });
+
+export const useHomeTree = (memberId: string | undefined) =>
+  useQuery({
+    queryKey: qk.homeTree(memberId ?? '_'),
+    queryFn: () => api.homeTree(memberId!),
+    enabled: !!memberId,
+  });
+
 // usageByTask 无 REST 源:初值空,由 token_usage.reported 累加(wsBridge)。
 export const useUsageByTask = () =>
   useQuery({

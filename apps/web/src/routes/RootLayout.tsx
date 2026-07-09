@@ -33,6 +33,7 @@ export function RootLayout() {
   const byId = memberMap(members);
   const presence = presenceMap(presenceQ.data);
   const me = members.find((m: MemberPublic) => m.kind === 'human' && m.role === 'owner');
+  const firstAgent = members.find((m: MemberPublic) => m.kind === 'agent');
   const readPositions = readPositionsMap(channelsQ.data);
 
   // 默认活跃频道 = #build(数据到位后设一次)
@@ -77,7 +78,7 @@ export function RootLayout() {
     <>
       <ReconnectBar />
       <div className="app">
-        <Rail meName={me.name} />
+        <Rail meName={me.name} firstAgentId={firstAgent?.id} />
         <ChannelList
           channels={channels}
           activeChannelId={activeChannelId ?? undefined}

@@ -17,12 +17,13 @@ export interface MessageFlowProps {
   lastReadId?: string;
   selectedTaskId?: string;
   onSelectTask?: (taskId: string) => void;
+  onOpenAgent?: (memberId: string) => void; // 点击 Agent 头像/名进入 P6 详情
 }
 
 export function MessageFlow(props: MessageFlowProps) {
   const {
     messages, memberById, memberNames, meName, presenceOf,
-    taskByRoot, usageByTask, lastReadId, selectedTaskId, onSelectTask,
+    taskByRoot, usageByTask, lastReadId, selectedTaskId, onSelectTask, onOpenAgent,
   } = props;
   const lastReadIdx = messages.findIndex((m) => m.id === lastReadId);
 
@@ -56,12 +57,22 @@ export function MessageFlow(props: MessageFlowProps) {
                 <div className="avc">
                   {cont
                     ? <span className="htime">{m.created_at.slice(11, 16)}</span>
-                    : author && <Avatar name={author.name} presence={pres} size="msg" />}
+                    : author && (
+                      <span
+                        className={author.kind === 'agent' && onOpenAgent ? 'avlink' : undefined}
+                        onClick={author.kind === 'agent' && onOpenAgent ? () => onOpenAgent(author.id) : undefined}
+                      >
+                        <Avatar name={author.name} presence={pres} size="msg" />
+                      </span>
+                    )}
                 </div>
                 <div>
                   {!cont && author && (
                     <div className="hd">
-                      <span className="nm">{author.name}</span>
+                      <span
+                        className={author.kind === 'agent' && onOpenAgent ? 'nm nmlink' : 'nm'}
+                        onClick={author.kind === 'agent' && onOpenAgent ? () => onOpenAgent(author.id) : undefined}
+                      >{author.name}</span>
                       {pres && (
                         <span
                           className={`pp${pres.status === 'busy' ? ' pulse' : ''}`}

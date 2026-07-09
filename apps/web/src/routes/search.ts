@@ -11,6 +11,23 @@ export interface ChannelSearch {
   node?: string; // 画布节点 id(B2 画布)
 }
 
+// Agent 详情六页签(设计稿 P6 顺序;缺省归一为 profile)。
+export const AGENT_TABS = ['profile', 'home', 'skills', 'reminders', 'diagnostics', 'cost'] as const;
+export type AgentTab = (typeof AGENT_TABS)[number];
+
+export interface AgentSearch {
+  tab: AgentTab; // 缺省归一为 'profile'
+}
+
+/** Agent 详情 tab 还原;非法值归一为 profile。 */
+export function validateAgentSearch(input: Record<string, unknown>): AgentSearch {
+  const raw = input.tab;
+  const tab = (AGENT_TABS as readonly string[]).includes(raw as string)
+    ? (raw as AgentTab)
+    : 'profile';
+  return { tab };
+}
+
 function asString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }

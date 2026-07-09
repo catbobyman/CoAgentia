@@ -1,18 +1,41 @@
 // TanStack Router 路由树 + 类型化 search schema(选型 00 约束 6:URL 即状态)。
-// 路由树:root(布局壳)→ index '/'(会话屏,带 ?tab=&thread=&task=&node= 深链)。
-// M1 只有 index 一条子路由;B2 其它屏挂同一 root 下即复用布局壳。
+// 路由树:
+//   root(裸 Outlet)
+//   ├─ appLayout(RootLayout 壳:Rail + 频道侧栏 + WS)—— 复用壳的主应用屏
+//   │   ├─ index '/'          会话屏(P1;?tab=&thread=&task=&node= 深链)
+//   │   ├─ /agents/$memberId  Agent 详情(P6;?tab= profile/home/skills/…)
+//   │   └─ /computers         机器(P7)
+//   ├─ /boot                  Boot 叙事(P0a;独立于主壳)
+//   ├─ /create-workspace      创建工作区(P0b;独立于主壳)
+//   └─ /setup                 起步清单(P0c;首跑态,自带仅 #all 侧栏)
+// P1 行为不回退:index 仍经 RootLayout 壳的 <Outlet/> 渲染,只是壳从 root 下沉为 pathless layout。
 import {
-  createRootRoute, createRoute, createRouter, useNavigate, useSearch,
+  createRootRoute, createRoute, createRouter, useNavigate, useParams, useSearch,
 } from '@tanstack/react-router';
 
 import { RootLayout } from './routes/RootLayout';
 import { ChannelChatScreen } from './screens/ChannelChatScreen';
-import { validateChannelSearch, type ChannelSearch } from './routes/search';
+import { AgentDetailScreen } from './screens/AgentDetailScreen';
+import { ComputersScreen } from './screens/ComputersScreen';
+import { BootScreen } from './screens/BootScreen';
+import { CreateWorkspaceScreen } from './screens/CreateWorkspaceScreen';
+import { SetupChecklistScreen } from './screens/SetupChecklistScreen';
+import {
+  validateChannelSearch, validateAgentSearch,
+  type ChannelSearch, type AgentSearch,
+} from './routes/search';
 
-const rootRoute = createRootRoute({ component: RootLayout });
+const rootRoute = createRootRoute(); // 无 component → 默认渲染 <Outlet/>(裸容器)
+
+// pathless layout:承载 B1 布局壳(Rail + 频道侧栏 + WS 生命周期)。
+const appLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'app',
+  component: RootLayout,
+});
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appLayoutRoute,
   path: '/',
   // 类型化 search:任意 URL 输入 → 还原 { tab, thread?, task?, node? }
   validateSearch: (input: Record<string, unknown>): ChannelSearch => validateChannelSearch(input),
@@ -20,14 +43,53 @@ const indexRoute = createRoute({
 });
 
 function IndexScreen() {
-  const search = useSearch({ from: indexRoute.id });
-  const navigate = useNavigate({ from: indexRoute.id });
+  const search = useSearch({ from: '/app/' });
+  const navigate = useNavigate();
+  // 绝对导航合并当前 search(避免 pathless layout 下 from-相对更新的类型摩擦)。
   const setSearch = (next: Partial<ChannelSearch>) =>
-    void navigate({ search: (prev) => ({ ...prev, ...next }) });
+    void navigate({ to: '/', search: { ...search, ...next } });
   return <ChannelChatScreen search={search} setSearch={setSearch} />;
 }
 
-const routeTree = rootRoute.addChildren([indexRoute]);
+const agentRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/agents/$memberId',
+  validateSearch: (input: Record<string, unknown>): AgentSearch => validateAgentSearch(input),
+  component: AgentScreen,
+});
+
+function AgentScreen() {
+  const { memberId } = useParams({ from: '/app/agents/$memberId' });
+  const search = useSearch({ from: '/app/agents/$memberId' });
+  const navigate = useNavigate();
+  const setTab = (tab: AgentSearch['tab']) =>
+    void navigate({ to: '/agents/$memberId', params: { memberId }, search: { tab } });
+  return <AgentDetailScreen memberId={memberId} tab={search.tab} setTab={setTab} />;
+}
+
+const computersRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/computers',
+  component: ComputersScreen,
+});
+
+// ---- 独立于主壳的首跑/工作区流程(P0a/P0b/P0c)
+const bootRoute = createRoute({
+  getParentRoute: () => rootRoute, path: '/boot', component: BootScreen,
+});
+const createWorkspaceRoute = createRoute({
+  getParentRoute: () => rootRoute, path: '/create-workspace', component: CreateWorkspaceScreen,
+});
+const setupRoute = createRoute({
+  getParentRoute: () => rootRoute, path: '/setup', component: SetupChecklistScreen,
+});
+
+const routeTree = rootRoute.addChildren([
+  appLayoutRoute.addChildren([indexRoute, agentRoute, computersRoute]),
+  bootRoute,
+  createWorkspaceRoute,
+  setupRoute,
+]);
 
 export const router = createRouter({ routeTree });
 
