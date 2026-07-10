@@ -451,9 +451,24 @@ class CanvasEdgePublic(CanvasEdgeRow):
 
 
 class HeldDraftReasons(ContractModel):
-    """结构化被扣原因（G2：未读消息清单，可点跳转）。"""
+    """结构化被扣原因（G2：未读消息清单，可点跳转）。
+
+    v1.0.5：`unread_message_ids` 上限 50 条（截断保留最新）；`total_unread` 为真实未读计数
+    （截断前的全量口径，卡片显示"还有 N 条"）。
+    """
 
     unread_message_ids: list[Ulid]
+    total_unread: int
+
+
+class HeldDraftAsTask(ContractModel):
+    """草稿携带的 as_task 意图（v1.0.5）——放行时随消息同一事务执行（语义同 B §9.4）。
+
+    形状镜像 `rest.AsTask`（entities 为下层不能反向 import rest；字段单源在此，rest.AsTask
+    另有其消息端点用途，二者刻意分立以免层次倒置）。
+    """
+
+    title: str | None = None
 
 
 class HeldDraftRow(ContractModel):
@@ -465,6 +480,8 @@ class HeldDraftRow(ContractModel):
     channel_id: Ulid
     thread_root_id: Ulid | None = None
     draft_body: str  # 草稿全文（G2 卡片可见）
+    file_ids: list[Ulid] | None = None  # v1.0.5：草稿携带的 staging 附件（放行不得丢附件）
+    as_task: HeldDraftAsTask | None = None  # v1.0.5：草稿携带的 as_task 意图原样保存
     reasons: HeldDraftReasons
     status: HeldDraftStatus = HeldDraftStatus.HELD
     held_count: int = 1  # G5

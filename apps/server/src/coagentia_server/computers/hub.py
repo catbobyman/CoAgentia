@@ -2,7 +2,7 @@
 投递引擎、上报处理、断连级联、reminder 调度。
 
 架构（与 WsHub 同构，坑 3）：
-- Hub 在 lifespan 起：订阅 bus（消费 message.created 驱动投递）+ 周期对账 loop + reminder loop；
+- Hub 在 lifespan 起：订阅 bus（消费 message.created 驱动投递）+ 周期对账/reminder/沉默 loop；
   捕获运行 loop 供 REST 端点跨线程投递指令（run_coroutine_threadsafe）。
 - 每条 daemon 连接一个 `_reader` 协程顺序收帧；ack/reply 经 Future 唤醒等待方；
   report 分发到 §7 处置。指令下发经 `send_instr`：**同 Agent 串行**（per-agent 锁）+
@@ -17,7 +17,7 @@ import asyncio
 import contextlib
 import hashlib
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,6 +55,7 @@ from coagentia_contracts.daemon import (
     WakeRefs,
 )
 from coagentia_contracts.enums import (
+    ActivityKind,
     AgentStatus,
     ChannelKind,
     ComputerStatus,
@@ -63,24 +64,31 @@ from coagentia_contracts.enums import (
     LifecycleAction,
     MemberKind,
     MessageKind,
+    ReminderKind,
+    ReminderStatus,
+    TaskEventKind,
+    TaskStatus,
     WakeReason,
 )
 from coagentia_contracts.ws import EventType
-from sqlalchemy import insert, select, update
+from sqlalchemy import case, func, insert, select, update
 from sqlalchemy.engine import Connection, Engine
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
+from coagentia_server.activity import service as activity_service
 from coagentia_server.canvas import service as canvas_service
 from coagentia_server.computers.gateway_tx import gateway_tx
 from coagentia_server.db import models
 from coagentia_server.events import EventBus
 from coagentia_server.ledger.service import new_ulid, now_iso
+from coagentia_server.reminders import interval as reminder_interval
 from coagentia_server.routes.serialize import (
     computer_public,
     diagnostic_public,
     message_public,
     reminder_public,
 )
+from coagentia_server.tasks import silence as silence_logic
 
 _COMPUTER = models.tbl(models.Computer)
 _AGENT = models.tbl(models.Agent)
@@ -94,6 +102,7 @@ _READ = models.tbl(models.ReadPosition)
 _DIAG = models.tbl(models.DiagnosticEvent)
 _USAGE = models.tbl(models.TokenUsageEvent)
 _TASK = models.tbl(models.Task)
+_TASK_EVENT = models.tbl(models.TaskEvent)
 _REMINDER = models.tbl(models.Reminder)
 
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
@@ -155,6 +164,7 @@ class DaemonHub:
         query_timeout: float = ACK_TIMEOUT_SEC,
         reconcile_interval: float = RECONCILE_INTERVAL_SEC,
         reminder_interval: float = 5.0,
+        silence_interval: float = 60.0,
         heartbeat_timeout: float = 60.0,
     ) -> None:
         self._engine = engine
@@ -164,6 +174,7 @@ class DaemonHub:
         self.query_timeout = query_timeout
         self.reconcile_interval = reconcile_interval
         self.reminder_interval = reminder_interval
+        self.silence_interval = silence_interval
         self.heartbeat_timeout = heartbeat_timeout
         self._conns: dict[str, DaemonConnection] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -179,6 +190,7 @@ class DaemonHub:
         self._bg = [
             loop.create_task(self._reconcile_loop()),
             loop.create_task(self._reminder_loop()),
+            loop.create_task(self._silence_loop()),
             loop.create_task(self._heartbeat_loop()),
         ]
 
@@ -1081,6 +1093,52 @@ class DaemonHub:
         except Exception as exc:  # noqa: BLE001 — 超时/连接失效统一收敛为 DAEMON_OFFLINE
             raise DaemonOffline(str(exc)) from exc
 
+    # ---------------------------------------------------------------- 系统消息发射（三处共用）
+
+    def _post_system_message(
+        self,
+        tx: Any,
+        *,
+        workspace_id: str,
+        channel_id: str,
+        body: str,
+        thread_root_id: str | None = None,
+        mention_member_ids: Iterable[str] = (),
+        created_at: str | None = None,
+    ) -> str:
+        """插一条 durable 系统消息（author=NULL, kind=SYSTEM）+ 可选 @mention 行 + emit。
+
+        reminder 触发 / 沉默提醒 / 沉默升级三处共用，避免 insert(_MSG)+mention+回读+emit 骨架
+        多份漂移（§8.2：系统消息 + mention 对目标 Agent 视同唤醒触发）。返回 msg_id。
+        """
+        msg_id = new_ulid()
+        ts = created_at or now_iso()
+        tx.conn.execute(
+            insert(_MSG).values(
+                id=msg_id,
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                thread_root_id=thread_root_id,
+                author_member_id=None,
+                kind=MessageKind.SYSTEM,
+                card_kind=None,
+                card_ref=None,
+                body=body,
+                created_at=ts,
+            )
+        )
+        for member_id in mention_member_ids:
+            tx.conn.execute(
+                insert(_MENTION).values(message_id=msg_id, member_id=member_id)
+            )
+        msg_row = models.row_dict(
+            tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
+        )
+        tx.emit(
+            EventType.MESSAGE_CREATED, channel_id, {"message": message_public(msg_row)}
+        )
+        return msg_id
+
     # ---------------------------------------------------------------- reminder 调度（§4.4 #8）
 
     async def run_reminder_scan(self) -> int:
@@ -1088,6 +1146,11 @@ class DaemonHub:
 
         锚点消息经 bus MESSAGE_CREATED 驱动投递引擎：daemon 在线即 wake+deliver，离线则消息照发、
         调度照推进，补唤醒由重连对账 #3 覆盖（离线安全）。
+
+        触发后调度（B §10.6）：`once` → status=done（一次性）；`recurring` → next_fire_at 塌缩到
+        **严格晚于 now 的下一个 cadence 网格点**（next_after，O(1)）**保持 active**——停机漏掉多个
+        周期时一次追平，不逐格重触发洪泛（code-review 修）。每条触发只发一次锚点系统消息 + mention
+        + REMINDER_UPDATED（载荷由内存行拼出，免回读）。
         """
         now = now_iso()
         fired = 0
@@ -1099,53 +1162,264 @@ class DaemonHub:
             ).mappings().all()
             for r in due:
                 reminder = dict(r)
-                msg_id = new_ulid()
-                ts = now_iso()
-                tx.conn.execute(
-                    insert(_MSG).values(
-                        id=msg_id,
-                        workspace_id=reminder["workspace_id"],
-                        channel_id=reminder["anchor_channel_id"],
-                        thread_root_id=None,
-                        author_member_id=None,
-                        kind=MessageKind.SYSTEM,
-                        card_kind=None,
-                        card_ref=None,
-                        body=f"提醒触发（reminder {reminder['id']}）。",
-                        created_at=ts,
+                if reminder["kind"] == ReminderKind.RECURRING.value:
+                    next_at = reminder_interval.next_after(
+                        reminder["next_fire_at"], reminder["cadence"], now
                     )
-                )
-                # 锚点系统消息对创建者 Agent 视同 @mention（§8.2）。
-                tx.conn.execute(
-                    insert(_MENTION).values(
-                        message_id=msg_id, member_id=reminder["agent_member_id"]
-                    )
-                )
-                tx.conn.execute(
-                    update(_REMINDER)
-                    .where(_REMINDER.c.id == reminder["id"])
-                    .values(status="done")  # M1：once 一次性；recurring（需 LoopContract）留 M3
-                )
-                msg_row = models.row_dict(
-                    tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
-                )
-                rem_row = models.row_dict(
                     tx.conn.execute(
-                        select(_REMINDER).where(_REMINDER.c.id == reminder["id"])
-                    ).mappings().first()
-                )
-                tx.emit(
-                    EventType.MESSAGE_CREATED,
-                    reminder["anchor_channel_id"],
-                    {"message": message_public(msg_row)},
+                        update(_REMINDER)
+                        .where(_REMINDER.c.id == reminder["id"])
+                        .values(next_fire_at=next_at)
+                    )
+                    rem_after = {**reminder, "next_fire_at": next_at}
+                else:
+                    tx.conn.execute(
+                        update(_REMINDER)
+                        .where(_REMINDER.c.id == reminder["id"])
+                        .values(status="done")  # once 一次性（触发即终态）
+                    )
+                    rem_after = {**reminder, "status": ReminderStatus.DONE.value}
+                # 锚点系统消息对创建者 Agent 视同 @mention（§8.2）。
+                self._post_system_message(
+                    tx,
+                    workspace_id=reminder["workspace_id"],
+                    channel_id=reminder["anchor_channel_id"],
+                    body=f"提醒触发（reminder {reminder['id']}）。",
+                    mention_member_ids=[reminder["agent_member_id"]],
                 )
                 tx.emit(
                     EventType.REMINDER_UPDATED,
                     reminder["anchor_channel_id"],
-                    {"reminder": reminder_public(rem_row)},
+                    {"reminder": reminder_public(rem_after)},
                 )
                 fired += 1
         return fired
+
+    # ---------------------------------------------------------------- D5 沉默提醒（契约 B §10.5）
+
+    async def run_silence_scan(self) -> int:
+        """沉默任务扫描：超阈值先提醒后升级（B §10.5）。返回本轮动作数（提醒/升级各计 1）。
+
+        判定纯逻辑在 tasks/silence.py（防自激 last_activity 计算 + 三态判定）；本方法只取数
+        （把 DB 行喂成 SilenceInputs）+ 写副作用（锚点线程系统消息 / mention / task_events /
+        emit_activity）。提醒锚点消息经 bus MESSAGE_CREATED 驱动投递引擎（@Agent 视同 mention
+        触发唤醒），与 run_reminder_scan 同构。判定/升级历史全在 task_events 纯推导，无状态列。
+        """
+        now = now_iso()
+        actions = 0
+        with gateway_tx(self._engine, self._bus) as tx:
+            tasks = [
+                dict(r)
+                for r in tx.conn.execute(
+                    select(_TASK).where(_TASK.c.status.in_(silence_logic.SCAN_STATUSES))
+                ).mappings()
+            ]
+            # 频道阈值行一次 IN 批取（去重 channel_id）避免逐任务 N+1 反复取同一行。
+            channel_ids = {t["channel_id"] for t in tasks}
+            channels = {
+                c["id"]: dict(c)
+                for c in tx.conn.execute(
+                    select(_CHANNEL).where(_CHANNEL.c.id.in_(channel_ids))
+                ).mappings()
+            } if channel_ids else {}
+            for task in tasks:
+                channel = channels.get(task["channel_id"])
+                if channel is None:
+                    continue  # 频道缺失（防御）：无投递面
+                threshold_h = silence_logic.threshold_hours(
+                    task["status"],
+                    silence_override_h=task["silence_override_h"],
+                    remind_todo_h=channel["remind_todo_h"],
+                    remind_inprog_h=channel["remind_inprog_h"],
+                    remind_review_h=channel["remind_review_h"],
+                )
+                inp = self._silence_inputs(tx.conn, task, channel, threshold_h, now)
+                action = silence_logic.decide(inp)
+                if action is silence_logic.SilenceAction.REMIND:
+                    self._emit_silence_reminder(tx, task, threshold_h)
+                    actions += 1
+                elif action is silence_logic.SilenceAction.ESCALATE:
+                    self._emit_silence_escalation(tx, task)
+                    actions += 1
+        return actions
+
+    def _silence_inputs(
+        self,
+        c: Connection,
+        task: dict[str, Any],
+        channel: dict[str, Any],
+        threshold_h: int,
+        now: str,
+    ) -> silence_logic.SilenceInputs:
+        """取数：last_activity 三来源 + 提醒/升级时刻（func.max，字典序=时序）。防自激两处排除。"""
+        root = task["root_message_id"]
+        # 锚点线程最新**非系统**消息（root 本身 + thread_root_id=root 的回复；kind != system）。
+        last_thread_msg_at = c.execute(
+            select(func.max(_MSG.c.created_at)).where(
+                (_MSG.c.id == root) | (_MSG.c.thread_root_id == root),
+                _MSG.c.kind != MessageKind.SYSTEM.value,
+            )
+        ).scalar()
+        # task_events 三个时刻按 kind 分区一次条件聚合取（免同表同任务三趟 max 往返/三遍扫描）：
+        #   last_event_at   = 排除 reminder_sent/escalated（防自激，B §10.5.2）
+        #   last_reminder_at/last_escalated_at = 链条生效性判定（不进 last_activity）
+        ev = c.execute(
+            select(
+                func.max(
+                    case(
+                        (
+                            _TASK_EVENT.c.kind.notin_(
+                                silence_logic.SELF_EXCITE_EVENT_KINDS
+                            ),
+                            _TASK_EVENT.c.created_at,
+                        )
+                    )
+                ).label("last_event_at"),
+                func.max(
+                    case(
+                        (
+                            _TASK_EVENT.c.kind == TaskEventKind.REMINDER_SENT.value,
+                            _TASK_EVENT.c.created_at,
+                        )
+                    )
+                ).label("last_reminder_at"),
+                func.max(
+                    case(
+                        (
+                            _TASK_EVENT.c.kind == TaskEventKind.ESCALATED.value,
+                            _TASK_EVENT.c.created_at,
+                        )
+                    )
+                ).label("last_escalated_at"),
+            ).where(_TASK_EVENT.c.task_id == task["id"])
+        ).mappings().first()
+        return silence_logic.SilenceInputs(
+            now=now,
+            threshold_h=threshold_h,
+            remind_escalation=bool(channel["remind_escalation"]),
+            status_changed_at=task["status_changed_at"],
+            last_thread_msg_at=last_thread_msg_at,
+            last_event_at=ev["last_event_at"] if ev else None,
+            last_reminder_at=ev["last_reminder_at"] if ev else None,
+            last_escalated_at=ev["last_escalated_at"] if ev else None,
+        )
+
+    def _reminder_targets(
+        self, c: Connection, task: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """第一次提醒的 @ 目标（B §10.5.4）：Todo→创建者 / InProgress→owner / InReview→频道人类。
+
+        返回成员行（id/name/kind）；owner 空（in_progress 未认领）→ 空列表（发消息不 @，链条照走）。
+        """
+        status = task["status"]
+        if status == TaskStatus.TODO.value:
+            member_ids = [task["created_by_member_id"]]
+        elif status == TaskStatus.IN_PROGRESS.value:
+            member_ids = [task["owner_member_id"]] if task["owner_member_id"] else []
+        else:  # in_review → 频道全体人类成员
+            return self._channel_human_members(c, task["channel_id"])
+        rows = c.execute(
+            select(_MEMBER.c.id, _MEMBER.c.name, _MEMBER.c.kind).where(
+                _MEMBER.c.id.in_(member_ids), _MEMBER.c.removed_at.is_(None)
+            )
+        ).mappings()
+        return [dict(r) for r in rows]
+
+    def _channel_human_members(
+        self, c: Connection, channel_id: str
+    ) -> list[dict[str, Any]]:
+        rows = c.execute(
+            select(_MEMBER.c.id, _MEMBER.c.name, _MEMBER.c.kind)
+            .select_from(
+                _CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id)
+            )
+            .where(
+                _CHANNEL_MEMBER.c.channel_id == channel_id,
+                _MEMBER.c.kind == MemberKind.HUMAN,
+                _MEMBER.c.removed_at.is_(None),
+            )
+        ).mappings()
+        return [dict(r) for r in rows]
+
+    def _emit_silence_reminder(
+        self, tx: Any, task: dict[str, Any], threshold_h: int
+    ) -> None:
+        """第一次提醒：锚点线程系统消息（@目标）+ message_mentions（@Agent 触发唤醒）+
+        task_events(reminder_sent)。mention 行是唤醒事实源（_compute_trigger 视 system+mention
+        为 REMINDER），故所有目标（含人类，用于渲染）统一插行。"""
+        targets = self._reminder_targets(tx.conn, task)
+        mention_txt = " ".join(f"@{t['name']}" for t in targets)
+        suffix = f"：{mention_txt}" if mention_txt else "。"
+        body = (
+            f"沉默提醒：任务「{task['title']}」已超过 {threshold_h} 小时无进展，请跟进{suffix}"
+        )
+        ts = now_iso()
+        # 锚点线程内（B §10.5.4）+ mention 行（@Agent 触发唤醒事实源，人类目标同插供渲染）。
+        self._post_system_message(
+            tx,
+            workspace_id=task["workspace_id"],
+            channel_id=task["channel_id"],
+            body=body,
+            thread_root_id=task["root_message_id"],
+            mention_member_ids=[t["id"] for t in targets],
+            created_at=ts,
+        )
+        tx.conn.execute(
+            insert(_TASK_EVENT).values(
+                task_id=task["id"],
+                kind=TaskEventKind.REMINDER_SENT,
+                from_status=None,
+                to_status=None,
+                owner_member_id=None,
+                actor_member_id=None,
+                created_at=ts,
+            )
+        )
+
+    def _emit_silence_escalation(self, tx: Any, task: dict[str, Any]) -> None:
+        """升级：频道主流系统消息 + activity(silence_escalation) 给人类 + task_events(escalated)。
+
+        升级是人类面"喊人"：主流系统消息（不落 mention 行，信号靠 activity 置顶）；activity 经
+        F2 服务层 emit_activity（conn 注入式，提交后广播）逐人类成员发射。
+        """
+        humans = self._channel_human_members(tx.conn, task["channel_id"])
+        human_txt = " ".join(f"@{h['name']}" for h in humans)
+        suffix = f"：{human_txt}" if human_txt else "。"
+        body = (
+            f"沉默升级：任务「{task['title']}」经提醒后仍无进展，需人类成员处理{suffix}"
+        )
+        ts = now_iso()
+        # 频道主流（B §10.5.5）：升级是人类面"喊人"，不落 mention 行——信号靠 activity 置顶。
+        msg_id = self._post_system_message(
+            tx,
+            workspace_id=task["workspace_id"],
+            channel_id=task["channel_id"],
+            body=body,
+            thread_root_id=None,
+            created_at=ts,
+        )
+        tx.conn.execute(
+            insert(_TASK_EVENT).values(
+                task_id=task["id"],
+                kind=TaskEventKind.ESCALATED,
+                from_status=None,
+                to_status=None,
+                owner_member_id=None,
+                actor_member_id=None,
+                created_at=ts,
+            )
+        )
+        for h in humans:
+            activity_service.emit_activity(
+                tx,
+                workspace_id=task["workspace_id"],
+                member_id=h["id"],
+                kind=ActivityKind.SILENCE_ESCALATION.value,
+                channel_id=task["channel_id"],
+                message_id=msg_id,
+                task_id=task["id"],
+                created_at=ts,
+            )
 
     # ---------------------------------------------------------------- 周期后台 loop
 
@@ -1160,6 +1434,12 @@ class DaemonHub:
             await asyncio.sleep(self.reminder_interval)
             with contextlib.suppress(Exception):
                 await self.run_reminder_scan()
+
+    async def _silence_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.silence_interval)
+            with contextlib.suppress(Exception):
+                await self.run_silence_scan()
 
     async def _heartbeat_loop(self) -> None:
         while True:

@@ -188,3 +188,49 @@ def test_no_mention_no_activity(server_client: TestClient, seeded_engine: Engine
     server_client.app.state.bus.subscribe(events.append)
     server_client.post(f"/api/channels/{build['id']}/messages", json={"body": "纯文本无提及"})
     assert [e for e in events if e.type is EventType.ACTIVITY_CREATED] == []
+
+
+# ---------------------------------------------------------------- service 层直调（F2 迁移）
+
+
+def test_emit_activity_callable_without_request(seeded_engine: Engine) -> None:
+    """F2：emit_activity 迁 service 层后不吃 Request——hub 后台经 gateway_tx 可直接调用。
+
+    覆盖 D5 沉默升级链后续会用到的底座：行落库 + activity.created 在**提交后**才发射（契约
+    C §1.4，同 hub 其它写路径）。
+    """
+    from coagentia_server.activity import service as activity_service
+    from coagentia_server.computers.gateway_tx import gateway_tx
+    from coagentia_server.events import EventBus
+
+    with seeded_engine.connect() as conn:
+        ws_id = conn.execute(select(models.Workspace.__table__.c.id).limit(1)).scalar_one()
+        owner = conn.execute(
+            select(_MEMBER.c.id).where(_MEMBER.c.kind == "human", _MEMBER.c.role == "owner")
+        ).scalar_one()
+
+    bus = EventBus()
+    collected: list[PendingEvent] = []
+    bus.subscribe(collected.append)
+    with gateway_tx(seeded_engine, bus) as tx:
+        # 事务未提交前不应有广播（提交后 flush）。
+        pub = activity_service.emit_activity(
+            tx,
+            workspace_id=ws_id,
+            member_id=owner,
+            kind="silence_escalation",
+            task_id=None,
+            actor_member_id=None,
+        )
+        assert [e for e in collected if e.type is EventType.ACTIVITY_CREATED] == []
+    # 提交后：广播到达 + 行落库。
+    created = [e for e in collected if e.type is EventType.ACTIVITY_CREATED]
+    assert len(created) == 1
+    assert created[0].channel_id is None  # 全局广播
+    assert created[0].data["item"]["id"] == pub["id"]
+    with seeded_engine.connect() as conn:
+        row = conn.execute(
+            select(_ACTIVITY).where(_ACTIVITY.c.id == pub["id"])
+        ).mappings().first()
+    assert row is not None
+    assert row["member_id"] == owner and row["kind"] == "silence_escalation"

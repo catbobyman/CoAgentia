@@ -13,6 +13,7 @@ import type {
   MessagePublic,
   PresenceEntry,
   ReadPositionPublic,
+  ReminderPublic,
   TaskPublic,
 } from '@coagentia/contracts-ts';
 
@@ -251,6 +252,26 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
         ...d,
         canvas: { ...d.canvas, baseline_version: b.baseline_version, baseline_hash: b.baseline_hash },
       }));
+      break;
+    }
+
+    // ---- M4a Reminders(契约 C reminder.*）。data 载 { reminder: ReminderPublic }。
+    // 按 agent_member_id patch qk.agentReminders 缓存:created=去重 append(末尾,与 REST
+    // created_at 升序一致)、updated(含 cancel 反流 status=cancelled)=按 id 替换。
+    // 该 agent 的 reminders 未加载(getQueryData===undefined)则放行不建——详情页打开时再拉全。
+    case 'reminder.created':
+    case 'reminder.updated': {
+      const { reminder } = data as { reminder: ReminderPublic };
+      const key = qk.agentReminders(reminder.agent_member_id);
+      if (qc.getQueryData<ReminderPublic[]>(key) === undefined) break;
+      qc.setQueryData<ReminderPublic[]>(key, (prev) => {
+        const list = prev ?? [];
+        const i = list.findIndex((r) => r.id === reminder.id);
+        if (i < 0) return [...list, reminder]; // created:去重后追加
+        const next = list.slice();
+        next[i] = reminder; // updated / 幂等重放:按 id 替换
+        return next;
+      });
       break;
     }
 

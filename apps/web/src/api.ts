@@ -234,6 +234,10 @@ export const api = {
   agent: (memberId: string) => get<AgentPublic>(`/api/agents/${memberId}`),
   agentSkills: (memberId: string) => get<AgentSkillPublic[]>(`/api/agents/${memberId}/skills`),
   agentReminders: (memberId: string) => get<ReminderPublic[]>(`/api/agents/${memberId}/reminders`),
+  // P6 取消 reminder(DELETE /reminders/{id},204 无体)。服务端另发 WS reminder.updated 把
+  // status 反流为 cancelled;权限不足(非 owner)→ 403,不存在 → 404,据 code 组 toast。
+  cancelReminder: (reminderId: string) =>
+    writeJson<void>(`/api/reminders/${reminderId}`, 'DELETE'),
   agentDiagnostics: (memberId: string) =>
     get<DiagnosticsPage>(`/api/agents/${memberId}/diagnostics`).then(
       (p) => p.items as DiagnosticEventPublic[],

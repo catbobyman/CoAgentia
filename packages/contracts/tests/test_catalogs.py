@@ -3,14 +3,14 @@
 from coagentia_contracts import constants, daemon, rest, ws
 from coagentia_contracts.enums import TaskStatus
 
-# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.1 起 22 个，新增 TASK_TRANSITION_INVALID）
+# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.2 起 23 个，M4 新增 HELD_DRAFT_RESOLVED）
 ERROR_CODES = {
     "VALIDATION_FAILED", "TASK_IN_DM", "NOT_TOP_LEVEL_MESSAGE", "CLAIM_RACE",
     "HANDOFF_INCOMPLETE", "TASK_TRANSITION_INVALID", "GRAPH_CYCLE", "STALE_CONFIRM",
     "DELTA_BASE_MISMATCH", "NODE_ACTIVE", "NO_ORCHESTRATOR", "IDEMPOTENCY_MISMATCH",
     "NAME_TAKEN", "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS",
     "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE",
-    "PERMISSION_DENIED", "NOT_FOUND",
+    "HELD_DRAFT_RESOLVED", "PERMISSION_DENIED", "NOT_FOUND",
 }
 
 # 契约 C §6/§7/§8 全集（转录自 03-WS事件协议.md v1.0）
@@ -61,7 +61,7 @@ REPORT_TYPES = {
 
 def test_error_codes_exact() -> None:
     assert {c.value for c in rest.ErrorCode} == ERROR_CODES
-    assert len(ERROR_CODES) == 22
+    assert len(ERROR_CODES) == 23
 
 
 def test_ws_event_catalog_exact() -> None:
@@ -168,3 +168,18 @@ def test_m3_adds_no_mcp_tools() -> None:
     """E 契约 v1.2 裁决：M3 契约面零新 Agent 工具（提交/force-start 人确认/C3 门，
     读走 get_task、起草走 request-draft 直投 + send_message）。COAGENTIA_MCP_TOOLS 不增补。"""
     assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3 无增
+
+
+def test_m4_endpoint_catalog_size() -> None:
+    """M4 端点清单：4 条（§4.14 护栏三键干预 + held-drafts 列表），与 M1/M2/M3 不相交。"""
+    assert len(rest.ENDPOINTS_M4) == 4
+    assert len(set(rest.ENDPOINTS_M4)) == 4
+    assert set(rest.ENDPOINTS_M1).isdisjoint(rest.ENDPOINTS_M4)
+    assert set(rest.ENDPOINTS_M2).isdisjoint(rest.ENDPOINTS_M4)
+    assert set(rest.ENDPOINTS_M3).isdisjoint(rest.ENDPOINTS_M4)
+
+
+def test_m4_adds_no_mcp_tools() -> None:
+    """E 契约 v1.3 裁决：M4 零新 Agent 工具（护栏干预是人类面 rule=G3；create_reminder 参数
+    扩展属 daemon mcp.py 非工具目录）。COAGENTIA_MCP_TOOLS 不增补。"""
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3/M4 无增

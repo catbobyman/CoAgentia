@@ -399,9 +399,15 @@ def patch_task(
 ) -> Any:
     task = _require_task(tx, task_id)
     acting_member(request, tx.conn)  # 身份校验（R4 无角色门）
-    changes = {
-        k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None
-    }
+    # exclude_unset 区分「未提供」与「显式 null」：显式 null 仅对可清列落库清除（D5 任务级
+    # 覆盖 silence_override_h 须能重置回 NULL）；其余列的 null 保持旧行为忽略（title 不被清空）。
+    provided = body.model_dump(exclude_unset=True)
+    _NULLABLE_CLEARABLE = {"silence_override_h"}
+    changes: dict[str, Any] = {}
+    for k, v in provided.items():
+        if v is None and k not in _NULLABLE_CLEARABLE:
+            continue
+        changes[k] = v
     if "level" in changes:  # P-2 升格：仅 l1→l2 单向放行（拍板）
         cur_level = TaskLevel(task["level"])
         new_level = TaskLevel(changes["level"])

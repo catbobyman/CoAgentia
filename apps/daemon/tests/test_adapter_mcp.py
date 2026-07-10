@@ -205,18 +205,27 @@ def test_create_reminder_body_matches_contract() -> None:
     }
     ReminderCreate.model_validate(once.json_body)  # 不抛 = 字段名/必填/extra 全对齐
 
-    # recurring + 全部可选锚点
+    # recurring + 全部可选锚点 + 内联 loop_contract（M4：cadence = interval，须过 ReminderCreate）
+    loop_contract = {
+        "version": "coagentia.loop-contract.v1",
+        "cadence": "PT1H",
+        "verification": ["每次输出附校验命令"],
+        "budget": {"max_retries": 1, "max_runtime_min": 10},
+        "tools": [],
+        "escalation": "连续两次失败拉创建者",
+    }
     rec = mcp.build_request(
         "create_reminder",
         {
             "kind": "recurring",
-            "cadence": "0 9 * * *",
+            "cadence": "PT1H",
             "anchor_channel_id": ulid,
             "anchor_message_id": "01K5MSG100000000000000000A",
             "anchor_task_id": "01K5TASK00000000000000000A",
-            "loop_contract_id": "01K5RMDR00000000000000000A",
+            "loop_contract": loop_contract,
         },
     )
+    assert rec.json_body["loop_contract"] == loop_contract  # 对象原样透传
     ReminderCreate.model_validate(rec.json_body)
 
 

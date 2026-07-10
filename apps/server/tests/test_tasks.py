@@ -17,7 +17,7 @@ from coagentia_contracts.ws import EventType
 from coagentia_server.db import models
 from coagentia_server.events import PendingEvent
 from fastapi.testclient import TestClient
-from sqlalchemy import insert, select, text, update
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.engine import Engine
 
 BUILD = "build"
@@ -439,5 +439,59 @@ def test_claim_broadcasts_single_task_updated(server_client: TestClient) -> None
     change = updated[0].data["change"]
     assert change["kind"] == "claim"
     assert (change["from_status"], change["to_status"]) == ("todo", "in_progress")
+
+
+def test_patch_silence_override_set_then_clear(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """F2 挂账②：silence_override_h 可设值，也可用显式 null 清回 NULL（D5 任务级覆盖可撤销）。
+
+    修复前 patch_task 的 `if v is not None` 会丢弃显式 null → 无法撤销覆盖。
+    """
+    build = _channel(server_client, BUILD)
+    task = _new_task(server_client, build["id"])
+    # 设值
+    r = server_client.patch(f"/api/tasks/{task['id']}", json={"silence_override_h": 5})
+    assert r.status_code == 200, r.text
+    assert r.json()["silence_override_h"] == 5
+    # 显式 null 清除回 None
+    r = server_client.patch(f"/api/tasks/{task['id']}", json={"silence_override_h": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["silence_override_h"] is None
+    with seeded_engine.connect() as conn:
+        val = conn.execute(
+            select(_TASK.c.silence_override_h).where(_TASK.c.id == task["id"])
+        ).scalar_one()
+    assert val is None
+    # PATCH 不写 task_events（契约 B §4.7）。
+    with seeded_engine.connect() as conn:
+        n = conn.execute(
+            select(func.count()).select_from(_EVT).where(_EVT.c.task_id == task["id"])
+        ).scalar_one()
+    assert n == 0
+
+
+def test_patch_title_ignores_null_and_preserves_silence_override(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """title 非可清列：显式 null 保持旧行为被忽略；改 title 不误伤 silence_override_h。"""
+    build = _channel(server_client, BUILD)
+    task = _new_task(server_client, build["id"], title="原标题")
+    server_client.patch(f"/api/tasks/{task['id']}", json={"silence_override_h": 7})
+    events: list[PendingEvent] = []
+    server_client.app.state.bus.subscribe(events.append)
+    # 只改 title：silence_override_h 不被清空
+    r = server_client.patch(f"/api/tasks/{task['id']}", json={"title": "新标题"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["title"] == "新标题"
+    assert body["silence_override_h"] == 7  # 未被 title patch 误伤
+    # 广播 task.updated 且 change=None（PATCH 不写 task_events）。
+    updated = [e for e in events if e.type is EventType.TASK_UPDATED]
+    assert len(updated) == 1 and updated[0].data["change"] is None
+    # 显式 title=null 被忽略——标题不清空（保持旧行为）。
+    r = server_client.patch(f"/api/tasks/{task['id']}", json={"title": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["title"] == "新标题"
 
 

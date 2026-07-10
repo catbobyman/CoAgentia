@@ -21,6 +21,8 @@ M1_EXPECTED_TABLES = {
 M2_EXPECTED_TABLES = {"tasks", "task_events", "message_task_refs", "activity_items"}
 # 契约 A §5 M3 批次（3 张）。
 M3_EXPECTED_TABLES = {"task_contracts", "canvas_nodes", "canvas_edges"}
+# 契约 A §5 M4 批次（1 张：held_drafts，0006）。
+M4_EXPECTED_TABLES = {"held_drafts"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -74,10 +76,13 @@ def test_incremental_upgrade_from_0001_to_head(db_url: str, alembic_cfg: Config)
     assert M1_EXPECTED_TABLES <= mid
     assert M2_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M2 表（坑1 回归守门）
     assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M3 表（坑1 回归守门）
+    assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M4 表（坑1 回归守门）
     assert "messages_fts" not in mid
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
-    assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES) <= final
+    assert (
+        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES | M4_EXPECTED_TABLES
+    ) <= final
     assert "messages_fts" in final
 
 
@@ -86,6 +91,78 @@ def test_upgrade_head_creates_m3_tables(db_url: str, alembic_cfg: Config) -> Non
     names = _table_names(db_url)
     assert M3_EXPECTED_TABLES <= names
     assert len(M3_EXPECTED_TABLES) == 3
+
+
+def test_upgrade_head_creates_m4_held_drafts(db_url: str, alembic_cfg: Config) -> None:
+    command.upgrade(alembic_cfg, "head")
+    names = _table_names(db_url)
+    assert M4_EXPECTED_TABLES <= names
+    assert len(M4_EXPECTED_TABLES) == 1
+
+
+def test_upgrade_head_creates_held_drafts_active_index(db_url: str, alembic_cfg: Config) -> None:
+    # 活动行分区唯一索引（COALESCE(thread_root_id,'') 表达式 + sqlite_where）随 create_all 建出；
+    # 读面索引 ix_held_drafts_status 同表随之。二者存在 = __table_args__ 声明已落库（0006 出口）。
+    # 直查 sqlite_master：inspect().get_indexes() 会跳过表达式索引（COALESCE），反射不到 uq。
+    from sqlalchemy import text as _sql
+
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        with engine.connect() as conn:
+            index_names = {
+                r[0]
+                for r in conn.execute(
+                    _sql(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type='index' AND tbl_name='held_drafts'"
+                    )
+                )
+            }
+    finally:
+        engine.dispose()
+    assert {"uq_held_drafts_active", "ix_held_drafts_status"} <= index_names
+
+
+def test_held_drafts_active_index_enforces_uniqueness(db_url: str, alembic_cfg: Config) -> None:
+    """分区唯一索引兜底：同 (agent, channel, COALESCE(thread,'')) 第二个活动行插入被拒；
+    thread_root_id 空亦经 COALESCE 归一为 ''，故空 thread 的重发也命中同一唯一键（v1.0.5 兜底）。
+    终态行（status 不在 held/reevaluating）落在 sqlite_where 外，不受约束（可多行）。
+    FK 强制为 ON，故先播最小父行（workspace/agent 成员/channel）。"""
+    import pytest as _pytest
+    from sqlalchemy import text as _sql
+    from sqlalchemy.exc import IntegrityError
+
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    seed = (
+        "INSERT INTO workspaces (id, name, slug, created_at) VALUES ('ws','w','w-slug','t')",
+        "INSERT INTO members (id, workspace_id, kind, name, created_at) "
+        "VALUES ('ag','ws','agent','A1','t')",
+        "INSERT INTO channels (id, workspace_id, kind, created_at) "
+        "VALUES ('ch','ws','channel','t')",
+    )
+    ins = _sql(
+        "INSERT INTO held_drafts "
+        "(id, workspace_id, agent_member_id, channel_id, thread_root_id, draft_body, "
+        " reasons, status, held_count, next_reeval_at, created_at) "
+        "VALUES (:id, 'ws', 'ag', 'ch', :thread, 'd', '{}', :status, 1, 't', 't')"
+    )
+    try:
+        with engine.begin() as conn:
+            for stmt in seed:
+                conn.execute(_sql(stmt))
+            # 首个活动行（thread=NULL）成功
+            conn.execute(ins, {"id": "h1", "thread": None, "status": "held"})
+        with engine.begin() as conn:
+            # 同 (ag, ch, COALESCE(NULL,'')='') 的第二个活动行（reevaluating 亦属活动）被拒
+            with _pytest.raises(IntegrityError):
+                conn.execute(ins, {"id": "h2", "thread": None, "status": "reevaluating"})
+        with engine.begin() as conn:
+            # 终态行（resolved）落在部分索引 sqlite_where 外，可与活动行共存
+            conn.execute(ins, {"id": "h3", "thread": None, "status": "resolved"})
+    finally:
+        engine.dispose()
 
 
 def test_upgrade_head_creates_files_indexes(db_url: str, alembic_cfg: Config) -> None:
@@ -105,9 +182,23 @@ def test_incremental_from_0002_to_head(db_url: str, alembic_cfg: Config) -> None
     mid = _table_names(db_url)
     assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES) <= mid
     assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M3 表（坑1 回归守门）
+    assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M4 表（坑1 回归守门）
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
-    assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES) <= final
+    assert (
+        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES | M4_EXPECTED_TABLES
+    ) <= final
+
+
+def test_incremental_from_0005_to_head(db_url: str, alembic_cfg: Config) -> None:
+    # 增量路径：先到 0005（M1+M2+M3+FTS trigram 库），再升 head——模拟线上 M3 库升 M4（F1 出口）。
+    command.upgrade(alembic_cfg, "0005_fts_trigram")
+    mid = _table_names(db_url)
+    assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES) <= mid
+    assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0005 不得泄漏建出 M4 表（坑1 回归守门）
+    command.upgrade(alembic_cfg, "head")
+    final = _table_names(db_url)
+    assert M4_EXPECTED_TABLES <= final          # 0006 增量建出 held_drafts
 
 
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
@@ -117,4 +208,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     assert M1_EXPECTED_TABLES.isdisjoint(names)
     assert M2_EXPECTED_TABLES.isdisjoint(names)
     assert M3_EXPECTED_TABLES.isdisjoint(names)
+    assert M4_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

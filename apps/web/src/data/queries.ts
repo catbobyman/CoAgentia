@@ -1,6 +1,6 @@
 // TanStack Query 包 REST 拉取(api.ts 演化的消费面)。
 // 服务端数据的唯一事实源 = 这里的 query 缓存;WS 事件通过 data/wsBridge 做 setQueryData patch。
-import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import type {
   ChannelPublic,
@@ -78,6 +78,16 @@ export const useAgentReminders = (memberId: string | undefined) =>
     queryFn: () => api.agentReminders(memberId!),
     enabled: !!memberId,
   });
+
+// P6 取消 reminder:成功后失效该 agent 的 reminders 列表让列表收敛。
+// WS reminder.updated 亦会把 status 反流为 cancelled(wsBridge)——invalidate 是兜底(WS 未连也收敛)。
+export const useCancelReminder = (memberId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reminderId: string) => api.cancelReminder(reminderId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentReminders(memberId) }),
+  });
+};
 
 export const useAgentDiagnostics = (memberId: string | undefined) =>
   useQuery({

@@ -84,8 +84,8 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
     # ---- 4.5 护栏与提醒
     "held_drafts": (entities.HeldDraftRow, {
         "id", "workspace_id", "agent_member_id", "channel_id", "thread_root_id", "draft_body",
-        "reasons", "status", "held_count", "next_reeval_at", "escalated_at",
-        "resolved_by_member_id", "resolved_at", "resolution", "created_at",
+        "file_ids", "as_task", "reasons", "status", "held_count", "next_reeval_at",
+        "escalated_at", "resolved_by_member_id", "resolved_at", "resolution", "created_at",
     }),
     "reminders": (entities.ReminderRow, {
         "id", "workspace_id", "agent_member_id", "kind", "cadence", "anchor_channel_id",

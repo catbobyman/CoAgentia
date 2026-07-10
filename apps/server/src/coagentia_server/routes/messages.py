@@ -13,6 +13,7 @@ from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends, Header, Request, Response, UploadFile
 from sqlalchemy import insert, select, update
 
+from coagentia_server.activity import service as activity_service
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, require_workspace
@@ -20,7 +21,6 @@ from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.ledger import service
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
-    activity_item_public,
     file_public,
     message_public,
     read_position_public,
@@ -38,7 +38,6 @@ _FILE = models.tbl(models.File)
 _READ = models.tbl(models.ReadPosition)
 _TASK = models.tbl(models.Task)
 _MTR = models.tbl(models.MessageTaskRef)
-_ACTIVITY = models.tbl(models.ActivityItem)
 _CHANNEL_MEMBER = models.tbl(models.ChannelMember)
 
 # task #n 解析（B §9.5）：task 与 # 间允许空白，# 与数字紧邻；大小写不敏感。
@@ -114,37 +113,6 @@ def _resolve_task_refs(tx: Tx, channel_id: str, message_id: str, body: str) -> N
             seen.add(task_id)
 
 
-def _emit_activity(
-    tx: Tx,
-    *,
-    workspace_id: str,
-    member_id: str,
-    actor_member_id: str,
-    kind: str,
-    channel_id: str,
-    message_id: str,
-    ts: str,
-) -> None:
-    """插一条 activity_items 并广播 activity.created（channel_id=None 全局，供前端 P9）。
-
-    actor_member_id（消息作者）只进 Public 载荷不落库——表列 member_id 语义=接收者。
-    """
-    row = {
-        "id": service.new_ulid(),
-        "workspace_id": workspace_id,
-        "member_id": member_id,
-        "kind": kind,
-        "channel_id": channel_id,
-        "message_id": message_id,
-        "task_id": None,
-        "created_at": ts,
-        "done_at": None,
-    }
-    tx.conn.execute(insert(_ACTIVITY).values(**row))
-    pub = activity_item_public({**row, "actor_member_id": actor_member_id})
-    tx.emit(EventType.ACTIVITY_CREATED, None, {"item": pub})
-
-
 def _generate_activity(
     tx: Tx,
     workspace_id: str,
@@ -188,7 +156,7 @@ def _generate_activity(
         kind = ActivityKind.MENTION.value
 
     for recipient_id in dict.fromkeys(recipients):  # 去重（防成员多次命中）
-        _emit_activity(
+        activity_service.emit_activity(
             tx,
             workspace_id=workspace_id,
             member_id=recipient_id,
@@ -196,7 +164,7 @@ def _generate_activity(
             kind=kind,
             channel_id=channel_id,
             message_id=message_id,
-            ts=ts,
+            created_at=ts,
         )
 
 

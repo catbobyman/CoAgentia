@@ -23,6 +23,8 @@ from coagentia_contracts.enums import (
     ComputerStatus,
     ContractKind,
     DecompMode,
+    HeldDraftStatus,
+    HeldResolution,
     LandingBatchKind,
     LandingBatchStatus,
     MemberKind,
@@ -74,6 +76,10 @@ M2_TABLES: tuple[str, ...] = (
 # M3（契约 A §4.3/§4.4）：task_contracts/canvas_nodes/canvas_edges 三表均可变
 # （superseded_at/pos_x/pos_y 等列会被 UPDATE），故无对应 M3_IMMUTABLE_TABLES 常量。
 M3_TABLES: tuple[str, ...] = ("task_contracts", "canvas_nodes", "canvas_edges")
+# M4（契约 A §4.5）：held_drafts 一张表。**可变**——status/held_count/resolved_* 会 UPDATE
+# （重评估重发 = 同行 held_count+1、status 回 held；三键干预写 resolved_*），故不进任何
+# IMMUTABLE 集、不建禁 UPDATE/DELETE 触发器。0006 一次建齐（块 a 期间空置）。
+M4_TABLES: tuple[str, ...] = ("held_drafts",)
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -584,3 +590,49 @@ class CanvasEdge(Base):
     canvas_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvases.id"))
     from_node_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvas_nodes.id"))
     to_node_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvas_nodes.id"))
+
+
+# ---------------------------------------------------------------- 4.5 护栏与提醒（M4）
+
+
+class HeldDraft(Base):
+    """M4（D4/G1–G6）：被扣草稿。**可变表**——status/held_count/resolved_* 会 UPDATE。"""
+
+    __tablename__ = "held_drafts"
+    __table_args__ = (
+        # 活动行唯一（契约 A v1.0.5）：同 (agent_member_id, channel_id, thread_root_id) 至多一个
+        # 活动行（status ∈ held/reevaluating）——held 关联规则的 DB 兜底，防并发重发建双行。
+        # thread_root_id 可空 → 表达式列 COALESCE(thread_root_id, '')（先例
+        # uq_task_contracts_active、Member.uq_members_workspace_name_nocase 的 text() 表达式列）。
+        Index(
+            "uq_held_drafts_active",
+            "agent_member_id",
+            "channel_id",
+            text("COALESCE(thread_root_id, '')"),
+            unique=True,
+            sqlite_where=text("status IN ('held', 'reevaluating')"),
+        ),
+        # 读面索引：GET /held-drafts?status= 按 status 过滤（对齐同批读面索引先例）。
+        Index("ix_held_drafts_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    agent_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    channel_id: Mapped[str] = mapped_column(_ULID, ForeignKey("channels.id"))
+    # thread_root_id→messages.id：目标线程根消息（messages 为 M1，已建，落 FK；同 Message 惯例）
+    thread_root_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("messages.id"))
+    draft_body: Mapped[str] = mapped_column(Text)  # 草稿全文（G2 卡片可见）
+    # v1.0.5：被扣草稿保存完整发送载荷——放行"原样发送"（G3）不丢附件、不丢建任务意图。
+    file_ids: Mapped[list | None] = mapped_column(JSON)  # staging 附件 id 清单（契约 D §9.2）
+    as_task: Mapped[dict | None] = mapped_column(JSON)  # 携带的 as_task 意图原样保存（B §9.4）
+    # reasons：HeldDraftReasons（unread_message_ids 上限 50 + total_unread 真实计数，v1.0.5）
+    reasons: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(_enum(HeldDraftStatus), server_default=text("'held'"))
+    held_count: Mapped[int] = mapped_column(Integer, server_default=text("1"))  # G5 连续被扣计数
+    next_reeval_at: Mapped[str] = mapped_column(Text)  # G4 倒计时锚（channels.held_reeval_min）
+    escalated_at: Mapped[str | None] = mapped_column(Text)  # 升级 @人类时刻
+    resolved_by_member_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("members.id"))
+    resolved_at: Mapped[str | None] = mapped_column(Text)
+    resolution: Mapped[str | None] = mapped_column(_enum(HeldResolution))
+    created_at: Mapped[str] = mapped_column(Text)

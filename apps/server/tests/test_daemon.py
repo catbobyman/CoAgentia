@@ -12,6 +12,7 @@ import asyncio
 import threading
 import time
 from collections.abc import Callable, Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -468,6 +469,38 @@ def test_case8_reminder_offline_fire_then_reconcile_wake(
         assert deliver["type"] == "message.deliver"
         d.ack(deliver, "done")
         d.sync()
+
+
+def test_recurring_reminder_collapses_to_future_and_no_refire(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """recurring 触发（B §10.6，code-review 修）：漏掉海量周期时**一次塌缩到未来的下一 cadence
+    网格点**、保持 active，且相邻扫描不重复触发（防停机追平风暴——旧实现逐格 +1 interval 会对
+    远古 next_fire_at 每轮扫描重放一条系统消息 + 一次 agent wake）。"""
+    _client, env, hub = ctx
+    a = env.add_agent("A", "idle")
+    ch = env.add_channel(kind="channel", name="build")
+    env.join(ch, a)
+    # 远古 next_fire_at = 模拟长期停机漏掉 ~5 万个周期。
+    rid = env.add_reminder(
+        a, ch, next_fire_at="2020-01-01T00:00:00.000Z", kind="recurring", cadence="PT1H"
+    )
+
+    fired = asyncio.run_coroutine_threadsafe(hub.run_reminder_scan(), hub._loop).result(timeout=5)
+    assert fired == 1
+    assert env.reminder_status(rid) == "active"  # 循环不置 done
+    assert env.system_message_count(ch) == 1  # 只发一条（非逐格重放）
+    nfa = env.reminder_next_fire_at(rid)
+    assert nfa > now_iso()  # 塌缩到未来：不再 <= now，故次轮不会重复选中
+    # 对齐 cadence 网格：距锚点 2020-01-01 为整小时数（塌缩不丢相位）。
+    base = datetime.fromisoformat("2020-01-01T00:00:00.000Z")
+    assert (datetime.fromisoformat(nfa) - base).total_seconds() % 3600 == 0
+
+    # 相邻扫描（now 未越过 next_fire_at）→ **不再触发**（防风暴关键断言）。
+    fired2 = asyncio.run_coroutine_threadsafe(hub.run_reminder_scan(), hub._loop).result(timeout=5)
+    assert fired2 == 0
+    assert env.system_message_count(ch) == 1  # 无新增系统消息
+    assert env.reminder_next_fire_at(rid) == nfa  # next_fire_at 未变
 
 
 # ---------------------------------------------------------------- 断连级联（契约 D §2）

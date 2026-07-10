@@ -7,10 +7,12 @@ import { ChevronDown, File as FileIcon, Folder, Monitor, Square } from 'lucide-r
 import type { AgentTab } from '../routes/search';
 import {
   useAgent, useAgentDiagnostics, useAgentReminders, useAgentSkills,
-  useComputers, useHomeTree, useMembers, usePresence,
+  useCancelReminder, useComputers, useHomeTree, useMembers, usePresence,
 } from '../data/queries';
 import { presenceMap, memberMap } from '../data/queries';
-import { fmtTimeSec } from '../lib/time';
+import { ApiError } from '../api';
+import { useToast } from '../components/Toast';
+import { fmtDate, fmtTime, fmtTimeSec } from '../lib/time';
 
 const TAB_DEFS: { key: AgentTab; label: string }[] = [
   { key: 'profile', label: 'Profile' },
@@ -183,19 +185,53 @@ function SkillsTab({ memberId }: { memberId: string }) {
   );
 }
 
-function RemindersTab({ memberId }: { memberId: string }) {
+export function RemindersTab({ memberId }: { memberId: string }) {
   const q = useAgentReminders(memberId);
+  const cancelM = useCancelReminder(memberId);
+  const toast = useToast();
   const reminders = q.data ?? [];
+
+  const cancel = (id: string) =>
+    cancelM.mutate(id, {
+      onError: (e: unknown) =>
+        toast.push(e instanceof ApiError ? e.message : '取消提醒失败', { tone: 'error' }),
+    });
+
   return (
     <div className="card">
-      <div className="chd"><b>Reminders</b></div>
+      <div className="chd"><b>Reminders</b><span className="m">Agent 自设唤醒(FR-3.9)</span></div>
       {reminders.length === 0 && <div className="emptytab">尚无 reminder。</div>}
-      {reminders.map((r) => (
-        <div className="frow" key={r.id}>
-          <span className="vl mono">{r.kind} · {r.cadence ?? '—'}</span>
-          <span className="rbadge">{r.status ?? 'active'}</span>
-        </div>
-      ))}
+      {reminders.map((r) => {
+        const status = r.status ?? 'active';
+        const active = status === 'active';
+        // 锚点信息:频道恒有,task/message 择有标注(尾 6 位,与诊断/Home 尾码口径一致)。
+        const anchors: string[] = [];
+        if (r.anchor_channel_id) anchors.push(`#${r.anchor_channel_id.slice(-6)}`);
+        if (r.anchor_task_id) anchors.push(`task ${r.anchor_task_id.slice(-6)}`);
+        if (r.anchor_message_id) anchors.push(`msg ${r.anchor_message_id.slice(-6)}`);
+        return (
+          <div className="frow" key={r.id}>
+            <span className="lb">{r.kind}</span>
+            <span className="vl">
+              <span className="mono">{r.cadence}</span>
+              {r.next_fire_at && (
+                <span className="sub"> · 下次 {fmtDate(r.next_fire_at)} {fmtTime(r.next_fire_at)}</span>
+              )}
+              {anchors.length > 0 && <span className="sub"> · 锚点 {anchors.join(' · ')}</span>}
+            </span>
+            {/* loop_contract_id 非空 = LoopContract 上岗的 recurring(F4)。 */}
+            {r.loop_contract_id && <span className="rbadge">循环 · 契约</span>}
+            <span className="rbadge">{status}</span>
+            {active && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => cancel(r.id)}
+                disabled={cancelM.isPending}
+              >取消</button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

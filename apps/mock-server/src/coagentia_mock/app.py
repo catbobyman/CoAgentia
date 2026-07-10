@@ -262,15 +262,17 @@ async def export_diagnostics(member_id: str) -> Response:
 
 @app.post("/api/reminders", response_model=entities.ReminderPublic, status_code=201)
 async def create_reminder(body: rest.ReminderCreate) -> Any:
-    if body.kind == "recurring" and body.loop_contract_id is None:
+    # recurring 必须内联 loop_contract（D1-L2）；mock 不建 task_contracts，仅回填合成 id 对齐形状。
+    if body.kind == "recurring" and body.loop_contract is None:
         raise ApiError(422, rest.ErrorCode.VALIDATION_FAILED,
-                       "循环 reminder 必须先提交 LoopContract", rule="D1-L2",
-                       details={"missing": ["loop_contract_id"]})
+                       "循环 reminder 必须内联 LoopContract", rule="D1-L2",
+                       details={"missing": ["loop_contract"]})
+    loop_contract_id = new_id() if body.loop_contract is not None else None
     row = {"id": new_id(), "workspace_id": store.workspace["id"],
            "agent_member_id": store.agents[0]["member_id"], "kind": body.kind,
            "cadence": body.cadence, "anchor_channel_id": body.anchor_channel_id,
            "anchor_message_id": body.anchor_message_id, "anchor_task_id": body.anchor_task_id,
-           "loop_contract_id": body.loop_contract_id, "next_fire_at": now_ts(),
+           "loop_contract_id": loop_contract_id, "next_fire_at": now_ts(),
            "status": "active", "cancelled_by_member_id": None, "created_at": now_ts()}
     store.reminders.append(row)
     await hub.broadcast(EventType.REMINDER_CREATED, None, {"reminder": row})
@@ -599,6 +601,20 @@ async def mark_activity_done(activity_id: str) -> Any:
     return {"id": activity_id, "workspace_id": store.workspace["id"],
             "member_id": store.members[0]["id"], "kind": "mention", "channel_id": None,
             "message_id": None, "task_id": None, "created_at": now_ts(), "done_at": now_ts()}
+
+
+# ---------------------------------------------------------------- M4 护栏 HeldDraft（纯形状）
+#
+# C0 登记：mock 只验形状不做业务（纪律 4）——freshness 门/三键干预/G4 重评估活真 server。
+# held 行只由 freshness 门创建（无 POST 创建端点，B §4.14）；此处仅回列表形状喂 OpenAPI→rest.ts。
+
+
+@app.get("/api/held-drafts", response_model=rest.Page[entities.HeldDraftPublic])
+async def list_held_drafts(status: str | None = None, channel_id: str | None = None,
+                           after: str | None = None,
+                           limit: int = rest.PAGE_DEFAULT_LIMIT) -> Any:
+    """被扣草稿清单（§6 重同步清单成员，status=held = 现行被扣）；mock 恒空，形状源非逻辑源。"""
+    return {"items": [], "next_cursor": None}
 
 
 # ---------------------------------------------------------------- WS 与 mock 控制面

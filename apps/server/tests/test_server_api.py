@@ -273,6 +273,137 @@ def test_reminder_cancel_writes_system_message_and_diagnostic(
     assert n >= 1  # 取消留痕
 
 
+# ------------------------------------------------------------ 循环 Reminder + LoopContract（F4）
+
+
+def _loop_contract(cadence: str = "PT1H") -> dict:
+    """最小合法 LoopContractBody（PRD §4.3 v1）。"""
+    return {
+        "version": "coagentia.loop-contract.v1",
+        "cadence": cadence,
+        "verification": ["每次输出附校验命令"],
+        "budget": {"max_retries": 1, "max_runtime_min": 10},
+        "tools": [],
+        "escalation": "连续两次失败拉创建者",
+    }
+
+
+def test_recurring_reminder_creates_linked_loop_contract(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """recurring + 内联 loop_contract → 同事务建 task_contracts 挂接行 + 回填 loop_contract_id。"""
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        "/api/reminders",
+        json={
+            "kind": "recurring",
+            "cadence": "PT1H",
+            "anchor_channel_id": build["id"],
+            "loop_contract": _loop_contract("PT1H"),
+        },
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 201, r.text
+    rem = entities.ReminderPublic.model_validate(r.json())
+    assert rem.kind == "recurring" and rem.status == "active"
+    assert rem.loop_contract_id is not None  # 回填成功
+    # recurring 首次触发在建后一个 interval（非建即触发——code-review 修）。
+    assert rem.next_fire_at > rem.created_at
+
+    tc = models.TaskContract.__table__
+    with seeded_engine.connect() as conn:
+        row = conn.execute(
+            select(tc).where(tc.c.reminder_id == rem.id)
+        ).mappings().one()
+    # XOR 满足（reminder_id 非空、task_id 空）+ kind/version/挂接 id 对齐。
+    assert row["task_id"] is None
+    assert row["reminder_id"] == rem.id
+    assert row["kind"] == "loop_contract"
+    assert row["version"] == "coagentia.loop-contract.v1"
+    assert row["id"] == rem.loop_contract_id
+    assert row["body"]["cadence"] == "PT1H"
+
+
+def test_recurring_reminder_without_loop_contract_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        "/api/reminders",
+        json={"kind": "recurring", "cadence": "PT1H", "anchor_channel_id": build["id"]},
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 422
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.VALIDATION_FAILED and err.error.rule == "D1-L2"
+    assert err.error.details == {"missing": ["loop_contract"]}
+
+
+def test_once_reminder_with_loop_contract_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        "/api/reminders",
+        json={
+            "kind": "once",
+            "cadence": "2026-07-10T09:00:00.000Z",
+            "anchor_channel_id": build["id"],
+            "loop_contract": _loop_contract("PT1H"),
+        },
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 422
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
+
+
+def test_recurring_reminder_cadence_mismatch_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """reminders.cadence 与 loop_contract.cadence 不一致 → 422（B §10.6 创建时校验一致）。"""
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        "/api/reminders",
+        json={
+            "kind": "recurring",
+            "cadence": "PT1H",
+            "anchor_channel_id": build["id"],
+            "loop_contract": _loop_contract("PT2H"),  # 契约侧不同
+        },
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 422
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
+
+
+def test_recurring_reminder_invalid_interval_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """cadence 非合法 interval（cron 归 M5+）→ 422（一致但非 interval 也拒）。"""
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        "/api/reminders",
+        json={
+            "kind": "recurring",
+            "cadence": "0 9 * * *",  # cron 表达式
+            "anchor_channel_id": build["id"],
+            "loop_contract": _loop_contract("0 9 * * *"),  # 一致但非 interval
+        },
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 422
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
+    assert err.error.details == {"field": "cadence"}
+
+
 # ---------------------------------------------------------------- 文件 staging + GC
 
 

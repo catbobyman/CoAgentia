@@ -113,8 +113,9 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "create_reminder",
-        "description": "创建提醒（recurring 缺 LoopContract → 422 原样透传）。"
-        "once 的时刻 / recurring 的 cron 均写入 cadence。",
+        "description": "创建提醒（recurring 缺 loop_contract → 422 原样透传）。"
+        "cadence：once = ISO 时刻；recurring = interval（ISO-8601 duration，如 PT1H；非 cron）。"
+        "recurring 须内联 loop_contract 且其 cadence 与本 cadence 一致。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -123,7 +124,19 @@ TOOLS: list[dict[str, Any]] = [
                 "anchor_channel_id": {"type": "string"},
                 "anchor_message_id": {"type": "string"},
                 "anchor_task_id": {"type": "string"},
-                "loop_contract_id": {"type": "string"},
+                "loop_contract": {
+                    "type": "object",
+                    "description": "recurring 必填 LoopContract（PRD §4.3；随建即生效）。",
+                    "properties": {
+                        "version": {"type": "string"},
+                        # cadence 须与 reminder cadence 一致（interval，如 PT1H）
+                        "cadence": {"type": "string"},
+                        "verification": {"type": "array", "items": {"type": "string"}},
+                        "budget": {"type": "object"},
+                        "tools": {"type": "array", "items": {"type": "string"}},
+                        "escalation": {"type": "string"},
+                    },
+                },
             },
             "required": ["kind", "cadence", "anchor_channel_id"],
         },
@@ -250,7 +263,7 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
             "anchor_channel_id",
             "anchor_message_id",
             "anchor_task_id",
-            "loop_contract_id",
+            "loop_contract",
         )
         body = {k: a[k] for k in fields if a.get(k) is not None}
         return ToolRequest("POST", "/api/reminders", json_body=body)

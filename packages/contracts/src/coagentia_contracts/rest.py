@@ -67,6 +67,7 @@ class ErrorCode(StrEnum):
     DEPLOY_IN_PROGRESS = "DEPLOY_IN_PROGRESS"  # 409（不排队）
     DAEMON_OFFLINE = "DAEMON_OFFLINE"  # 503（含 query 超时，契约 D §3）
     FILE_TOO_LARGE = "FILE_TOO_LARGE"  # 413
+    HELD_DRAFT_RESOLVED = "HELD_DRAFT_RESOLVED"  # 409（M4；终态 held 三键干预，details 携当前态）
     PERMISSION_DENIED = "PERMISSION_DENIED"  # 403（rule 注明 R2/R3/C3/admin 等）
     NOT_FOUND = "NOT_FOUND"  # 404
 
@@ -178,14 +179,24 @@ class SkillsPut(ContractModel):
 
 
 class ReminderCreate(ContractModel):
-    """Agent 主体自设（FR-3.9）；recurring 无 loop_contract → 422（D1-L2）。"""
+    """Agent 主体自设（FR-3.9）；recurring 无 loop_contract → 422（D1-L2）。
+
+    M4 起（v1.2）：可携内联 `loop_contract`——recurring 必填（缺 → 422），server `model_validate`
+    后同一事务建 task_contracts（kind=loop_contract、reminder_id 挂接，契约 A §4.3 XOR）并回填
+    reminders.loop_contract_id；once 携带 loop_contract → 422（B §4.4/§10.6）。契约在同事务才
+    创建，故请求侧不接受 loop_contract_id（那是存储列，非请求字段）。前向引用 LoopContractBody
+    （定义序在后，同 entities.MessagePublic.files 先例），文件末尾 model_rebuild() 补全。
+
+    cadence（B §10.6）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如 `PT1H`；
+    cron 归 M5+），且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。
+    """
 
     kind: str
     cadence: str
     anchor_channel_id: Ulid
     anchor_message_id: Ulid | None = None
     anchor_task_id: Ulid | None = None
-    loop_contract_id: Ulid | None = None
+    loop_contract: "LoopContractBody | None" = None
 
 
 # ------------------------------------------------------------ 4.5 频道与 DM
@@ -260,6 +271,19 @@ class MessageCreated(ContractModel):
 
 class MessageHeld(ContractModel):
     """Agent 主体发送被 freshness 扣住 → 202（G1；人类发送永不 held）。"""
+
+    held_draft: HeldDraftPublic
+
+
+class HeldDraftReleaseResponse(ContractModel):
+    """POST /held-drafts/{id}/release 响应（B §4.14）：以原载荷落消息 + held 行置 released 终态。"""
+
+    message: MessagePublic
+    held_draft: HeldDraftPublic
+
+
+class HeldDraftResponse(ContractModel):
+    """POST /held-drafts/{id}/discard | /reevaluate 响应（B §4.14）：仅回 held 行最新态。"""
 
     held_draft: HeldDraftPublic
 
@@ -429,6 +453,10 @@ CONTRACT_BODY_MODELS: dict[ContractKind, type[ContractModel]] = {
     ContractKind.LOOP_CONTRACT: LoopContractBody,
 }
 
+# ReminderCreate.loop_contract 前向引用 LoopContractBody（定义序在后），此处补全（同
+# entities.MessagePublic.files 先例）。
+ReminderCreate.model_rebuild()
+
 
 # ---- 4.3/4.7 契约端点请求模型（M3）
 
@@ -594,4 +622,14 @@ ENDPOINTS_M3: tuple[tuple[str, str], ...] = (
     ("DELETE", "/canvases/{canvas_id}/edges/{edge_id}"),
     ("PUT", "/canvases/{canvas_id}/layout"),
     ("POST", "/canvas-nodes/{node_id}/retry"),
+)
+
+# ---------------------------------------------------- M4 端点清单（§4.14 护栏三键干预）
+# held 行只由 freshness 门创建（§4.6 的 202 路径），无 POST /held-drafts 创建端点。
+# release/discard/reevaluate = 三键人类干预（Agent 403 rule=G3）；对终态 → 409 HELD_DRAFT_RESOLVED。
+ENDPOINTS_M4: tuple[tuple[str, str], ...] = (
+    ("GET", "/held-drafts"),
+    ("POST", "/held-drafts/{held_draft_id}/release"),
+    ("POST", "/held-drafts/{held_draft_id}/discard"),
+    ("POST", "/held-drafts/{held_draft_id}/reevaluate"),
 )

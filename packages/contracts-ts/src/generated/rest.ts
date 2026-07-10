@@ -502,6 +502,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/held-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Held Drafts
+         * @description 被扣草稿清单（§6 重同步清单成员，status=held = 现行被扣）；mock 恒空，形状源非逻辑源。
+         */
+        get: operations["list_held_drafts_api_held_drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/members": {
         parameters: {
             query?: never;
@@ -1275,6 +1295,77 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HeldDraftAsTask
+         * @description 草稿携带的 as_task 意图（v1.0.5）——放行时随消息同一事务执行（语义同 B §9.4）。
+         *
+         *     形状镜像 `rest.AsTask`（entities 为下层不能反向 import rest；字段单源在此，rest.AsTask
+         *     另有其消息端点用途，二者刻意分立以免层次倒置）。
+         */
+        HeldDraftAsTask: {
+            /** Title */
+            title?: string | null;
+        };
+        /** HeldDraftPublic */
+        HeldDraftPublic: {
+            /** Agent Member Id */
+            agent_member_id: string;
+            as_task?: components["schemas"]["HeldDraftAsTask"] | null;
+            /** Channel Id */
+            channel_id: string;
+            /** Created At */
+            created_at: string;
+            /** Draft Body */
+            draft_body: string;
+            /** Escalated At */
+            escalated_at?: string | null;
+            /** File Ids */
+            file_ids?: string[] | null;
+            /**
+             * Held Count
+             * @default 1
+             */
+            held_count: number;
+            /** Id */
+            id: string;
+            /** Next Reeval At */
+            next_reeval_at: string;
+            reasons: components["schemas"]["HeldDraftReasons"];
+            resolution?: components["schemas"]["HeldResolution"] | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolved By Member Id */
+            resolved_by_member_id?: string | null;
+            /** @default held */
+            status: components["schemas"]["HeldDraftStatus"];
+            /** Thread Root Id */
+            thread_root_id?: string | null;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * HeldDraftReasons
+         * @description 结构化被扣原因（G2：未读消息清单，可点跳转）。
+         *
+         *     v1.0.5：`unread_message_ids` 上限 50 条（截断保留最新）；`total_unread` 为真实未读计数
+         *     （截断前的全量口径，卡片显示"还有 N 条"）。
+         */
+        HeldDraftReasons: {
+            /** Total Unread */
+            total_unread: number;
+            /** Unread Message Ids */
+            unread_message_ids: string[];
+        };
+        /**
+         * HeldDraftStatus
+         * @enum {string}
+         */
+        HeldDraftStatus: "held" | "released" | "discarded" | "reevaluating" | "resolved";
+        /**
+         * HeldResolution
+         * @enum {string}
+         */
+        HeldResolution: "released" | "discarded" | "reevaluated";
         JsonValue: unknown;
         /**
          * LifecycleAction
@@ -1285,6 +1376,40 @@ export interface components {
         /** LifecycleRequest */
         LifecycleRequest: {
             action: components["schemas"]["LifecycleAction"];
+        };
+        /** LoopBudget */
+        LoopBudget: {
+            /**
+             * Max Retries
+             * @default 1
+             */
+            max_retries: number;
+            /** Max Runtime Min */
+            max_runtime_min: number;
+        };
+        /**
+         * LoopContractBody
+         * @description 循环任务上岗契约（创建循环 Reminder 时必填——PRD §4.3 v1；生成消费归 M4，模型 M3 建齐）。
+         */
+        LoopContractBody: {
+            budget: components["schemas"]["LoopBudget"];
+            /** Cadence */
+            cadence: string;
+            /** Escalation */
+            escalation: string;
+            /**
+             * Tools
+             * @default []
+             */
+            tools: string[];
+            /** Verification */
+            verification: string[];
+            /**
+             * Version
+             * @default coagentia.loop-contract.v1
+             * @constant
+             */
+            version: "coagentia.loop-contract.v1";
         };
         /**
          * MemberKind
@@ -1393,6 +1518,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[HeldDraftPublic] */
+        Page_HeldDraftPublic_: {
+            /** Items */
+            items: components["schemas"]["HeldDraftPublic"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[MessagePublic] */
         Page_MessagePublic_: {
             /** Items */
@@ -1449,6 +1581,15 @@ export interface components {
         /**
          * ReminderCreate
          * @description Agent 主体自设（FR-3.9）；recurring 无 loop_contract → 422（D1-L2）。
+         *
+         *     M4 起（v1.2）：可携内联 `loop_contract`——recurring 必填（缺 → 422），server `model_validate`
+         *     后同一事务建 task_contracts（kind=loop_contract、reminder_id 挂接，契约 A §4.3 XOR）并回填
+         *     reminders.loop_contract_id；once 携带 loop_contract → 422（B §4.4/§10.6）。契约在同事务才
+         *     创建，故请求侧不接受 loop_contract_id（那是存储列，非请求字段）。前向引用 LoopContractBody
+         *     （定义序在后，同 entities.MessagePublic.files 先例），文件末尾 model_rebuild() 补全。
+         *
+         *     cadence（B §10.6）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如 `PT1H`；
+         *     cron 归 M5+），且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。
          */
         ReminderCreate: {
             /** Anchor Channel Id */
@@ -1461,8 +1602,7 @@ export interface components {
             cadence: string;
             /** Kind */
             kind: string;
-            /** Loop Contract Id */
-            loop_contract_id?: string | null;
+            loop_contract?: components["schemas"]["LoopContractBody"] | null;
         };
         /**
          * ReminderKind
@@ -2901,6 +3041,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_held_drafts_api_held_drafts_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                channel_id?: string | null;
+                after?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_HeldDraftPublic_"];
                 };
             };
             /** @description Validation Error */

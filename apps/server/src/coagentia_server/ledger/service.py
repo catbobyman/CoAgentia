@@ -60,10 +60,15 @@ def new_ulid() -> str:
     return "".join(reversed(chars))
 
 
+def format_iso(dt: datetime) -> str:
+    """datetime → ISO-8601 UTC 毫秒 Z 字符串（契约 A §1 / TimestampZ 形状的唯一格式化点）。"""
+    dt = dt.astimezone(UTC)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
 def now_iso() -> str:
     """ISO-8601 UTC 毫秒 Z 字符串（契约 A §1 时间戳；与 TimestampZ 形状一致）。"""
-    dt = datetime.now(UTC)
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+    return format_iso(datetime.now(UTC))
 
 
 # ---------------------------------------------------------------- 行读取

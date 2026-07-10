@@ -7,6 +7,7 @@ from typing import Any
 from coagentia_contracts import entities, rest
 from coagentia_contracts.enums import (
     AgentStatus,
+    ContractKind,
     MemberKind,
     MemberRole,
     MessageKind,
@@ -29,6 +30,7 @@ from coagentia_server.deps import (
     require_workspace,
 )
 from coagentia_server.ledger.service import new_ulid, now_iso
+from coagentia_server.reminders import interval
 from coagentia_server.routes.serialize import (
     agent_public,
     agent_skill_public,
@@ -45,6 +47,7 @@ _AGENT = models.tbl(models.Agent)
 _SKILL = models.tbl(models.AgentSkill)
 _DIAG = models.tbl(models.DiagnosticEvent)
 _REMINDER = models.tbl(models.Reminder)
+_TASK_CONTRACT = models.tbl(models.TaskContract)
 _CHANNEL = models.tbl(models.Channel)
 _MSG = models.tbl(models.Message)
 
@@ -386,15 +389,44 @@ def _reminder_agent(request: Request, tx: Tx, ws_id: str) -> dict[str, Any]:
 @router.post("/reminders", response_model=entities.ReminderPublic, status_code=201)
 def create_reminder(body: rest.ReminderCreate, request: Request, tx: Tx = Depends(get_tx)) -> Any:
     ws = require_workspace(tx.conn)
-    # D1-L2：recurring 无 loop_contract → 422（先于主体解析，与 mock 一致）。
-    if body.kind == ReminderKind.RECURRING.value and body.loop_contract_id is None:
+    is_recurring = body.kind == ReminderKind.RECURRING.value
+    # D1-L2：recurring 必须内联 loop_contract（缺 → 422；先于主体解析，与 mock/§4.4 一致）。
+    if is_recurring and body.loop_contract is None:
         raise ApiError(
             422,
             rest.ErrorCode.VALIDATION_FAILED,
-            "循环 reminder 必须先提交 LoopContract",
+            "循环 reminder 必须内联 LoopContract",
             rule="D1-L2",
-            details={"missing": ["loop_contract_id"]},
+            details={"missing": ["loop_contract"]},
         )
+    # once 不该带契约（LoopContract 是循环上岗契约，一次性提醒无循环面）。
+    if not is_recurring and body.loop_contract is not None:
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "once reminder 不接受 loop_contract",
+            details={"unexpected": ["loop_contract"]},
+        )
+    # recurring：cadence 须为合法 interval（B §10.6 MVP 仅 interval）且与契约 cadence 一致。
+    if is_recurring:
+        assert body.loop_contract is not None  # 上门已保证
+        try:
+            interval.parse_interval(body.cadence)
+        except ValueError as exc:
+            raise ApiError(
+                422, rest.ErrorCode.VALIDATION_FAILED, str(exc), details={"field": "cadence"}
+            ) from exc
+        if body.loop_contract.cadence != body.cadence:
+            raise ApiError(
+                422,
+                rest.ErrorCode.VALIDATION_FAILED,
+                "reminders.cadence 与 loop_contract.cadence 不一致",
+                details={
+                    "reminder_cadence": body.cadence,
+                    "contract_cadence": body.loop_contract.cadence,
+                },
+            )
+
     channel = tx.conn.execute(
         select(_CHANNEL.c.id).where(_CHANNEL.c.id == body.anchor_channel_id)
     ).first()
@@ -404,6 +436,30 @@ def create_reminder(body: rest.ReminderCreate, request: Request, tx: Tx = Depend
     agent = _reminder_agent(request, tx, ws["id"])
     ts = now_iso()
     reminder_id = new_ulid()
+    contract_id: str | None = None
+    # 同事务建挂接契约行 + 回填 loop_contract_id（LoopContract 随建即生效，无人确认门——B §4.4）。
+    # 契约行先落、reminder 直接带 loop_contract_id 插入（**非** reminder 先 None 再 UPDATE）：
+    # reminders 的 CHECK ck_reminders_recurring_needs_contract 由 SQLite **即时**执法（CHECK 不可
+    # 延迟），先插 loop_contract_id=None 的 recurring 行会当场违约。task_contracts 的 XOR
+    # (task_id IS NULL / reminder_id 非空) 由本插入满足。
+    if is_recurring:
+        assert body.loop_contract is not None
+        contract_id = new_ulid()
+        tx.conn.execute(
+            insert(_TASK_CONTRACT).values(
+                id=contract_id,
+                workspace_id=ws["id"],
+                task_id=None,
+                reminder_id=reminder_id,
+                kind=ContractKind.LOOP_CONTRACT.value,
+                version=body.loop_contract.version,
+                body=body.loop_contract.model_dump(mode="json"),
+                revision=1,
+                superseded_at=None,
+                created_by_member_id=agent["id"],
+                created_at=ts,
+            )
+        )
     tx.conn.execute(
         insert(_REMINDER).values(
             id=reminder_id,
@@ -414,8 +470,12 @@ def create_reminder(body: rest.ReminderCreate, request: Request, tx: Tx = Depend
             anchor_channel_id=body.anchor_channel_id,
             anchor_message_id=body.anchor_message_id,
             anchor_task_id=body.anchor_task_id,
-            loop_contract_id=body.loop_contract_id,
-            next_fire_at=ts,  # MVP：真实调度随后续里程碑；A3 落锚点即 now
+            loop_contract_id=contract_id,
+            # once：A3 落锚点即 now（首扫即触发）；recurring：建后**一个 interval** 才首次触发
+            # （避免建即触发的意外——code-review 修），之后 run_reminder_scan 按 cadence 塌缩重排。
+            next_fire_at=(
+                interval.add_interval(ts, body.cadence) if is_recurring else ts
+            ),
             status=ReminderStatus.ACTIVE,
             cancelled_by_member_id=None,
             created_at=ts,

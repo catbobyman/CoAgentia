@@ -75,6 +75,14 @@ def test_canvas_read_shape(client: TestClient) -> None:
     assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
 
 
+def test_held_drafts_list_shape(client: TestClient) -> None:
+    """M4 护栏被扣草稿清单（§4.14）：mock 形状源回空页，Page[HeldDraftPublic] 反向校验。"""
+    page = rest.Page[entities.HeldDraftPublic].model_validate(
+        client.get("/api/held-drafts", params={"status": "held"}).json()
+    )
+    assert page.items == []
+
+
 def test_agent_detail_shapes(client: TestClient) -> None:
     members = client.get("/api/members").json()
     pat = next(m for m in members if m["name"] == "Pat")

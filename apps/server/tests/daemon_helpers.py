@@ -174,24 +174,67 @@ class Env:
         return row[0] if row else None
 
     def add_reminder(
-        self, agent_id: str, channel_id: str, *, next_fire_at: str, status: str = "active"
+        self,
+        agent_id: str,
+        channel_id: str,
+        *,
+        next_fire_at: str,
+        status: str = "active",
+        kind: str = "once",
+        cadence: str | None = None,
     ) -> str:
         rid = nid()
+        # once：cadence 默认 = 锚点 ISO 时刻；recurring：cadence = interval（如 PT1H），须传。
+        cadence = cadence if cadence is not None else next_fire_at
+        loop_contract_id: str | None = None
         with self.engine.begin() as c:
+            if kind == "recurring":
+                # recurring 的 reminders CHECK 要求 loop_contract_id 非空 → 先落挂接契约行。
+                loop_contract_id = nid()
+                c.execute(
+                    insert(models.TaskContract.__table__).values(
+                        id=loop_contract_id,
+                        workspace_id=self.ws_id,
+                        task_id=None,
+                        reminder_id=rid,
+                        kind="loop_contract",
+                        version="coagentia.loop-contract.v1",
+                        body={
+                            "version": "coagentia.loop-contract.v1",
+                            "cadence": cadence,
+                            "verification": ["v"],
+                            "budget": {"max_retries": 1, "max_runtime_min": 10},
+                            "tools": [],
+                            "escalation": "拉人",
+                        },
+                        revision=1,
+                        created_by_member_id=agent_id,
+                        created_at=now_iso(),
+                    )
+                )
             c.execute(
                 insert(models.Reminder.__table__).values(
                     id=rid,
                     workspace_id=self.ws_id,
                     agent_member_id=agent_id,
-                    kind="once",
-                    cadence=next_fire_at,
+                    kind=kind,
+                    cadence=cadence,
                     anchor_channel_id=channel_id,
+                    loop_contract_id=loop_contract_id,
                     next_fire_at=next_fire_at,
                     status=status,
                     created_at=now_iso(),
                 )
             )
         return rid
+
+    def reminder_next_fire_at(self, reminder_id: str) -> str:
+        with self.engine.connect() as c:
+            return c.execute(
+                select(models.Reminder.__table__.c.next_fire_at).where(
+                    models.Reminder.__table__.c.id == reminder_id
+                )
+            ).scalar_one()
 
     def reminder_status(self, reminder_id: str) -> str:
         with self.engine.connect() as c:

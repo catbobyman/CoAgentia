@@ -451,6 +451,7 @@ export type ErrorCode =
   | 'DEPLOY_IN_PROGRESS'
   | 'DAEMON_OFFLINE'
   | 'FILE_TOO_LARGE'
+  | 'HELD_DRAFT_RESOLVED'
   | 'PERMISSION_DENIED'
   | 'NOT_FOUND';
 export type Message1 = string;
@@ -484,14 +485,17 @@ export type Base = string | null;
 export type ProjectId4 = string;
 export type RepoPath1 = string;
 export type TaskId7 = string;
+export type Title2 = string | null;
 export type AgentMemberId13 = string;
 export type ChannelId18 = string;
 export type CreatedAt12 = string;
 export type DraftBody = string;
 export type EscalatedAt = string | null;
+export type FileIds = string[] | null;
 export type HeldCount = number;
 export type Id19 = string;
 export type NextReevalAt = string;
+export type TotalUnread = number;
 export type UnreadMessageIds = string[];
 export type HeldResolution = 'released' | 'discarded' | 'reevaluated';
 export type ResolvedAt = string | null;
@@ -499,19 +503,34 @@ export type ResolvedByMemberId = string | null;
 export type HeldDraftStatus = 'held' | 'released' | 'discarded' | 'reevaluating' | 'resolved';
 export type ThreadRootId = string | null;
 export type WorkspaceId16 = string;
-export type AgentMemberId14 = string;
+export type AuthorMemberId = string | null;
+export type Body = string;
+/**
+ * 结构化卡片锚点消息（契约 A messages.card_kind；卡片 = 不可变锚点 + 实体状态走 WS）。
+ */
+export type CardKind = 'proposal' | 'held_draft' | 'deployment' | 'fail_closed' | 'handoff_delivery';
+export type CardRef = string | null;
 export type ChannelId19 = string;
 export type CreatedAt13 = string;
+export type Files = FilePublic[] | null;
+export type Id20 = string;
+export type MessageKind = 'user' | 'system';
+export type ThreadRootId1 = string | null;
+export type WorkspaceId17 = string;
+export type AgentMemberId14 = string;
+export type ChannelId20 = string;
+export type CreatedAt14 = string;
 export type DraftBody1 = string;
 export type EscalatedAt1 = string | null;
+export type FileIds1 = string[] | null;
 export type HeldCount1 = number;
-export type Id20 = string;
+export type Id21 = string;
 export type NextReevalAt1 = string;
 export type ResolvedAt1 = string | null;
 export type ResolvedByMemberId1 = string | null;
 export type HeldDraftStatus1 = 'held' | 'released' | 'discarded' | 'reevaluating' | 'resolved';
-export type ThreadRootId1 = string | null;
-export type WorkspaceId17 = string;
+export type ThreadRootId2 = string | null;
+export type WorkspaceId18 = string;
 export type Kind1 = 'binary';
 export type Mime2 = string | null;
 export type SizeBytes2 = number;
@@ -556,39 +575,39 @@ export type InstrType =
   | 'deploy.run'
   | 'runtime.rescan';
 export type V2 = number;
-export type ChannelId20 = string;
+export type ChannelId21 = string;
 export type ConfirmedBy = string;
 export type ContentHash = string;
-export type CreatedAt14 = string;
+export type CreatedAt15 = string;
 export type DoneAt2 = string | null;
-export type Id21 = string;
+export type Id22 = string;
 export type LandingBatchKind = 'decomp' | 'tmpl' | 'delta';
 export type SourceRef = string;
 export type LandingBatchStatus = 'running' | 'done' | 'fail_closed';
-export type WorkspaceId18 = string;
-export type ChannelId21 = string;
+export type WorkspaceId19 = string;
+export type ChannelId22 = string;
 export type ConfirmedBy1 = string;
 export type ContentHash1 = string;
-export type CreatedAt15 = string;
+export type CreatedAt16 = string;
 export type DoneAt3 = string | null;
-export type Id22 = string;
+export type Id23 = string;
 export type SourceRef1 = string;
 export type LandingBatchStatus1 = 'running' | 'done' | 'fail_closed';
-export type WorkspaceId19 = string;
+export type WorkspaceId20 = string;
 export type NodeId3 = string;
 export type X1 = number;
 export type Y1 = number;
 export type Positions1 = LayoutPositionIn[];
 export type ActorMemberId1 = string | null;
 export type BatchId3 = string | null;
-export type CreatedAt16 = string;
+export type CreatedAt17 = string;
 export type Kind5 = string;
 export type OpId = string;
 export type RequestHash = string;
 export type Seq3 = number;
 export type ActorMemberId2 = string | null;
 export type BatchId4 = string | null;
-export type CreatedAt17 = string;
+export type CreatedAt18 = string;
 export type Kind6 = string;
 export type OpId1 = string;
 export type RequestHash1 = string;
@@ -604,37 +623,23 @@ export type Escalation = string;
 export type Tools = string[];
 export type Verification = string[];
 export type Version = 'coagentia.loop-contract.v1';
-export type CreatedAt18 = string;
-export type Id23 = string;
+export type CreatedAt19 = string;
+export type Id24 = string;
 export type MemberKind = 'human' | 'agent';
 export type Name14 = string;
 export type RemovedAt = string | null;
 export type MemberRole = 'member' | 'admin' | 'owner';
-export type WorkspaceId20 = string;
+export type WorkspaceId21 = string;
 export type MemberRole1 = 'member' | 'admin' | 'owner';
-export type CreatedAt19 = string;
-export type Id24 = string;
+export type CreatedAt20 = string;
+export type Id25 = string;
 export type Name15 = string;
 export type RemovedAt1 = string | null;
 export type MemberRole2 = 'member' | 'admin' | 'owner';
-export type WorkspaceId21 = string;
-export type Body = string;
-export type FileIds = string[];
-export type ThreadRootId2 = string | null;
-export type AuthorMemberId = string | null;
-export type Body1 = string;
-/**
- * 结构化卡片锚点消息（契约 A messages.card_kind；卡片 = 不可变锚点 + 实体状态走 WS）。
- */
-export type CardKind = 'proposal' | 'held_draft' | 'deployment' | 'fail_closed' | 'handoff_delivery';
-export type CardRef = string | null;
-export type ChannelId22 = string;
-export type CreatedAt20 = string;
-export type Files = FilePublic[] | null;
-export type Id25 = string;
-export type MessageKind = 'user' | 'system';
-export type ThreadRootId3 = string | null;
 export type WorkspaceId22 = string;
+export type Body1 = string;
+export type FileIds2 = string[];
+export type ThreadRootId3 = string | null;
 export type ChannelId23 = string;
 export type CreatedAt21 = string;
 export type CreatedByMemberId2 = string;
@@ -646,7 +651,7 @@ export type RootMessageId = string;
 export type SilenceOverrideH = number | null;
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt = string;
-export type Title2 = string;
+export type Title3 = string;
 export type WorkspaceId23 = string;
 export type AgentMemberId17 = string;
 export type ChannelId24 = string;
@@ -681,9 +686,9 @@ export type DefaultsDecided = string[];
 export type Goal = string;
 export type OutOfScope = string[];
 export type Version1 = 'coagentia.task-plan.v1';
-export type Title3 = string;
+export type Title4 = string;
 export type Command6 = string | null;
-export type Title4 = string | null;
+export type Title5 = string | null;
 export type Items1 = unknown[];
 export type NextCursor = string | null;
 export type Type3 = 'ping';
@@ -808,7 +813,6 @@ export type AnchorMessageId = string | null;
 export type AnchorTaskId = string | null;
 export type Cadence1 = string;
 export type Kind8 = string;
-export type LoopContractId = string | null;
 export type AgentMemberId19 = string;
 export type AnchorChannelId1 = string;
 export type AnchorMessageId1 = string | null;
@@ -818,7 +822,7 @@ export type CancelledByMemberId = string | null;
 export type CreatedAt27 = string;
 export type Id34 = string;
 export type ReminderKind = 'once' | 'recurring';
-export type LoopContractId1 = string | null;
+export type LoopContractId = string | null;
 export type NextFireAt = string;
 export type ReminderStatus = 'active' | 'cancelled' | 'done';
 export type WorkspaceId31 = string;
@@ -830,7 +834,7 @@ export type Cadence3 = string;
 export type CancelledByMemberId1 = string | null;
 export type CreatedAt28 = string;
 export type Id35 = string;
-export type LoopContractId2 = string | null;
+export type LoopContractId1 = string | null;
 export type NextFireAt1 = string;
 export type ReminderStatus1 = 'active' | 'cancelled' | 'done';
 export type WorkspaceId32 = string;
@@ -920,7 +924,7 @@ export type VerifyPlan = string;
 export type Version4 = 'coagentia.task-handoff.v1';
 export type TaskLevel1 = 'l1' | 'l2';
 export type SilenceOverrideH1 = number | null;
-export type Title5 = string | null;
+export type Title6 = string | null;
 export type ChannelId30 = string;
 export type CreatedAt33 = string;
 export type CreatedByMemberId5 = string;
@@ -932,7 +936,7 @@ export type RootMessageId1 = string;
 export type SilenceOverrideH2 = number | null;
 export type TaskStatus2 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt1 = string;
-export type Title6 = string;
+export type Title7 = string;
 export type WorkspaceId36 = string;
 export type Builtin2 = boolean;
 export type CreatedAt34 = string;
@@ -1139,9 +1143,12 @@ export interface CoAgentiaContracts {
   FileRow?: FileRow;
   FrameError?: FrameError;
   GitDiffQuery?: GitDiffQuery;
+  HeldDraftAsTask?: HeldDraftAsTask;
   HeldDraftData?: HeldDraftData;
   HeldDraftPublic?: HeldDraftPublic;
   HeldDraftReasons?: HeldDraftReasons;
+  HeldDraftReleaseResponse?: HeldDraftReleaseResponse;
+  HeldDraftResponse?: HeldDraftResponse;
   HeldDraftRow?: HeldDraftRow;
   HomeFileBinaryReply?: HomeFileBinaryReply;
   HomeFileQuery?: HomeFileQuery;
@@ -1965,15 +1972,26 @@ export interface GitDiffQuery {
   repo_path: RepoPath1;
   task_id: TaskId7;
 }
+/**
+ * 草稿携带的 as_task 意图（v1.0.5）——放行时随消息同一事务执行（语义同 B §9.4）。
+ *
+ * 形状镜像 `rest.AsTask`（entities 为下层不能反向 import rest；字段单源在此，rest.AsTask
+ * 另有其消息端点用途，二者刻意分立以免层次倒置）。
+ */
+export interface HeldDraftAsTask {
+  title?: Title2;
+}
 export interface HeldDraftData {
   draft: HeldDraftPublic;
 }
 export interface HeldDraftPublic {
   agent_member_id: AgentMemberId13;
+  as_task?: HeldDraftAsTask | null;
   channel_id: ChannelId18;
   created_at: CreatedAt12;
   draft_body: DraftBody;
   escalated_at?: EscalatedAt;
+  file_ids?: FileIds;
   held_count?: HeldCount;
   id: Id19;
   next_reeval_at: NextReevalAt;
@@ -1987,29 +2005,67 @@ export interface HeldDraftPublic {
 }
 /**
  * 结构化被扣原因（G2：未读消息清单，可点跳转）。
+ *
+ * v1.0.5：`unread_message_ids` 上限 50 条（截断保留最新）；`total_unread` 为真实未读计数
+ * （截断前的全量口径，卡片显示"还有 N 条"）。
  */
 export interface HeldDraftReasons {
+  total_unread: TotalUnread;
   unread_message_ids: UnreadMessageIds;
+}
+/**
+ * POST /held-drafts/{id}/release 响应（B §4.14）：以原载荷落消息 + held 行置 released 终态。
+ */
+export interface HeldDraftReleaseResponse {
+  held_draft: HeldDraftPublic;
+  message: MessagePublic;
+}
+/**
+ * 读面派生字段 files（v1.0.4，Public≠Row 放宽先例同 ActivityItemPublic.actor_member_id）：
+ * REST 消息读面（列表/线程/发消息响应/搜索命中）与 message.created 广播填充（[] = 无附件）；
+ * 未附着面（daemon backlog/deliver 帧）保持 None——否则旧消息附件卡受 channelFiles
+ * 首页 ≤50 截断（M2 挂账）。serialize 时按 message_id 联查 files，不落 messages 表。
+ */
+export interface MessagePublic {
+  author_member_id?: AuthorMemberId;
+  body: Body;
+  card_kind?: CardKind | null;
+  card_ref?: CardRef;
+  channel_id: ChannelId19;
+  created_at: CreatedAt13;
+  files?: Files;
+  id: Id20;
+  kind?: MessageKind;
+  thread_root_id?: ThreadRootId1;
+  workspace_id: WorkspaceId17;
+}
+/**
+ * POST /held-drafts/{id}/discard | /reevaluate 响应（B §4.14）：仅回 held 行最新态。
+ */
+export interface HeldDraftResponse {
+  held_draft: HeldDraftPublic;
 }
 /**
  * M4（D4/G1–G6）。
  */
 export interface HeldDraftRow {
   agent_member_id: AgentMemberId14;
-  channel_id: ChannelId19;
-  created_at: CreatedAt13;
+  as_task?: HeldDraftAsTask | null;
+  channel_id: ChannelId20;
+  created_at: CreatedAt14;
   draft_body: DraftBody1;
   escalated_at?: EscalatedAt1;
+  file_ids?: FileIds1;
   held_count?: HeldCount1;
-  id: Id20;
+  id: Id21;
   next_reeval_at: NextReevalAt1;
   reasons: HeldDraftReasons;
   resolution?: HeldResolution | null;
   resolved_at?: ResolvedAt1;
   resolved_by_member_id?: ResolvedByMemberId1;
   status?: HeldDraftStatus1;
-  thread_root_id?: ThreadRootId1;
-  workspace_id: WorkspaceId17;
+  thread_root_id?: ThreadRootId2;
+  workspace_id: WorkspaceId18;
 }
 export interface HomeFileBinaryReply {
   kind?: Kind1;
@@ -2057,31 +2113,31 @@ export interface LandingBatchData {
   batch: LandingBatchPublic;
 }
 export interface LandingBatchPublic {
-  channel_id: ChannelId20;
+  channel_id: ChannelId21;
   confirmed_by: ConfirmedBy;
   content_hash: ContentHash;
-  created_at: CreatedAt14;
+  created_at: CreatedAt15;
   done_at?: DoneAt2;
-  id: Id21;
+  id: Id22;
   kind: LandingBatchKind;
   source_ref: SourceRef;
   status?: LandingBatchStatus;
-  workspace_id: WorkspaceId18;
+  workspace_id: WorkspaceId19;
 }
 /**
  * 幂等键命名空间锚（01 §5.1 修订：opId 含 batch_id）。
  */
 export interface LandingBatchRow {
-  channel_id: ChannelId21;
+  channel_id: ChannelId22;
   confirmed_by: ConfirmedBy1;
   content_hash: ContentHash1;
-  created_at: CreatedAt15;
+  created_at: CreatedAt16;
   done_at?: DoneAt3;
-  id: Id22;
+  id: Id23;
   kind: LandingBatchKind;
   source_ref: SourceRef1;
   status?: LandingBatchStatus1;
-  workspace_id: WorkspaceId19;
+  workspace_id: WorkspaceId20;
 }
 /**
  * 单节点坐标（pos_x/pos_y 不参与基线快照，契约 A §6）。
@@ -2100,7 +2156,7 @@ export interface LayoutPut {
 export interface LedgerEntryPublic {
   actor_member_id?: ActorMemberId1;
   batch_id?: BatchId3;
-  created_at: CreatedAt16;
+  created_at: CreatedAt17;
   kind: Kind5;
   op_id: OpId;
   payload: JsonValue;
@@ -2113,7 +2169,7 @@ export interface LedgerEntryPublic {
 export interface LedgerEntryRow {
   actor_member_id?: ActorMemberId2;
   batch_id?: BatchId4;
-  created_at: CreatedAt17;
+  created_at: CreatedAt18;
   kind: Kind6;
   op_id: OpId1;
   payload: JsonValue;
@@ -2142,31 +2198,31 @@ export interface MemberData {
   member: MemberPublic;
 }
 export interface MemberPublic {
-  created_at: CreatedAt18;
-  id: Id23;
+  created_at: CreatedAt19;
+  id: Id24;
   kind: MemberKind;
   name: Name14;
   removed_at?: RemovedAt;
   role?: MemberRole;
-  workspace_id: WorkspaceId20;
+  workspace_id: WorkspaceId21;
 }
 export interface MemberPatch {
   role: MemberRole1;
 }
 export interface MemberRow {
-  created_at: CreatedAt19;
-  id: Id24;
+  created_at: CreatedAt20;
+  id: Id25;
   kind: MemberKind;
   name: Name15;
   removed_at?: RemovedAt1;
   role?: MemberRole2;
-  workspace_id: WorkspaceId21;
+  workspace_id: WorkspaceId22;
 }
 export interface MessageCreate {
   as_task?: AsTask | null;
-  body: Body;
-  file_ids?: FileIds;
-  thread_root_id?: ThreadRootId2;
+  body: Body1;
+  file_ids?: FileIds2;
+  thread_root_id?: ThreadRootId3;
 }
 /**
  * as_task 成功时 task 非空（原子）。
@@ -2174,25 +2230,6 @@ export interface MessageCreate {
 export interface MessageCreated {
   message: MessagePublic;
   task?: TaskPublic | null;
-}
-/**
- * 读面派生字段 files（v1.0.4，Public≠Row 放宽先例同 ActivityItemPublic.actor_member_id）：
- * REST 消息读面（列表/线程/发消息响应/搜索命中）与 message.created 广播填充（[] = 无附件）；
- * 未附着面（daemon backlog/deliver 帧）保持 None——否则旧消息附件卡受 channelFiles
- * 首页 ≤50 截断（M2 挂账）。serialize 时按 message_id 联查 files，不落 messages 表。
- */
-export interface MessagePublic {
-  author_member_id?: AuthorMemberId;
-  body: Body1;
-  card_kind?: CardKind | null;
-  card_ref?: CardRef;
-  channel_id: ChannelId22;
-  created_at: CreatedAt20;
-  files?: Files;
-  id: Id25;
-  kind?: MessageKind;
-  thread_root_id?: ThreadRootId3;
-  workspace_id: WorkspaceId22;
 }
 export interface TaskPublic {
   channel_id: ChannelId23;
@@ -2206,7 +2243,7 @@ export interface TaskPublic {
   silence_override_h?: SilenceOverrideH;
   status?: TaskStatus;
   status_changed_at: StatusChangedAt;
-  title: Title2;
+  title: Title3;
   workspace_id: WorkspaceId23;
 }
 export interface MessageCreatedData {
@@ -2284,7 +2321,7 @@ export interface NodeCreate {
   kind: CanvasNodeKind;
   system_action?: SystemAction | null;
   task_plan?: TaskPlanBody | null;
-  title: Title3;
+  title: Title4;
 }
 /**
  * L2 任务计划契约（进入画布/正式立项时必填——PRD §4.3 v1）。
@@ -2301,7 +2338,7 @@ export interface TaskPlanBody {
  */
 export interface NodePatch {
   command?: Command6;
-  title?: Title4;
+  title?: Title5;
 }
 /**
  * 游标分页：?after=（正序）/ ?before=（倒序回翻）。
@@ -2460,6 +2497,15 @@ export interface ReadUpdatedData {
 }
 /**
  * Agent 主体自设（FR-3.9）；recurring 无 loop_contract → 422（D1-L2）。
+ *
+ * M4 起（v1.2）：可携内联 `loop_contract`——recurring 必填（缺 → 422），server `model_validate`
+ * 后同一事务建 task_contracts（kind=loop_contract、reminder_id 挂接，契约 A §4.3 XOR）并回填
+ * reminders.loop_contract_id；once 携带 loop_contract → 422（B §4.4/§10.6）。契约在同事务才
+ * 创建，故请求侧不接受 loop_contract_id（那是存储列，非请求字段）。前向引用 LoopContractBody
+ * （定义序在后，同 entities.MessagePublic.files 先例），文件末尾 model_rebuild() 补全。
+ *
+ * cadence（B §10.6）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如 `PT1H`；
+ * cron 归 M5+），且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。
  */
 export interface ReminderCreate {
   anchor_channel_id: AnchorChannelId;
@@ -2467,7 +2513,7 @@ export interface ReminderCreate {
   anchor_task_id?: AnchorTaskId;
   cadence: Cadence1;
   kind: Kind8;
-  loop_contract_id?: LoopContractId;
+  loop_contract?: LoopContractBody | null;
 }
 export interface ReminderData {
   reminder: ReminderPublic;
@@ -2482,7 +2528,7 @@ export interface ReminderPublic {
   created_at: CreatedAt27;
   id: Id34;
   kind: ReminderKind;
-  loop_contract_id?: LoopContractId1;
+  loop_contract_id?: LoopContractId;
   next_fire_at: NextFireAt;
   status?: ReminderStatus;
   workspace_id: WorkspaceId31;
@@ -2500,7 +2546,7 @@ export interface ReminderRow {
   created_at: CreatedAt28;
   id: Id35;
   kind: ReminderKind;
-  loop_contract_id?: LoopContractId2;
+  loop_contract_id?: LoopContractId1;
   next_fire_at: NextFireAt1;
   status?: ReminderStatus1;
   workspace_id: WorkspaceId32;
@@ -2666,7 +2712,7 @@ export interface TaskHandoffBody {
 export interface TaskPatch {
   level?: TaskLevel1 | null;
   silence_override_h?: SilenceOverrideH1;
-  title?: Title5;
+  title?: Title6;
 }
 /**
  * M2：带元数据的消息（T1）。blocked 不入库——画布边实时推导（C3）。
@@ -2683,7 +2729,7 @@ export interface TaskRow {
   silence_override_h?: SilenceOverrideH2;
   status?: TaskStatus2;
   status_changed_at: StatusChangedAt1;
-  title: Title6;
+  title: Title7;
   workspace_id: WorkspaceId36;
 }
 /**
