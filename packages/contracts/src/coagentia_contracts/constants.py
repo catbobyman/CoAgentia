@@ -26,9 +26,39 @@ ACTIVITY_PHRASES: tuple[str, ...] = (
     "Draft held",
 )
 
-# ---------------- 禁用工具（契约 E §2；终表实现期定 E §11.4）
-
-DISALLOWED_TOOLS: tuple[str, ...] = ("EnterPlanMode", "ExitPlanMode")
+# ---------------- 禁用工具（契约 E §2；终表 A8 真机实测定，关闭 E §11.4）
+#
+# 依据契约 E §5「Agent 行为唯一出口 = coagentia MCP 工具」：凡与 coagentia 工具**功能重叠**
+# 的 Claude Code 内置工具都必须禁用，否则 Agent 会误用内置工具绕过频道/护栏/留痕。
+# A8 端到端实测暴露：Agent 曾用内置 `SendMessage`（CC 队友消息）而非 coagentia `send_message`，
+# 消息未进频道——由此定出下表（保留本地工作类 Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/
+# ToolSearch/Task/Skill：它们是 Agent 干活/加载 MCP 工具的手段，不构成外部行为出口）。
+DISALLOWED_TOOLS: tuple[str, ...] = (
+    # 计划模式类（E §2 初值）
+    "EnterPlanMode",
+    "ExitPlanMode",
+    # 通信：内置 SendMessage 与 coagentia send_message 重叠 → 必禁（A8 实测的直接肇因）
+    "SendMessage",
+    # 调度/提醒：与 coagentia create_reminder/cancel_reminder 重叠
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "ScheduleWakeup",
+    # FleetView 持久后台多 Agent 协调 + 工作流编排：属 coagentia（M6 Orchestrator）职责，
+    # 非单 Agent 能力。
+    "TaskCreate",
+    "TaskGet",
+    "TaskList",
+    "TaskOutput",
+    "TaskStop",
+    "TaskUpdate",
+    "Workflow",
+    # worktree 由 coagentia 交付链路管（M6/W2），Agent 不自管
+    "EnterWorktree",
+    "ExitWorktree",
+    # 项目专用外部工具，非 Agent 能力面
+    "DesignSync",
+)
 
 # ---------------- 诊断类型（契约 A §4.6 命名空间；
 # draft/delta/landing 与 WS 事件一名两用——预留 #4；开放集，此处登记已知类型）
