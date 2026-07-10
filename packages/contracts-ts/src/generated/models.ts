@@ -114,21 +114,18 @@ export type Usage = number;
 export type BaselineHash = string;
 export type BaselineVersion = number;
 export type CanvasId = string;
+export type BaselineHash1 = string;
+export type BaselineVersion1 = number;
+export type ChannelId2 = string;
+export type Id5 = string;
+export type UpdatedAt = string;
+export type WorkspaceId2 = string;
 export type CanvasId1 = string;
 export type FromNodeId = string;
-export type Id5 = string;
-export type ToNodeId = string;
-export type EdgeId = string;
-export type CanvasId2 = string;
-export type FromNodeId1 = string;
 export type Id6 = string;
-export type ToNodeId1 = string;
-export type CanvasId3 = string;
-export type NodeId1 = string;
-export type X = number;
-export type Y = number;
-export type Positions = NodePosition[];
-export type CanvasId4 = string;
+export type ToNodeId = string;
+export type Edges = CanvasEdgePublic[];
+export type CanvasId2 = string;
 export type Command = string | null;
 export type CreatedAt2 = string;
 export type Id7 = string;
@@ -139,23 +136,30 @@ export type PosY = number;
 export type SystemAction = 'merge' | 'check';
 export type SystemNodeStatus = 'idle' | 'running' | 'success' | 'failed';
 export type TaskId2 = string | null;
+export type Nodes = CanvasNodePublic[];
+export type EdgeId = string;
+export type CanvasId3 = string;
+export type FromNodeId1 = string;
+export type Id8 = string;
+export type ToNodeId1 = string;
+export type CanvasId4 = string;
+export type NodeId1 = string;
+export type X = number;
+export type Y = number;
+export type Positions = NodePosition[];
+export type BaselineHash2 = string;
+export type BaselineVersion2 = number;
 export type NodeId2 = string;
 export type CanvasId5 = string;
 export type Command1 = string | null;
 export type CreatedAt3 = string;
-export type Id8 = string;
+export type Id9 = string;
 export type IsSummary1 = boolean;
 export type PosX1 = number;
 export type PosY1 = number;
 export type TaskId3 = string | null;
-export type BaselineHash1 = string;
-export type BaselineVersion1 = number;
-export type ChannelId2 = string;
-export type Id9 = string;
-export type UpdatedAt = string;
-export type WorkspaceId2 = string;
-export type BaselineHash2 = string;
-export type BaselineVersion2 = number;
+export type BaselineHash3 = string;
+export type BaselineVersion3 = number;
 export type ChannelId3 = string;
 export type Id10 = string;
 export type UpdatedAt1 = string;
@@ -355,6 +359,8 @@ export type Events1 = DiagnosticEventIn[];
 export type MemberId13 = string;
 export type Adjustments = JsonValue[];
 export type ProposalId = string;
+export type FromNodeId2 = string;
+export type ToNodeId2 = string;
 export type At1 = string;
 export type ChannelId15 = string | null;
 export type Key2 = string;
@@ -569,6 +575,10 @@ export type Id22 = string;
 export type SourceRef1 = string;
 export type LandingBatchStatus1 = 'running' | 'done' | 'fail_closed';
 export type WorkspaceId19 = string;
+export type NodeId3 = string;
+export type X1 = number;
+export type Y1 = number;
+export type Positions1 = LayoutPositionIn[];
 export type ActorMemberId1 = string | null;
 export type BatchId3 = string | null;
 export type CreatedAt16 = string;
@@ -662,6 +672,18 @@ export type MessageId6 = string;
 export type TaskId8 = string;
 export type MessageId7 = string;
 export type TaskId9 = string;
+export type Command5 = string | null;
+/**
+ * @minItems 1
+ */
+export type AcceptanceCriteria = [AcceptanceCriterion, ...AcceptanceCriterion[]];
+export type DefaultsDecided = string[];
+export type Goal = string;
+export type OutOfScope = string[];
+export type Version1 = 'coagentia.task-plan.v1';
+export type Title3 = string;
+export type Command6 = string | null;
+export type Title4 = string | null;
 export type Items1 = unknown[];
 export type NextCursor = string | null;
 export type Type3 = 'ping';
@@ -862,7 +884,7 @@ export type ReminderId1 = string | null;
 export type Revision2 = number;
 export type SupersededAt = string | null;
 export type TaskId13 = string | null;
-export type Version1 = string;
+export type Version2 = string;
 export type WorkspaceId34 = string;
 export type CreatedAt30 = string;
 export type CreatedByMemberId4 = string;
@@ -871,7 +893,7 @@ export type ReminderId2 = string | null;
 export type Revision3 = number;
 export type SupersededAt1 = string | null;
 export type TaskId14 = string | null;
-export type Version2 = string;
+export type Version3 = string;
 export type WorkspaceId35 = string;
 export type Contracts = TaskContractPublic[];
 export type CacheReadTokens = number;
@@ -895,18 +917,10 @@ export type FromMember = string;
 export type OpenRisks = string[];
 export type ToMember = string;
 export type VerifyPlan = string;
-export type Version3 = 'coagentia.task-handoff.v1';
+export type Version4 = 'coagentia.task-handoff.v1';
 export type TaskLevel1 = 'l1' | 'l2';
 export type SilenceOverrideH1 = number | null;
-export type Title3 = string | null;
-/**
- * @minItems 1
- */
-export type AcceptanceCriteria = [AcceptanceCriterion, ...AcceptanceCriterion[]];
-export type DefaultsDecided = string[];
-export type Goal = string;
-export type OutOfScope = string[];
-export type Version4 = 'coagentia.task-plan.v1';
+export type Title5 = string | null;
 export type ChannelId30 = string;
 export type CreatedAt33 = string;
 export type CreatedByMemberId5 = string;
@@ -918,7 +932,7 @@ export type RootMessageId1 = string;
 export type SilenceOverrideH2 = number | null;
 export type TaskStatus2 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt1 = string;
-export type Title4 = string;
+export type Title6 = string;
 export type WorkspaceId36 = string;
 export type Builtin2 = boolean;
 export type CreatedAt34 = string;
@@ -1060,11 +1074,13 @@ export interface CoAgentiaContracts {
   AssignRequest?: AssignRequest;
   BufferedCounts?: BufferedCounts;
   CanvasBaselineAdvancedData?: CanvasBaselineAdvancedData;
+  CanvasDetail?: CanvasDetail;
   CanvasEdgeData?: CanvasEdgeData;
   CanvasEdgePublic?: CanvasEdgePublic;
   CanvasEdgeRemovedData?: CanvasEdgeRemovedData;
   CanvasEdgeRow?: CanvasEdgeRow;
   CanvasLayoutUpdatedData?: CanvasLayoutUpdatedData;
+  CanvasMutation?: CanvasMutation;
   CanvasNodeData?: CanvasNodeData;
   CanvasNodePublic?: CanvasNodePublic;
   CanvasNodeRemovedData?: CanvasNodeRemovedData;
@@ -1114,6 +1130,7 @@ export interface CoAgentiaContracts {
   DiagnosticsBatchData?: DiagnosticsBatchData;
   DmCreate?: DmCreate;
   DraftAdjustedData?: DraftAdjustedData;
+  EdgeCreate?: EdgeCreate;
   Envelope?: Envelope;
   ErrorBody?: ErrorBody;
   ErrorResponse?: ErrorResponse;
@@ -1137,6 +1154,8 @@ export interface CoAgentiaContracts {
   LandingBatchData?: LandingBatchData;
   LandingBatchPublic?: LandingBatchPublic;
   LandingBatchRow?: LandingBatchRow;
+  LayoutPositionIn?: LayoutPositionIn;
+  LayoutPut?: LayoutPut;
   LedgerEntryPublic?: LedgerEntryPublic;
   LedgerEntryRow?: LedgerEntryRow;
   LifecycleRequest?: LifecycleRequest;
@@ -1158,6 +1177,8 @@ export interface CoAgentiaContracts {
   MessageRow?: MessageRow;
   MessageTaskRefPublic?: MessageTaskRefPublic;
   MessageTaskRefRow?: MessageTaskRefRow;
+  NodeCreate?: NodeCreate;
+  NodePatch?: NodePatch;
   NodePosition?: NodePosition;
   Page?: Page;
   PingMsg?: PingMsg;
@@ -1424,41 +1445,30 @@ export interface CanvasBaselineAdvancedData {
   baseline_version: BaselineVersion;
   canvas_id: CanvasId;
 }
-export interface CanvasEdgeData {
-  edge: CanvasEdgePublic;
+/**
+ * GET /channels/{id}/canvas（B §4.9）：画布头 + 节点/边（空画布二者皆空）。
+ */
+export interface CanvasDetail {
+  canvas: CanvasPublic;
+  edges?: Edges;
+  nodes?: Nodes;
+}
+export interface CanvasPublic {
+  baseline_hash: BaselineHash1;
+  baseline_version?: BaselineVersion1;
+  channel_id: ChannelId2;
+  id: Id5;
+  updated_at: UpdatedAt;
+  workspace_id: WorkspaceId2;
 }
 export interface CanvasEdgePublic {
   canvas_id: CanvasId1;
   from_node_id: FromNodeId;
-  id: Id5;
+  id: Id6;
   to_node_id: ToNodeId;
 }
-export interface CanvasEdgeRemovedData {
-  edge_id: EdgeId;
-}
-/**
- * M3。UNIQUE(canvas_id, from, to)；无环由串行化点内拓扑排序保证。
- */
-export interface CanvasEdgeRow {
-  canvas_id: CanvasId2;
-  from_node_id: FromNodeId1;
-  id: Id6;
-  to_node_id: ToNodeId1;
-}
-export interface CanvasLayoutUpdatedData {
-  canvas_id: CanvasId3;
-  positions: Positions;
-}
-export interface NodePosition {
-  node_id: NodeId1;
-  x: X;
-  y: Y;
-}
-export interface CanvasNodeData {
-  node: CanvasNodePublic;
-}
 export interface CanvasNodePublic {
-  canvas_id: CanvasId4;
+  canvas_id: CanvasId2;
   command?: Command;
   created_at: CreatedAt2;
   id: Id7;
@@ -1470,6 +1480,42 @@ export interface CanvasNodePublic {
   system_status?: SystemNodeStatus | null;
   task_id?: TaskId2;
 }
+export interface CanvasEdgeData {
+  edge: CanvasEdgePublic;
+}
+export interface CanvasEdgeRemovedData {
+  edge_id: EdgeId;
+}
+/**
+ * M3。UNIQUE(canvas_id, from, to)；无环由串行化点内拓扑排序保证。
+ */
+export interface CanvasEdgeRow {
+  canvas_id: CanvasId3;
+  from_node_id: FromNodeId1;
+  id: Id8;
+  to_node_id: ToNodeId1;
+}
+export interface CanvasLayoutUpdatedData {
+  canvas_id: CanvasId4;
+  positions: Positions;
+}
+export interface NodePosition {
+  node_id: NodeId1;
+  x: X;
+  y: Y;
+}
+/**
+ * 画布结构写统一响应（B §4.9）：附最新基线版本/指纹，命中的节点或边随写回填。
+ */
+export interface CanvasMutation {
+  baseline_hash: BaselineHash2;
+  baseline_version: BaselineVersion2;
+  edge?: CanvasEdgePublic | null;
+  node?: CanvasNodePublic | null;
+}
+export interface CanvasNodeData {
+  node: CanvasNodePublic;
+}
 export interface CanvasNodeRemovedData {
   node_id: NodeId2;
 }
@@ -1480,7 +1526,7 @@ export interface CanvasNodeRow {
   canvas_id: CanvasId5;
   command?: Command1;
   created_at: CreatedAt3;
-  id: Id8;
+  id: Id9;
   is_summary?: IsSummary1;
   kind: CanvasNodeKind;
   pos_x?: PosX1;
@@ -1489,20 +1535,12 @@ export interface CanvasNodeRow {
   system_status?: SystemNodeStatus | null;
   task_id?: TaskId3;
 }
-export interface CanvasPublic {
-  baseline_hash: BaselineHash1;
-  baseline_version?: BaselineVersion1;
-  channel_id: ChannelId2;
-  id: Id9;
-  updated_at: UpdatedAt;
-  workspace_id: WorkspaceId2;
-}
 /**
  * M1 建表（预留 #2）。基线语义 = 契约 A §6。
  */
 export interface CanvasRow {
-  baseline_hash: BaselineHash2;
-  baseline_version?: BaselineVersion2;
+  baseline_hash: BaselineHash3;
+  baseline_version?: BaselineVersion3;
   channel_id: ChannelId3;
   id: Id10;
   updated_at: UpdatedAt1;
@@ -1855,6 +1893,13 @@ export interface DraftAdjustedData {
   proposal_id: ProposalId;
 }
 /**
+ * POST /canvases/{id}/edges：连边；成环由 server 拓扑校验拒 422 GRAPH_CYCLE（V9）。
+ */
+export interface EdgeCreate {
+  from_node_id: FromNodeId2;
+  to_node_id: ToNodeId2;
+}
+/**
  * 信封四要素：类型 / 作用域 / 序号 / 幂等键（契约 C §3）。
  */
 export interface Envelope {
@@ -2038,6 +2083,20 @@ export interface LandingBatchRow {
   status?: LandingBatchStatus1;
   workspace_id: WorkspaceId19;
 }
+/**
+ * 单节点坐标（pos_x/pos_y 不参与基线快照，契约 A §6）。
+ */
+export interface LayoutPositionIn {
+  node_id: NodeId3;
+  x: X1;
+  y: Y1;
+}
+/**
+ * PUT /canvases/{id}/layout：整批坐标覆盖（不推进基线）。
+ */
+export interface LayoutPut {
+  positions: Positions1;
+}
 export interface LedgerEntryPublic {
   actor_member_id?: ActorMemberId1;
   batch_id?: BatchId3;
@@ -2213,6 +2272,36 @@ export interface MessageTaskRefPublic {
 export interface MessageTaskRefRow {
   message_id: MessageId7;
   task_id: TaskId9;
+}
+/**
+ * POST /canvases/{id}/nodes：新增画布节点。
+ *
+ * `kind='agent'` → 由 task_plan 起一个 agent 节点（引用任务，非副本 C8）；`kind='system'` →
+ * system_action 必填、check 动作附 command。字段级 kind↔约束由 server 执法（V14/W8）。
+ */
+export interface NodeCreate {
+  command?: Command5;
+  kind: CanvasNodeKind;
+  system_action?: SystemAction | null;
+  task_plan?: TaskPlanBody | null;
+  title: Title3;
+}
+/**
+ * L2 任务计划契约（进入画布/正式立项时必填——PRD §4.3 v1）。
+ */
+export interface TaskPlanBody {
+  acceptance_criteria: AcceptanceCriteria;
+  defaults_decided?: DefaultsDecided;
+  goal: Goal;
+  out_of_scope?: OutOfScope;
+  version?: Version1;
+}
+/**
+ * PATCH /canvases/{id}/nodes/{node_id}：改节点标题 / check 命令。
+ */
+export interface NodePatch {
+  command?: Command6;
+  title?: Title4;
 }
 /**
  * 游标分页：?after=（正序）/ ?before=（倒序回翻）。
@@ -2493,7 +2582,7 @@ export interface TaskContractPublic {
   revision?: Revision2;
   superseded_at?: SupersededAt;
   task_id?: TaskId13;
-  version: Version1;
+  version: Version2;
   workspace_id: WorkspaceId34;
 }
 /**
@@ -2509,7 +2598,7 @@ export interface TaskContractRow {
   revision?: Revision3;
   superseded_at?: SupersededAt1;
   task_id?: TaskId14;
-  version: Version2;
+  version: Version3;
   workspace_id: WorkspaceId35;
 }
 export interface TaskCreatedData {
@@ -2566,7 +2655,7 @@ export interface TaskHandoffBody {
   open_risks?: OpenRisks;
   to_member: ToMember;
   verify_plan: VerifyPlan;
-  version?: Version3;
+  version?: Version4;
 }
 /**
  * 元数据补丁（B §4.7）——PATCH /tasks/{id}；不写 task_events，广播 task.updated。
@@ -2577,17 +2666,7 @@ export interface TaskHandoffBody {
 export interface TaskPatch {
   level?: TaskLevel1 | null;
   silence_override_h?: SilenceOverrideH1;
-  title?: Title3;
-}
-/**
- * L2 任务计划契约（进入画布/正式立项时必填——PRD §4.3 v1）。
- */
-export interface TaskPlanBody {
-  acceptance_criteria: AcceptanceCriteria;
-  defaults_decided?: DefaultsDecided;
-  goal: Goal;
-  out_of_scope?: OutOfScope;
-  version?: Version4;
+  title?: Title5;
 }
 /**
  * M2：带元数据的消息（T1）。blocked 不入库——画布边实时推导（C3）。
@@ -2604,7 +2683,7 @@ export interface TaskRow {
   silence_override_h?: SilenceOverrideH2;
   status?: TaskStatus2;
   status_changed_at: StatusChangedAt1;
-  title: Title4;
+  title: Title6;
   workspace_id: WorkspaceId36;
 }
 /**

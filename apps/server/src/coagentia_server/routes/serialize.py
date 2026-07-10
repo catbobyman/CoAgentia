@@ -85,3 +85,15 @@ def activity_item_public(row: dict[str, Any]) -> dict[str, Any]:
 
 def task_contract_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.TaskContractPublic, row)
+
+
+def canvas_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.CanvasPublic, row)
+
+
+def canvas_node_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.CanvasNodePublic, row)
+
+
+def canvas_edge_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.CanvasEdgePublic, row)

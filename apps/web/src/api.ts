@@ -2,19 +2,26 @@
 import type {
   AgentPublic,
   AgentSkillPublic,
+  CanvasDetail,
+  CanvasMutation,
   ChannelsSnapshot,
   ComputerCreated,
   ComputerPublic,
   ContractDraftRequest,
   DiagnosticEventPublic,
+  EdgeCreate,
+  LayoutPut,
   MemberPublic,
   MessageCreated,
   MessagePublic,
+  NodeCreate,
+  NodePatch,
   PresenceSnapshot,
   ReminderPublic,
   RestPaths,
   SearchResponse,
   TaskDetail,
+  TaskPatch,
   TaskPublic,
   TaskStatus,
   WorkspaceCreate,
@@ -67,7 +74,7 @@ export class ApiError extends Error {
 /** 统一写请求:非 2xx 时解析契约错误体 → 抛 ApiError(带 code/details 供 toast)。 */
 async function writeJson<T>(
   path: string,
-  method: 'POST' | 'PATCH' | 'PUT',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: unknown,
 ): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`, {
@@ -148,11 +155,37 @@ export const api = {
     writeJson<TaskPublic>(`/api/tasks/${taskId}/status`, 'POST', { to }),
   patchTask: (taskId: string, patch: Partial<Pick<TaskPublic, 'title' | 'silence_override_h'>>) =>
     writeJson<TaskPublic>(`/api/tasks/${taskId}`, 'PATCH', patch),
+  // M3(P-2 拍板):L1→L2 升格(PATCH /tasks/{id},M3a 已在线);l2→l1 或非法值由 server 拒
+  // 422 TASK_TRANSITION_INVALID(rule=D1)。升格本身不写 task_events,成功靠 WS task.updated 回灌。
+  promoteTask: (taskId: string) => {
+    const body: TaskPatch = { level: 'l2' };
+    return writeJson<TaskPublic>(`/api/tasks/${taskId}`, 'PATCH', body);
+  },
+  // M3b(E5):人类越过 gating 强制启动 blocked 任务 → POST /tasks/{id}/force-start;写 task_events
+  // (force_start 留痕)。端点随 apps/server M3 并行落地,尚未进 RestPaths → 按契约端点清单
+  // (rest.py ENDPOINTS_M3)手写路径,形状上线后不变。无权限(非人类 owner)→ 403;成功靠 WS 反流。
+  forceStart: (taskId: string) => writeJson<TaskPublic>(`/api/tasks/${taskId}/force-start`, 'POST'),
   // M3:"让 @Agent 起草"(契约 D 定向直投唤醒)。202 = 已排队,无响应体;daemon 离线 → 503 DAEMON_OFFLINE。
   // request-draft 尚未随 apps/server 一起生成进 RestPaths(后端 M3 并行落地中),此处按 packages/contracts
   // 的 ContractDraftRequest 源类型手写路径 —— 端点上线后形状不变,无需改动。
   requestContractDraft: (taskId: string, body: ContractDraftRequest) =>
     writeJson<void>(`/api/tasks/${taskId}/contracts/request-draft`, 'POST', body),
+
+  // ---- M3b 画布(B §4.9)。GET 已在 RestPaths;结构写端点随 apps/server M3 并行落地,
+  // 此处按 packages/contracts 源类型手写路径(端点上线后形状不变)。变更全走 writeJson——
+  // GRAPH_CYCLE(V9 连边成环)/DAEMON_OFFLINE 等结构化错误据 code/details 组 toast。无乐观更新,
+  // 命中的节点/边靠 canvas.* WS 反流(wsBridge)。
+  canvasSnapshot: (channelId: string) => get<CanvasDetail>(`/api/channels/${channelId}/canvas`),
+  createCanvasNode: (canvasId: string, body: NodeCreate) =>
+    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/nodes`, 'POST', body),
+  patchCanvasNode: (canvasId: string, nodeId: string, patch: NodePatch) =>
+    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/nodes/${nodeId}`, 'PATCH', patch),
+  createCanvasEdge: (canvasId: string, body: EdgeCreate) =>
+    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/edges`, 'POST', body),
+  deleteCanvasEdge: (canvasId: string, edgeId: string) =>
+    writeJson<void>(`/api/canvases/${canvasId}/edges/${edgeId}`, 'DELETE'),
+  putCanvasLayout: (canvasId: string, body: LayoutPut) =>
+    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/layout`, 'PUT', body),
 
   // ---- M2 文件 / 搜索 / 活动(B §9.6 / §4.6-4.8)
   channelFiles: (channelId: string, after?: string) =>

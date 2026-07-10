@@ -108,8 +108,13 @@ def create_task(
     created_by: str,
     title: str | None = None,
     source_body: str = "",
+    level: TaskLevel = TaskLevel.L1,
 ) -> dict[str, Any]:
-    """convert 与 as_task 共用的建任务（B §9.3）；status 起始 todo，无 created 事件。"""
+    """convert / as_task / 画布 agent 节点共用的建任务（B §9.3）；status 起始 todo。
+
+    level 默认 L1（既有 convert/as_task 语义不变）；画布 agent 节点走第三途径传 L2
+    （节点即正式立项，随后按 task_plan 提交 TaskPlan 契约）。
+    """
     number = allocate_number(tx.conn, channel_id)
     resolved = (title or "").strip() or default_title(source_body)
     ts = service.now_iso()
@@ -124,7 +129,7 @@ def create_task(
             title=resolved,
             status=TaskStatus.TODO,
             owner_member_id=None,
-            level=TaskLevel.L1,
+            level=level,
             created_by_member_id=created_by,
             silence_override_h=None,
             status_changed_at=ts,

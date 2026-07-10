@@ -35,7 +35,7 @@
 
 **review 已修（6）**：① SearchOverlay 空前缀(`in: `/`from: `)误命中首个频道/成员 → 空片段守卫；② 全局搜索"成员"跳转对人类成员 404（agent 路由）→ 按 kind 分流（人类→/members）；③ ThreadPanel 认领钮在 done/closed 未置灰（点击必吃 422）→ 消费生成的 `UNCLAIMABLE_STATUSES` 防呆；④ wsBridge `activity.created` 只更 'all' 档致 Unread/Mentions 停留页列表滞后 → 补 patch 已挂载偏档 + 3 回归测试；⑤ AttachCard/FilesTab 文件类型 helper 复制且 CODE_EXT 漂移（同名文件图标不一致）→ 抽 `lib/fileKind.tsx` 单一源；⑥ files.py/activity.py 游标分页块重复 → 抽 `routes/_pagination.py`。
 
-**review 挂账（4，非阻塞，MVP 低量下不触发或属既有模式债）**（2026-07-10 二轮 review 修复批处置：③附件卡数据源的 WS 失效面已修、其余收纳 [M3-HANDOFF](M3-HANDOFF.md) §8——注意 M2-HANDOFF 已移 archive/）：
+**review 挂账（4，非阻塞，MVP 低量下不触发或属既有模式债）**（2026-07-10 二轮 review 修复批处置：③附件卡数据源的 WS 失效面已修、其余收纳 [M3-HANDOFF](archive/M3-HANDOFF.md) §8——注意 M2-HANDOFF 已移 archive/）：
 - ActivityScreen Unread/Mentions 徽标计数取自首页('all' ≤50)，>50 项时低计（单人 MVP 量小；需 API 提供总数或改分页聚合）。
 - activity/files（及既有 messages/tasks）id 游标在 after 行离开结果集时可能重发首页（`_pagination.py` docstring 已注明，与 CURRENT-HANDOFF 待决项 3 同类，留 keyset 统一整改）。
 - 消息流附件卡数据源 = 单次 useChannelFiles 首页（≤50 新文件），更旧消息的附件卡不显（需消息级 file 关联，架构性，M3 前处理）。

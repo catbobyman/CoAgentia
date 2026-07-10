@@ -299,6 +299,73 @@ def test_activity_page_shape(dual: DualClient) -> None:
     )
 
 
+# ---------------------------------------------------------------- 画布读形状（M3b 双跑）
+
+
+def test_canvas_detail_shape(dual: DualClient) -> None:
+    """GET /channels/{id}/canvas（B §4.9）：build 频道有画布 → CanvasDetail；DM 无画布 → 404。
+
+    mock 是形状源（结构留空），真 server 空画布同样 nodes/edges 皆空——两实现读形状零偏差。
+    """
+    _, client = dual
+    build = _build_channel(client)
+    detail = rest.CanvasDetail.model_validate(
+        client.get(f"/api/channels/{build['id']}/canvas").json()
+    )
+    assert detail.canvas.channel_id == build["id"]
+    assert detail.nodes == [] and detail.edges == []
+    dm = _dm(client)
+    r = client.get(f"/api/channels/{dm['id']}/canvas")
+    assert r.status_code == 404
+    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
+
+
+# ---- 真 server「目录 vs 实 serve」一致性（M2 C4 先例）：画布组除 retry 外全被 serve
+
+_CANVAS_M3 = [(m, p) for m, p in rest.ENDPOINTS_M3 if "canvas" in p]
+_RETRY = ("POST", "/canvas-nodes/{node_id}/retry")
+
+
+def _served(client: TestClient) -> set[tuple[str, str]]:
+    spec = client.get("/openapi.json").json()
+    out: set[tuple[str, str]] = set()
+    for path, methods in spec["paths"].items():
+        for method in methods:
+            out.add((method.upper(), _norm(path.removeprefix("/api"))))
+    return out
+
+
+def _norm(path: str) -> str:
+    import re
+
+    return re.sub(r"\{[^}]+\}", "{}", path)
+
+
+def test_canvas_endpoints_served_except_retry(server_client: TestClient) -> None:
+    """E4 serve 画布组 7 端点（快照 + 节点/边 CRUD + layout）；retry 是 M6 系统节点重跑缺口，
+    本里程碑显式不 serve（E4 任务书）。目录（ENDPOINTS_M3 画布组）↔ create_app() 实 serve 对账。"""
+    served = _served(server_client)
+    missing = [(m, p) for m, p in _CANVAS_M3 if (m, p) != _RETRY and (m, _norm(p)) not in served]
+    assert not missing, f"画布组未 serve: {missing}"
+    assert (_RETRY[0], _norm(_RETRY[1])) not in served, "retry 属 M6，本里程碑不应 serve"
+
+
+def test_canvas_node_added_broadcast(server_client: TestClient) -> None:
+    """真 server：建 agent 节点 → message.created → task.created → canvas.node_added 到达且
+    payload 逐帧过契约模型（信封 + seq 单调，复用 _envelope_of/_drain_until）。"""
+    build = _build_channel(server_client)
+    canvas_id = server_client.get(f"/api/channels/{build['id']}/canvas").json()["canvas"]["id"]
+    with server_client.websocket_connect("/api/ws") as sock:
+        hello = _envelope_of(sock.receive_json())
+        r = server_client.post(
+            f"/api/canvases/{canvas_id}/nodes", json={"title": "画布节点", "kind": "agent"}
+        )
+        assert r.status_code == 201
+        added = _drain_until(sock, ws.EventType.CANVAS_NODE_ADDED, hello.seq)
+        assert added.data["node"]["id"] == r.json()["node"]["id"]
+        assert added.channel_id == build["id"]
+
+
 # ---------------------------------------------------------------- WS 信封与广播（A4 双跑）
 
 

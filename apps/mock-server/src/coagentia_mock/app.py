@@ -521,6 +521,19 @@ async def get_task_contracts(task_id: str) -> Any:
     return []
 
 
+@app.get("/api/channels/{channel_id}/canvas", response_model=rest.CanvasDetail)
+async def get_canvas(channel_id: str) -> Any:
+    """M3b 画布读形状（形状源非逻辑源，纪律 4）：mock 只回画布头 + 空节点/边。
+
+    环校验/gating/baseline 推进只活真 server（E4/E5）。每频道恰一画布，缺行 → 404。
+    """
+    require_channel(channel_id)
+    canvas = store.canvas(channel_id)
+    if canvas is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "canvas not found")
+    return {"canvas": canvas, "nodes": [], "edges": []}
+
+
 @app.post("/api/messages/{message_id}/task", response_model=entities.TaskPublic,
           status_code=201)
 async def convert_message_to_task(message_id: str, body: rest.ConvertToTask) -> Any:

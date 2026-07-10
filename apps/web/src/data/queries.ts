@@ -108,6 +108,14 @@ export const useChannelFiles = (channelId: string | undefined) =>
     enabled: !!channelId,
   });
 
+// P2 画布快照(B §4.9):画布头 + 节点/边。写路径不做乐观更新,靠 canvas.* WS 反流(wsBridge)。
+export const useCanvasSnapshot = (channelId: string | undefined) =>
+  useQuery({
+    queryKey: qk.canvas(channelId ?? '_'),
+    queryFn: () => api.canvasSnapshot(channelId!),
+    enabled: !!channelId,
+  });
+
 // 'all' 单拉,tab 过滤归客户端(挂账批2 简化:原三档缓存 = 双请求 + wsBridge 逐档 patch)。
 export const useActivity = () =>
   useQuery({

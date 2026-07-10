@@ -4,6 +4,9 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import type {
   ActivityItemPublic,
+  CanvasDetail,
+  CanvasEdgePublic,
+  CanvasNodePublic,
   ChannelsSnapshot,
   Envelope,
   MemberPublic,
@@ -14,6 +17,29 @@ import type {
 } from '@coagentia/contracts-ts';
 
 import { qk } from '../lib/queryKeys';
+
+// canvas.* 事件 data 载 canvas_id（非 channel_id）,而快照缓存按 channel 存(qk.canvas)。
+// 二法反查承载该 canvas 的频道快照:①按 canvas.id 命中(带 canvas_id 的事件);
+// ②按内容命中(node_removed/edge_removed 只带 node_id/edge_id,无 canvas_id)。
+// ①是②在谓词 = 「canvas.id 匹配」下的特例,故 patchCanvasById 直接委托 patchCanvasContaining(单一遍历/守卫)。
+function patchCanvasContaining(
+  qc: QueryClient,
+  has: (d: CanvasDetail) => boolean,
+  fn: (d: CanvasDetail) => CanvasDetail,
+): void {
+  for (const [key, d] of qc.getQueriesData<CanvasDetail>({ queryKey: ['canvas'] })) {
+    if (d && has(d)) {
+      qc.setQueryData<CanvasDetail>(key, (prev) => (prev ? fn(prev) : prev));
+    }
+  }
+}
+function patchCanvasById(
+  qc: QueryClient,
+  canvasId: string,
+  fn: (d: CanvasDetail) => CanvasDetail,
+): void {
+  patchCanvasContaining(qc, (d) => d.canvas?.id === canvasId, fn);
+}
 
 export function applyEnvelope(qc: QueryClient, env: Envelope): void {
   const data = env.data as never;
@@ -150,6 +176,81 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
         next[i] = { ...next[i]!, done_at: stamp };
         return next;
       });
+      break;
+    }
+
+    // ---- M3b 画布(契约 C §7 canvas.*）。事件载状态,整体替换、重复应用无害(契约 C §1)。
+    case 'canvas.node_added':
+    case 'canvas.node_updated': {
+      const { node } = data as { node: CanvasNodePublic };
+      patchCanvasById(qc, node.canvas_id, (d) => {
+        const list = d.nodes ?? [];
+        const i = list.findIndex((n) => n.id === node.id);
+        const nodes = i < 0 ? [...list, node] : list.map((n) => (n.id === node.id ? node : n));
+        return { ...d, nodes };
+      });
+      break;
+    }
+
+    case 'canvas.node_removed': {
+      const { node_id } = data as { node_id: string };
+      // 删节点时其入/出边失去锚点,一并清理(server 会另发 edge_removed,但此处收敛防悬挂边)。
+      patchCanvasContaining(
+        qc,
+        (d) => (d.nodes ?? []).some((n) => n.id === node_id),
+        (d) => ({
+          ...d,
+          nodes: (d.nodes ?? []).filter((n) => n.id !== node_id),
+          edges: (d.edges ?? []).filter(
+            (e) => e.from_node_id !== node_id && e.to_node_id !== node_id,
+          ),
+        }),
+      );
+      break;
+    }
+
+    case 'canvas.edge_added': {
+      const { edge } = data as { edge: CanvasEdgePublic };
+      patchCanvasById(qc, edge.canvas_id, (d) => {
+        const list = d.edges ?? [];
+        if (list.some((e) => e.id === edge.id)) return d; // 幂等
+        return { ...d, edges: [...list, edge] };
+      });
+      break;
+    }
+
+    case 'canvas.edge_removed': {
+      const { edge_id } = data as { edge_id: string };
+      patchCanvasContaining(
+        qc,
+        (d) => (d.edges ?? []).some((e) => e.id === edge_id),
+        (d) => ({ ...d, edges: (d.edges ?? []).filter((e) => e.id !== edge_id) }),
+      );
+      break;
+    }
+
+    case 'canvas.layout_updated': {
+      const p = data as {
+        canvas_id: string;
+        positions: Array<{ node_id: string; x: number; y: number }>;
+      };
+      const posById = new Map(p.positions.map((q) => [q.node_id, q]));
+      patchCanvasById(qc, p.canvas_id, (d) => ({
+        ...d,
+        nodes: (d.nodes ?? []).map((n) => {
+          const pos = posById.get(n.id);
+          return pos ? { ...n, pos_x: pos.x, pos_y: pos.y } : n;
+        }),
+      }));
+      break;
+    }
+
+    case 'canvas.baseline_advanced': {
+      const b = data as { canvas_id: string; baseline_version: number; baseline_hash: string };
+      patchCanvasById(qc, b.canvas_id, (d) => ({
+        ...d,
+        canvas: { ...d.canvas, baseline_version: b.baseline_version, baseline_hash: b.baseline_hash },
+      }));
       break;
     }
 

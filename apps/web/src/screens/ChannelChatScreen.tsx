@@ -10,12 +10,14 @@ import { UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 import type { ChannelSearch, Tab } from '../routes/search';
 import {
   memberMap, presenceMap, readPositionsMap,
-  useChannelFiles, useChannelsSnapshot, useMembers, useMessages, usePresence, useTasks, useUsageByTask,
+  useCanvasSnapshot, useChannelFiles, useChannelsSnapshot, useMembers, useMessages, usePresence,
+  useTasks, useUsageByTask,
 } from '../data/queries';
 import { useUiStore } from '../lib/store';
 import { Composer } from '../components/Composer';
 import { MessageFlow } from '../components/MessageFlow';
 import { BoardTab } from '../components/BoardTab';
+import { CanvasTab } from '../components/CanvasTab';
 import { FilesTab } from '../components/FilesTab';
 import { Tabs } from '../components/Tabs';
 import { Topbar } from '../components/Topbar';
@@ -38,6 +40,7 @@ export function ChannelChatScreen({ search, setSearch }: {
   const tasksQ = useTasks(activeChannelId ?? undefined);
   const usageQ = useUsageByTask();
   const filesQ = useChannelFiles(activeChannelId ?? undefined);
+  const canvasQ = useCanvasSnapshot(activeChannelId ?? undefined);
 
   const snap = channelsQ.data;
   const channel = snap?.items?.find((c) => c.id === activeChannelId);
@@ -63,6 +66,7 @@ export function ChannelChatScreen({ search, setSearch }: {
     (t) => !UNCLAIMABLE_STATUSES.includes((t.status ?? 'todo') as TaskStatus),
   ).length;
   const filesCount = files.length;
+  const canvasCount = canvasQ.data?.nodes?.length ?? 0;
   const readPos = readPositionsMap(snap)[channel.id];
   const lastReadId = readPos?.last_read_message_id;
 
@@ -98,7 +102,7 @@ export function ChannelChatScreen({ search, setSearch }: {
         <Topbar channel={channel} stackNames={stackNames} />
         <Tabs
           active={search.tab}
-          canvasCount={3}
+          canvasCount={canvasCount}
           boardCount={boardCount}
           filesCount={filesCount}
           onSelect={selectTab}
@@ -119,6 +123,15 @@ export function ChannelChatScreen({ search, setSearch }: {
             onLocateDone={() => setLocateId(undefined)}
             onSelectTask={selectTask}
             onOpenAgent={openAgent}
+          />
+        ) : search.tab === 'canvas' ? (
+          <CanvasTab
+            channelId={channel.id}
+            tasks={tasks}
+            members={members}
+            presence={presenceQ.data ?? []}
+            search={search}
+            setSearch={setSearch}
           />
         ) : search.tab === 'board' ? (
           <BoardTab

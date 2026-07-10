@@ -9,6 +9,9 @@ from typing import Annotated, Literal
 from pydantic import Field, JsonValue, field_validator
 
 from coagentia_contracts.entities import (
+    CanvasEdgePublic,
+    CanvasNodePublic,
+    CanvasPublic,
     ChannelPublic,
     ComputerPublic,
     ContractModel,
@@ -20,6 +23,7 @@ from coagentia_contracts.entities import (
     TaskPublic,
 )
 from coagentia_contracts.enums import (
+    CanvasNodeKind,
     ContractKind,
     DeliverableKind,
     EvidenceType,
@@ -27,12 +31,13 @@ from coagentia_contracts.enums import (
     MemberKind,
     MemberRole,
     PresenceStatus,
+    SystemAction,
     TaskLevel,
     TaskStatus,
     UiTheme,
     VerifyBy,
 )
-from coagentia_contracts.ids import Ulid
+from coagentia_contracts.ids import Sha256Hex, Ulid
 
 API_BASE = "/api"  # 只绑定 127.0.0.1（契约 B §1 / NFR5）
 PAGE_DEFAULT_LIMIT = 50
@@ -320,6 +325,14 @@ class TaskDetail(ContractModel):
     usage: TaskUsage
 
 
+class CanvasDetail(ContractModel):
+    """GET /channels/{id}/canvas（B §4.9）：画布头 + 节点/边（空画布二者皆空）。"""
+
+    canvas: CanvasPublic
+    nodes: list[CanvasNodePublic] = []
+    edges: list[CanvasEdgePublic] = []
+
+
 class SearchJumps(ContractModel):
     """GET /search 的跳转分组（名称子串命中，NOCASE）。"""
 
@@ -440,6 +453,64 @@ class ContractDraftRequest(ContractModel):
 
     kind: ContractKind
     agent_member_id: Ulid
+
+
+# ---- 4.9 画布端点请求/响应模型（M3b）
+#
+# 结构写（增删节点/边、布局、force-start）落本表并推进基线（B §4.9）；环校验/gating/baseline
+# 推进是 server（E4/E5）职责，此包只登记形状。成功写响应统一附 baseline_version/baseline_hash
+# （B §4.9）——前端据此对齐乐观 UI 与 canvas.baseline_advanced 广播。
+
+
+class NodeCreate(ContractModel):
+    """POST /canvases/{id}/nodes：新增画布节点。
+
+    `kind='agent'` → 由 task_plan 起一个 agent 节点（引用任务，非副本 C8）；`kind='system'` →
+    system_action 必填、check 动作附 command。字段级 kind↔约束由 server 执法（V14/W8）。
+    """
+
+    title: str
+    kind: CanvasNodeKind
+    system_action: SystemAction | None = None  # kind='system' 必填
+    command: str | None = None  # system_action='check' 必填
+    task_plan: TaskPlanBody | None = None  # kind='agent' 立项载体
+
+
+class NodePatch(ContractModel):
+    """PATCH /canvases/{id}/nodes/{node_id}：改节点标题 / check 命令。"""
+
+    title: str | None = None
+    command: str | None = None
+
+
+class EdgeCreate(ContractModel):
+    """POST /canvases/{id}/edges：连边；成环由 server 拓扑校验拒 422 GRAPH_CYCLE（V9）。"""
+
+    from_node_id: Ulid
+    to_node_id: Ulid
+
+
+class LayoutPositionIn(ContractModel):
+    """单节点坐标（pos_x/pos_y 不参与基线快照，契约 A §6）。"""
+
+    node_id: Ulid
+    x: float
+    y: float
+
+
+class LayoutPut(ContractModel):
+    """PUT /canvases/{id}/layout：整批坐标覆盖（不推进基线）。"""
+
+    positions: list[LayoutPositionIn]
+
+
+class CanvasMutation(ContractModel):
+    """画布结构写统一响应（B §4.9）：附最新基线版本/指纹，命中的节点或边随写回填。"""
+
+    baseline_version: int
+    baseline_hash: Sha256Hex
+    node: CanvasNodePublic | None = None
+    edge: CanvasEdgePublic | None = None
 
 
 # ---------------------------------------------------- M1 端点清单（mock 一致性测试的基准）

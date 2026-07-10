@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 建立 | 2026-07-10，M3 开工首会话（任务书 [M3-HANDOFF.md](M3-HANDOFF.md)） |
+| 建立 | 2026-07-10，M3 开工首会话（任务书 [M3-HANDOFF.md](archive/M3-HANDOFF.md)） |
 | 用途 | M3 逐模块执行计划：步骤分解、会话/agent 切分、测试策略、验收映射、进度表（体例同 [M2-DEV-PLAN.md](M2-DEV-PLAN.md)） |
 | 本批范围 | **块 M3a「契约与校验」**（E0·E1·E2·E3 ＋ B-M3-1；出口清单 §9a）。块 M3b 不与 a 交错，等 §9a 全绿再另开 |
 | 编排方式 | 多 agent 工作流（自编排）：地基阶段 E0 ∥ E1 并行 → 后端 E2→E3 串行 ∥ 前端 B-M3-1 并行 → 整合守门 → 实机 verify → `/code-review high` |
@@ -128,3 +128,21 @@
 | /code-review high | ✅ 8 角度 finder → CONFIRMED 全修（6 正确性+3 质量+回归测试），复核实机通过（同证据 §D） |
 
 **块 M3a 出口（§9a 清单）全绿——里程碑前半完成。块 M3b（画布与 gating）不与 a 交错，另开会话按 M3-HANDOFF §5/§9b。**
+
+## 7. 进度表（块 M3b 收口 2026-07-10）
+
+编排方式：多 agent 工作流（自编排）——**E0b 契约地基先行** → 三轨并行（**后端 E4→E5 串行 ∥ 前端 B-M3-2→B-M3-3 串行 ∥ FTS trigram**，文件域不相交）→ 守门汇总 → 实机 verify（主 loop 亲为）→ `/code-review high`（8 角度工作流）→ 修复 → 复跑。
+
+| 模块 | 状态 | 备注 |
+| --- | --- | --- |
+| E0b 契约登记 + 图内核 | ✅ 完成 | rest.py canvas 请求/响应模型（CanvasDetail/NodeCreate/NodePatch/EdgeCreate/LayoutPut/CanvasMutation）；`kernel/graph.py`（detect_cycle/derive_blocked，权威）+ `golden/graph.json` 判例；mock GET canvas 读形状；pnpm gen 确定 |
+| E4 画布结构端点 | ✅ 完成 | `routes/canvas.py` + `canvas/service.py`：快照/nodes CRUD（agent 节点建 L2 任务+锚点消息=第三途径）/edges CRUD（写事务拓扑排序，成环 GRAPH_CYCLE）/layout PUT（不 bump）；每写串行化点 + baseline bump + baseline_advanced 广播；目录 vs 实 serve 一致性测试（retry 归 M6 不 serve） |
+| E5 blocked gating + force-start | ✅ 完成 | blocked 实时推导（图内核，不落库）；两处投递决策点门（`_deliver_message` + `reconcile`，作用于投递批含水位截断）；force-start（仅人类 403 C3、双留痕、不改状态、hub 桥本次放行）；R4/R7 状态写不受限 |
+| B-M3-2 画布页签 | ✅ 完成 | React Flow（@xyflow/react）：节点=任务卡实时着色 + blocked 级联 + 系统菱形；连边成环 TS 预判 + 服务端复核；断边/布局防抖 PUT（拖拽中不回弹坐标）；深链 ?node= 双向；`lib/graph.ts` 镜像 + golden 对照；wsBridge 7 个 canvas.* handler |
+| B-M3-3 升格/force-start UI | ✅ 完成 | 新建节点弹层含契约区（Agent 起草/手填）；ForceStartModal 二次确认（P13b 范式）；看板 P3/P11 blocked 徽标（`blockedTaskIdsFromCanvas` 共享 `lib/graph.deriveCanvasBlocked`） |
+| FTS trigram（浮动件） | ✅ 完成 | `0005_fts_trigram` 迁移（unicode61→trigram，双路+downgrade）；<3 字 CJK 走正文/锚点 LIKE 兜底（元字符转义）；契约 A §10.4 回写「3 字符地板」结论 |
+| 整合守门 | ✅ 后端 **483 passed+3 skipped**、web vitest **76**、pyright 0（并入 typecheck）、ruff 干净、gen 确定、双侧 build 绿 |
+| 实机 verify | ✅ 真 uvicorn 8799 + 真 websockets daemon-sim **17/17**（六节点 DAG/成环拒/T7/force-start 403·留痕/blocked 不唤醒·解锁·force-start 唤醒无死锁/R4·R7）+ 浏览器同源 6 截图（含 **WS 无刷新实时解锁**）+ console 0 错误（[M3B-EVIDENCE.md](../verify/M3B-EVIDENCE.md)） |
+| /code-review high | ✅ 8 角度 finder → 24 候选 → **10 CONFIRMED 全修 + 4 回归测试**：gating 投递批泄漏（过滤 gated+水位截首个 gated 前，不消费）· patch_node V14 复校 · LIKE 元字符转义 · tasks 锚点 <3 字兜底 · blocked_task_ids 收窄单画布 · 拖拽 WS 回弹 · satisfied 前后端抽 graph.ts · wsBridge helper 去重；复跑守门 + E6 实机 17/17 复证 |
+
+**块 M3b 出口（§9b 清单 7–13）全绿——PRD M3 出口达成，里程碑收口。**

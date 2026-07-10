@@ -290,6 +290,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/channels/{channel_id}/canvas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Canvas
+         * @description M3b 画布读形状（形状源非逻辑源，纪律 4）：mock 只回画布头 + 空节点/边。
+         *
+         *     环校验/gating/baseline 推进只活真 server（E4/E5）。每频道恰一画布，缺行 → 404。
+         */
+        get: operations["get_canvas_api_channels__channel_id__canvas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/channels/{channel_id}/files": {
         parameters: {
             query?: never;
@@ -888,6 +910,88 @@ export interface components {
             file: string;
         };
         /**
+         * CanvasDetail
+         * @description GET /channels/{id}/canvas（B §4.9）：画布头 + 节点/边（空画布二者皆空）。
+         */
+        CanvasDetail: {
+            canvas: components["schemas"]["CanvasPublic"];
+            /**
+             * Edges
+             * @default []
+             */
+            edges: components["schemas"]["CanvasEdgePublic"][];
+            /**
+             * Nodes
+             * @default []
+             */
+            nodes: components["schemas"]["CanvasNodePublic"][];
+        };
+        /** CanvasEdgePublic */
+        CanvasEdgePublic: {
+            /** Canvas Id */
+            canvas_id: string;
+            /** From Node Id */
+            from_node_id: string;
+            /** Id */
+            id: string;
+            /** To Node Id */
+            to_node_id: string;
+        };
+        /**
+         * CanvasNodeKind
+         * @enum {string}
+         */
+        CanvasNodeKind: "agent" | "system";
+        /** CanvasNodePublic */
+        CanvasNodePublic: {
+            /** Canvas Id */
+            canvas_id: string;
+            /** Command */
+            command?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /**
+             * Is Summary
+             * @default false
+             */
+            is_summary: boolean;
+            kind: components["schemas"]["CanvasNodeKind"];
+            /**
+             * Pos X
+             * @default 0
+             */
+            pos_x: number;
+            /**
+             * Pos Y
+             * @default 0
+             */
+            pos_y: number;
+            system_action?: components["schemas"]["SystemAction"] | null;
+            system_status?: components["schemas"]["SystemNodeStatus"] | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** CanvasPublic */
+        CanvasPublic: {
+            /** Baseline Hash */
+            baseline_hash: string;
+            /**
+             * Baseline Version
+             * @default 0
+             */
+            baseline_version: number;
+            /** Channel Id */
+            channel_id: string;
+            /** Id */
+            id: string;
+            /** Updated At */
+            updated_at: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
          * CardKind
          * @description 结构化卡片锚点消息（契约 A messages.card_kind；卡片 = 不可变锚点 + 实体状态走 WS）。
          * @enum {string}
@@ -1453,6 +1557,16 @@ export interface components {
             /** Skills */
             skills: string[];
         };
+        /**
+         * SystemAction
+         * @enum {string}
+         */
+        SystemAction: "merge" | "check";
+        /**
+         * SystemNodeStatus
+         * @enum {string}
+         */
+        SystemNodeStatus: "idle" | "running" | "success" | "failed";
         /** TaskContractPublic */
         TaskContractPublic: {
             body: components["schemas"]["JsonValue"];
@@ -2307,6 +2421,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_canvas_api_channels__channel_id__canvas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasDetail"];
                 };
             };
             /** @description Validation Error */

@@ -1,7 +1,8 @@
-"""C4 真 server：GET /search 三分组（jumps / messages-FTS / tasks）+ 中文 FTS 分词实测。
+"""C4 真 server：GET /search 三分组（jumps / messages-FTS / tasks）+ 中文 FTS 子串检索。
 
-中文实测结论（2026-07-09，契约 A §10.4）：见 test_chinese_fts_unicode61_limitation——
-unicode61 把连续 CJK 串当单一 token，子串检索不命中；需 M3 换 trigram 分词器（见 search.py 头注）。
+中文分词收口（2026-07-10，契约 A §10.4，M3b）：messages_fts 已由 unicode61 改 trigram（0005 迁移），
+连续 CJK 子串（≥3 字 MATCH、<3 字 LIKE 兜底）均可命中；见 test_chinese_fts_trigram_substring 与
+专项 test_fts_trigram.py（search.py 头注同步）。
 """
 
 from __future__ import annotations
@@ -129,33 +130,69 @@ def test_from_member_and_in_channel_filters(server_client: TestClient) -> None:
     assert by_ghost.messages == []
 
 
-def test_chinese_fts_unicode61_limitation(server_client: TestClient) -> None:
-    """中文分词实测（契约 A §10.4 收口）：unicode61 把连续 CJK 串当单一 token。
+def test_chinese_fts_trigram_substring(server_client: TestClient) -> None:
+    """中文子串检索（契约 A §10.4 收口，M3b）：messages_fts 已由 unicode61 改 trigram。
 
-    - body="修复登录页面的崩溃"（无分隔）→ 整串是一个 token；子串 "登录"/"崩溃" MATCH **不命中**。
-    - 整串完整查询命中；空白分隔的 CJK 词（"上线"）作为独立 token 可命中。
-    结论：unicode61 对中文子串检索不够用，M3 需换 trigram 分词器（或分词预切）。
+    - body="修复登录页面的崩溃"（连续 CJK）：≥3 字子串（"登录页面"）经 trigram MATCH 命中；
+      <3 字子串（"登录"/"崩溃"）经正文 LIKE 兜底命中——unicode61 时代这些均**不**命中。
+    - 整串完整查询、空白分隔的 CJK 词（"上线"，2 字走 LIKE）同样命中。
+    详见 test_fts_trigram.py（本项为回归护栏，与其它 search 用例同处）。
     """
     build = _channel(server_client, BUILD)["id"]
     _post(server_client, build, "修复登录页面的崩溃")
     _post(server_client, build, "部署 上线 完成")
 
-    # 子串不命中（连续 CJK 单 token 的固有局限）。
+    # ≥3 字连续 CJK 子串：trigram MATCH 命中（老 unicode61 不命中）。
+    r_tri = rest.SearchResponse.model_validate(
+        server_client.get("/api/search", params={"q": "登录页面"}).json()
+    )
+    assert len(r_tri.messages) == 1
+    # <3 字 CJK 子串：LIKE 兜底命中（trigram 切不出 token）。
     for sub in ("登录", "崩溃"):
         res = rest.SearchResponse.model_validate(
             server_client.get("/api/search", params={"q": sub}).json()
         )
-        assert res.messages == [], f"unicode61 子串 {sub} 预期不命中"
+        assert len(res.messages) == 1, f"trigram+LIKE 子串 {sub} 预期命中"
     # 整串命中。
     whole = rest.SearchResponse.model_validate(
         server_client.get("/api/search", params={"q": "修复登录页面的崩溃"}).json()
     )
     assert len(whole.messages) == 1
-    # 空白分隔的独立 CJK token 命中。
+    # 空白分隔的 CJK 词（2 字，走 LIKE）命中。
     delimited = rest.SearchResponse.model_validate(
         server_client.get("/api/search", params={"q": "上线"}).json()
     )
     assert len(delimited.messages) == 1
+
+
+def test_like_metacharacters_are_literal_not_wildcards(server_client: TestClient) -> None:
+    """LIKE 兜底转义（code-review #3）：<3 字 q 的 %/_ 当字面量子串，不当通配符匹配全部行。"""
+    build = _channel(server_client, BUILD)["id"]
+    _post(server_client, build, "普通无百分号的消息内容")
+    _post(server_client, build, "含 50% 折扣的消息")
+    # q='%' 只应命中确含字面量 '%' 的消息，而非全部非空正文。
+    res = rest.SearchResponse.model_validate(
+        server_client.get("/api/search", params={"q": "%"}).json()
+    )
+    assert all("%" in h.message.body for h in res.messages)
+    assert any("50%" in h.message.body for h in res.messages)
+    # q='_' 同理：无字面下划线的消息不应被匹配。
+    res_u = rest.SearchResponse.model_validate(
+        server_client.get("/api/search", params={"q": "_"}).json()
+    )
+    assert all("_" in h.message.body for h in res_u.messages)
+
+
+def test_short_cjk_query_matches_task_via_anchor_body(server_client: TestClient) -> None:
+    """tasks 组 <3 字锚点正文 LIKE 兜底（code-review #4/#5）：短 CJK 子串只在锚点正文也命中任务。"""
+    build = _channel(server_client, BUILD)["id"]
+    # 任务标题不含 "蟠桃"，仅锚点消息正文含（连续 CJK）。
+    t = _task(server_client, build, "本批交付 蟠桃 相关模块", title="unrelated-title-xyz")
+    task_id = t["task"]["id"]
+    res = rest.SearchResponse.model_validate(
+        server_client.get("/api/search", params={"q": "蟠桃"}).json()
+    )
+    assert any(x.id == task_id for x in res.tasks), "2 字 CJK 锚点正文子串应经 LIKE 兜底命中任务"
 
 
 def test_empty_query_returns_empty_groups(server_client: TestClient) -> None:

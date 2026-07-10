@@ -1,0 +1,83 @@
+[
+  {
+    "fn": "detect_cycle",
+    "name": "empty_graph",
+    "node_ids": [],
+    "edges": [],
+    "cycle": null
+  },
+  {
+    "fn": "detect_cycle",
+    "name": "legal_dag",
+    "node_ids": ["A", "B", "C"],
+    "edges": [["A", "B"], ["B", "C"]],
+    "cycle": null
+  },
+  {
+    "fn": "detect_cycle",
+    "name": "diamond_no_cycle",
+    "node_ids": ["A", "B", "C", "D"],
+    "edges": [["A", "B"], ["A", "C"], ["B", "D"], ["C", "D"]],
+    "cycle": null
+  },
+  {
+    "fn": "detect_cycle",
+    "name": "self_loop",
+    "node_ids": ["A"],
+    "edges": [["A", "A"]],
+    "cycle": ["A"]
+  },
+  {
+    "fn": "detect_cycle",
+    "name": "two_cycle",
+    "node_ids": ["A", "B"],
+    "edges": [["A", "B"], ["B", "A"]],
+    "cycle": ["A", "B"]
+  },
+  {
+    "fn": "detect_cycle",
+    "name": "three_cycle",
+    "node_ids": ["A", "B", "C"],
+    "edges": [["A", "B"], ["B", "C"], ["C", "A"]],
+    "cycle": ["A", "B", "C"]
+  },
+  {
+    "fn": "detect_cycle",
+    "name": "indirect_cycle",
+    "node_ids": ["A", "B", "C", "D"],
+    "edges": [["A", "B"], ["B", "C"], ["C", "D"], ["D", "B"]],
+    "cycle": ["B", "C", "D"]
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "linear_chain_upstream_incomplete",
+    "node_ids": ["A", "B", "C"],
+    "edges": [["A", "B"], ["B", "C"]],
+    "satisfied": [],
+    "blocked": ["B", "C"]
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "linear_chain_partial_satisfied",
+    "node_ids": ["A", "B", "C"],
+    "edges": [["A", "B"], ["B", "C"]],
+    "satisfied": ["A"],
+    "blocked": ["C"]
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "diamond_join_blocked",
+    "node_ids": ["A", "B", "C", "D"],
+    "edges": [["A", "B"], ["A", "C"], ["B", "D"], ["C", "D"]],
+    "satisfied": ["A"],
+    "blocked": ["D"]
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "all_satisfied_empty",
+    "node_ids": ["A", "B", "C"],
+    "edges": [["A", "B"], ["B", "C"]],
+    "satisfied": ["A", "B", "C"],
+    "blocked": []
+  }
+]

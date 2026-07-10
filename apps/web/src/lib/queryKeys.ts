@@ -17,6 +17,8 @@ export const qk = {
   // ---- M2
   taskDetail: (taskId: string) => ['taskDetail', taskId] as const,
   channelFiles: (channelId: string) => ['channelFiles', channelId] as const,
+  // ---- M3b 画布:按 channel 存快照;WS canvas.* 事件载 canvas_id,桥接内按 canvas.id 反查该键。
+  canvas: (channelId: string) => ['canvas', channelId] as const,
   activity: (filter: string) => ['activity', filter] as const,
   search: (q: string) => ['search', q] as const,
 };

@@ -70,6 +70,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.engine import Connection, Engine
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
+from coagentia_server.canvas import service as canvas_service
 from coagentia_server.computers.gateway_tx import gateway_tx
 from coagentia_server.db import models
 from coagentia_server.events import EventBus
@@ -654,6 +655,11 @@ class DaemonHub:
                 return
             msg = dict(msg)
             channel = dict(channel)
+            # 投递 gating（裁决 2）：本消息属 blocked 任务线程 → 压制唤醒与投递（含 busy 直投），
+            # 消息留积压，解除阻塞后随后续触发/对账投递。gating 与 msg 绑定（与收件 Agent 无关），
+            # 故一算即对全体收件人生效，直接短路。
+            if canvas_service.message_delivery_gated(c, msg):
+                return
             recipients = self._channel_agent_recipients(c, channel_id)
         for agent_id, computer_id in recipients:
             conn = self._conns.get(computer_id)
@@ -680,27 +686,56 @@ class DaemonHub:
                 await self._deliver_backlog(conn, agent_id, channel_id)
             # idle + 未命中 → 静默积压（不发帧，随下次唤醒随批投递）
 
+    def _filter_gated(
+        self, c: Connection, raw: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """投递 gating 作用于**投递批**（裁决 2，非仅唤醒触发）：从积压里剔除 blocked 任务线程消息。
+
+        返回 (可投消息, read_position 水位)：gated 消息不投；水位**只推进到首个 gated 之前**——
+        gated 消息及其后留积压、解除阻塞后重评（首条即 gated → 水位 None＝本次不推进）。gated 之后
+        的非 gated 消息仍投（不饿死无关工作），其重叠重投由 daemon 频道去重覆盖（at-least-once）。
+        无 blocked 任务时（绝大多数）message_delivery_gated 恒 False → 全投、水位=末条，行为不变。
+        """
+        deliver: list[dict[str, Any]] = []
+        watermark: str | None = None
+        hit_gated = False
+        for m in raw:
+            if canvas_service.message_delivery_gated(c, m):
+                hit_gated = True
+                continue
+            deliver.append(m)
+            if not hit_gated:
+                watermark = m["id"]
+        return deliver, watermark
+
     async def _deliver_backlog(
         self, conn: DaemonConnection, agent_id: str, channel_id: str
     ) -> None:
-        """投递积压批 = read_position 之后全部应投消息，一次喂齐（§8.2）。
+        """投递积压批 = read_position 之后全部**非 gated** 应投消息，一次喂齐（§8.2 + 裁决 2）。
 
         积压在 send_instr 取得 agent_lock **之后**重算（prepare）：busy 期每条新消息各起一个并发
         投递任务，若在锁外先算批、锁内后发，相邻批会重叠重投较低 message_id（#5）。锁内重算使
         后到任务反映此前 ack 已推进的 read_position——已投完则返回 None 不发帧。
         """
-        def _prepare() -> tuple[MessageDeliverData, DeliverMeta] | None:
+        def _prepare() -> tuple[MessageDeliverData, DeliverMeta | None] | None:
             with self._engine.connect() as c:
-                backlog = self._backlog(c, agent_id, channel_id)
-            if not backlog:
+                deliver, watermark = self._filter_gated(
+                    c, self._backlog(c, agent_id, channel_id)
+                )
+            if not deliver:
                 return None
             # deliver 帧是未附着面（契约 A v1.0.4：files=None），直接 model 化免 dict 中转
-            messages = [entities.MessagePublic.model_validate(m) for m in backlog]
-            meta = DeliverMeta(
-                agent_member_id=agent_id,
-                channel_id=channel_id,
-                workspace_id=conn.workspace_id,
-                last_message_id=backlog[-1]["id"],
+            messages = [entities.MessagePublic.model_validate(m) for m in deliver]
+            # 水位 None（首条即 gated）→ 不带 meta，不推进 read_position（消息留积压重评）。
+            meta = (
+                DeliverMeta(
+                    agent_member_id=agent_id,
+                    channel_id=channel_id,
+                    workspace_id=conn.workspace_id,
+                    last_message_id=watermark,
+                )
+                if watermark is not None
+                else None
             )
             data = MessageDeliverData(
                 agent_member_id=agent_id, channel_id=channel_id, messages=messages
@@ -775,7 +810,9 @@ class DaemonHub:
         """
         present = dict(conn.present)
         resume_boots: list[AgentBoot] = []
-        deliver_plans: list[tuple[str, str, list[dict[str, Any]], WakeReason | None, bool]] = []
+        deliver_plans: list[
+            tuple[str, str, list[dict[str, Any]], str | None, WakeReason | None]
+        ] = []
         with gateway_tx(self._engine, self._bus) as tx:
             agents = self._agents_on_computer(tx.conn, conn.computer_id)
             status_by_id = {a["member_id"]: a["status"] for a in agents}
@@ -806,21 +843,25 @@ class DaemonHub:
                 if status not in _DELIVERABLE:
                     continue
                 for ch in self._agent_channels(tx.conn, aid):
-                    backlog = self._backlog(tx.conn, aid, ch["id"])
-                    if not backlog:
+                    raw = self._backlog(tx.conn, aid, ch["id"])
+                    if not raw:
                         continue
+                    # 投递批剔除 blocked 任务线程消息（裁决 2），水位截到首个 gated 之前。
+                    deliver, watermark = self._filter_gated(tx.conn, raw)
+                    if not deliver:
+                        continue  # 全 gated → 无可投
                     if status == AgentStatus.BUSY.value:
-                        deliver_plans.append((aid, ch["id"], backlog, None, True))
-                    else:  # idle：积压中命中任一触发 → wake+deliver；否则静默积压
-                        reason = self._backlog_trigger(tx.conn, backlog, ch, aid)
+                        deliver_plans.append((aid, ch["id"], deliver, watermark, None))
+                    else:  # idle：积压中命中任一**非 gated** 触发 → wake+deliver；否则静默积压
+                        reason = self._backlog_trigger(tx.conn, raw, ch, aid)
                         if reason is not None:
-                            deliver_plans.append((aid, ch["id"], backlog, reason, True))
+                            deliver_plans.append((aid, ch["id"], deliver, watermark, reason))
         # 事务外下发指令（DB 已提交，避免持锁跨 await）。
         for boot in resume_boots:
             await self.send_instr(
                 conn, boot.agent_member_id, InstrType.AGENT_START, AgentStartData(agent=boot)
             )
-        for aid, channel_id, backlog, reason, _do in deliver_plans:
+        for aid, channel_id, deliver, watermark, reason in deliver_plans:
             if reason is not None:
                 await self.send_instr(
                     conn,
@@ -829,16 +870,21 @@ class DaemonHub:
                     AgentWakeData(
                         agent_member_id=aid,
                         reason=reason,
-                        refs=WakeRefs(message_ids=[m["id"] for m in backlog]),
+                        refs=WakeRefs(message_ids=[m["id"] for m in deliver]),
                     ),
                 )
             # deliver 帧是未附着面（契约 A v1.0.4：files=None），直接 model 化免 dict 中转
-            messages = [entities.MessagePublic.model_validate(m) for m in backlog]
-            meta = DeliverMeta(
-                agent_member_id=aid,
-                channel_id=channel_id,
-                workspace_id=conn.workspace_id,
-                last_message_id=backlog[-1]["id"],
+            messages = [entities.MessagePublic.model_validate(m) for m in deliver]
+            # 水位 None（首条即 gated）→ 不带 meta、不推进 read_position（消息留积压重评）。
+            meta = (
+                DeliverMeta(
+                    agent_member_id=aid,
+                    channel_id=channel_id,
+                    workspace_id=conn.workspace_id,
+                    last_message_id=watermark,
+                )
+                if watermark is not None
+                else None
             )
             await self.send_instr(
                 conn,
@@ -852,6 +898,9 @@ class DaemonHub:
         self, c: Connection, backlog: list[dict[str, Any]], channel: dict[str, Any], agent_id: str
     ) -> WakeReason | None:
         for m in backlog:
+            # 投递 gating（裁决 2）：积压里属 blocked 任务线程的消息不构成唤醒触发。
+            if canvas_service.message_delivery_gated(c, m):
+                continue
             reason = self._compute_trigger(c, m, channel, agent_id)
             if reason is not None:
                 return reason
@@ -935,6 +984,60 @@ class DaemonHub:
             self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
         )
         return ack.result.value
+
+    def force_start_wake(self, owner_member_id: str | None, channel_id: str) -> None:
+        """force-start override（裁决 3）：对任务 owner agent 绕过 blocked 门直投一次 wake+deliver。
+
+        best-effort：owner 为人类/空 或 daemon 离线 → 仅留痕（route 已写 task_events + 系统消息），
+        静默返回不报错。范式仿 send_lifecycle/inject_contract_draft_request 经 _run_sync 等 ack。
+        """
+        if owner_member_id is None:
+            return  # 未认领 → 无投递面
+        with self._engine.connect() as c:
+            row = c.execute(
+                select(_AGENT.c.computer_id).where(_AGENT.c.member_id == owner_member_id)
+            ).first()
+        if row is None:
+            return  # owner 是人类成员（非 agent）→ 无 daemon 投递面
+        conn = self._conns.get(row[0])
+        if conn is None:
+            return  # daemon 离线
+        with contextlib.suppress(DaemonOffline):
+            self._run_sync(self._force_start_deliver(conn, owner_member_id, channel_id))
+
+    async def _force_start_deliver(
+        self, conn: DaemonConnection, agent_id: str, channel_id: str
+    ) -> None:
+        """force-start 直投（绕过 blocked 门，即「本次」放行）：wake + deliver 一次。
+
+        **不带 deliver_meta**：本方法经 _run_sync 在 force-start 路由的写事务尚未提交时同步调用；
+        若 deliver ack 回写 read_positions 会与该未提交写事务争 SQLite 写锁（busy_timeout 内阻塞
+        事件循环 → 死锁）。故 override 投递不推进 read_position——本条消息仍留积压，解除阻塞后正常
+        投递再推进（at-least-once + daemon 频道去重覆盖重叠）。积压读的是已提交态（含此前被 gating
+        压制的消息），未含 route 尚未提交的锚点系统消息，符合 override 语义。
+        """
+        with self._engine.connect() as c:
+            backlog = self._backlog(c, agent_id, channel_id)
+        await self.send_instr(
+            conn,
+            agent_id,
+            InstrType.AGENT_WAKE,
+            AgentWakeData(
+                agent_member_id=agent_id,
+                reason=WakeReason.CANVAS_ACTIVATION,
+                refs=WakeRefs(message_ids=[m["id"] for m in backlog]),
+            ),
+        )
+        if backlog:
+            messages = [entities.MessagePublic.model_validate(m) for m in backlog]
+            await self.send_instr(
+                conn,
+                agent_id,
+                InstrType.MESSAGE_DELIVER,
+                MessageDeliverData(
+                    agent_member_id=agent_id, channel_id=channel_id, messages=messages
+                ),
+            )
 
     def query_home_tree(self, agent_id: str, path: str) -> dict[str, Any]:
         conn, _agent = self._require_conn_for_agent(agent_id)

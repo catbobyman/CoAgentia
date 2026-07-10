@@ -1,0 +1,18 @@
+/* force-start 二次确认弹层(P13b 危险确认范式;token 零发明,复用 scrim/modal/ops/btn-danger)。
+   仅补 modal 内的任务行 / 说明 / 红色警告条,不覆写共享 .modal/.scrim。 */
+.fsmodal { width: 440px; }
+
+.fsbody { display: flex; flex-direction: column; gap: 12px; }
+
+/* 目标任务行:锁标 + 编号 + 标题(与画布/看板 blocked 视觉一致) */
+.fstask { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); }
+.fstask svg.lucide { width: 15px; height: 15px; color: var(--warning); flex: none; }
+.fstask .no { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); flex: none; }
+.fstask .ti { font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fsdesc { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin: 0; }
+.fsdesc b { color: var(--text); font-weight: 600; }
+
+/* 红色校验条:danger token,强调越过 gating 的代价与留痕 */
+.fswarn { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; font-size: 12px; line-height: 1.5; color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger); border-radius: var(--radius-s); }
+.fswarn svg.lucide { width: 15px; height: 15px; flex: none; margin-top: 1px; }

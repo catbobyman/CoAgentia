@@ -57,6 +57,9 @@ class Store:
     def channel(self, channel_id: str) -> dict[str, Any] | None:
         return next((c for c in self.channels if c["id"] == channel_id), None)
 
+    def canvas(self, channel_id: str) -> dict[str, Any] | None:
+        return next((c for c in self.canvases if c["channel_id"] == channel_id), None)
+
     def agent(self, member_id: str) -> dict[str, Any] | None:
         return next((a for a in self.agents if a["member_id"] == member_id), None)
 

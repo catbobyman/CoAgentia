@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from coagentia_server.routes import (
     activity,
+    canvas,
     channels,
     computers,
     files,
@@ -26,5 +27,6 @@ def install_routes(app: FastAPI) -> None:
         files,
         search,
         activity,
+        canvas,
     ):
         app.include_router(module.router)

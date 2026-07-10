@@ -2,7 +2,7 @@
 // 由类型化深链 ?thread= 驱动(在 ChannelChatScreen 内消费,非顶层路由)。
 // M2 接真:opsbar 的 claim/unclaim/状态流转打真端点;契约/usage 用 useTaskDetail 真数据(成功靠 WS task.updated 回灌,无乐观更新)。
 import { useState } from 'react';
-import { ChevronDown, CircleAlert, Sparkles, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, CircleAlert, Sparkles, X } from 'lucide-react';
 
 import type {
   ContractKind,
@@ -248,6 +248,16 @@ export function ThreadPanel({
     void api.setTaskStatus(task.id, to).catch(onWriteError);
   };
 
+  // L1→L2 升格(M3 P-2;PATCH level=l2)。单向放行,l2→l1 由 server 拒 422 TASK_TRANSITION_INVALID
+  // (rule=D1,onWriteError 兜底)。成功回灌靠 WS task.updated;画布经 POST nodes 建的任务直接是 L2,
+  // 此按钮服务「既有 L1 任务补契约升格」这一辅路(无「引用既有任务为节点」端点)。
+  const canPromote = !!task && task.level !== 'l2';
+  const doPromote = () => {
+    if (!task) return;
+    setHandoffMissing(undefined);
+    void api.promoteTask(task.id).catch(onWriteError);
+  };
+
   // "让 @Agent 起草"(契约 D 定向直投唤醒);202 成功 toast,daemon 离线(503)单独文案。
   const doRequestDraft = (agentMemberId: string, kind: ContractKind) => {
     if (!task) return;
@@ -335,6 +345,18 @@ export function ThreadPanel({
           <button className="draft-ai" onClick={() => setDraftOpen((v) => !v)} disabled={!task}>
             <Sparkles />让 @Agent 起草
           </button>
+          {canPromote && (
+            <button
+              className="draft-ai"
+              data-testid="promote-l2"
+              style={{ marginLeft: 8 }}
+              onClick={doPromote}
+              disabled={!task}
+              title="升格为 L2:进入正式立项(契约需齐备)"
+            >
+              <ArrowUp />升格为 L2
+            </button>
+          )}
           {draftOpen && (
             <div className="drop" style={{ top: 32, bottom: 'auto', left: 0, right: 'auto' }}>
               {agents.length === 0 && <div className="it" style={{ color: 'var(--text-muted)' }}>暂无可用 Agent</div>}

@@ -60,6 +60,21 @@ def test_read_endpoints_validate_against_contracts(client: TestClient) -> None:
         entities.TaskPublic.model_validate(t)
 
 
+def test_canvas_read_shape(client: TestClient) -> None:
+    channels = client.get("/api/channels").json()["items"]
+    build = next(c for c in channels if c["name"] == "build")
+    detail = rest.CanvasDetail.model_validate(
+        client.get(f"/api/channels/{build['id']}/canvas").json()
+    )
+    assert detail.canvas.channel_id == build["id"]
+    assert detail.nodes == [] and detail.edges == []  # mock 形状源：结构留空
+    # 无画布的频道（DM）→ 404 NOT_FOUND
+    dm = next(c for c in channels if c["kind"] == "dm")
+    r = client.get(f"/api/channels/{dm['id']}/canvas")
+    assert r.status_code == 404
+    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
+
+
 def test_agent_detail_shapes(client: TestClient) -> None:
     members = client.get("/api/members").json()
     pat = next(m for m in members if m["name"] == "Pat")

@@ -9,10 +9,17 @@ from __future__ import annotations
 from typing import Any
 
 from coagentia_contracts import constants, entities, rest
-from coagentia_contracts.enums import ChannelKind, MemberKind, TaskEventKind, TaskLevel, TaskStatus
+from coagentia_contracts.enums import (
+    ChannelKind,
+    MemberKind,
+    MessageKind,
+    TaskEventKind,
+    TaskLevel,
+    TaskStatus,
+)
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import ValidationError
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
 from coagentia_server.api import ApiError
@@ -20,7 +27,7 @@ from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx
 from coagentia_server.routes._pagination import keyset_page
-from coagentia_server.routes.serialize import task_contract_public, task_public
+from coagentia_server.routes.serialize import message_public, task_contract_public, task_public
 from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -279,6 +286,56 @@ def set_task_status(
         tx, final, kind=TaskEventKind.STATUS_CHANGE, actor=me["id"], from_status=cur, to_status=to
     )
     return task_public(final)
+
+
+# ---------------------------------------------------------------- force-start（裁决 3）
+
+
+@router.post("/tasks/{task_id}/force-start", response_model=entities.TaskPublic)
+def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
+    """人类强制启动任务（裁决 3）：override 本次投递 gating（解除该任务 owner agent 本次投递压制）。
+
+    效果 = 解除本次投递 gating + 双留痕；**不改 status、不删边**（gating 只作用投递层）。
+    Agent 不得 force-start（403 C3）。留痕 = task_events(force_start) 行 + 任务线程锚点系统消息。
+    提交后经 daemon_hub.force_start_wake 桥「本次放行」：owner 是 agent 且 daemon 在线则直投一次
+    wake+deliver（绕过 blocked 门）；owner 人类/空 或 daemon 离线则仅留痕（best-effort）。
+    """
+    task = _require_task(tx, task_id)
+    me = acting_member(request, tx.conn)
+    if me["kind"] == MemberKind.AGENT:
+        raise ApiError(
+            403, rest.ErrorCode.PERMISSION_DENIED, "仅人类可强制启动任务", rule="C3"
+        )
+    # 留痕 1：task_events(force_start)（from/to_status 留空——不改状态）。
+    tasks_service.write_event(tx.conn, task_id, TaskEventKind.FORCE_START, actor=me["id"])
+    # 留痕 2：任务线程锚点系统消息（author=None、kind=system、thread=任务根消息）。
+    anchor_id = tasks_service.service.new_ulid()
+    tx.conn.execute(
+        insert(_MSG).values(
+            id=anchor_id,
+            workspace_id=task["workspace_id"],
+            channel_id=task["channel_id"],
+            thread_root_id=task["root_message_id"],
+            author_member_id=None,
+            kind=MessageKind.SYSTEM,
+            card_kind=None,
+            card_ref=None,
+            body=f"{me['name']} 强制启动了此任务（override 依赖 gating，已留痕）",
+            created_at=tasks_service.service.now_iso(),
+        )
+    )
+    msg_row = models.row_dict(
+        tx.conn.execute(select(_MSG).where(_MSG.c.id == anchor_id)).mappings().first()
+    )
+    tx.emit(
+        tasks_service.EventType.MESSAGE_CREATED,
+        task["channel_id"],
+        {"message": message_public(msg_row, [])},
+    )
+    # hub 桥「本次放行」（best-effort；owner 人类/空 或 daemon 离线 → 仅留痕，不报错）。
+    # 不改状态：直接回既有 task 行（本请求未 UPDATE tasks）。
+    request.app.state.daemon_hub.force_start_wake(task["owner_member_id"], task["channel_id"])
+    return task_public(task)
 
 
 # ---------------------------------------------------------------- 列表 / 详情 / 补丁
