@@ -5,6 +5,7 @@ import type {
   ChannelsSnapshot,
   ComputerCreated,
   ComputerPublic,
+  ContractDraftRequest,
   DiagnosticEventPublic,
   MemberPublic,
   MessageCreated,
@@ -147,6 +148,11 @@ export const api = {
     writeJson<TaskPublic>(`/api/tasks/${taskId}/status`, 'POST', { to }),
   patchTask: (taskId: string, patch: Partial<Pick<TaskPublic, 'title' | 'silence_override_h'>>) =>
     writeJson<TaskPublic>(`/api/tasks/${taskId}`, 'PATCH', patch),
+  // M3:"让 @Agent 起草"(契约 D 定向直投唤醒)。202 = 已排队,无响应体;daemon 离线 → 503 DAEMON_OFFLINE。
+  // request-draft 尚未随 apps/server 一起生成进 RestPaths(后端 M3 并行落地中),此处按 packages/contracts
+  // 的 ContractDraftRequest 源类型手写路径 —— 端点上线后形状不变,无需改动。
+  requestContractDraft: (taskId: string, body: ContractDraftRequest) =>
+    writeJson<void>(`/api/tasks/${taskId}/contracts/request-draft`, 'POST', body),
 
   // ---- M2 文件 / 搜索 / 活动(B §9.6 / §4.6-4.8)
   channelFiles: (channelId: string, after?: string) =>

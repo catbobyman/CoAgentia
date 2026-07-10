@@ -41,9 +41,11 @@ from coagentia_contracts.daemon import (
     FrameKind,
     HomeFileQuery,
     HomeTreeQuery,
+    InjectSource,
     InstrFrame,
     InstrType,
     MessageDeliverData,
+    MessageInjectData,
     QueryFrame,
     QueryType,
     ReportType,
@@ -55,6 +57,8 @@ from coagentia_contracts.enums import (
     AgentStatus,
     ChannelKind,
     ComputerStatus,
+    ContractKind,
+    InjectKind,
     LifecycleAction,
     MemberKind,
     MessageKind,
@@ -902,6 +906,31 @@ class DaemonHub:
         else:  # RESET_FULL
             itype, data = InstrType.AGENT_RESET_FULL, AgentStartData(agent=boot)
         ack = self._run_sync(self.send_instr(conn, agent_id, itype, data))
+        return ack.result.value
+
+    def inject_contract_draft_request(
+        self, agent_member_id: str, task_id: str, kind: ContractKind
+    ) -> str:
+        """S1 定向直投"起草契约"请求（P-3；契约 D §5.2 InjectKind.CONTRACT_DRAFT_REQUEST）。
+
+        离线（无活跃 daemon 连接）→ DaemonOffline（REST 层收敛为 503 DAEMON_OFFLINE）；在线则同
+        send_lifecycle 走 send_instr 同步等 ack，返回 ack.result（'done'/'noop'/'failed'）。
+        """
+        conn, _agent = self._require_conn_for_agent(agent_member_id)
+        body = (
+            "[system → 仅你可见] 契约起草请求：请为下列任务起草契约并通过 "
+            "POST /tasks/{task_id}/contracts 提交。\n"
+            f"task_id={task_id}\nkind={kind.value}"
+        )
+        data = MessageInjectData(
+            agent_member_id=agent_member_id,
+            body=body,
+            source=InjectSource(kind=InjectKind.CONTRACT_DRAFT_REQUEST, ref=task_id),
+            diagnostic_type="agent.tool_call",
+        )
+        ack = self._run_sync(
+            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
+        )
         return ack.result.value
 
     def query_home_tree(self, agent_id: str, path: str) -> dict[str, Any]:

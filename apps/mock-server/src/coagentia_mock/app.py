@@ -514,6 +514,13 @@ async def get_task_detail(task_id: str) -> Any:
     return {"task": task, "contracts": [], "usage": usage}
 
 
+@app.get("/api/tasks/{task_id}/contracts", response_model=list[entities.TaskContractPublic])
+async def get_task_contracts(task_id: str) -> Any:
+    """M3 契约读取（形状源非逻辑源，纪律 4）：mock 恒空，修订链/T7 只活真 server。"""
+    require_task(task_id)
+    return []
+
+
 @app.post("/api/messages/{message_id}/task", response_model=entities.TaskPublic,
           status_code=201)
 async def convert_message_to_task(message_id: str, body: rest.ConvertToTask) -> Any:

@@ -154,3 +154,17 @@ def test_mcp_tool_catalog() -> None:
         "list_tasks", "get_task", "claim_task", "unclaim_task", "set_task_status", "search",
     }
     assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)
+
+
+def test_m3_endpoint_catalog_size() -> None:
+    """M3 端点清单：12 条（§4.7 契约/force-start + §4.9 画布组），与 M1/M2 不相交。"""
+    assert len(rest.ENDPOINTS_M3) == 12
+    assert len(set(rest.ENDPOINTS_M3)) == 12
+    assert set(rest.ENDPOINTS_M1).isdisjoint(rest.ENDPOINTS_M3)
+    assert set(rest.ENDPOINTS_M2).isdisjoint(rest.ENDPOINTS_M3)
+
+
+def test_m3_adds_no_mcp_tools() -> None:
+    """E 契约 v1.2 裁决：M3 契约面零新 Agent 工具（提交/force-start 人确认/C3 门，
+    读走 get_task、起草走 request-draft 直投 + send_message）。COAGENTIA_MCP_TOOLS 不增补。"""
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3 无增

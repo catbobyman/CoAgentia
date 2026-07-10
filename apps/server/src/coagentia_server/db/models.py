@@ -14,9 +14,11 @@ from __future__ import annotations
 from coagentia_contracts.enums import (
     ActivityKind,
     AgentStatus,
+    CanvasNodeKind,
     CardKind,
     ChannelKind,
     ComputerStatus,
+    ContractKind,
     DecompMode,
     LandingBatchKind,
     LandingBatchStatus,
@@ -26,6 +28,8 @@ from coagentia_contracts.enums import (
     ReminderKind,
     ReminderStatus,
     Runtime,
+    SystemAction,
+    SystemNodeStatus,
     TaskEventKind,
     TaskLevel,
     TaskStatus,
@@ -35,6 +39,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -62,6 +67,9 @@ M1_TABLES: tuple[str, ...] = (
 M2_TABLES: tuple[str, ...] = (
     "tasks", "task_events", "message_task_refs", "activity_items",
 )
+# M3（契约 A §4.3/§4.4）：task_contracts/canvas_nodes/canvas_edges 三表均可变
+# （superseded_at/pos_x/pos_y 等列会被 UPDATE），故无对应 M3_IMMUTABLE_TABLES 常量。
+M3_TABLES: tuple[str, ...] = ("task_contracts", "canvas_nodes", "canvas_edges")
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -467,3 +475,88 @@ class ActivityItem(Base):
     task_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("tasks.id"))
     created_at: Mapped[str] = mapped_column(Text)
     done_at: Mapped[str | None] = mapped_column(Text)  # "Mark as done"
+
+
+# ---------------------------------------------------------------- 4.3/4.4 契约与画布（M3）
+
+
+class TaskContract(Base):
+    __tablename__ = "task_contracts"
+    __table_args__ = (
+        # task_id 与 reminder_id 恰一非空（契约 A §4.3）
+        CheckConstraint(
+            "(task_id IS NOT NULL) + (reminder_id IS NOT NULL) = 1",
+            name="ck_task_contracts_task_xor_reminder",
+        ),
+        # 修订链不变量的 DB 兜底：同 (task_id, kind) 至多一个活动行（superseded_at IS NULL）。
+        # 并发提交同 kind 时第二个活动插入被拒（IntegrityError），杜绝"两活动行"污染修订链、
+        # 保证 T7 门读到确定的活动 handoff（review 修复）。reminder 侧对称索引随 M4。
+        Index(
+            "uq_task_contracts_active",
+            "task_id",
+            "kind",
+            unique=True,
+            sqlite_where=text("superseded_at IS NULL AND task_id IS NOT NULL"),
+        ),
+        # 读面索引：active_contracts / active_contract / T7 门每次 in_review 都按 task_id 过滤
+        # （对齐同批 task_events 的 ix_task_events_task_seq；无索引则契约累积后全表扫）。
+        Index("ix_task_contracts_task", "task_id"),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    task_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("tasks.id"))
+    # reminder_id→reminders：与 reminders.loop_contract_id 对称，不落 FK
+    # （跨批引用惯例，见 Reminder 模型 loop_contract_id 注释）——本批只落 task_id 一侧 FK。
+    reminder_id: Mapped[str | None] = mapped_column(_ULID)
+    kind: Mapped[str] = mapped_column(_enum(ContractKind))
+    version: Mapped[str] = mapped_column(Text)  # 'coagentia.task-plan.v1' 等（PRD §4.3）
+    body: Mapped[dict] = mapped_column(JSON)  # M3 收紧为三种 schema（JsonValue 占位）
+    revision: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    superseded_at: Mapped[str | None] = mapped_column(Text)  # UPDATE 写入——本表非不可变
+    created_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    created_at: Mapped[str] = mapped_column(Text)
+
+
+class CanvasNode(Base):
+    __tablename__ = "canvas_nodes"
+    __table_args__ = (
+        # kind='agent' → task_id NOT NULL（引用不是副本，C8）
+        CheckConstraint(
+            "kind != 'agent' OR task_id IS NOT NULL",
+            name="ck_canvas_nodes_agent_needs_task",
+        ),
+        # kind='system' → system_action NOT NULL（W8）
+        CheckConstraint(
+            "kind != 'system' OR system_action IS NOT NULL",
+            name="ck_canvas_nodes_system_needs_action",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    canvas_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvases.id"))
+    kind: Mapped[str] = mapped_column(_enum(CanvasNodeKind))
+    task_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("tasks.id"), unique=True)
+    is_summary: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    system_action: Mapped[str | None] = mapped_column(_enum(SystemAction))
+    command: Mapped[str | None] = mapped_column(Text)  # system_action='check' 必填（V14，app 级）
+    system_status: Mapped[str | None] = mapped_column(_enum(SystemNodeStatus))
+    pos_x: Mapped[float] = mapped_column(Float, server_default=text("0"))  # 不参与基线快照
+    pos_y: Mapped[float] = mapped_column(Float, server_default=text("0"))
+    created_at: Mapped[str] = mapped_column(Text)
+
+
+class CanvasEdge(Base):
+    __tablename__ = "canvas_edges"
+    __table_args__ = (
+        UniqueConstraint(
+            "canvas_id", "from_node_id", "to_node_id", name="uq_canvas_edges_triplet"
+        ),
+        # 无自环；无环（DAG）由 server 事务内拓扑排序保证，非 DB 约束（M3b E4/E5）
+        CheckConstraint("from_node_id != to_node_id", name="ck_canvas_edges_no_self_loop"),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    canvas_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvases.id"))
+    from_node_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvas_nodes.id"))
+    to_node_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvas_nodes.id"))

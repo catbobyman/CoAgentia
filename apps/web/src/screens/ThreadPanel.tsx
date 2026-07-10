@@ -2,9 +2,19 @@
 // 由类型化深链 ?thread= 驱动(在 ChannelChatScreen 内消费,非顶层路由)。
 // M2 接真:opsbar 的 claim/unclaim/状态流转打真端点;契约/usage 用 useTaskDetail 真数据(成功靠 WS task.updated 回灌,无乐观更新)。
 import { useState } from 'react';
-import { ChevronDown, X } from 'lucide-react';
+import { ChevronDown, CircleAlert, Sparkles, X } from 'lucide-react';
 
-import type { FilePublic, MemberPublic, PresenceEntry, TaskPublic, TaskStatus } from '@coagentia/contracts-ts';
+import type {
+  ContractKind,
+  FilePublic,
+  MemberPublic,
+  PresenceEntry,
+  TaskContractPublic,
+  TaskHandoffBody,
+  TaskPlanBody,
+  TaskPublic,
+  TaskStatus,
+} from '@coagentia/contracts-ts';
 import { TASK_TRANSITIONS, UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
@@ -15,6 +25,137 @@ import { useToast } from '../components/Toast';
 import { Avatar } from '../components/Avatar';
 import { MessageFlow } from '../components/MessageFlow';
 import { Composer } from '../components/Composer';
+
+// 契约 kind → 中文短名(§4.6);loop_contract 归 Reminder 上岗流程,不在任务线程契约卡出现。
+const CONTRACT_KIND_LABEL: Record<ContractKind, string> = {
+  task_plan: 'TaskPlan',
+  task_handoff: 'TaskHandoff',
+  loop_contract: 'LoopContract',
+};
+// "让 @Agent 起草"菜单可选 kind——任务域只出 TaskPlan/TaskHandoff(纪律:LoopContract 走 Reminder)。
+const DRAFT_KINDS: ContractKind[] = ['task_plan', 'task_handoff'];
+
+/** 按 kind 拆活动契约 / 历史版本(revision 修订链——superseded_at≠null 即历史)。 */
+function splitContracts(contracts: TaskContractPublic[]) {
+  const active = contracts.filter((c) => c.superseded_at == null);
+  const historical = contracts.filter((c) => c.superseded_at != null);
+  return {
+    activePlan: active.find((c) => c.kind === 'task_plan'),
+    activeHandoff: active.find((c) => c.kind === 'task_handoff'),
+    historical,
+  };
+}
+
+/** T7 拒绝(HANDOFF_INCOMPLETE)时 error.details.missing 的窄化提取(交互 §5.4)。
+ * 兜底:即便 details.missing 缺失/形状异常也返回非空数组,保证就地横幅始终有反馈(不静默吞)。 */
+export function missingFromHandoffError(e: unknown): string[] | undefined {
+  if (!(e instanceof ApiError) || e.code !== 'HANDOFF_INCOMPLETE') return undefined;
+  const d = e.details as { missing?: unknown } | undefined;
+  const missing = Array.isArray(d?.missing)
+    ? (d!.missing as unknown[]).filter((x): x is string => typeof x === 'string')
+    : [];
+  return missing.length > 0 ? missing : ['交接材料不完整'];
+}
+
+/** TaskPlan 契约卡:goal + AC 列表(§4.6 P5 设计稿),可选 defaults/out_of_scope 折叠。 */
+export function TaskPlanCard({
+  contract, memberById,
+}: {
+  contract: TaskContractPublic;
+  memberById: Record<string, MemberPublic>;
+}) {
+  const plan = contract.body as TaskPlanBody;
+  const rev = contract.revision;
+  // 防御:body 形状虽由后端提交期校验,但版本漂移/脏行时属 unknown,守空避免整个面板崩溃。
+  const acs = plan.acceptance_criteria ?? [];
+  return (
+    <div data-comment-anchor="contract-card-plan">
+      <div className="chd">
+        <b>TaskPlan</b>
+        {rev != null && rev > 1 && <span className="vchip">rev {rev}</span>}
+        <span className="m">
+          AC×{acs.length} · by {memberById[contract.created_by_member_id]?.name ?? '—'} · {fmtTime(contract.created_at)}
+        </span>
+      </div>
+      <div className="goal"><span className="lb">Goal</span>{plan.goal}</div>
+      {acs.length > 0 && <span className="aclb">Acceptance Criteria</span>}
+      {acs.map((ac) => (
+        <div className="acrow" key={ac.id}>
+          <span className="acid">{ac.id}</span>
+          <span className="acst">
+            {ac.statement}
+            {ac.verify_ref && <> · <span className="cmd">{ac.verify_ref}</span></>}
+          </span>
+          <span className="vchip">{ac.verify_by}</span>
+        </div>
+      ))}
+      {(!!plan.defaults_decided?.length || !!plan.out_of_scope?.length) && (
+        <details>
+          <summary className="more">默认值 / 超纲范围</summary>
+          {!!plan.defaults_decided?.length && (
+            <div className="goal"><span className="lb">Defaults Decided</span>{plan.defaults_decided.join('; ')}</div>
+          )}
+          {!!plan.out_of_scope?.length && (
+            <div className="goal"><span className="lb">Out of Scope</span>{plan.out_of_scope.join('; ')}</div>
+          )}
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** TaskHandoff 契约卡:deliverables/evidence 列表 + verify_plan/open_risks(§4.6)。 */
+export function TaskHandoffCard({
+  contract, memberById,
+}: {
+  contract: TaskContractPublic;
+  memberById: Record<string, MemberPublic>;
+}) {
+  const handoff = contract.body as TaskHandoffBody;
+  const rev = contract.revision;
+  const fromName = memberById[handoff.from_member]?.name ?? handoff.from_member;
+  const toName = memberById[handoff.to_member]?.name ?? handoff.to_member;
+  return (
+    <div data-comment-anchor="contract-card-handoff">
+      <div className="chd">
+        <b>TaskHandoff</b>
+        {rev != null && rev > 1 && <span className="vchip">rev {rev}</span>}
+        <span className="m">
+          D×{handoff.deliverables?.length ?? 0} · E×{handoff.evidence?.length ?? 0} · by {memberById[contract.created_by_member_id]?.name ?? '—'} · {fmtTime(contract.created_at)}
+        </span>
+      </div>
+      <div className="goal"><span className="lb">From → To</span>{fromName} → {toName}</div>
+      {!!handoff.deliverables?.length && (
+        <>
+          <span className="aclb">Deliverables</span>
+          {handoff.deliverables.map((d, i) => (
+            <div className="acrow" key={`d-${i}-${d.path}`}>
+              <span className="acid">D-{String(i + 1).padStart(2, '0')}</span>
+              <span className="acst"><span className="cmd">{d.path}</span></span>
+              <span className="vchip">{d.kind}</span>
+            </div>
+          ))}
+        </>
+      )}
+      {!!handoff.evidence?.length && (
+        <>
+          <span className="aclb">Evidence</span>
+          {handoff.evidence.map((ev, i) => (
+            <div className="acrow" key={`e-${i}-${ev.ref}`}>
+              <span className="acid">E-{String(i + 1).padStart(2, '0')}</span>
+              <span className="acst">{ev.conclusion} · <span className="cmd">{ev.ref}</span></span>
+              <span className="vchip">{ev.type}</span>
+            </div>
+          ))}
+        </>
+      )}
+      <div className="goal"><span className="lb">Verify Plan</span>{handoff.verify_plan}</div>
+      {!!handoff.open_risks?.length && (
+        <div className="goal"><span className="lb">Open Risks</span>{handoff.open_risks.join('; ')}</div>
+      )}
+    </div>
+  );
+}
 
 export function ThreadPanel({
   task, rootMessageId, memberById, memberNames, meName, meId, presenceOf, usage,
@@ -38,6 +179,9 @@ export function ThreadPanel({
   const detailQ = useTaskDetail(task?.id);
   const toast = useToast();
   const [stOpen, setStOpen] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
+  // T7(HANDOFF_INCOMPLETE)就地提示:缺失字段列表,非通用 toast(交互 §5.4)。
+  const [handoffMissing, setHandoffMissing] = useState<string[] | undefined>(undefined);
 
   const items = threadQ.data ?? [];
   // 回复流 = 线程条目去掉 root(root 内容已在牌头呈现)。
@@ -48,17 +192,27 @@ export function ThreadPanel({
   const creator = task?.created_by_member_id ? memberById[task.created_by_member_id] : undefined;
   const created = task?.created_at ? fmtTime(task.created_at) : undefined;
 
-  // 真契约 / usage(契约 B §9.8):contracts M3 前恒空 → 契约卡收起;usage 优先取真 detail 聚合。
+  // 真契约 / usage(契约 B §9.8):usage 优先取真 detail 聚合。
   const detail = detailQ.data;
   const contracts = detail?.contracts ?? [];
+  const { activePlan, activeHandoff, historical } = splitContracts(contracts);
   const u = detail?.usage;
   const usageTotal = u ? (u.input_tokens ?? 0) + (u.output_tokens ?? 0) : usage;
+
+  // "让 @Agent 起草"候选:memberById 里 kind=agent 的成员(P6/P5 共用同一份成员数据,零新增拉取)。
+  const agents = Object.values(memberById).filter((m) => m.kind === 'agent');
 
   // 合法目标态(纪律 7:单一事实源,消费生成的 TASK_TRANSITIONS,前端不另写边表)。
   const targets: TaskStatus[] = task ? (TASK_TRANSITIONS[status as TaskStatus] ?? []) : [];
 
-  // claim 冲突 → 用 details.current_owner 映射成员名给 toast;非法流转 → toast。
+  // claim 冲突 → 用 details.current_owner 映射成员名给 toast;非法流转 → toast;
+  // T7(HANDOFF_INCOMPLETE)→ 就地提示缺失字段(不是一闪而过的 toast——交互 §5.4)。
   const onWriteError = (e: unknown) => {
+    const missing = missingFromHandoffError(e);
+    if (missing !== undefined) {
+      setHandoffMissing(missing);
+      return;
+    }
     if (e instanceof ApiError) {
       if (e.code === 'CLAIM_RACE') {
         const d = e.details as { current_owner?: string } | undefined;
@@ -92,7 +246,26 @@ export function ThreadPanel({
   const doStatus = (to: TaskStatus) => {
     if (!task) return;
     setStOpen(false);
+    setHandoffMissing(undefined); // 重新尝试:清掉上一次 T7 的就地提示
     void api.setTaskStatus(task.id, to).catch(onWriteError);
+  };
+
+  // "让 @Agent 起草"(契约 D 定向直投唤醒);202 成功 toast,daemon 离线(503)单独文案。
+  const doRequestDraft = (agentMemberId: string, kind: ContractKind) => {
+    if (!task) return;
+    setDraftOpen(false);
+    const agentName = memberById[agentMemberId]?.name ?? agentMemberId;
+    void api.requestContractDraft(task.id, { agent_member_id: agentMemberId, kind })
+      .then(() => {
+        toast.push(`已请求 @${agentName} 起草 ${CONTRACT_KIND_LABEL[kind]}…`, { tone: 'success' });
+      })
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.code === 'DAEMON_OFFLINE') {
+          toast.push(`@${agentName} 的 daemon 离线,起草请求未送达`, { tone: 'error' });
+          return;
+        }
+        onWriteError(e);
+      });
   };
 
   return (
@@ -116,29 +289,72 @@ export function ThreadPanel({
             <span className="tokbadge">{(usageTotal / 1000).toFixed(1)}k tok</span>
           )}
         </div>
-        {contracts.length > 0 && (
+        {(activePlan || activeHandoff) && (
           <div className="row3">
-            <span className="planentry">TaskPlan · AC×{contracts.length}<span className="ar">▾</span></span>
-            <span className="handoff">TaskHandoff 待提交</span>
+            {activePlan && (
+              <span className="planentry">
+                TaskPlan · AC×{(activePlan.body as TaskPlanBody).acceptance_criteria.length}
+                <span className="ar">▾</span>
+              </span>
+            )}
+            {activeHandoff ? (
+              <span className="handoff">
+                TaskHandoff · D×{(activeHandoff.body as TaskHandoffBody).deliverables?.length ?? 0} · E×{(activeHandoff.body as TaskHandoffBody).evidence?.length ?? 0}
+              </span>
+            ) : (
+              <span className="handoff">TaskHandoff 待提交</span>
+            )}
           </div>
         )}
       </header>
 
-      {/* [2] 契约折叠卡:M3 前 contracts 恒空 → 收起,呈现占位 */}
+      {/* [2] 契约折叠卡:活动 TaskPlan/TaskHandoff 各一张 + 历史修订折叠 + 起草入口 */}
       <section className="contract">
         {contracts.length > 0 ? (
           <>
-            <div className="chd"><b>TaskPlan</b><span className="m">契约 ×{contracts.length}</span></div>
-            {contracts.map((c) => (
-              <div className="acrow" key={c.id}>
-                <span className="acid">{c.kind}</span>
-                <span className="acst">v{c.version}{c.revision != null ? ` · rev ${c.revision}` : ''}</span>
-                <span className="vchip">by {memberById[c.created_by_member_id]?.name ?? '—'}</span>
-              </div>
-            ))}
+            {activePlan && <TaskPlanCard contract={activePlan} memberById={memberById} />}
+            {activeHandoff && <TaskHandoffCard contract={activeHandoff} memberById={memberById} />}
+            {historical.length > 0 && (
+              <details>
+                <summary className="more">历史版本 ×{historical.length}</summary>
+                {historical.map((c) => (
+                  <div className="acrow" key={c.id}>
+                    <span className="acid">{CONTRACT_KIND_LABEL[c.kind]}</span>
+                    <span className="acst">v{c.version}{c.revision != null && c.revision > 1 ? ` · rev ${c.revision}` : ''}</span>
+                    <span className="vchip">superseded {c.superseded_at ? fmtTime(c.superseded_at) : ''}</span>
+                  </div>
+                ))}
+              </details>
+            )}
           </>
         ) : (
-          <div className="goal"><span className="lb">Contract</span>暂无契约(TaskPlan/TaskHandoff 于 M3 接入)。</div>
+          <div className="goal">
+            <span className="lb">Contract</span>暂无契约(可让 @Agent 起草 TaskPlan/TaskHandoff)。
+          </div>
+        )}
+
+        <div className="draftrow dropwrap">
+          <button className="draft-ai" onClick={() => setDraftOpen((v) => !v)} disabled={!task}>
+            <Sparkles />让 @Agent 起草
+          </button>
+          {draftOpen && (
+            <div className="drop" style={{ top: 32, bottom: 'auto', left: 0, right: 'auto' }}>
+              {agents.length === 0 && <div className="it" style={{ color: 'var(--text-muted)' }}>暂无可用 Agent</div>}
+              {agents.flatMap((a) =>
+                DRAFT_KINDS.map((k) => (
+                  <div className="it" key={`${a.id}:${k}`} onClick={() => doRequestDraft(a.id, k)}>
+                    @{a.name} · {CONTRACT_KIND_LABEL[k]}
+                  </div>
+                )),
+              )}
+            </div>
+          )}
+        </div>
+
+        {handoffMissing && handoffMissing.length > 0 && (
+          <div className="hmiss" role="alert">
+            <CircleAlert />缺少:{handoffMissing.join(' / ')}
+          </div>
         )}
       </section>
 

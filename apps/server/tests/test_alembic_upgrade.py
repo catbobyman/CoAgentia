@@ -19,6 +19,8 @@ M1_EXPECTED_TABLES = {
 }
 # 契约 A §5 M2 批次（4 张）。
 M2_EXPECTED_TABLES = {"tasks", "task_events", "message_task_refs", "activity_items"}
+# 契约 A §5 M3 批次（3 张）。
+M3_EXPECTED_TABLES = {"task_contracts", "canvas_nodes", "canvas_edges"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -66,16 +68,35 @@ def test_upgrade_head_creates_m2_tables_and_fts(db_url: str, alembic_cfg: Config
 
 
 def test_incremental_upgrade_from_0001_to_head(db_url: str, alembic_cfg: Config) -> None:
-    # 增量路径：先到 0001（M1 库），再升 head——模拟线上 M1 库升 M2
+    # 增量路径：先到 0001（M1 库），再升 head——模拟线上 M1 库升 M2/M3
     command.upgrade(alembic_cfg, "0001_m1_initial")
     mid = _table_names(db_url)
     assert M1_EXPECTED_TABLES <= mid
     assert M2_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M2 表（坑1 回归守门）
+    assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M3 表（坑1 回归守门）
     assert "messages_fts" not in mid
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
-    assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES) <= final
+    assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES) <= final
     assert "messages_fts" in final
+
+
+def test_upgrade_head_creates_m3_tables(db_url: str, alembic_cfg: Config) -> None:
+    command.upgrade(alembic_cfg, "head")
+    names = _table_names(db_url)
+    assert M3_EXPECTED_TABLES <= names
+    assert len(M3_EXPECTED_TABLES) == 3
+
+
+def test_incremental_from_0002_to_head(db_url: str, alembic_cfg: Config) -> None:
+    # 增量路径：先到 0002（M1+M2 库），再升 head——模拟线上 M2 库升 M3
+    command.upgrade(alembic_cfg, "0002_m2")
+    mid = _table_names(db_url)
+    assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES) <= mid
+    assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M3 表（坑1 回归守门）
+    command.upgrade(alembic_cfg, "head")
+    final = _table_names(db_url)
+    assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES) <= final
 
 
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
@@ -84,4 +105,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     names = _table_names(db_url)
     assert M1_EXPECTED_TABLES.isdisjoint(names)
     assert M2_EXPECTED_TABLES.isdisjoint(names)
+    assert M3_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

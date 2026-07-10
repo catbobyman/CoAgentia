@@ -21,6 +21,7 @@ from coagentia_server.app import create_app
 from coagentia_server.db.engine import make_engine, sqlite_url
 from coagentia_server.db.seed import seed_database
 from fastapi.testclient import TestClient
+from pydantic import TypeAdapter
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
@@ -235,8 +236,26 @@ def test_task_detail_shape(dual: DualClient) -> None:
     detail = rest.TaskDetail.model_validate(
         client.get(f"/api/tasks/{created['task']['id']}").json()
     )
-    assert detail.contracts == []  # M3 前恒空
+    assert detail.contracts == []  # 新建任务尚无契约（真 server）/ mock 恒空
     assert detail.usage.events == 0  # 无 usage 富化 → 0（优雅缺席）
+
+
+def test_task_contracts_empty_shape(dual: DualClient) -> None:
+    """GET /tasks/{id}/contracts（M3a E2）：新建任务无契约 → 200 空列表，双跑形状零偏差。
+
+    POST /tasks/{id}/contracts、T7、request-draft 是真 server 独有逻辑（mock 无业务，纪律 4），
+    不在本文件双跑——见 test_contracts.py。
+    """
+    _, client = dual
+    build = _build_channel(client)
+    created = client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "契约形状", "as_task": {"title": "t"}},
+    ).json()
+    r = client.get(f"/api/tasks/{created['task']['id']}/contracts")
+    assert r.status_code == 200
+    items = TypeAdapter(list[entities.TaskContractPublic]).validate_python(r.json())
+    assert items == []
 
 
 def test_task_created_broadcast(dual: DualClient) -> None:

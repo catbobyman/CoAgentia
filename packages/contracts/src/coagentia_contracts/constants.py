@@ -1,7 +1,7 @@
 """常量目录：opId 前缀（契约 A §4.7）、活动文案（契约 E §7.2）、
 禁用工具、诊断类型、规则号、schema 版本号、任务状态机合法边、MCP 工具目录。"""
 
-from coagentia_contracts.enums import TaskStatus
+from coagentia_contracts.enums import ContractKind, TaskStatus
 
 # ---------------- opId（契约 A §4.7 账本；01 §5.1 修订采纳）
 
@@ -142,6 +142,17 @@ SCHEMA_LOOP_CONTRACT_V1 = "coagentia.loop-contract.v1"
 SCHEMA_DECOMPOSITION_V1 = "coagentia.decomposition.v1"
 SCHEMA_DECOMPOSITION_DELTA_V1 = "coagentia.decomposition-delta.v1"
 SCHEMA_DECOMPOSITION_ERRORS_V1 = "coagentia.decomposition-errors.v1"
+
+# ---------------- T7 流转门必填字段（PRD §4.3「T7 校验非空」；server 校验 + 前端提示同源）
+# 置 in_review 时该任务活动 TaskHandoff 须逐个非空；纪律 7 单一事实源，不在 server 侧另列字面量。
+HANDOFF_REQUIRED_FIELDS: tuple[str, ...] = ("deliverables", "evidence")
+
+# ---------------- 任务契约允许的 kind（POST /tasks/{id}/contracts 端点门）
+# loop_contract 属 Reminder 域（D1-L2：循环 Reminder 必先 LoopContract），归 reminder_id 一侧、
+# 生成消费随 M4——不可挂 Task（否则污染任务契约面）。纪律 7 单一事实源。
+TASK_CONTRACT_KINDS: frozenset[ContractKind] = frozenset(
+    {ContractKind.TASK_PLAN, ContractKind.TASK_HANDOFF}
+)
 
 # ---------------- 遥测缓冲默认值（契约 D §7，实现默认非协议形状）
 

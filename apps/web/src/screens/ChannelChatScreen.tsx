@@ -154,6 +154,7 @@ export function ChannelChatScreen({ search, setSearch }: {
 
       {threadRootId && (
         <ThreadPanel
+          key={threadRootId}
           task={threadTask}
           rootMessageId={threadRootId}
           memberById={byId}

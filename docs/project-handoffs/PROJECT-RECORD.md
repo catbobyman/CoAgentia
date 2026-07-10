@@ -54,7 +54,21 @@
 - 中文 FTS 结论回写契约 A §10.4（unicode61 不命中 CJK 子串，trigram 归 M3）。
 - 收口后二轮实机 verify 35/35 + `/code-review high`（15 CONFIRMED）修复批：安全（activity done 归属门）、数据完整（tasks 分页聚合）、输入法（IME 误发）、时区（UTC 硬切统一 lib/time.ts）、实时性（channelFiles/usage 失效）等 15 项修复 + 契约 A v1.0.3（ActivityItemPublic.actor_member_id 派生字段）。
 - 最终基线：后端 387 passed / 3 skipped，前端 vitest 18，双侧 typecheck/build/ruff 绿。
-- 提交链：`42f20f0`（C0-C2）→ `ba73f72`（hardening）→ `6c12b90`（M2 后半）→ 本修复批。
+- 提交链：`42f20f0`（C0-C2）→ `ba73f72`（hardening）→ `6c12b90`（M2 后半）→ `cdb27db`（二轮 review）。
+
+## 7. M3a 契约与校验（块 M3a 收口 2026-07-10）
+
+来源：[M3-HANDOFF.md](M3-HANDOFF.md) · [M3-DEV-PLAN.md](M3-DEV-PLAN.md) · [M3A-EVIDENCE.md](../verify/M3A-EVIDENCE.md)
+
+- 多 agent 工作流编排：地基 **E0（契约登记）∥ E1（建表迁移）并行** → 实现 **E2+E3（契约端点+T7）后端 ∥ B-M3-1（契约卡）前端并行** → 整合守门 → 实机 verify → `/code-review high`。文件域不相交，无冲突。
+- **E 契约 v1.2 先行**：M3 契约面**零新 Agent 工具**（提交/force-start 人确认·C3 门，读走 get_task、起草走 request-draft 直投 + send_message 贴线程；画布结构编辑工具位随 M6）——engineering_docs/05 §3 裁决表。
+- **L2 契约链路**：task_contracts 落库（0003_m3 三表一次建齐）+ TaskPlan/TaskHandoff/LoopContract body 模型（PRD §4.3 v1，M1 原缺）+ 提交/修订链（新 revision、旧行 superseded）+ request-draft S1 直投（`message.inject` + `contract_draft_request`）。
+- **T7 流转门**：level=l2 置 in_review 校验活动 TaskHandoff deliverables/evidence 非空 → 422 HANDOFF_INCOMPLETE{missing}（人与 Agent 同拒）；deliverables/evidence 非空由 T7 执法（提交期允许空，可增量起草）。
+- **升格 P-2**：PATCH /tasks/{id} 扩 level，仅 l1→l2 单向；l2→l1 拒 422 D1。
+- **前端 P5 契约卡接真**：TaskPlan/TaskHandoff/revision/历史版本渲染 + 「让 @Agent 起草」入口 + T7 就地提示（交互 §5.4）；引入 happy-dom + testing-library 建首个组件渲染测试。
+- **`/code-review high`（8 角度 finder）**：CONFIRMED 全修（6 正确性 + 3 质量 + 回归测试）：修订链竞态（分区唯一索引 `uq_task_contracts_active` + SAVEPOINT 重试）、loop_contract 挂 Task（TASK_CONTRACT_KINDS 门）、T7 经升格绕过（patch_task 补守护）、前端跨任务陈旧态（ThreadPanel key）、body 断言崩溃防御、T7 错误静默吞兜底、task_id 索引、占位文案收敛、契约 body 单测缺口。
+- **收口基线**：后端 **421 passed / 3 skipped**（387→+34），前端 vitest **23**，双侧 typecheck/build、ruff、`pnpm gen` 两跑一致全绿。实机：真 HTTP 16/16 + 2 新守卫 + 浏览器契约卡/T7 就地提示截图。
+- **块 M3b（画布与 gating）未开工**——按纪律不与 a 交错，另开会话按 M3-HANDOFF §5/§9b。
 
 ## 已失效结论
 
@@ -63,12 +77,13 @@
 | 项目只有文档与设计稿，没有产品代码 | M1/M2 产品实现、hardening 与二轮 review 修复批已完成 |
 | 下一步从 A1 或 M1 实现开工 | M1/M2 全部收口，当前任务书 = M3-HANDOFF |
 | M1/M2 契约或实现任务书是当前唯一入口 | 当前入口为 `CURRENT-HANDOFF.md`；开工入口 = `M3-HANDOFF.md` |
-| `238`/`340`/`384 passed` 是最新测试基线 | 最新基线为 `387 passed, 3 skipped` + vitest 18 |
+| `238`/`340`/`384`/`387 passed` 是最新测试基线 | 最新基线为 `421 passed, 3 skipped` + vitest 23（块 M3a 收口） |
 | 前端仅依赖手工切换 API 基址或 mock `8642` | 已完成同源与代理路径 hardening，具体见修复报告 |
 
 ## 当前接续任务
 
-1. 按 [M3-HANDOFF.md](M3-HANDOFF.md) 开工（E0 契约登记 + E1 建表；E 契约 v1.2 修订先行）。
-2. 在干净环境完成真实双 Agent OAuth 冷启动复验（可随 M3 E6 真机场景顺路）。
-3. 分批清理 Pyright 的 109 个既有错误（独立批）。
-4. keyset 分页 + LIMIT 下推统一整改（M2 二轮 review 挂账，独立小批）。
+1. **块 M3a 已收口**；接续 = **块 M3b 画布与 gating**（M3-HANDOFF §5/§9b：E4 画布结构端点 → E5 blocked 推导+gating+force-start → E6 工程三角真机；B-M3-2 React Flow 画布 + B-M3-3 升格/force-start UI）。另开会话，不与 a 交错。
+2. FTS trigram 浮动件（中文子串命中，A §10.4）——哪块顺手哪块收。
+3. 在干净环境完成真实双 Agent OAuth 冷启动复验（可随 M3b E6 真机场景顺路）。
+4. 分批清理 Pyright 的 109 个既有错误（独立批）。
+5. keyset 分页 + LIMIT 下推统一整改（M2 二轮 review 挂账，独立小批）。

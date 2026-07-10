@@ -97,6 +97,32 @@ class ContractKind(StrEnum):
     LOOP_CONTRACT = "loop_contract"
 
 
+class VerifyBy(StrEnum):
+    """TaskPlan.acceptance_criteria[].verify_by（PRD §4.3 v1）。"""
+
+    COMMAND = "command"
+    INSPECT = "inspect"
+    MANUAL = "manual"
+
+
+class DeliverableKind(StrEnum):
+    """TaskHandoff.deliverables[].kind（PRD §4.3 v1）。"""
+
+    FILE = "file"
+    DIR = "dir"
+    URL = "url"
+    ARTIFACT = "artifact"
+
+
+class EvidenceType(StrEnum):
+    """TaskHandoff.evidence[].type（PRD §4.3 v1）。"""
+
+    TEST = "test"
+    COMMAND = "command"
+    SCREENSHOT = "screenshot"
+    LOG = "log"
+
+
 class CanvasNodeKind(StrEnum):
     AGENT = "agent"
     SYSTEM = "system"

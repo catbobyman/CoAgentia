@@ -8,16 +8,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from coagentia_contracts import entities, rest
-from coagentia_contracts.enums import ChannelKind, TaskEventKind, TaskStatus
+from coagentia_contracts import constants, entities, rest
+from coagentia_contracts.enums import ChannelKind, MemberKind, TaskEventKind, TaskLevel, TaskStatus
 from fastapi import APIRouter, Depends, Request, Response
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from coagentia_server.api import ApiError
+from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx
-from coagentia_server.routes.serialize import task_public
+from coagentia_server.routes.serialize import task_contract_public, task_public
 from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -252,6 +254,18 @@ def set_task_status(
                 "allowed": sorted(s.value for s in tasks_service.TASK_TRANSITIONS[cur]),
             },
         )
+    # T7 流转门（裁决 5）：l2 任务置 in_review 前，活动 TaskHandoff 的 deliverables/evidence
+    # 必须非空；无活动 handoff 视同两者皆缺。l1 任务（M2 存量全 l1）不进本分支，零回归。
+    if TaskLevel(task["level"]) == TaskLevel.L2 and to == TaskStatus.IN_REVIEW:
+        missing = contracts_service.active_handoff_missing(tx.conn, task_id)
+        if missing:
+            raise ApiError(
+                422,
+                rest.ErrorCode.HANDOFF_INCOMPLETE,
+                f"缺少交接材料：{', '.join(missing)}",
+                rule="T7",
+                details={"missing": missing},
+            )
     ts = tasks_service.service.now_iso()
     tx.conn.execute(
         update(_TASK).where(_TASK.c.id == task_id).values(status=to, status_changed_at=ts)
@@ -304,7 +318,7 @@ def list_tasks(
 @router.get("/tasks/{task_id}", response_model=rest.TaskDetail)
 def get_task_detail(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
     task = _require_task(tx, task_id)
-    # contracts 恒空：task_contracts 是 M3 表（M2 不查）。
+    contracts = contracts_service.active_contracts(tx.conn, task_id)
     agg = tx.conn.execute(
         select(
             func.coalesce(func.sum(_TUE.c.input_tokens), 0),
@@ -316,7 +330,7 @@ def get_task_detail(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
     ).first()
     return {
         "task": task_public(task),
-        "contracts": [],
+        "contracts": [task_contract_public(c) for c in contracts],
         "usage": {
             "input_tokens": agg[0],
             "output_tokens": agg[1],
@@ -331,11 +345,36 @@ def get_task_detail(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
 def patch_task(
     task_id: str, body: rest.TaskPatch, request: Request, tx: Tx = Depends(get_tx)
 ) -> Any:
-    _require_task(tx, task_id)
+    task = _require_task(tx, task_id)
     acting_member(request, tx.conn)  # 身份校验（R4 无角色门）
     changes = {
         k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None
     }
+    if "level" in changes:  # P-2 升格：仅 l1→l2 单向放行（拍板）
+        cur_level = TaskLevel(task["level"])
+        new_level = TaskLevel(changes["level"])
+        if new_level == cur_level:
+            changes.pop("level")  # l1→l1 / l2→l2 幂等无变更
+        elif not (cur_level == TaskLevel.L1 and new_level == TaskLevel.L2):
+            raise ApiError(
+                422,
+                rest.ErrorCode.TASK_TRANSITION_INVALID,
+                f"任务升格不支持 {cur_level.value} → {new_level.value}",
+                rule="D1",
+                details={"from": cur_level.value, "to": new_level.value},
+            )
+        # T7 不变量守护（review 修复）：升格 l1→l2 若任务已在 in_review，须补齐 handoff——
+        # 否则可借"先置 in_review（l1 无 T7）再升 l2"绕过 T7 门，造出 l2+in_review 无交接的态。
+        elif TaskStatus(task["status"]) == TaskStatus.IN_REVIEW:
+            missing = contracts_service.active_handoff_missing(tx.conn, task_id)
+            if missing:
+                raise ApiError(
+                    422,
+                    rest.ErrorCode.HANDOFF_INCOMPLETE,
+                    f"升格为 L2 前须补齐交接材料（任务已在 In Review）：{', '.join(missing)}",
+                    rule="T7",
+                    details={"missing": missing},
+                )
     if changes:
         tx.conn.execute(update(_TASK).where(_TASK.c.id == task_id).values(**changes))
     final = tasks_service.fetch_task(tx.conn, task_id)
@@ -346,3 +385,109 @@ def patch_task(
         {"task": task_public(final), "change": None},
     )
     return task_public(final)
+
+
+# ---------------------------------------------------------------- 契约域（M3a E2）
+
+
+@router.get("/tasks/{task_id}/contracts", response_model=list[entities.TaskContractPublic])
+def list_task_contracts(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
+    """全部契约行（含历史）；前端按 superseded_at 分活动/历史（B §4.3）。"""
+    _require_task(tx, task_id)
+    rows = contracts_service.active_contracts(tx.conn, task_id)
+    return [task_contract_public(r) for r in rows]
+
+
+@router.post(
+    "/tasks/{task_id}/contracts", response_model=entities.TaskContractPublic, status_code=201
+)
+def submit_task_contract(
+    task_id: str, body: rest.ContractCreate, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
+    """提交/修订契约（B §4.3）：kind 对应 body 模型二次校验 + 同 (task_id, kind) 修订链。
+
+    kind≠schema 或字段不符 → 422 VALIDATION_FAILED；有活动同 kind 行则 supersede + revision+1
+    （task_contract.updated），否则新建 revision=1（task_contract.created）。
+    """
+    task = _require_task(tx, task_id)
+    me = acting_member(request, tx.conn)
+    if body.kind not in constants.TASK_CONTRACT_KINDS:  # loop_contract 属 Reminder 域（M4）
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            f"任务契约仅支持 TaskPlan/TaskHandoff（{body.kind.value} 属 Reminder 域）",
+            details={"kind": body.kind.value},
+        )
+    model = rest.CONTRACT_BODY_MODELS.get(body.kind)
+    if model is None:  # 理论不可达（ContractKind 枚举全集已在映射表登记），防御兜底
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            f"未知契约 kind：{body.kind}",
+            details={"kind": str(body.kind)},
+        )
+    try:
+        validated = model.model_validate(body.body)
+    except ValidationError as exc:
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "契约内容与 kind 对应 schema 不符",
+            details={
+                "kind": body.kind.value,
+                "errors": [
+                    {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]}
+                    for e in exc.errors()
+                ],
+            },
+        ) from exc
+    row, is_revision = contracts_service.submit_contract(
+        tx,
+        task_id=task_id,
+        workspace_id=task["workspace_id"],
+        kind=body.kind,
+        body_dict=validated.model_dump(mode="json"),
+        created_by=me["id"],
+    )
+    pub = task_contract_public(row)
+    event_type = (
+        tasks_service.EventType.TASK_CONTRACT_UPDATED
+        if is_revision
+        else tasks_service.EventType.TASK_CONTRACT_CREATED
+    )
+    tx.emit(event_type, task["channel_id"], {"contract": pub})
+    return pub
+
+
+@router.post("/tasks/{task_id}/contracts/request-draft", status_code=202)
+def request_contract_draft(
+    task_id: str, body: rest.ContractDraftRequest, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
+    """让 @Agent 起草契约（B §4.3；P-3）：S1 定向直投；daemon 离线 → 503 DAEMON_OFFLINE。"""
+    _require_task(tx, task_id)
+    agent = (
+        tx.conn.execute(
+            select(_MEMBER).where(
+                _MEMBER.c.id == body.agent_member_id,
+                _MEMBER.c.kind == MemberKind.AGENT,
+                _MEMBER.c.removed_at.is_(None),
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if agent is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "起草请求目标 Agent 不存在")
+
+    from coagentia_server.computers import DaemonOffline
+
+    hub = request.app.state.daemon_hub
+    try:
+        hub.inject_contract_draft_request(
+            agent_member_id=body.agent_member_id, task_id=task_id, kind=body.kind
+        )
+    except DaemonOffline as exc:
+        raise ApiError(
+            503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法投递起草请求"
+        ) from exc
+    return {"status": "accepted"}

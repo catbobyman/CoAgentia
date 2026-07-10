@@ -76,3 +76,7 @@ def message_task_ref_public(row: dict[str, Any]) -> dict[str, Any]:
 
 def activity_item_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.ActivityItemPublic, row)
+
+
+def task_contract_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.TaskContractPublic, row)

@@ -685,6 +685,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{task_id}/contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task Contracts
+         * @description M3 契约读取（形状源非逻辑源，纪律 4）：mock 恒空，修订链/T7 只活真 server。
+         */
+        get: operations["get_task_contracts_api_tasks__task_id__contracts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{task_id}/status": {
         parameters: {
             query?: never;
@@ -1472,8 +1492,12 @@ export interface components {
         /**
          * TaskPatch
          * @description 元数据补丁（B §4.7）——PATCH /tasks/{id}；不写 task_events，广播 task.updated。
+         *
+         *     `level`：升格载体（M3 P-2 拍板）——仅 `l1→l2` 单向放行；`l2→l1` 或非法值由 server
+         *     校验拒 422 TASK_TRANSITION_INVALID（rule=D1）。升格本身不写 task_events。
          */
         TaskPatch: {
+            level?: components["schemas"]["TaskLevel"] | null;
             /** Silence Override H */
             silence_override_h?: number | null;
             /** Title */
@@ -3143,6 +3167,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_contracts_api_tasks__task_id__contracts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskContractPublic"][];
                 };
             };
             /** @description Validation Error */
