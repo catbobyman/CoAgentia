@@ -3,12 +3,14 @@
 事务纪律（契约 A §1）：每请求一 Connection、一事务；写端点在**提交后**发射契约 C 事件
 （事件缓冲在 Tx.pending，get_tx 于 commit 之后按序 flush 到 bus——契约 C §1.4）。
 
-身份（契约 B §2，MVP）：浏览器 = Owner 人类（本地即身份，无登录）。daemon/Agent 主体经
-`X-Acting-Member` 头指定（A5 校验隶属；A3 无 daemon，头存在且指向有效成员即采用，否则回退 Owner）。
+身份（契约 B §2，MVP）：浏览器 = Owner 人类（本地即身份，无登录）。daemon/Agent 主体必须
+同时提供 Bearer computer api-key 与 `X-Acting-Member`，服务端校验 Agent 隶属该 Computer。
 """
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 from collections.abc import Iterator
 from typing import Any
 
@@ -24,6 +26,8 @@ from coagentia_server.files import FileStore
 
 _WS = models.Workspace.__table__
 _MEMBER = models.Member.__table__
+_AGENT = models.Agent.__table__
+_COMPUTER = models.Computer.__table__
 
 
 class Tx:
@@ -33,6 +37,7 @@ class Tx:
         self.conn = conn
         self.request = request
         self.pending: list[PendingEvent] = []
+        self.bound_file_ids: list[str] = []
 
     @property
     def bus(self) -> EventBus:
@@ -46,6 +51,23 @@ class Tx:
         """登记一条待广播事件（提交后由 get_tx flush，契约 C §1.4）。"""
         self.pending.append(PendingEvent(type=etype, channel_id=channel_id, data=data))
 
+    def bind_file(self, file_id: str) -> str:
+        """登记可补偿的 staging → files 搬运。"""
+        stored_path = self.file_store.bind(file_id)
+        self.bound_file_ids.append(file_id)
+        return stored_path
+
+    def rollback_file_bindings(self) -> None:
+        for file_id in reversed(self.bound_file_ids):
+            with contextlib.suppress(OSError):
+                self.file_store.rollback_bind(file_id)
+
+    def finalize_file_bindings(self) -> None:
+        for file_id in self.bound_file_ids:
+            # 数据库已经提交；清 sidecar 失败时正文和 files 行仍一致，后续可安全重试清理。
+            with contextlib.suppress(OSError):
+                self.file_store.finalize_bind(file_id)
+
 
 def get_tx(request: Request) -> Iterator[Tx]:
     """开短事务 → yield Tx → 成功则 commit 后按序发射事件；异常回滚不发射。"""
@@ -55,12 +77,15 @@ def get_tx(request: Request) -> Iterator[Tx]:
     tx = Tx(conn, request)
     try:
         yield tx
+        txn.commit()
     except BaseException:
-        txn.rollback()
+        if txn.is_active:
+            txn.rollback()
+        tx.rollback_file_bindings()
         conn.close()
         raise
     else:
-        txn.commit()
+        tx.finalize_file_bindings()
         conn.close()
         bus = request.app.state.bus
         for ev in tx.pending:
@@ -97,20 +122,48 @@ def owner_member(conn: Connection) -> dict[str, Any]:
 
 
 def acting_member(request: Request, conn: Connection) -> dict[str, Any]:
-    """当前主体：X-Acting-Member 头指向的有效成员，否则 Owner 人类（契约 B §2）。"""
+    """解析浏览器 Owner 或经 Computer api-key 认证的 Agent 主体（契约 B §2）。"""
     hdr = request.headers.get("X-Acting-Member")
-    if hdr:
-        # 已删成员不能行为（removed_at IS NULL 过滤，与 members/hub 既有软删门一致）；否则回退 Owner。
-        row = (
-            conn.execute(
-                select(_MEMBER).where(_MEMBER.c.id == hdr, _MEMBER.c.removed_at.is_(None))
-            )
-            .mappings()
-            .first()
+    if not hdr:
+        return owner_member(conn)
+
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise ApiError(
+            403,
+            rest.ErrorCode.PERMISSION_DENIED,
+            "Agent 代理请求缺少有效的 Computer Bearer 凭证",
+            rule="B§2",
         )
-        if row is not None:
-            return dict(row)
-    return owner_member(conn)
+
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    row = (
+        conn.execute(
+            select(_MEMBER)
+            .select_from(
+                _MEMBER.join(_AGENT, _AGENT.c.member_id == _MEMBER.c.id).join(
+                    _COMPUTER, _COMPUTER.c.id == _AGENT.c.computer_id
+                )
+            )
+            .where(
+                _MEMBER.c.id == hdr,
+                _MEMBER.c.kind == "agent",
+                _MEMBER.c.removed_at.is_(None),
+                _COMPUTER.c.api_key_hash == digest,
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise ApiError(
+            403,
+            rest.ErrorCode.PERMISSION_DENIED,
+            "Agent 身份无效或不隶属该 Computer",
+            rule="B§2",
+        )
+    return dict(row)
 
 
 def is_admin(member: dict[str, Any]) -> bool:

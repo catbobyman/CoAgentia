@@ -66,7 +66,11 @@ def test_call_tool_error_status() -> None:
     http = StubHttp(status=422, data={"code": "LOOP_CONTRACT_REQUIRED"})
     out = mcp.call_tool(
         "create_reminder",
-        {"kind": "recurring", "cadence": "0 9 * * *", "anchor_channel_id": "01K5CHAN00000000000000000A"},
+        {
+            "kind": "recurring",
+            "cadence": "0 9 * * *",
+            "anchor_channel_id": "01K5CHAN00000000000000000A",
+        },
         http,
     )
     assert out["isError"] is True
@@ -85,7 +89,11 @@ def test_create_reminder_body_matches_contract() -> None:
     )
     assert once.path == "/api/reminders"
     assert once.method == "POST"
-    assert once.json_body == {"kind": "once", "cadence": "2026-07-10T09:00:00Z", "anchor_channel_id": ulid}
+    assert once.json_body == {
+        "kind": "once",
+        "cadence": "2026-07-10T09:00:00Z",
+        "anchor_channel_id": ulid,
+    }
     ReminderCreate.model_validate(once.json_body)  # 不抛 = 字段名/必填/extra 全对齐
 
     # recurring + 全部可选锚点

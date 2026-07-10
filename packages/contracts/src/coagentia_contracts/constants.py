@@ -44,7 +44,8 @@ DISALLOWED_TOOLS: tuple[str, ...] = (
     "CronDelete",
     "CronList",
     "ScheduleWakeup",
-    # FleetView 持久后台多 Agent 协调 + 工作流编排：属 coagentia（M6 Orchestrator）职责，非单 Agent 能力
+    # FleetView 持久后台多 Agent 协调 + 工作流编排：属 coagentia（M6 Orchestrator）职责，
+    # 非单 Agent 能力。
     "TaskCreate",
     "TaskGet",
     "TaskList",

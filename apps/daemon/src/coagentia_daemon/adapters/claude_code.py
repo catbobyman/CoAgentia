@@ -36,6 +36,12 @@ CRASH_BACKOFF: tuple[float, ...] = (1.0, 5.0, 15.0)
 CRASH_WINDOW_SEC = 300.0
 CRASH_MAX = 3
 _STOP_GRACE_SEC = 5.0  # §5：关 stdin → 等 5s 优雅退出 → terminate/kill
+AUTH_RECOVERY_DELAYS: tuple[float, ...] = (0.0, 0.5, 1.0, 2.0)
+_AUTH_ERROR_MARKERS = (
+    "failed to authenticate",
+    "oauth session expired",
+    "authentication_error",
+)
 
 
 class ProcLike(Protocol):
@@ -103,6 +109,9 @@ class ClaudeCodeProcess:
         self.stderr_tail: deque[str] = deque(maxlen=50)
         self._resume_args: list[str] = []
         self.pid: int | None = None
+        self._config_dir: Path | None = None
+        self._last_input: str | None = None
+        self._auth_retry_used = False
 
     # -------------------------------------------------------- 会话簿记
 
@@ -121,6 +130,7 @@ class ClaudeCodeProcess:
     async def start(self, boot: AgentBoot, resume: bool) -> None:
         home = self._paths.ensure_agent_home(self.agent_member_id)
         config_dir = Path(cmdline.build_env(str(home))["CLAUDE_CONFIG_DIR"])
+        self._config_dir = config_dir
         mcp_path = cmdline.materialize_mcp_config(
             config_dir,
             agent_member_id=self.agent_member_id,
@@ -209,9 +219,18 @@ class ClaudeCodeProcess:
             return
         if isinstance(frame, dict):
             await self.router.process(frame)
+            if self._is_auth_failure(frame):
+                await self._retry_after_auth_failure()
 
     async def feed(self, text: str) -> None:
         """写入一个 turn 的 stdin 输入（§6.4：写 stdin 即 ack）。"""
+        if self._config_dir is not None:
+            cmdline.materialize_credentials(self._config_dir)
+        self._last_input = text
+        self._auth_retry_used = False
+        await self._write_input(text)
+
+    async def _write_input(self, text: str) -> None:
         proc = self._proc
         if proc is None or proc.stdin is None:
             raise RuntimeError("process not running")
@@ -221,6 +240,26 @@ class ClaudeCodeProcess:
         drain = getattr(proc.stdin, "drain", None)
         if drain is not None:
             await drain()
+
+    @staticmethod
+    def _is_auth_failure(frame: dict[str, Any]) -> bool:
+        if frame.get("type") != "result":
+            return False
+        if not (frame.get("is_error") or frame.get("api_error_status")):
+            return False
+        text = _json_dumps(frame).casefold()
+        return any(marker in text for marker in _AUTH_ERROR_MARKERS)
+
+    async def _retry_after_auth_failure(self) -> None:
+        """等待并吸收其他 Agent 刷新的 OAuth 凭证，然后把失败 turn 自动重投一次。"""
+        if self._auth_retry_used or self._last_input is None or self._config_dir is None:
+            return
+        self._auth_retry_used = True
+        for delay in AUTH_RECOVERY_DELAYS:
+            await asyncio.sleep(delay)
+            if cmdline.materialize_credentials(self._config_dir):
+                await self._write_input(self._last_input)
+                return
 
     async def stop(self) -> None:
         """关 stdin → 等 5s 优雅退出 → terminate → kill（§5）。"""

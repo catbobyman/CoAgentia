@@ -54,6 +54,19 @@ def _jsonable(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """剥掉 pydantic error 里不可 JSON 序列化的 ctx（如异常对象）。"""
     out: list[dict[str, Any]] = []
     for e in errors:
-        clean = {k: v for k, v in e.items() if k != "ctx"}
+        clean = {k: _json_value(v) for k, v in e.items() if k != "ctx"}
         out.append(clean)
     return out
+
+
+def _json_value(value: Any) -> Any:
+    """把校验错误中的 tuple/异常 Unicode 等转换为稳定 JSON 值。"""
+    if isinstance(value, str):
+        return value.encode("utf-8", "backslashreplace").decode("utf-8")
+    if isinstance(value, tuple | list):
+        return [_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    return str(value)

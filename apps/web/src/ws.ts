@@ -14,12 +14,17 @@ export interface WsHandlers {
   onResync?: () => void;
 }
 
-const WS_URL = API_BASE.replace(/^http/, 'ws') + '/api/ws';
+export function webSocketUrl(apiBase = API_BASE, origin = window.location.origin): string {
+  const url = new URL(`${apiBase}/api/ws`, origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
 
 export function connectWs(handlers: WsHandlers): () => void {
   const { onEvent, onStatus, onResync } = handlers;
   let sock: WebSocket | null = null;
   let heartbeat: number | undefined;
+  let retryTimer: number | undefined;
   let retryMs = 1000;
   let attempt = 0; // 已发生的重连次数(第 n 次)
   let hadConnection = false; // 是否曾经成功连过(用于区分首连 vs 重连)
@@ -29,8 +34,9 @@ export function connectWs(handlers: WsHandlers): () => void {
   const status = (s: WsStatus) => onStatus?.(s, attempt);
 
   const open = () => {
+    if (closed) return;
     lastSeq = null;
-    sock = new WebSocket(WS_URL);
+    sock = new WebSocket(webSocketUrl());
 
     sock.onmessage = (raw) => {
       let env: Envelope;
@@ -70,7 +76,8 @@ export function connectWs(handlers: WsHandlers): () => void {
       if (closed) return;
       attempt += 1;
       status('reconnecting');
-      window.setTimeout(open, retryMs);
+      window.clearTimeout(retryTimer);
+      retryTimer = window.setTimeout(open, retryMs);
       retryMs = Math.min(retryMs * 2, 30_000); // 1s→2s→…封顶 30s(契约 C §2)
     };
   };
@@ -81,6 +88,7 @@ export function connectWs(handlers: WsHandlers): () => void {
   return () => {
     closed = true;
     window.clearInterval(heartbeat);
+    window.clearTimeout(retryTimer);
     sock?.close();
   };
 }

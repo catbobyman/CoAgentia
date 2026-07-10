@@ -14,6 +14,8 @@ export interface ChannelListProps {
   dmPeer: (ch: ChannelPublic) => MemberPublic | undefined;
   onSelectChannel: (ch: ChannelPublic) => void;
   onPlayTimeline?: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 export function ChannelList(props: ChannelListProps) {
@@ -22,7 +24,7 @@ export function ChannelList(props: ChannelListProps) {
   const dms = channels.filter((c) => c.kind === 'dm');
 
   return (
-    <aside className="chlist">
+    <aside className={`chlist${props.mobileOpen ? ' mobile-open' : ''}`}>
       <div className="grp">Channels</div>
       {roomChannels.map((ch) => {
         const n = unreadCount(ch);
@@ -31,7 +33,10 @@ export function ChannelList(props: ChannelListProps) {
           <div
             key={ch.id}
             className={`ch${active ? ' active' : ''}${n && !active ? ' unread' : ''}`}
-            onClick={() => onSelectChannel(ch)}
+            onClick={() => {
+              onSelectChannel(ch);
+              props.onMobileClose?.();
+            }}
           >
             {ch.is_private
               ? <span className="lock"><Lock /></span>
@@ -47,7 +52,14 @@ export function ChannelList(props: ChannelListProps) {
         const peer = dmPeer(ch);
         if (!peer) return null;
         return (
-          <div key={ch.id} className="ch" onClick={() => onSelectChannel(ch)}>
+          <div
+            key={ch.id}
+            className="ch"
+            onClick={() => {
+              onSelectChannel(ch);
+              props.onMobileClose?.();
+            }}
+          >
             <Avatar name={peer.name} presence={presenceOf(peer.id)} size="nav" />
             <span className="nm">{peer.name}</span>
           </div>

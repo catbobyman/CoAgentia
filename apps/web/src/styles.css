@@ -335,3 +335,60 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .modal { width: 480px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-0); padding: 20px; box-shadow: var(--shadow-popover); }
 .mtitle { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
 .cmdline { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--text); background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 10px 12px; white-space: pre-wrap; word-break: break-all; margin-top: 4px; }
+
+/* ===== 窄屏：频道侧栏改抽屉，主工作区保留可用宽度 ===== */
+.rail .mobile-menu, .chlist-backdrop { display: none; }
+
+@media (max-width: 720px) {
+  .app { grid-template-columns: 48px minmax(0, 1fr); height: 100dvh; }
+  .rail { position: relative; z-index: 42; }
+  .rail .mobile-menu { display: flex; }
+  .chlist {
+    position: fixed;
+    z-index: 41;
+    top: 0;
+    bottom: 0;
+    left: 48px;
+    width: min(280px, calc(100vw - 48px));
+    transform: translateX(-105%);
+    transition: transform 160ms ease;
+    box-shadow: var(--shadow-popover);
+  }
+  .chlist.mobile-open { transform: translateX(0); }
+  .chlist-backdrop {
+    display: block;
+    position: fixed;
+    z-index: 40;
+    inset: 0 0 0 48px;
+    width: auto;
+    height: auto;
+    border: 0;
+    background: var(--scrim);
+  }
+  .topbar { padding: 0 10px; }
+  .topbar .cdesc, .topbar .stack { display: none; }
+  .tabs { padding: 0 8px; overflow-x: auto; }
+  .tab { padding: 0 9px; white-space: nowrap; }
+  .flow { padding: 12px 10px 8px; }
+  .msg { grid-template-columns: 32px minmax(0, 1fr); }
+  .msg .body { overflow-wrap: anywhere; }
+  .composer { padding: 8px 10px 12px; }
+  .combox {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px 8px;
+    padding: 7px 8px;
+  }
+  .combox .astask { grid-column: 2; font-size: 12px; }
+  .combox .btn { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
+  .panel { position: fixed; z-index: 45; inset: 0 0 0 48px; width: auto; }
+  .ahead { padding: 16px 12px 12px; flex-wrap: wrap; }
+  .ahead .sp { display: none; }
+  .tabsbar, .content { padding-left: 12px; padding-right: 12px; }
+  .frow { flex-direction: column; gap: 4px; }
+  .frow .lb { width: auto; }
+  .main.computers { padding: 16px 12px; }
+  .mrow { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .mrow .lb { width: auto; }
+  .modal { width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
+}

@@ -2,18 +2,19 @@
 // B2 其它屏复用同一 rail;图标走 lucide-react(实现期本地打包,非 CDN)。
 // 功能图标导航到对应路由(机器→/computers、成员→首个 Agent 详情、logo→会话屏)。
 import {
-  Activity, ListTodo, Monitor, Search, Settings, SunMoon, Users,
+  Activity, ListTodo, Menu, Monitor, Search, Settings, SunMoon, Users,
 } from 'lucide-react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 
 import { LOGO_A_BITS } from '../lib/uiMaps';
 
-function RailItem({ label, active, dot, onClick, children }: {
-  label: string; active?: boolean; dot?: boolean; onClick?: () => void; children: React.ReactNode;
+function RailItem({ label, active, dot, onClick, className = '', children }: {
+  label: string; active?: boolean; dot?: boolean; onClick?: () => void;
+  className?: string; children: React.ReactNode;
 }) {
   return (
     <div
-      className={`rit${active ? ' active' : ''}`}
+      className={`rit${active ? ' active' : ''}${className ? ` ${className}` : ''}`}
       aria-label={label}
       title={label}
       onClick={onClick}
@@ -24,7 +25,11 @@ function RailItem({ label, active, dot, onClick, children }: {
   );
 }
 
-export function Rail({ meName, firstAgentId }: { meName: string; firstAgentId?: string }) {
+export function Rail({ meName, firstAgentId, onToggleChannels }: {
+  meName: string;
+  firstAgentId?: string;
+  onToggleChannels?: () => void;
+}) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -39,6 +44,7 @@ export function Rail({ meName, firstAgentId }: { meName: string; firstAgentId?: 
       >
         {LOGO_A_BITS.map((b, i) => <i key={i} className={b ? 'on' : ''} />)}
       </div>
+      <RailItem label="频道" className="mobile-menu" onClick={onToggleChannels}><Menu /></RailItem>
       <RailItem label="搜索 Ctrl+K"><Search /></RailItem>
       <RailItem label="Activity(有未读)" dot><Activity /></RailItem>
       <RailItem label="任务"><ListTodo /></RailItem>

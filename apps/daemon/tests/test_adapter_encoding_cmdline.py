@@ -112,3 +112,33 @@ def test_materialize_mcp_config(tmp_path: Path) -> None:
     assert server["type"] == "stdio"
     assert "mcp" in server["args"]
     assert AID in server["args"] and "http://s" in server["args"] and "cak_x" in server["args"]
+
+
+def _write_credentials(path: Path, expires_at: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "claudeAiOauth": {
+                    "accessToken": f"access-{expires_at}",
+                    "refreshToken": f"refresh-{expires_at}",
+                    "expiresAt": expires_at,
+                    "refreshTokenExpiresAt": expires_at + 1000,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_materialize_credentials_uses_newest_valid_peer(tmp_path: Path) -> None:
+    machine = tmp_path / "machine"
+    target = tmp_path / "agents" / "pat" / ".claude"
+    peer = tmp_path / "agents" / "hank" / ".claude" / ".credentials.json"
+    _write_credentials(machine / ".credentials.json", 0)
+    _write_credentials(target / ".credentials.json", 0)
+    _write_credentials(peer, 5000)
+
+    assert cmdline.materialize_credentials(target, source=machine) == [".credentials.json"]
+    copied = json.loads((target / ".credentials.json").read_text(encoding="utf-8"))
+    assert copied["claudeAiOauth"]["expiresAt"] == 5000

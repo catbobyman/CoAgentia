@@ -17,7 +17,10 @@ import type {
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
-export const API_BASE = 'http://127.0.0.1:8642';
+// 默认同源：生产由 coagentia-server 托管 dist，Vite 开发态由 proxy 转发到真实 Server。
+// 只有显式 VITE_MOCK_MODE=true 时才启用 M2/mock-only 查询与时间线控制面。
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+export const IS_MOCK = import.meta.env.VITE_MOCK_MODE === 'true';
 
 type MessagesPage =
   RestPaths['/api/channels/{channel_id}/messages']['get']['responses']['200']['content']['application/json'];
@@ -53,7 +56,11 @@ export const api = {
   messages: (channelId: string) =>
     get<MessagesPage>(`/api/channels/${channelId}/messages?limit=200`),
   tasks: (channelId: string) =>
-    get<TasksPage>(`/api/tasks?channel_id=${channelId}`).then((p) => p.items as TaskPublic[]),
+    IS_MOCK
+      ? get<TasksPage>(`/api/tasks?channel_id=${channelId}`).then(
+          (p) => p.items as TaskPublic[],
+        )
+      : Promise.resolve([] as TaskPublic[]),
 
   sendMessage: async (channelId: string, body: string, asTask: boolean): Promise<MessageCreated> => {
     const r = await fetch(`${API_BASE}/api/channels/${channelId}/messages`, {
@@ -107,5 +114,8 @@ export const api = {
       body: JSON.stringify({ last_read_message_id: lastReadMessageId }),
     }),
 
-  playTimeline: () => fetch(`${API_BASE}/__mock/play`, { method: 'POST' }),
+  playTimeline: () =>
+    IS_MOCK
+      ? fetch(`${API_BASE}/__mock/play`, { method: 'POST' })
+      : Promise.resolve(new Response(null, { status: 204 })),
 };

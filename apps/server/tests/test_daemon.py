@@ -363,7 +363,8 @@ def test_busy_concurrent_delivery_no_duplicate(
     """#5：busy 期相邻投递批在锁内重算积压，不重复喂较低 message_id。
 
     task1 直投 [m1] 后持 agent_lock 等 ack；task2（m2）阻塞在锁。ack1(done) 推进 read_position=m1
-    并释放锁 → task2 取锁**重算**积压 → 仅 [m2]（不含已投的 m1）。修前 task2 会发锁外预算的 [m1,m2]。
+    并释放锁 → task2 取锁**重算**积压 → 仅 [m2]（不含已投的 m1）。
+    修前 task2 会发锁外预算的 [m1,m2]。
     """
     client, env, _hub = ctx
     a, ch = _mention_setup(env, "busy")

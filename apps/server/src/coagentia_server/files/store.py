@@ -88,19 +88,31 @@ class FileStore:
     # ---------------------------------------------------------------- 绑定
 
     def bind(self, file_id: str) -> str:
-        """把 staging 正文移入 files/<file_id>，删除 sidecar；返回 stored_path 相对路径。
+        """把 staging 正文移入 files/<file_id>，暂留 sidecar；返回 stored_path 相对路径。
 
-        与 files 行落库**同事务**由调用方保证（本方法只做磁盘搬运）。
+        调用方在数据库提交后调用 finalize_bind；回滚时调用 rollback_bind。sidecar 在提交前保留，
+        让数据库失败可以把正文无损搬回 staging，而不是制造最终目录孤儿。
         """
         self.ensure_dirs()
         src = self.staging_dir / file_id
         dst = self.files_dir / file_id
-        if src.exists():
-            src.replace(dst)
+        if not src.exists():
+            raise FileNotFoundError(src)
+        src.replace(dst)
+        return f"{FILES_DIRNAME}/{file_id}"
+
+    def finalize_bind(self, file_id: str) -> None:
+        """数据库提交成功后删除 staging sidecar，完成绑定。"""
         sidecar = self.staging_dir / f"{file_id}.json"
         if sidecar.exists():
             sidecar.unlink()
-        return f"{FILES_DIRNAME}/{file_id}"
+
+    def rollback_bind(self, file_id: str) -> None:
+        """数据库回滚时把正文恢复到 staging；sidecar 在 bind 阶段始终保留。"""
+        src = self.files_dir / file_id
+        dst = self.staging_dir / file_id
+        if src.exists() and not dst.exists():
+            src.replace(dst)
 
     # ---------------------------------------------------------------- 读取
 

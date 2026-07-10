@@ -29,9 +29,6 @@ _MEMBER = models.Member.__table__
 _FILE = models.File.__table__
 _READ = models.ReadPosition.__table__
 
-_MENTION_RE = re.compile(r"@([^\s@]+)")
-
-
 def _require_channel(tx: Tx, channel_id: str) -> dict[str, Any]:
     row = tx.conn.execute(select(_CHANNEL).where(_CHANNEL.c.id == channel_id)).mappings().first()
     if row is None:
@@ -41,15 +38,31 @@ def _require_channel(tx: Tx, channel_id: str) -> dict[str, Any]:
 
 def _resolve_mentions(tx: Tx, workspace_id: str, message_id: str, body: str) -> None:
     """@名字 服务端解析一次落 message_mentions（body 是唯一事实源，契约 A messages）。"""
-    handles = {h.lower() for h in _MENTION_RE.findall(body)}
+    members = list(
+        tx.conn.execute(
+            select(_MEMBER.c.id, _MEMBER.c.name).where(
+                _MEMBER.c.workspace_id == workspace_id,
+                _MEMBER.c.removed_at.is_(None),
+            )
+        ).mappings()
+    )
+    if not members:
+        return
+
+    # 以成员名目录为事实源，而不是把 @ 后直到空白都当句柄。这样 `@Hank，让他处理`
+    # 会在中文逗号处正确结束，也不会把 `@PatBot` 误解析成较短的 `@Pat`。
+    alternatives = "|".join(
+        re.escape(str(member["name"]))
+        for member in sorted(members, key=lambda member: len(str(member["name"])), reverse=True)
+    )
+    mention_re = re.compile(rf"@({alternatives})(?=$|[^\w.-])", re.IGNORECASE)
+    handles = {match.group(1).casefold() for match in mention_re.finditer(body)}
     if not handles:
         return
-    members = tx.conn.execute(
-        select(_MEMBER.c.id, _MEMBER.c.name).where(_MEMBER.c.workspace_id == workspace_id)
-    ).mappings()
+
     seen: set[str] = set()
     for m in members:
-        if m["name"].lower() in handles and m["id"] not in seen:
+        if str(m["name"]).casefold() in handles and m["id"] not in seen:
             tx.conn.execute(
                 insert(_MENTION).values(message_id=message_id, member_id=m["id"])
             )
@@ -199,7 +212,7 @@ def post_message(
         meta = tx.file_store.read_staged_meta(upload_id)
         if meta is None or not tx.file_store.is_staged(upload_id):
             raise ApiError(404, rest.ErrorCode.NOT_FOUND, f"文件未预上传或已绑定: {upload_id}")
-        stored_path = tx.file_store.bind(upload_id)
+        stored_path = tx.bind_file(upload_id)
         tx.conn.execute(
             insert(_FILE).values(
                 id=upload_id,

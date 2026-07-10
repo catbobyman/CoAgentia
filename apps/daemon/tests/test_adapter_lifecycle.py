@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from adapter_helpers import (
@@ -18,7 +19,7 @@ from adapter_helpers import (
 )
 from coagentia_contracts.daemon import AgentBoot
 from coagentia_contracts.enums import AgentStatus, WakeReason
-from coagentia_daemon.adapters import claude_code
+from coagentia_daemon.adapters import claude_code, cmdline
 from coagentia_daemon.adapters.claude_code import ClaudeCodeAdapter
 from coagentia_daemon.paths import DataPaths
 from helpers import until
@@ -222,3 +223,56 @@ async def test_inject_writes_stdin_and_diagnostic(tmp_path: Path) -> None:
     await adapter.inject(AID, "看这里", {"kind": "guard_feedback"}, "guard.reevaluate_requested")
     assert "guard.reevaluate_requested" in sink.diag_types()
     assert any("看这里" in ln for ln in spawn.procs[0].stdin.lines())
+
+
+def _write_credentials(path: Path, expires_at: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "claudeAiOauth": {
+                    "accessToken": f"access-{expires_at}",
+                    "refreshToken": f"refresh-{expires_at}",
+                    "expiresAt": expires_at,
+                    "refreshTokenExpiresAt": expires_at + 1000,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+async def test_auth_failure_absorbs_peer_credentials_and_retries_turn(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine = tmp_path / "machine"
+    _write_credentials(machine / ".credentials.json", 0)
+    monkeypatch.setattr(cmdline, "default_config_dir", lambda: machine)
+    monkeypatch.setattr(claude_code, "AUTH_RECOVERY_DELAYS", (0.0,))
+
+    adapter, sink, spawn, paths = _make(tmp_path)
+    boot = _boot(tmp_path / "home")
+    await adapter.start(boot)
+    channel_id = "01K5CHAN00000000000000000A"
+    await adapter.deliver(
+        AID,
+        channel_id,
+        [
+            {
+                "id": "01K5MSG100000000000000000A",
+                "channel_id": channel_id,
+                "body": "retry me",
+            }
+        ],
+        None,
+    )
+    assert len(spawn.procs[0].stdin.lines()) == 1
+
+    peer = paths.agents_dir / "peer" / ".claude" / ".credentials.json"
+    _write_credentials(peer, 5000)
+    auth_error = f_result(subtype="error_during_execution", is_error=True)
+    auth_error["result"] = "Failed to authenticate: OAuth session expired"
+    await adapter._agents[AID].process._on_line(json.dumps(auth_error))
+
+    assert len(spawn.procs[0].stdin.lines()) == 2
+    assert spawn.procs[0].stdin.lines()[0] == spawn.procs[0].stdin.lines()[1]

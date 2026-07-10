@@ -34,7 +34,8 @@ _IDENTITY_TEMPLATE = (
     "对应关系：\n"
     "  · 发频道/线程消息 → coagentia 的 send_message 工具（**不是**内置 SendMessage）；\n"
     "  · 上传文件 → upload_file；回看历史 → get_messages / get_thread；\n"
-    "  · 建/销提醒 → create_reminder / cancel_reminder；看频道/成员 → list_channels / list_members。\n"
+    "  · 建/销提醒 → create_reminder / cancel_reminder；"
+    "看频道/成员 → list_channels / list_members。\n"
     "这些工具属 coagentia MCP server；若尚未加载，先用 ToolSearch 搜 \"coagentia\" 载入再调用。\n"
     "散文正文不会被转成频道消息——只有显式调用 coagentia 工具才会真正发出。\n"
     "护栏：send_message 返回 202 held（被扣）时停止重发、等待反馈直投，勿盲目重试。\n"
@@ -63,10 +64,36 @@ def default_config_dir() -> Path:
 _CREDENTIAL_FILES = (".credentials.json",)
 
 
+def _credential_score(path: Path) -> tuple[int, int, int, int] | None:
+    """优先选择含 OAuth token 且过期时间更新的凭证；损坏 JSON 不参与同步。"""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        oauth = raw.get("claudeAiOauth") if isinstance(raw, dict) else None
+        stat = path.stat()
+    except (OSError, ValueError):
+        return None
+    if not isinstance(oauth, dict):
+        return (0, 0, 0, stat.st_mtime_ns)
+    has_tokens = int(bool(oauth.get("accessToken") and oauth.get("refreshToken")))
+    expires_at = int(oauth.get("expiresAt") or 0)
+    refresh_expires_at = int(oauth.get("refreshTokenExpiresAt") or 0)
+    return (has_tokens, expires_at, refresh_expires_at, stat.st_mtime_ns)
+
+
+def _credential_candidates(config_dir: Path, source: Path) -> list[Path]:
+    candidates = [source / name for name in _CREDENTIAL_FILES]
+    agents_dir = config_dir.parent.parent
+    if agents_dir.name == "agents" and agents_dir.is_dir():
+        for peer_dir in agents_dir.iterdir():
+            candidates.extend(peer_dir / ".claude" / name for name in _CREDENTIAL_FILES)
+    return candidates
+
+
 def materialize_credentials(config_dir: Path, source: Path | None = None) -> list[str]:
     """把机器级 runtime 凭证复制进隔离配置目录（§2 凭证物化；BYO Key 不经 server）。
 
-    仅在目标缺失时复制（幂等）；源缺失静默跳过（未登录场景由 CLI 自身报错）。
+    每次启动/投递前从机器级配置和同 daemon 的 Agent 配置中选择最新有效凭证。OAuth 刷新会
+    轮换 refresh token；因此一个 Agent 刷新成功后，其他隔离配置可自动吸收新凭证并自愈。
     """
     src = source or default_config_dir()
     if src.resolve() == config_dir.resolve():
@@ -74,12 +101,27 @@ def materialize_credentials(config_dir: Path, source: Path | None = None) -> lis
     copied: list[str] = []
     config_dir.mkdir(parents=True, exist_ok=True)
     for name in _CREDENTIAL_FILES:
-        s = src / name
         d = config_dir / name
-        if s.is_file() and not d.exists():
+        scored = [
+            (score, candidate)
+            for candidate in _credential_candidates(config_dir, src)
+            if candidate.name == name and candidate.resolve() != d.resolve()
+            if (score := _credential_score(candidate)) is not None
+        ]
+        if not scored:
+            continue
+        best_score, best = max(scored, key=lambda item: item[0])
+        current_score = _credential_score(d)
+        if current_score is not None and current_score >= best_score:
+            continue
+        with contextlib.suppress(OSError):
+            data = best.read_bytes()
+            tmp = d.with_name(f"{d.name}.{os.getpid()}.tmp")
+            tmp.write_bytes(data)
             with contextlib.suppress(OSError):
-                d.write_bytes(s.read_bytes())
-                copied.append(name)
+                tmp.chmod(0o600)
+            tmp.replace(d)
+            copied.append(name)
     return copied
 
 

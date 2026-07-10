@@ -9,11 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import mimetypes
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, WebSocket
 from sqlalchemy.engine import Engine
+from starlette.exceptions import HTTPException
+from starlette.responses import Response
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from coagentia_server import __version__
@@ -32,11 +38,43 @@ GC_INTERVAL_SEC = 60 * 60  # 契约 D §9.2：每小时扫 staging
 DEFAULT_DATA_ROOT = DEFAULT_DB_PATH.parent
 
 
+class SpaStaticFiles(StaticFiles):
+    """静态资源服务；非 API 的客户端路由回退到 index.html。"""
+
+    async def get_response(self, path: str, scope: Any) -> Response:
+        try:
+            response = await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code != 404 or not self._should_fallback(path):
+                raise
+            return await super().get_response("index.html", scope)
+        if response.status_code == 404 and self._should_fallback(path):
+            return await super().get_response("index.html", scope)
+        return response
+
+    @staticmethod
+    def _should_fallback(path: str) -> bool:
+        return not path.startswith("api/") and not Path(path).suffix
+
+
+def _find_web_dist(configured: str | Path | None) -> Path | None:
+    """解析显式目录、环境变量或 monorepo 的 apps/web/dist。"""
+    candidates: list[Path] = []
+    if configured is not None:
+        candidates.append(Path(configured))
+    elif env_path := os.environ.get("COAGENTIA_WEB_DIST"):
+        candidates.append(Path(env_path))
+    else:
+        candidates.append(Path(__file__).resolve().parents[3] / "web" / "dist")
+    return next((path for path in candidates if (path / "index.html").is_file()), None)
+
+
 def create_app(
     *,
     engine: Engine | None = None,
     data_root: str | Path | None = None,
     server_url: str = "http://127.0.0.1:8787",
+    web_dist: str | Path | None = None,
 ) -> FastAPI:
     engine = engine or make_engine()
     file_store = FileStore(data_root if data_root is not None else DEFAULT_DATA_ROOT)
@@ -71,6 +109,7 @@ def create_app(
     app.state.server_url = server_url
     app.state.ws_hub = ws_hub
     app.state.daemon_hub = daemon_hub
+    app.state.web_dist = _find_web_dist(web_dist)
 
     install_error_handlers(app)
     install_routes(app)
@@ -78,6 +117,10 @@ def create_app(
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> Response:
+        return Response(status_code=204)
 
     @app.websocket("/api/daemon/ws")
     async def daemon_ws_endpoint(sock: WebSocket) -> None:
@@ -96,6 +139,15 @@ def create_app(
             pass
         finally:
             await ws_hub.detach(conn)
+
+    if app.state.web_dist is not None:
+        # Windows 注册表可能把 .js 映射为 text/plain；浏览器会拒绝加载模块脚本。
+        mimetypes.add_type("application/javascript", ".js", strict=True)
+        app.mount(
+            "/",
+            SpaStaticFiles(directory=app.state.web_dist, html=True),
+            name="web",
+        )
 
     return app
 

@@ -6,23 +6,26 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from pathlib import Path
 
 from coagentia_contracts import entities, rest
 from coagentia_contracts.ws import EventType
+from coagentia_server.app import create_app
 from coagentia_server.db import models
 from coagentia_server.events import PendingEvent
 from coagentia_server.files import FileStore
 from coagentia_server.files.gc import run_gc
 from coagentia_server.routes.workspace import EMPTY_CANVAS_HASH
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.engine import Engine
 
 BUILD_CHANNEL = "build"
 PAT = "Pat"
+AGENT_TEST_KEY = "cak_rest_agent_test"
 
 
 def _channel(client: TestClient, name: str) -> dict:
@@ -31,6 +34,26 @@ def _channel(client: TestClient, name: str) -> dict:
 
 def _member(client: TestClient, name: str) -> dict:
     return next(m for m in client.get("/api/members").json() if m["name"] == name)
+
+
+def _agent_headers(engine: Engine, member_id: str) -> dict[str, str]:
+    """给 seed Agent 所属 Computer 注入已知测试 key，返回契约 B §2 双头。"""
+    digest = hashlib.sha256(AGENT_TEST_KEY.encode()).hexdigest()
+    with engine.begin() as conn:
+        computer_id = conn.execute(
+            select(models.Agent.__table__.c.computer_id).where(
+                models.Agent.__table__.c.member_id == member_id
+            )
+        ).scalar_one()
+        conn.execute(
+            update(models.Computer.__table__)
+            .where(models.Computer.__table__.c.id == computer_id)
+            .values(api_key_hash=digest)
+        )
+    return {
+        "Authorization": f"Bearer {AGENT_TEST_KEY}",
+        "X-Acting-Member": member_id,
+    }
 
 
 # ---------------------------------------------------------------- bootstrap 冷启动
@@ -117,6 +140,25 @@ def test_mention_persisted(server_client: TestClient, seeded_engine: Engine) -> 
         ).scalars().all()
     pat = _member(server_client, PAT)
     assert pat["id"] in rows
+
+
+def test_mention_ends_at_chinese_punctuation(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "@Pat，让他继续处理"},
+    )
+    mid = r.json()["message"]["id"]
+    pat = _member(server_client, PAT)
+    with seeded_engine.connect() as conn:
+        mentioned = conn.execute(
+            select(models.MessageMention.__table__.c.member_id).where(
+                models.MessageMention.__table__.c.message_id == mid
+            )
+        ).scalars().all()
+    assert mentioned == [pat["id"]]
 
 
 # ---------------------------------------------------------------- 幂等（复用 A2 账本）
@@ -217,7 +259,7 @@ def test_reminder_cancel_writes_system_message_and_diagnostic(
             "cadence": "2026-07-10T09:00:00.000Z",
             "anchor_channel_id": build["id"],
         },
-        headers={"X-Acting-Member": pat["id"]},
+        headers=_agent_headers(seeded_engine, pat["id"]),
     )
     rid = r.json()["id"]
     before = server_client.get(f"/api/channels/{build['id']}/messages").json()["items"]
@@ -254,6 +296,32 @@ def test_file_staging_then_bind_moves_to_files_dir(
     assert row is not None and row["message_id"] is not None
     assert row["stored_path"] == f"files/{meta.id}"
     assert server_client.get(f"/api/files/{meta.id}/content").content == b"# hi"
+
+
+def test_file_bind_rolls_back_to_staging_when_later_file_is_invalid(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    build = _channel(server_client, BUILD_CHANNEL)
+    upload = server_client.post(
+        "/api/files", files={"file": ("keep.md", b"keep", "text/markdown")}
+    ).json()
+    missing_id = "01K0MMBR0000000000000000ZZ"
+    response = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "must rollback", "file_ids": [upload["id"], missing_id]},
+    )
+    assert response.status_code == 404
+
+    store = server_client.app.state.file_store
+    assert (store.staging_dir / upload["id"]).read_bytes() == b"keep"
+    assert (store.staging_dir / f"{upload['id']}.json").is_file()
+    assert not (store.files_dir / upload["id"]).exists()
+    with seeded_engine.connect() as conn:
+        assert conn.execute(
+            select(func.count())
+            .select_from(models.Message.__table__)
+            .where(models.Message.__table__.c.body == "must rollback")
+        ).scalar_one() == 0
 
 
 def test_file_too_large_rejected(server_client: TestClient) -> None:
@@ -317,20 +385,87 @@ def test_open_dm_nonexistent_member_404(server_client: TestClient) -> None:
     assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
 
 
-def test_acting_member_removed_falls_back_to_owner(server_client: TestClient) -> None:
-    """#8：已删成员的 X-Acting-Member 不被采用（回退 Owner），不产生幽灵作者。"""
-    owner = _member(server_client, "Memcyo")
+def test_agent_impersonation_without_bearer_is_rejected(server_client: TestClient) -> None:
     pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "forged"},
+        headers={"X-Acting-Member": pat["id"]},
+    )
+    assert r.status_code == 403
+    assert (
+        rest.ErrorResponse.model_validate(r.json()).error.code
+        is rest.ErrorCode.PERMISSION_DENIED
+    )
+
+
+def test_authenticated_agent_is_attributed(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "signed"},
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 201
+    assert r.json()["message"]["author_member_id"] == pat["id"]
+
+
+def test_removed_acting_member_is_rejected(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """已删除 Agent 即使带原 Computer key 也不能行为，更不能静默回退 Owner。"""
+    pat = _member(server_client, PAT)
+    headers = _agent_headers(seeded_engine, pat["id"])
     assert server_client.delete(f"/api/agents/{pat['id']}").status_code == 204
     build = _channel(server_client, BUILD_CHANNEL)
     r = server_client.post(
         f"/api/channels/{build['id']}/messages",
         json={"body": "ghost?"},
-        headers={"X-Acting-Member": pat["id"]},
+        headers=headers,
     )
-    assert r.status_code == 201
-    # 作者回退到 Owner，而非已删的 Pat。
-    assert r.json()["message"]["author_member_id"] == owner["id"]
+    assert r.status_code == 403
+
+
+def test_message_rejects_unpaired_surrogate(server_client: TestClient) -> None:
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        content=b'{"body":"bad\\ud800"}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 422
+    assert (
+        rest.ErrorResponse.model_validate(r.json()).error.code
+        is rest.ErrorCode.VALIDATION_FAILED
+    )
+
+
+def test_server_serves_spa_and_keeps_api_routes(
+    seeded_engine: Engine, tmp_path: Path
+) -> None:
+    dist = tmp_path / "web-dist"
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (dist / "index.html").write_text("<h1>CoAgentia test</h1>", encoding="utf-8")
+    (assets / "app.js").write_text("export {};", encoding="utf-8")
+    app = create_app(
+        engine=seeded_engine,
+        data_root=tmp_path / "static-data",
+        web_dist=dist,
+    )
+    with TestClient(app) as client:
+        assert "CoAgentia test" in client.get("/").text
+        assert "CoAgentia test" in client.get("/computers").text
+        assert client.get("/api/workspace").headers["content-type"].startswith(
+            "application/json"
+        )
+        assert client.get("/assets/app.js").headers["content-type"].startswith(
+            "application/javascript"
+        )
 
 
 def test_delete_channel_with_messages_conflicts(server_client: TestClient) -> None:

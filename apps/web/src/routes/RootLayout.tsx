@@ -1,12 +1,12 @@
 // 布局壳(跨路由常驻):Rail + 频道侧栏 + <Outlet/> + WS 重连条。WS 生命周期挂这里(基座级)。
 // B2 其它屏共享此壳;M1 只有会话屏经 <Outlet/> 渲染。
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from '@tanstack/react-router';
 import { useQueries } from '@tanstack/react-query';
 
 import type { ChannelPublic, MemberPublic, MessagePublic } from '@coagentia/contracts-ts';
 
-import { api } from '../api';
+import { api, IS_MOCK } from '../api';
 import { qk } from '../lib/queryKeys';
 import { useUiStore } from '../lib/store';
 import { useWsSync } from '../data/useWsSync';
@@ -20,6 +20,7 @@ import { ReconnectBar } from '../components/ReconnectBar';
 
 export function RootLayout() {
   useWsSync(); // 基座级 WS:连接 + 事件 patch + 重连 + 重同步
+  const [channelDrawerOpen, setChannelDrawerOpen] = useState(false);
 
   const activeChannelId = useUiStore((s) => s.activeChannelId);
   const setActiveChannel = useUiStore((s) => s.setActiveChannel);
@@ -78,7 +79,18 @@ export function RootLayout() {
     <>
       <ReconnectBar />
       <div className="app">
-        <Rail meName={me.name} firstAgentId={firstAgent?.id} />
+        <Rail
+          meName={me.name}
+          firstAgentId={firstAgent?.id}
+          onToggleChannels={() => setChannelDrawerOpen((open) => !open)}
+        />
+        {channelDrawerOpen && (
+          <button
+            className="chlist-backdrop"
+            aria-label="关闭频道列表"
+            onClick={() => setChannelDrawerOpen(false)}
+          />
+        )}
         <ChannelList
           channels={channels}
           activeChannelId={activeChannelId ?? undefined}
@@ -86,7 +98,9 @@ export function RootLayout() {
           presenceOf={(id) => presence[id]}
           dmPeer={dmPeer}
           onSelectChannel={(ch) => setActiveChannel(ch.id)}
-          onPlayTimeline={() => void api.playTimeline()}
+          onPlayTimeline={IS_MOCK ? () => void api.playTimeline() : undefined}
+          mobileOpen={channelDrawerOpen}
+          onMobileClose={() => setChannelDrawerOpen(false)}
         />
         <Outlet />
       </div>
