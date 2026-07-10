@@ -1,123 +1,86 @@
-# M1 Review 修复交接
+# CoAgentia 当前交接（M3 收口态）
 
-> **2026-07-10 第五批增补：块 M3b「画布与 gating」收口 —— PRD M3 出口达成，M3 里程碑完成。**
-> 多 agent 工作流编排（**E0b 契约地基 → 后端 E4→E5 ∥ 前端 B-M3-2→B-M3-3 ∥ FTS trigram 三轨并行 → 守门 → E6 实机 → `/code-review high` → 修复复跑**）。**交付**：`routes/canvas.py`+`canvas/service.py` 画布结构端点（agent 节点=第三创建途径建 L2 任务+锚点消息、edges 写事务拓扑排序成环 GRAPH_CYCLE、layout 不 bump、每写串行化点+baseline bump+baseline_advanced 广播）；blocked 实时推导（`kernel/graph.py` 图内核，不落库）+ 投递层 gating（`_deliver_message`+`reconcile` 两处决策点，作用于投递批含 read_position 水位截断）+ force-start（仅人类 403 C3、双留痕、不改状态、hub `_run_sync` 桥本次放行）；React Flow 画布页签（实时着色+blocked 级联+成环预判+深链+7 canvas.* handler）+ 升格/ForceStartModal/看板 blocked 徽标；FTS trigram（0005 迁移，3 字符地板：≥3 字 MATCH+<3 字 LIKE 兜底，回写契约 A §10.4）。**`/code-review high`（8 角度→24 候选→10 CONFIRMED）全修 + 4 回归测试**：gating 投递批泄漏（gated 消息经无关触发被投+消费→过滤+水位截断解锁补投不丢）、patch_node V14 复校、LIKE 元字符转义、tasks 锚点<3字兜底、blocked_task_ids 收窄单画布、拖拽 WS 回弹、satisfied 前后端抽 `graph.deriveCanvasBlocked`、wsBridge helper 去重。**基线**：后端 **483 passed/3 skipped**、web vitest **76**、pyright 0、ruff/gen 确定/双侧 build 全绿。**实机**：真 uvicorn 8799+**真 websockets daemon-sim** 工程三角六节点 DAG **17/17**（成环拒/T7 门/force-start 403·留痕/blocked 不唤醒·解锁·force-start override 唤醒无死锁/R4·R7）+ 浏览器同源 6 截图（含 **WS 无刷新实时解锁**）+ console 0 错误（[M3B-EVIDENCE.md](../verify/M3B-EVIDENCE.md)）。**M3 里程碑收口**：§9a+§9b 全绿，阶段结论 = PROJECT-RECORD §9，M3-HANDOFF 移入 archive/。**接续 = M4**（freshness/HeldDraft/沉默提醒/LoopContract 生成）。**未提交前注意**：本批工作树含 M3b 全量改动（45 文件 +4900 行含契约/后端/前端/测试/证据）。
->
-> **2026-07-10 第四批增补：M3a 已提交（`d5f092e`）+ 挂账清理三批收口（`58b89b5`/`9331698`/批3），main 干净。**
-> ① **批1 附件卡数据源**：契约 A **v1.0.4**——`MessagePublic` 增读面派生 `files`（Public≠Row 第 5 例，同 v1.0.3 actor 先例；[]=已附着无附件 / null=未附着 daemon 帧）；列表/线程/发消息响应/搜索命中统一附着，`message.created` 广播自带附件；0004 迁移补 files 索引 (message_id)/(channel_id,id)（if_not_exists 兼容 0001 create_all——坑1 索引变体）；前端 MessageFlow 直消费 `m.files` 删 filesByMessage 三处。实机 9/9 + 截图（[B1-ATTACH-EVIDENCE.md](../verify/B1-ATTACH-EVIDENCE.md)）。
-> ② **批2 keyset 分页统一**：`_pagination.keyset_page`——游标裸 id 不变，服务端 PK 回查 (created_at,id) 行值锚点 + LIMIT limit+1 下推；四端点统一（after 行离开过滤集不再重发首页）；messages before 修成**紧邻窗口回翻**；ActivityScreen 'all' 单拉 + tab 客户端过滤（双请求归一），wsBridge 删多档 patch（Mentions 含已 done 灰显口径=有意设计保持）。实机 10/10 + 单请求截图（[B2-KEYSET-EVIDENCE.md](../verify/B2-KEYSET-EVIDENCE.md)）。
-> ③ **批3 pyright 清零**：109 债（实清 133 含 M2/M3a 新增）→ **0**——`models.tbl()` Table 窄化（80×FromClause DML）+ `models.row_dict()` 非空窄化（13 处 dict(first())）+ tasks 聚合 .one() + hub deliver 帧 model 化（未附着面 files=None）+ daemon frames/mcp、api details 标注修正；**pyright 已并入根级 `pnpm typecheck`**（P1 债"纳入常规守门"达成）。
-> **基线**：后端 **428 passed/3 skipped**、web vitest **23**、ruff/pyright/gen 确定/双侧 build 全绿。M3-HANDOFF §8 挂账表已同步勾销；阶段结论 = PROJECT-RECORD §8。**接续仍 = 块 M3b 画布与 gating**（另开会话，开工入口 = [M3B-KICKOFF.md](M3B-KICKOFF.md)：现状快照 + 已核实资产锚点 + 缺口清单 + 推进顺序）。
->
-> **2026-07-10 第三批增补：M3 前半（块 M3a「契约与校验」）收口。**
-> 多 agent 工作流编排（地基 E0∥E1 并行 → 实现 E2+E3∥B-M3-1 并行 → 守门 → 实机 verify → `/code-review high`）。**E 契约 v1.2 先行**（M3 契约面零新 Agent 工具，engineering_docs/05 §3 裁决表）。**交付**：0003_m3 三表 + TaskPlan/TaskHandoff/LoopContract body 模型（PRD §4.3 v1，M1 原缺）+ 契约提交/修订链 + request-draft S1 直投 + **T7 流转门**（l2→in_review 校验 handoff deliverables/evidence 非空，422 HANDOFF_INCOMPLETE{missing}）+ **升格 PATCH level l1→l2 单向** + 前端 P5 契约卡接真（TaskPlan/TaskHandoff/rev/历史 + 起草入口 + T7 就地提示）。**`/code-review high`（8 角度）CONFIRMED 全修**：修订链竞态（`uq_task_contracts_active` 分区唯一 + SAVEPOINT 重试）、loop_contract 挂 Task 门、T7 经升格绕过守护、前端跨任务陈旧态（ThreadPanel key）、body 断言崩溃防御、T7 错误静默吞兜底、task_id 索引、契约 body 单测。**基线**：后端 **421 passed/3 skipped**、web vitest **23**、双侧 typecheck/build/ruff/gen 全绿；实机真 HTTP 16/16 + 浏览器契约卡/T7 截图（[M3A-EVIDENCE.md](../verify/M3A-EVIDENCE.md)）。已提交 `d5f092e`（35 文件）。**接续 = 块 M3b 画布与 gating**（M3-HANDOFF §9b），另开会话不与 a 交错。执行计划与逐模块状态 = [M3-DEV-PLAN.md](M3-DEV-PLAN.md)。
->
-> **2026-07-10 第二批增补：M2 二轮实机 verify + `/code-review high` 修复批收口，M3 已立项。**
-> ① **二轮实机 verify**（收口态 `6c12b90` 复验）：番茄钟真 HTTP + 对抗 probe + 聚合面 + 浏览器全流程 **35/35 PASS**，证据 [M2-REVIEW2-EVIDENCE.md](../verify/M2-REVIEW2-EVIDENCE.md)。
-> ② **`/code-review high`**（7 finder × 34 去重候选 × 逐项验证）：15 CONFIRMED / 1 PLAUSIBLE / 1 REFUTED，前 10 上报并**全部修复**：activity done 无归属校验（走 acting_member，Agent Bearer 404）· Composer IME 组合态误发 + Ctrl/Cmd+Enter 吞键回归 · api.tasks 首页 50 截断（升序致新任务消失，改游标全量聚合）· 消息流时间 UTC 硬切（新 `lib/time.ts` 统一本地化，收拢 5 处 slice + 2 份 relTime 复制）· ActivityScreen 行为人错位（契约 A **v1.0.3**：ActivityItemPublic 增派生字段 `actor_member_id`）· wsBridge 缺 channelFiles 失效（文件交付实时化）· BoardTab Firefox 拖拽失效（setData）· FilesTab「定位到消息」丢参（补滚动+闪烁高亮）· ThreadPanel 结构性无附件卡（filesByMessage 贯通）· ThreadPanel usage 冻结（token_usage.reported 失效 taskDetail）。**尾部 3 项一并修**：认领钮占用置灰、wsBridge activity 按 owner 过滤、`_generate_activity` 免回读 JOIN；杂项 2：daemon mcp.py 状态枚举改契约派生、冒烟桩形状对齐裸 TaskPublic；api.sendMessage 并入 writeJson 统一错误路径。
-> ③ **收口态**：后端 **387 passed, 3 skipped**（+3 回归测试）、ruff 干净、`pnpm gen` 确定性；前端 typecheck/build 绿、vitest 18；修复实机复核（Agent 清他人未读 404 / actor 显示 Pat / 时间本地化 / 线程附件卡 / 认领钮置灰）全过。
-> ④ **M3 已立项**：任务书 [M3-HANDOFF.md](archive/M3-HANDOFF.md)（两块竖切：**M3a 契约与校验** → **M3b 画布与 gating**，FTS trigram 浮动件）；M2-HANDOFF 移入 archive/。二轮 review 未修挂账（keyset 分页/activity 全表扫/三档缓存簡化/_emit_activity 层级等）已收纳 M3-HANDOFF §8。
+| 项 | 内容 |
+| --- | --- |
+| 更新 | 2026-07-10，块 M3b「画布与 gating」收口并提交后重写（历次增补已沉淀 [PROJECT-RECORD.md](PROJECT-RECORD.md) §1–§9，本文只保留当前态） |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；里程碑任务书均在 [archive/](archive/) |
+| 一句话状态 | **M1/M2/M3 三个里程碑全部收口**（PRD M3 出口「工程三角上画布跑通 + blocked gating 生效」已实机达成）；**接续 = M4 护栏与提醒（尚未立项）** |
 
-> **2026-07-10 增补：M2 全部完成（后半 C3–C7 + 前端 B 线收口）。** 多 agent 工作流编排：后端工作流（C3a task#n 解析 + C3b Activity 生成 mention/dm、C4 files/search/activity 端点、C5 daemon MCP 六工具、C6 usage 归属富化，4 agent 互不重叠文件并行 + 整合）→ 前端工作流（数据层接真 + Toast + P10 搜索 → fe-channel P1/P5/P3/P4 + fe-workspace P11/P8/P9 并行 → verify）。**纪律 7 补齐**：`TASK_TRANSITIONS` + `UNCLAIMABLE_STATUSES` 由 gen 管线生成到 contracts-ts（`constants.ts`），前端拖列/流转/认领防呆消费同一事实源。**收口态**：后端 `pytest -q` = **384 passed, 3 skipped**（较 M2 前半 340 净增 44）、ruff 干净、`pnpm gen` 确定性；前端 typecheck/build 绿、vitest **18 passed**。**实机 verify**：C7 番茄钟真 HTTP **17/17**（人 As Task→Agent claim 联动→线程汇报→文件交付→in_review→人 done→终态守卫→WS 广播）+ 浏览器 UI 全流程（As Task 无刷新出牌、claim 无刷新移列、P3/P11/P9/P10/P8/P5 全屏），12 张截图 + [M2-C7-EVIDENCE.md](../verify/M2-C7-EVIDENCE.md) 归档。中文 FTS 结论回写契约 A §10.4（unicode61 对 CJK 子串不命中，trigram 归 M3）。**`/code-review high`（8 角度）已跑：10 CONFIRMED → 修 6 + 挂账 4**，明细见 [M2-DEV-PLAN.md](M2-DEV-PLAN.md)。执行计划与逐模块状态 = [M2-DEV-PLAN.md](M2-DEV-PLAN.md)；出口清单 [M2-HANDOFF.md](M2-HANDOFF.md) §9a/§9b 两块全绿。**未提交前请注意**：本批工作树含 M2 后半全量改动（65+ 文件）。
->
-> **2026-07-09 增补：M2 前半（C0+C1+C2）已实现并验证。** 工作流编排多 agent 完成：C0 契约登记（enums/entities/rest/constants + mock 形状 + pnpm gen）、C1 建表迁移（Alembic `0002_m2`：tasks/task_events/message_task_refs/activity_items + messages_fts FTS5 + task_events 不可变触发器；0001 拆表清单解 create_all 泄漏坑）、C2 任务域 8 端点（convert/claim/unclaim/assign/status/list/detail/patch + as_task 原子建任务）。全量 **340 passed, 2 skipped**（较 M1 的 238 净增 102 测试含 40 例对抗性硬化 + 2 例 hardening 回归），ruff 干净，pnpm gen 确定性入库，**实机 verify 真 HTTP 24/24 + hardening 复核 6/6**（as_task/convert 幂等/claim 联动/状态机合法·非法·同态·终态/并发 claim 恰一无 5xx/assign/列表/详情）。code-review high 已跑，`default_title` 小数误剥微瑕已直接修复；待决项 1-2（convert TOCTOU / claim 终态门）owner 拍板后已硬化，其余见下方"M2 前半 review 待决项"。**已提交：`42f20f0`（C0-C2 收口）+ hardening 提交。** 第二半 = C3 消息联动 + C4 文件/搜索/Activity 端点 + C5 MCP 工具 + C6 usage 富化 + C7 番茄钟端到端 + 前端 B 线。
-
-## M2 前半 review 待决项
-
-1. ~~**convert 并发 TOCTOU → 500**~~ **已修**（owner 拍板 2026-07-09）：`convert_message_to_task` 建任务段套 SAVEPOINT（范式同 `ledger.record`），`UNIQUE(root_message_id)` 冲突回退本段（含编号自增不漏号）后重查既有任务幂等 200。并发 convert 回归测试 + 实机复核（恰一 201 / 7×200 同任务 / 无 5xx）。
-2. ~~**claim 未挡终态**~~ **已修**（owner 拍板 2026-07-09）：`tasks/service.py` 增 `UNCLAIMABLE_STATUSES = {done, closed}`（claim 语义门，非第二份边表），claim 前置校验 → 422 TASK_TRANSITION_INVALID `details{status}`；closed reopen 回 todo 后可正常认领。回归测试 + 实机复核通过。
-3. **list_tasks 游标失效重排**（低中，未修）：`after` id 因 status/owner 过滤在翻页间离开结果集时静默从头翻 → 跨页重复项（沿袭 M1 messages 分页模式，此处因可变过滤更易触发）。
-4. **patch_task 无法清空 `silence_override_h`**（低，M4 才消费）：`if v is not None` 丢弃 null，无法把任务级覆盖重置回 NULL。
-5. 挂账（低）：messages_fts 键于 messages.rowid（ULID PK 的隐式 rowid），未来 VACUUM 会失同步；allocate_number 依赖 SQLite≥3.35 的 RETURNING。
-6. 整洁/altitude（非阻塞）：as_task 与 convert 的前置校验三件套（archived/DM/顶级）复制两份、claim/unclaim status 联动字面量硬编码未走 TASK_TRANSITIONS、M1_TABLES/M2_TABLES 无完整性守卫。
-7. ENDPOINTS_M2 登记 12 条但真 server 现 serve 8 条（files/search/activity 属 C4 第二半，符合切分）；C4 落地时补"目录 vs 实 serve"一致性测试。
-
-## 当前状态
+## 1. 当前状态
 
 | 项 | 状态 |
 | --- | --- |
-| 仓库 | `D:\Project4work\Agenthub_7_8\coagentia` |
-| 分支 | `main` |
-| 合并提交 | `f2c993f merge: complete M1 implementation and hardening` |
-| 修复提交 | `351684a fix: harden M1 runtime and consolidate handoffs` |
-| 工作树 | 干净；M1 实现与 hardening 已合并到 `main` |
-| M1 核心闭环 | 既有真实两 Agent 对话/文件产出成立；本批修复实机 review 暴露的 7 个问题 |
-| 自动测试 | 238 passed，2 skipped；Web 10 passed；双侧 typecheck、build、ruff 全绿 |
-| 浏览器实证 | 同源 8787 与 Vite 5173 均能连接真实 Server；桌面/390px 已目检 |
+| 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
+| 分支 / HEAD | `main` / `080ed44 M3b complete: canvas & gating`；工作树干净 |
+| 提交链（近） | `d5f092e` M3a → `58b89b5`/`9331698`/`0b61669` 挂账三批 → `85f8568` M3B-KICKOFF → `080ed44` M3b 收口 |
+| 测试基线 | 后端 **483 passed / 3 skipped**（`uv run pytest -q`）· web vitest **76** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（两跑 diff 空）· 双侧 build 绿 |
+| 契约版本 | A **v1.0.4**（+§10.4 trigram 收口结论）· B v1.1 · C · D · E **v1.2**（M3 契约面零新 Agent 工具）；事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 五契约 + `docx_agenthub\CoAgentia-PRD.md` |
+| 建表批次 | 0001 M1（17 表）→ 0002 M2（tasks/task_events/message_task_refs/activity_items + messages_fts）→ 0003 M3（task_contracts/canvas_nodes/canvas_edges）→ 0004 files 索引 → **0005 messages_fts 改 trigram**；`held_drafts` **尚未建**（M4 建表批次） |
+| 实机证据 | [M3B-EVIDENCE.md](../verify/M3B-EVIDENCE.md)（17/17 + 6 截图 + console 0 错误）；此前各批证据同目录 |
 
-详细变更、验证矩阵和证据见 [FIX-REPORT.md](../m1-review-fixes-20260709/FIX-REPORT.md)。
+## 2. 里程碑总览（详情 = PROJECT-RECORD 对应节）
 
-## 已完成
+| 里程碑 | 出口 | 收口 |
+| --- | --- | --- |
+| M1 契约+实现+hardening | 真实两 Agent 对话/文件产出/reminder | `f2c993f` 合 main（§2–§5） |
+| M2 任务与看板 | 番茄钟全流程（人发任务→Agent 认领交付→done） | `6c12b90`+`cdb27db`（§6） |
+| M3a 契约与校验 | L2 契约链路（提交/修订链/request-draft/T7 门/升格） | `d5f092e`（§7） |
+| 挂账三批 | 附件卡数据源 / keyset 分页 / pyright 清零 | `58b89b5`/`9331698`/`0b61669`（§8） |
+| **M3b 画布与 gating** | **PRD M3 出口**：画布建图/成环拒/blocked 推导+投递 gating/force-start/React Flow/FTS trigram | **`080ed44`（§9）** |
 
-1. 真 Server 可托管 Web dist，Vite 默认代理真实 Server，mock-only 行为显式隔离。
-2. Agent REST 身份改为 Computer Bearer + Agent 隶属关系双校验。
-3. 中文标点 mention、未配对 Unicode 500、错误响应二次 500 已修复。
-4. OAuth 隔离凭证支持 peer 选优、原子同步和一次失败 turn 自动重投。
-5. 文件绑定增加数据库回滚补偿，不再丢 staging 或制造最终目录孤儿。
-6. 窄屏频道抽屉和主区响应式布局完成，WS 重连 timer 清理完成。
-7. 新增回归测试并将 Ruff 从 6 个错误清到全绿。
+## 3. 系统当前能力面（一览）
 
-## 启动方式
+- **IM 基座**（M1）：频道/DM/线程/@mention/文件/已读；真 daemon（Claude Code 适配器）双 Agent 对话；WS 事件驱动无刷新。
+- **任务域**（M2）：as_task/convert 建任务、claim/assign/状态机（TASK_TRANSITIONS 单一事实源）、看板 P3/P11、搜索三分组、Activity、daemon MCP 六工具、usage 归属。
+- **L2 契约**（M3a）：TaskPlan/TaskHandoff 提交与修订链、Agent 起草 request-draft S1 直投、T7 流转门（l2→in_review 校验 handoff）、升格 PATCH level l1→l2。
+- **编排画布**（M3b）：每频道画布页签（React Flow）——节点=任务（agent 节点=第三创建途径，建 L2+锚点消息）、边=依赖（写事务拓扑排序防环）、基线快照指纹推进；**blocked 实时推导**（`kernel/graph.py` 权威 + 前端 `lib/graph.ts` 镜像，`golden/graph.json` 双跑对照）；**投递层 gating**（blocked 任务线程消息不唤醒、不入投递批、read_position 水位不越过）；**force-start**（仅人类、双留痕、不改状态、本次放行）；看板 blocked 徽标。
+- **中文检索**（浮动件）：messages_fts trigram（≥3 字 MATCH + <3 字 LIKE 兜底，元字符转义）。
 
-### 真实开发模式
+## 4. 接续 = M4 护栏与提醒（尚未立项）
 
-终端 1：
+**PRD §8 M4 行**：freshness check + HeldDraft 卡片 + 三键干预 + 超时自愈 + 升级（G1–G6）；沉默提醒升级链（D5）。**出口验收**：制造一次 held 场景（卡片可见、放行 1 分钟内交付）+ 制造一次沉默任务（提醒与升级触达）。
 
-```powershell
-uv run coagentia-server
+开工建议（体例沿用 M2/M3 先例）：
+
+1. **建 M4-HANDOFF 任务书**（范围/模块分解/DoD/出口清单，两块竖切评估）+ 契约修订核对先行（纪律 1：D 契约 freshness/held 触发器语义、A 契约 held_drafts 表批次、E 契约 Agent 工具位增减——修订完成后才动代码）。
+2. **M4 开工第一步 = 既有挂账**：`_emit_activity` 从 [routes/messages.py:117](../../apps/server/src/coagentia_server/routes/messages.py) 迁 service 层——M4 升级类 activity 走 hub/reminder 后台路径，无法合理 import 路由层私有函数（M2 二轮 review 挂账，已两次顺延，勿再跳过）。
+3. **可复用资产**（已就位勿重建）：`HeldDraftRow`/`HeldDraftStatus`/`HeldReasons` 契约形状已冻结（entities.py，表未建）；WS `held_draft.created/updated` + Envelope 已登记；`reminders` 表+扫描循环 M1 在线（hub `run_reminder_scan`）；`LoopContractBody` 模型 M3a 已建齐（生成归 M4）；投递 gating/唤醒判定点已在 hub 两处收口（freshness 门大概率挂同一层）；`tasks.silence_override_h` 列 M2 已建。
+
+## 5. 挂账清单（非阻塞，勿当漏项重新发明）
+
+| 项 | 说明 | 归属 |
+| --- | --- | --- |
+| `_emit_activity` 迁 service 层 | 见上，**M4 开工第一步** | M4 |
+| `patch_task` 无法清空 `silence_override_h` | `if v is not None` 丢 null，无法重置任务级覆盖回 NULL；该列 M4 才消费，顺手修 | M4 顺手 |
+| 性能小批 | hub `usage.batch` 逐事件 SELECT（可批内 IN 预查）；search 双 MATCH+LIKE 扫描 | 独立小批 |
+| `task #n` refs 无 UI 消费面 | refs 落库但引用消息不渲染任务 chip | 顺手评估 |
+| P11/P3 看板双实现抽 `<TaskBoard>` | blocked 徽标已同构两份，抽共享组件可收 | 顺手评估 |
+| messages_fts 键于 messages.rowid | VACUUM 会失同步（external-content 结构性约束，trigram 重建未改变） | 观察项 |
+| OAuth 冷启动复验 | M1 遗留；M3b 用真 websockets daemon-sim 复证网关侧，真双 Agent OAuth refresh 竞争仍依赖既有确定性单测 | 择机 |
+
+## 6. 启动方式
+
+**真实开发**：终端 1 `uv run coagentia-server`（8787）；终端 2 `pnpm --filter @coagentia/web dev`（5173，代理 /api→8787）。
+**同源构建**：`pnpm --filter @coagentia/web build` 后 `uv run coagentia-server`，开 `http://127.0.0.1:8787`（自动发现 apps/web/dist；异地部署设 `COAGENTIA_WEB_DIST`）。
+**Mock**（显式开启才用）：`VITE_API_BASE=http://127.0.0.1:8642` + `VITE_MOCK_MODE=true` + mock-server。
+**隔离实机 verify 范式**：临时库 `COAGENTIA_ALEMBIC_URL` alembic head + seed + 注入测试 key + 独立端口（8799 先例）；参照 M3B-EVIDENCE 与 scratchpad launcher 脚本体例。
+
+## 7. 守门命令（全绿才算收口）
+
+```
+uv run pytest -q                    # 483 passed / 3 skipped 基线，零回归
+pnpm -F @coagentia/web test         # vitest 76 基线，只增不减
+pnpm typecheck                      # 含 pyright（0 错，新债即红）+ 双 tsc
+uv run ruff check .
+pnpm gen                            # 后 git diff 应为空（生成物确定性）
+pnpm -F @coagentia/web build
 ```
 
-终端 2：
+## 8. 注意事项
 
-```powershell
-pnpm --filter @coagentia/web dev
-```
-
-打开 `http://127.0.0.1:5173`。Vite 将 `/api` 和 `/api/ws` 代理到 8787。
-
-### 同源构建模式
-
-```powershell
-pnpm --filter @coagentia/web build
-uv run coagentia-server
-```
-
-打开 `http://127.0.0.1:8787`。Server 在 monorepo 中自动发现 `apps/web/dist`；安装/部署到其他目录时设置 `COAGENTIA_WEB_DIST`。
-
-### Mock 模式
-
-Mock 不再是默认路径。需要时显式设置：
-
-```powershell
-$env:VITE_API_BASE='http://127.0.0.1:8642'
-$env:VITE_MOCK_MODE='true'
-pnpm --filter @coagentia/web dev
-```
-
-## 下一步任务
-
-### P0：实机补充验证
-
-1. 在已登录 Claude 的干净机器状态下再跑一次双 Agent 并发冷启动，重点观察真实 OAuth refresh 竞争后的自动重投；当前已有确定性单测和凭证 peer 自愈实测，但未在本批重新消耗完整双 Agent 对话。
-
-### P1：静态类型债务
-
-`uv run pyright` 仍有 109 个既有错误。建议单独开批处理，不与业务修复混在一起：
-
-1. 为 SQLAlchemy `Model.__table__` 统一提供 `Table` 类型 helper/cast，消除大部分 `FromClause` DML 报错。
-2. 对 `.mappings().first()` 建立非空窄化 helper，统一 `RowMapping → dict[str, Any]`。
-3. 修正 `frames.py` 的 tool id 可空键、`mcp.py` stdio 文本/二进制类型和 `api.py` JsonValue 标注。
-4. 把 `pyright` 加入 CI 后再宣称 Python 静态检查全绿。
-
-### P2：产品推进
-
-1. **已立项 M2**（owner 决策 2026-07-09）：任务书 = [M2-HANDOFF.md](M2-HANDOFF.md)；配套契约修订已完成（A v1.0.2 / B v1.1 / E v1.1，见 engineering_docs）。**两块执行**（owner 确认切分）：块 M2a 任务闭环先收（收口即 PRD M2 出口），块 M2b 发现与聚合面随后。开工第一步 = C0 契约登记 + C1 建表。
-2. 前端附件展示已并入 M2 任务书 B-M2-3（文件页签同批补消息内附件卡）；批 6 四屏为伴随任务不进 M2 出口门。
-3. 更新根级 `M1-DEV-PLAN.md` 的测试数字；阶段性结论统一沉淀到本目录的 `PROJECT-RECORD.md`，避免多份状态文档继续漂移。
-
-## 注意事项
-
-- 若机器级和所有 Agent OAuth 凭证都已失效，自动选优没有可用来源，必须先执行一次 Claude 登录。
-- mock 模式必须显式开启，否则任务查询返回本地空数组，不会向 M1 Server 请求不存在的 `/api/tasks`。
-- 文件绑定现在具备请求级补偿；极端的“DB 已提交但进程在 sidecar 删除前崩溃”只会留下 sidecar，不会丢正文或 files 行。
-- 实机验证生成的服务、Vite、浏览器和 Claude 进程均应在会话结束前关闭；本批验证端口为 5173/8787/8788。
+- **无 git remote**：所有提交仅在本地 main，如需备份/协作须先 `git remote add` 并 push（可选项，owner 决定）。
+- **环境要求**：SQLite ≥ 3.35（RETURNING）；真 claude CLI 踩坑见记忆/PROJECT-RECORD（stream-json `--verbose` 必需、须排空 stderr 等）。
+- **迁移纪律**：新迁移按批次显式点名建表（勿 metadata.create_all 全集——坑1）；给既有表加索引/约束须 `if_not_exists`。
+- **纪律 8（图算法单源）**：改动无环/blocked 语义必须同步 `kernel/graph.py` + `lib/graph.ts` + `golden/graph.json` 三处，两侧靠同一判例集守门。
+- **gating 语义要点**（M3b code-review 教训）：「gating 作用于投递层」= 唤醒触发 **和** 投递批双面——held 消息须从投递批剔除且 read_position 水位不越过它，否则被兄弟消息顺带消费；M4 freshness/held 若挂同一投递层，沿用 `_filter_gated` 范式。
+- 实机验证起的 server/浏览器/daemon-sim 进程结束前应关闭（8799 等端口）。
