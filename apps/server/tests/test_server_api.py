@@ -351,3 +351,36 @@ def test_delete_empty_channel_succeeds(server_client: TestClient) -> None:
     assert r.status_code == 201
     cid = r.json()["id"]
     assert server_client.delete(f"/api/channels/{cid}").status_code == 204
+
+
+def test_post_message_bad_thread_root_id_404_not_500(server_client: TestClient) -> None:
+    """坏 thread_root_id（非消息 id）→ 404 而非 messages FK 500（A8 live 实测暴露）。"""
+    build = _channel(server_client, BUILD_CHANNEL)
+    pat = _member(server_client, PAT)
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "reply", "thread_root_id": pat["id"]},  # member id 冒充 message id
+    )
+    assert r.status_code == 404
+    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
+
+
+def test_post_message_nested_thread_rejected(server_client: TestClient) -> None:
+    """thread_root_id 指向非顶级消息 → 422 NOT_TOP_LEVEL_MESSAGE（契约 A：线程不可嵌套）。"""
+    build = _channel(server_client, BUILD_CHANNEL)
+    root = server_client.post(
+        f"/api/channels/{build['id']}/messages", json={"body": "root"}
+    ).json()["message"]
+    reply = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "reply", "thread_root_id": root["id"]},
+    ).json()["message"]
+    r = server_client.post(  # 对非顶级 reply 再挂线程 → 拒绝
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "nested", "thread_root_id": reply["id"]},
+    )
+    assert r.status_code == 422
+    assert (
+        rest.ErrorResponse.model_validate(r.json()).error.code
+        is rest.ErrorCode.NOT_TOP_LEVEL_MESSAGE
+    )

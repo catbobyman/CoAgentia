@@ -124,6 +124,30 @@ def post_message(
         raise ApiError(422, rest.ErrorCode.TASK_IN_DM, "DM 不承载任务", rule="FR-5.1")
     if body.as_task is not None and body.thread_root_id is not None:
         raise ApiError(422, rest.ErrorCode.NOT_TOP_LEVEL_MESSAGE, "仅顶级消息可转任务", rule="T3")
+    # thread_root_id 校验：目标必须是同频道存在的**顶级**消息（契约 A：线程不可嵌套）。
+    # 缺此校验时坏 thread_root_id → messages FK IntegrityError → 未处理 500（A8 live 实测暴露：
+    # Agent 传了非消息 id 的 thread_root_id，服务端 500 而非干净 4xx，阻断对话）。
+    if body.thread_root_id is not None:
+        root = (
+            tx.conn.execute(
+                select(_MSG.c.channel_id, _MSG.c.thread_root_id).where(
+                    _MSG.c.id == body.thread_root_id
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if root is None or root["channel_id"] != channel_id:
+            raise ApiError(
+                404, rest.ErrorCode.NOT_FOUND, "thread_root_id 指向的消息不存在或不在本频道"
+            )
+        if root["thread_root_id"] is not None:
+            raise ApiError(
+                422,
+                rest.ErrorCode.NOT_TOP_LEVEL_MESSAGE,
+                "线程不可嵌套：thread_root_id 必须指向顶级消息",
+                rule="T3",
+            )
 
     # 主体身份（契约 B §2）：浏览器=Owner；daemon 代理 Agent 发消息附 X-Acting-Member。
     # 必须用 acting_member 而非 owner_member——否则 Agent 发言全被记成 Owner（A8 实测暴露）。
