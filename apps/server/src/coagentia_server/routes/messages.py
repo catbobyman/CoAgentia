@@ -30,16 +30,16 @@ from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["messages"])
 
-_CHANNEL = models.Channel.__table__
-_MSG = models.Message.__table__
-_MENTION = models.MessageMention.__table__
-_MEMBER = models.Member.__table__
-_FILE = models.File.__table__
-_READ = models.ReadPosition.__table__
-_TASK = models.Task.__table__
-_MTR = models.MessageTaskRef.__table__
-_ACTIVITY = models.ActivityItem.__table__
-_CHANNEL_MEMBER = models.ChannelMember.__table__
+_CHANNEL = models.tbl(models.Channel)
+_MSG = models.tbl(models.Message)
+_MENTION = models.tbl(models.MessageMention)
+_MEMBER = models.tbl(models.Member)
+_FILE = models.tbl(models.File)
+_READ = models.tbl(models.ReadPosition)
+_TASK = models.tbl(models.Task)
+_MTR = models.tbl(models.MessageTaskRef)
+_ACTIVITY = models.tbl(models.ActivityItem)
+_CHANNEL_MEMBER = models.tbl(models.ChannelMember)
 
 # task #n 解析（B §9.5）：task 与 # 间允许空白，# 与数字紧邻；大小写不敏感。
 _TASK_REF_RE = re.compile(r"task\s*#(\d+)", re.IGNORECASE)
@@ -391,7 +391,9 @@ def post_message(
             )
         )
 
-    msg = dict(tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first())
+    msg = models.row_dict(
+        tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
+    )
     # 响应与 message.created 广播自带刚绑定的附件——前端附件卡即时渲染，不再等
     # channelFiles 失效重拉（v1.0.4）。
     pub = message_public(msg, files_by_message(tx, [msg_id]).get(msg_id, []))
@@ -502,7 +504,7 @@ def put_read_position(
             .where(_READ.c.member_id == me["id"], _READ.c.channel_id == channel_id)
             .values(last_read_message_id=body.last_read_message_id, last_read_at=ts)
         )
-    row = dict(
+    row = models.row_dict(
         tx.conn.execute(
             select(_READ).where(_READ.c.member_id == me["id"], _READ.c.channel_id == channel_id)
         ).mappings().first()

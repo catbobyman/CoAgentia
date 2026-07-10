@@ -40,13 +40,13 @@ from coagentia_server.routes.serialize import (
 
 router = APIRouter(prefix="/api", tags=["members"])
 
-_MEMBER = models.Member.__table__
-_AGENT = models.Agent.__table__
-_SKILL = models.AgentSkill.__table__
-_DIAG = models.DiagnosticEvent.__table__
-_REMINDER = models.Reminder.__table__
-_CHANNEL = models.Channel.__table__
-_MSG = models.Message.__table__
+_MEMBER = models.tbl(models.Member)
+_AGENT = models.tbl(models.Agent)
+_SKILL = models.tbl(models.AgentSkill)
+_DIAG = models.tbl(models.DiagnosticEvent)
+_REMINDER = models.tbl(models.Reminder)
+_CHANNEL = models.tbl(models.Channel)
+_MSG = models.tbl(models.Message)
 
 # 提醒取消留痕类型（system. 命名空间，契约 A §4.6；见 open_issues：contracts 未登记专用类型）。
 _DIAG_REMINDER_CANCELLED = "system.reminder_cancelled"
@@ -148,8 +148,8 @@ def create_agent(body: rest.AgentCreate, request: Request, tx: Tx = Depends(get_
         raise ApiError(409, rest.ErrorCode.NAME_TAKEN, f"成员名 {body.name} 已被占用")
 
     computer = tx.conn.execute(
-        select(models.Computer.__table__.c.id).where(
-            models.Computer.__table__.c.id == body.computer_id
+        select(models.tbl(models.Computer).c.id).where(
+            models.tbl(models.Computer).c.id == body.computer_id
         )
     ).first()
     if computer is None:
@@ -421,7 +421,7 @@ def create_reminder(body: rest.ReminderCreate, request: Request, tx: Tx = Depend
             created_at=ts,
         )
     )
-    row = dict(
+    row = models.row_dict(
         tx.conn.execute(select(_REMINDER).where(_REMINDER.c.id == reminder_id)).mappings().first()
     )
     pub = reminder_public(row)
@@ -484,8 +484,10 @@ def cancel_reminder(reminder_id: str, request: Request, tx: Tx = Depends(get_tx)
             created_at=ts,
         )
     )
-    sys_msg = dict(tx.conn.execute(select(_MSG).where(_MSG.c.id == sys_msg_id)).mappings().first())
-    fresh_reminder = dict(
+    sys_msg = models.row_dict(
+        tx.conn.execute(select(_MSG).where(_MSG.c.id == sys_msg_id)).mappings().first()
+    )
+    fresh_reminder = models.row_dict(
         tx.conn.execute(select(_REMINDER).where(_REMINDER.c.id == reminder_id)).mappings().first()
     )
     tx.emit(

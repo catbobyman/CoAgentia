@@ -25,12 +25,12 @@ from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
-_TASK = models.Task.__table__
-_EVT = models.TaskEvent.__table__
-_CHANNEL = models.Channel.__table__
-_MSG = models.Message.__table__
-_MEMBER = models.Member.__table__
-_TUE = models.TokenUsageEvent.__table__
+_TASK = models.tbl(models.Task)
+_EVT = models.tbl(models.TaskEvent)
+_CHANNEL = models.tbl(models.Channel)
+_MSG = models.tbl(models.Message)
+_MEMBER = models.tbl(models.Member)
+_TUE = models.tbl(models.TokenUsageEvent)
 
 
 def _require_task(tx: Tx, task_id: str) -> dict[str, Any]:
@@ -322,7 +322,7 @@ def get_task_detail(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
             func.coalesce(func.sum(_TUE.c.cache_write_tokens), 0),
             func.count(_TUE.c.id),
         ).where(_TUE.c.task_id == task_id)
-    ).first()
+    ).one()  # 聚合恒返回一行——one() 免 Optional（pyright 债批）
     return {
         "task": task_public(task),
         "contracts": [task_contract_public(c) for c in contracts],

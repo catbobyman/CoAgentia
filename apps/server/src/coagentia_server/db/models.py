@@ -11,6 +11,9 @@ token_usage_events）的禁 UPDATE/DELETE 触发器由 Alembic 迁移 op.execute
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from coagentia_contracts.enums import (
     ActivityKind,
     AgentStatus,
@@ -45,6 +48,7 @@ from sqlalchemy import (
     Integer,
     PrimaryKeyConstraint,
     String,
+    Table,
     Text,
     UniqueConstraint,
     text,
@@ -85,6 +89,21 @@ _ULID = String(26)
 
 class Base(DeclarativeBase):
     pass
+
+
+def tbl(model: type[Base]) -> Table:
+    """`Model.__table__` 的 Table 窄化（pyright 债批：declarative 把 __table__ 标注为
+    FromClause，DML（insert/update/delete）与 Table API 需要 Table——本仓模型恒为实表）。"""
+    table = model.__table__
+    assert isinstance(table, Table)
+    return table
+
+
+def row_dict(row: Mapping[Any, Any] | None) -> dict[str, Any]:
+    """`mappings().first()` 的非空窄化（pyright 债批）：调用点按逻辑不变量必存在
+    （PK 回查 / 刚插入行回读 / 聚合行）——为空即编程错误，assert 直接暴露而非静默。"""
+    assert row is not None, "row_dict: 回查行不存在（调用点不变量被破坏）"
+    return dict(row)
 
 
 def _enum(enum_cls: type) -> SAEnum:

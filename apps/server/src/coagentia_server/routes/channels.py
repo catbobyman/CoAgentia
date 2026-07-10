@@ -30,12 +30,12 @@ from coagentia_server.routes.serialize import (
 
 router = APIRouter(prefix="/api", tags=["channels"])
 
-_CHANNEL = models.Channel.__table__
-_CHANNEL_MEMBER = models.ChannelMember.__table__
-_READ = models.ReadPosition.__table__
-_MSG = models.Message.__table__
-_CANVAS = models.Canvas.__table__
-_MEMBER = models.Member.__table__
+_CHANNEL = models.tbl(models.Channel)
+_CHANNEL_MEMBER = models.tbl(models.ChannelMember)
+_READ = models.tbl(models.ReadPosition)
+_MSG = models.tbl(models.Message)
+_CANVAS = models.tbl(models.Canvas)
+_MEMBER = models.tbl(models.Member)
 
 EMPTY_CANVAS_HASH = fingerprint({"edges": [], "nodes": []})
 
@@ -63,7 +63,9 @@ def _post_system_message(tx: Tx, channel: dict[str, Any], body: str) -> dict[str
             created_at=now_iso(),
         )
     )
-    return dict(tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first())
+    return models.row_dict(
+        tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
+    )
 
 
 @router.get("/channels", response_model=rest.ChannelsSnapshot)

@@ -19,8 +19,8 @@ from coagentia_server.routes.serialize import computer_public
 
 router = APIRouter(prefix="/api", tags=["computers"])
 
-_COMPUTER = models.Computer.__table__
-_AGENT = models.Agent.__table__
+_COMPUTER = models.tbl(models.Computer)
+_AGENT = models.tbl(models.Agent)
 
 
 def _fetch_computer(tx: Tx, computer_id: str) -> dict[str, Any]:
@@ -101,5 +101,5 @@ def remove_computer(computer_id: str, request: Request, tx: Tx = Depends(get_tx)
             "该机器上仍有 Agent，先删除全部 Agent",
             rule="FR-2.7",
         )
-    tx.conn.execute(models.Computer.__table__.delete().where(_COMPUTER.c.id == computer_id))
+    tx.conn.execute(models.tbl(models.Computer).delete().where(_COMPUTER.c.id == computer_id))
     return Response(status_code=204)

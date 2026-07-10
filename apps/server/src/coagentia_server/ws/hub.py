@@ -31,8 +31,8 @@ from coagentia_server.db import models
 from coagentia_server.events import EventBus, PendingEvent
 from coagentia_server.ledger.service import new_ulid, now_iso
 
-_WS = models.Workspace.__table__
-_MEMBER = models.Member.__table__
+_WS = models.tbl(models.Workspace)
+_MEMBER = models.tbl(models.Member)
 
 # 幂等键 <实体>:<id>:<单调标记>（契约 C §3）——扫 payload 内的实体 dict 取 id + 时间标记。
 _ENTITY_FIELDS = (

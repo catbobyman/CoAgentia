@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from coagentia_server.db import models
 from coagentia_server.ledger import service
 
-_TC = models.TaskContract.__table__
+_TC = models.tbl(models.TaskContract)
 
 
 # ---------------------------------------------------------------- 读

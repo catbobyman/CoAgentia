@@ -42,10 +42,10 @@ assert _DIAG_FAIL_CLOSED in DIAGNOSTIC_TYPES
 # fail-closed 告警卡消息正文（UI §4.7：卡片 = 不可变锚点，活状态从 landing_batches 行读）。
 _FAIL_CLOSED_CARD_BODY = "落地批次 fail-closed：请求指纹与账本记录不一致，已停止本批次后续操作。"
 
-_LEDGER = models.LedgerEntry.__table__
-_BATCH = models.LandingBatch.__table__
-_DIAG = models.DiagnosticEvent.__table__
-_MSG = models.Message.__table__
+_LEDGER = models.tbl(models.LedgerEntry)
+_BATCH = models.tbl(models.LandingBatch)
+_DIAG = models.tbl(models.DiagnosticEvent)
+_MSG = models.tbl(models.Message)
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"  # Crockford Base32（天然排除 I/L/O/U）
 

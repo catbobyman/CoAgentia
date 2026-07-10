@@ -24,10 +24,10 @@ from coagentia_server.db import models
 from coagentia_server.events import EventBus, PendingEvent
 from coagentia_server.files import FileStore
 
-_WS = models.Workspace.__table__
-_MEMBER = models.Member.__table__
-_AGENT = models.Agent.__table__
-_COMPUTER = models.Computer.__table__
+_WS = models.tbl(models.Workspace)
+_MEMBER = models.tbl(models.Member)
+_AGENT = models.tbl(models.Agent)
+_COMPUTER = models.tbl(models.Computer)
 
 
 class Tx:

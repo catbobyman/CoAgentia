@@ -20,8 +20,8 @@ from coagentia_server.routes.serialize import file_public
 
 router = APIRouter(prefix="/api", tags=["files"])
 
-_CHANNEL = models.Channel.__table__
-_FILE = models.File.__table__
+_CHANNEL = models.tbl(models.Channel)
+_FILE = models.tbl(models.File)
 
 
 def _require_channel(tx: Tx, channel_id: str) -> dict[str, Any]:

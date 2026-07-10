@@ -19,9 +19,9 @@ from coagentia_server.db import models
 from coagentia_server.ledger import service
 from coagentia_server.routes.serialize import task_public
 
-_TASK = models.Task.__table__
-_EVT = models.TaskEvent.__table__
-_CHANNEL = models.Channel.__table__
+_TASK = models.tbl(models.Task)
+_EVT = models.tbl(models.TaskEvent)
+_CHANNEL = models.tbl(models.Channel)
 
 # 首非空行剥 Markdown 前缀（标题/列表/引用/有序号）。列表/引用/有序号标记须后跟空白才算前缀，
 # 否则 `3.14 is pi` 会被 `\d+\.` 误剥成 `14 is pi`、`*bold*` 被 `[-*>]` 误剥成 `bold*`。

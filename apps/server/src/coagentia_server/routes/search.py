@@ -36,15 +36,15 @@ from coagentia_server.routes.serialize import (
 
 router = APIRouter(prefix="/api", tags=["search"])
 
-_CHANNEL = models.Channel.__table__
-_MEMBER = models.Member.__table__
-_TASK = models.Task.__table__
+_CHANNEL = models.tbl(models.Channel)
+_MEMBER = models.tbl(models.Member)
+_TASK = models.tbl(models.Task)
 
 _SEARCH_LIMIT_MAX = 25
 _SEARCH_LIMIT_DEFAULT = 10
 
 # messages 表列名（用于把 text() 原始 SQL 的 m.* 行还原成 MessagePublic 形状，剔 snippet 辅助列）。
-_MSG_COLS = [c.name for c in models.Message.__table__.c]
+_MSG_COLS = [c.name for c in models.tbl(models.Message).c]
 
 
 def _fts_phrase(q: str) -> str:

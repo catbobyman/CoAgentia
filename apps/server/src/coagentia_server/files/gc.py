@@ -14,8 +14,8 @@ from coagentia_server.ledger.service import now_iso
 _DIAG_FILE_GC = "system.file_gc"
 assert _DIAG_FILE_GC in DIAGNOSTIC_TYPES
 
-_DIAG = models.DiagnosticEvent.__table__
-_WS = models.Workspace.__table__
+_DIAG = models.tbl(models.DiagnosticEvent)
+_WS = models.tbl(models.Workspace)
 
 
 def run_gc(engine: Engine, file_store: FileStore, *, now: float | None = None) -> int:

@@ -16,7 +16,7 @@ import sys
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, BinaryIO
+from typing import Any, TextIO
 from urllib.parse import urlencode
 
 from coagentia_contracts.enums import TaskStatus
@@ -439,7 +439,7 @@ def _err(mid: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
 
-def serve_stdio(http: HttpFn, stdin: Any = None, stdout: BinaryIO | Any = None) -> None:
+def serve_stdio(http: HttpFn, stdin: Any = None, stdout: TextIO | None = None) -> None:
     """同步 newline-delimited JSON-RPC 循环（stdin EOF → 退出）。"""
     rin = stdin if stdin is not None else sys.stdin
     rout = stdout if stdout is not None else sys.stdout

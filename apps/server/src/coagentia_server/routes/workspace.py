@@ -19,11 +19,11 @@ from coagentia_server.routes.serialize import workspace_public
 
 router = APIRouter(prefix="/api", tags=["workspace"])
 
-_WS = models.Workspace.__table__
-_MEMBER = models.Member.__table__
-_CHANNEL = models.Channel.__table__
-_CHANNEL_MEMBER = models.ChannelMember.__table__
-_CANVAS = models.Canvas.__table__
+_WS = models.tbl(models.Workspace)
+_MEMBER = models.tbl(models.Member)
+_CHANNEL = models.tbl(models.Channel)
+_CHANNEL_MEMBER = models.tbl(models.ChannelMember)
+_CANVAS = models.tbl(models.Canvas)
 
 # 空画布快照指纹（契约 A §6：baseline_hash 非 NULL；空 = {"edges":[],"nodes":[]}）。
 EMPTY_CANVAS_HASH = fingerprint({"edges": [], "nodes": []})
@@ -88,7 +88,7 @@ def create_workspace(body: rest.WorkspaceCreate, tx: Tx = Depends(get_tx)) -> An
         )
     )
 
-    ws = dict(tx.conn.execute(select(_WS).where(_WS.c.id == ws_id)).mappings().first())
+    ws = models.row_dict(tx.conn.execute(select(_WS).where(_WS.c.id == ws_id)).mappings().first())
     return workspace_public(ws)
 
 
@@ -104,6 +104,6 @@ def patch_workspace(body: rest.WorkspacePatch, tx: Tx = Depends(get_tx)) -> Any:
     if changes:
         tx.conn.execute(update(_WS).where(_WS.c.id == ws["id"]).values(**changes))
     fresh = tx.conn.execute(select(_WS).where(_WS.c.id == ws["id"]).limit(1)).mappings().first()
-    pub = workspace_public(dict(fresh))
+    pub = workspace_public(models.row_dict(fresh))
     tx.emit(EventType.WORKSPACE_UPDATED, None, {"workspace": pub})
     return pub

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from coagentia_contracts import rest
@@ -41,16 +42,17 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_req: Request, exc: RequestValidationError) -> JSONResponse:
         # Pydantic/FastAPI 校验失败 → 统一 VALIDATION_FAILED 形状（契约 B §3；details 含字段路径）。
+        details: Any = {"errors": _jsonable(exc.errors())}  # JsonValue 由 pydantic 运行时校验
         body = rest.ErrorBody(
             code=rest.ErrorCode.VALIDATION_FAILED,
             message="请求校验失败",
             rule=None,
-            details={"errors": _jsonable(exc.errors())},
+            details=details,
         )
         return JSONResponse(status_code=422, content=rest.ErrorResponse(error=body).model_dump())
 
 
-def _jsonable(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _jsonable(errors: Sequence[Any]) -> list[dict[str, Any]]:
     """剥掉 pydantic error 里不可 JSON 序列化的 ctx（如异常对象）。"""
     out: list[dict[str, Any]] = []
     for e in errors:

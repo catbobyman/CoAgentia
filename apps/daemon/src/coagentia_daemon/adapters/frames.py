@@ -224,7 +224,7 @@ class FrameRouter:
         for block in content:
             if not isinstance(block, dict) or block.get("type") != "tool_result":
                 continue
-            tid = block.get("tool_use_id")
+            tid = str(block.get("tool_use_id") or "")  # 缺失/非法 → "" 查默认（帧防腐）
             name, tool_input = self._tool_uses.get(tid, ("", {}))
             is_error = bool(block.get("is_error"))
             if name in _TOOLS_COMMAND:

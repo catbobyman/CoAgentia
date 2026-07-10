@@ -21,6 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from coagentia_contracts import entities
 from coagentia_contracts.daemon import (
     ACK_TIMEOUT_SEC,
     CLOSE_PROTOCOL_MISMATCH,
@@ -80,19 +81,19 @@ from coagentia_server.routes.serialize import (
     reminder_public,
 )
 
-_COMPUTER = models.Computer.__table__
-_AGENT = models.Agent.__table__
-_MEMBER = models.Member.__table__
-_SKILL = models.AgentSkill.__table__
-_CHANNEL = models.Channel.__table__
-_CHANNEL_MEMBER = models.ChannelMember.__table__
-_MSG = models.Message.__table__
-_MENTION = models.MessageMention.__table__
-_READ = models.ReadPosition.__table__
-_DIAG = models.DiagnosticEvent.__table__
-_USAGE = models.TokenUsageEvent.__table__
-_TASK = models.Task.__table__
-_REMINDER = models.Reminder.__table__
+_COMPUTER = models.tbl(models.Computer)
+_AGENT = models.tbl(models.Agent)
+_MEMBER = models.tbl(models.Member)
+_SKILL = models.tbl(models.AgentSkill)
+_CHANNEL = models.tbl(models.Channel)
+_CHANNEL_MEMBER = models.tbl(models.ChannelMember)
+_MSG = models.tbl(models.Message)
+_MENTION = models.tbl(models.MessageMention)
+_READ = models.tbl(models.ReadPosition)
+_DIAG = models.tbl(models.DiagnosticEvent)
+_USAGE = models.tbl(models.TokenUsageEvent)
+_TASK = models.tbl(models.Task)
+_REMINDER = models.tbl(models.Reminder)
 
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
 _RESUMABLE = {AgentStatus.STARTING.value, AgentStatus.IDLE.value, AgentStatus.BUSY.value}
@@ -287,7 +288,7 @@ class DaemonHub:
                     last_seen_at=now_iso(),
                 )
             )
-            row = dict(
+            row = models.row_dict(
                 tx.conn.execute(
                     select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id)
                 ).mappings().first()
@@ -426,7 +427,7 @@ class DaemonHub:
                 .where(_COMPUTER.c.id == conn.computer_id)
                 .values(detected_runtimes=[r.model_dump(mode="json") for r in d.runtimes])
             )
-            row = dict(
+            row = models.row_dict(
                 tx.conn.execute(
                     select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id)
                 ).mappings().first()
@@ -693,7 +694,8 @@ class DaemonHub:
                 backlog = self._backlog(c, agent_id, channel_id)
             if not backlog:
                 return None
-            messages = [message_public(m) for m in backlog]
+            # deliver 帧是未附着面（契约 A v1.0.4：files=None），直接 model 化免 dict 中转
+            messages = [entities.MessagePublic.model_validate(m) for m in backlog]
             meta = DeliverMeta(
                 agent_member_id=agent_id,
                 channel_id=channel_id,
@@ -830,7 +832,8 @@ class DaemonHub:
                         refs=WakeRefs(message_ids=[m["id"] for m in backlog]),
                     ),
                 )
-            messages = [message_public(m) for m in backlog]
+            # deliver 帧是未附着面（契约 A v1.0.4：files=None），直接 model 化免 dict 中转
+            messages = [entities.MessagePublic.model_validate(m) for m in backlog]
             meta = DeliverMeta(
                 agent_member_id=aid,
                 channel_id=channel_id,
@@ -1020,10 +1023,10 @@ class DaemonHub:
                     .where(_REMINDER.c.id == reminder["id"])
                     .values(status="done")  # M1：once 一次性；recurring（需 LoopContract）留 M3
                 )
-                msg_row = dict(
+                msg_row = models.row_dict(
                     tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
                 )
-                rem_row = dict(
+                rem_row = models.row_dict(
                     tx.conn.execute(
                         select(_REMINDER).where(_REMINDER.c.id == reminder["id"])
                     ).mappings().first()
@@ -1082,7 +1085,7 @@ class DaemonHub:
                     .where(_COMPUTER.c.id == conn.computer_id)
                     .values(status=ComputerStatus.OFFLINE)
                 )
-                row = dict(
+                row = models.row_dict(
                     tx.conn.execute(
                         select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id)
                     ).mappings().first()

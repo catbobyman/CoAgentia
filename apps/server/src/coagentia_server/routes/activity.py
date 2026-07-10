@@ -23,8 +23,8 @@ from coagentia_server.routes.serialize import activity_item_public
 
 router = APIRouter(prefix="/api", tags=["activity"])
 
-_ACT = models.ActivityItem.__table__
-_MSG = models.Message.__table__
+_ACT = models.tbl(models.ActivityItem)
+_MSG = models.tbl(models.Message)
 
 
 @router.get("/activity", response_model=rest.Page[entities.ActivityItemPublic])
