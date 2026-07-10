@@ -124,8 +124,7 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
     }
 
     case 'activity.created': {
-      // 'all' 档恒 upsert(缺则建)——规范全量列表。'unread'/'mentions' 档仅在已挂载(缓存已存在)
-      // 时按归属 patch,避免凭空建偏档;否则停在 Unread/Mentions 页时徽标(取自 'all')增而列表不动。
+      // 前端只有 'all' 单档(挂账批2 简化:tab 过滤归 ActivityScreen 客户端),恒 upsert(缺则建)。
       const { item } = data as { item: ActivityItemPublic };
       // 全局广播携带的 member_id=接收者;REST 读面只回 Owner 本人条目,缓存口径必须一致——
       // 否则多人类工作区他人条目泄入列表/徽标,refetch 后又消失(闪烁)。members 未加载时放行(单人 MVP)。
@@ -136,34 +135,21 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
         const list = prev ?? [];
         return list.some((a) => a.id === item.id) ? list : [item, ...list];
       });
-      const belongs = (filter: unknown): boolean =>
-        (filter === 'unread' && !item.done_at) ||
-        (filter === 'mentions' && item.kind === 'mention');
-      for (const [key, value] of qc.getQueriesData<ActivityItemPublic[]>({
-        queryKey: ['activity'],
-      })) {
-        if (key[1] === 'all' || !value || !belongs(key[1]) || value.some((a) => a.id === item.id)) {
-          continue;
-        }
-        qc.setQueryData<ActivityItemPublic[]>(key, [item, ...value]);
-      }
       break;
     }
 
     case 'activity.done': {
-      // 标记已读:在所有 activity 档缓存里把该 item 的 done_at 置为事件时间戳(过滤档下轮 refetch 再收敛)。
+      // 标记已读:'all' 单档把该 item 的 done_at 置为事件时间戳(Unread tab 客户端过滤自然收敛)。
       const { item_id } = data as { item_id: string };
       const stamp = env.at;
-      for (const [key, value] of qc.getQueriesData<ActivityItemPublic[]>({
-        queryKey: ['activity'],
-      })) {
-        if (!value) continue;
-        const i = value.findIndex((a) => a.id === item_id);
-        if (i < 0) continue;
-        const next = value.slice();
+      qc.setQueryData<ActivityItemPublic[]>(qk.activity('all'), (prev) => {
+        if (!prev) return prev;
+        const i = prev.findIndex((a) => a.id === item_id);
+        if (i < 0) return prev;
+        const next = prev.slice();
         next[i] = { ...next[i]!, done_at: stamp };
-        qc.setQueryData<ActivityItemPublic[]>(key, next);
-      }
+        return next;
+      });
       break;
     }
 

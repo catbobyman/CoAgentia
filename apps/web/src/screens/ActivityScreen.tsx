@@ -1,6 +1,8 @@
 // P9 Activity(/activity,改编自设计稿 P9-activity.html):All/Unread/Mentions 三 tab +
 // 升级置顶区(M2 恒空但结构就位)+ 事件行(逐项 Mark as done)。
-// 数据源 useActivity(filter);WS activity.created/done 由 wsBridge(stage1)实时 patch,列表自动更新。
+// 数据源 = useActivity() 'all' 单拉,tab 过滤归客户端(挂账批2 简化:原三档缓存双请求,
+// wsBridge 需逐档 patch);WS activity.created/done 由 wsBridge 对 'all' 档实时 patch。
+// 口径(有意设计,二轮 review 确认不改):徽标只数未读;Mentions 列表含已 done(灰显=历史)。
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ShieldAlert } from 'lucide-react';
@@ -46,16 +48,19 @@ export function ActivityScreen() {
 
   const [tab, setTab] = useState<ActivityFilter>('all');
 
-  const listQ = useActivity(tab);
-  const allQ = useActivity('all'); // 计数用(tab 徽标)
+  const allQ = useActivity();
   const membersQ = useMembers();
   const channelsQ = useChannelsSnapshot();
 
   const byId = memberMap(membersQ.data);
   const chNameById = Object.fromEntries(channelsOf(channelsQ.data).map((c) => [c.id, c.name ?? '—']));
 
-  const items = listQ.data ?? [];
   const allItems = allQ.data ?? [];
+  // tab 过滤与服务端 filter 语义逐项对齐(unread=done_at NULL;mentions=kind,含已 done 灰显)。
+  const items =
+    tab === 'unread' ? allItems.filter((a) => !a.done_at)
+    : tab === 'mentions' ? allItems.filter((a) => a.kind === 'mention')
+    : allItems;
   const unreadCount = allItems.filter((a) => !a.done_at).length;
   const mentionCount = allItems.filter((a) => a.kind === 'mention' && !a.done_at).length;
 

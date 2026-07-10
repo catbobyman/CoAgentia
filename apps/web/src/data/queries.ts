@@ -13,7 +13,7 @@ import type {
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
-import { api, type ActivityFilter } from '../api';
+import { api } from '../api';
 import { qk } from '../lib/queryKeys';
 
 // ---- 单实体/列表查询
@@ -108,10 +108,11 @@ export const useChannelFiles = (channelId: string | undefined) =>
     enabled: !!channelId,
   });
 
-export const useActivity = (filter: ActivityFilter = 'all') =>
+// 'all' 单拉,tab 过滤归客户端(挂账批2 简化:原三档缓存 = 双请求 + wsBridge 逐档 patch)。
+export const useActivity = () =>
   useQuery({
-    queryKey: qk.activity(filter),
-    queryFn: async () => (await api.activity(filter)).items,
+    queryKey: qk.activity('all'),
+    queryFn: async () => (await api.activity('all')).items,
   });
 
 // usageByTask 无 REST 源:初值空,由 token_usage.reported 累加(wsBridge)。

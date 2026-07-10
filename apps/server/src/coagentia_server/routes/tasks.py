@@ -19,6 +19,7 @@ from coagentia_server.api import ApiError
 from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx
+from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import task_contract_public, task_public
 from coagentia_server.tasks import service as tasks_service
 
@@ -302,17 +303,11 @@ def list_tasks(
         stmt = stmt.where(_TASK.c.owner_member_id == owner)
     if creator is not None:
         stmt = stmt.where(_TASK.c.created_by_member_id == creator)
-    rows = [
-        dict(r)
-        for r in tx.conn.execute(stmt.order_by(_TASK.c.created_at, _TASK.c.id)).mappings()
-    ]
-    ids = [t["id"] for t in rows]
-    if after and after in ids:
-        rows = rows[ids.index(after) + 1 :]
-    limit = min(max(1, limit), rest.PAGE_MAX_LIMIT)
-    page, tail = rows[:limit], rows[limit:]
-    next_cursor = page[-1]["id"] if tail and page else None
-    return {"items": [task_public(t) for t in page], "next_cursor": next_cursor}
+    # keyset：after 行即使因 status/owner 过滤离开结果集，游标仍按 (created_at,id) 锚点
+    # 继续往后翻——不再静默从头重发首页（M2 挂账 3 收口）。
+    return keyset_page(
+        tx.conn, _TASK, stmt, after=after, limit=limit, serialize=task_public
+    )
 
 
 @router.get("/tasks/{task_id}", response_model=rest.TaskDetail)

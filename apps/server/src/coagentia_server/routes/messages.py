@@ -18,6 +18,7 @@ from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, require_workspace
 from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.ledger import service
+from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
     activity_item_public,
     file_public,
@@ -229,27 +230,21 @@ def get_messages(
     limit: int = rest.PAGE_DEFAULT_LIMIT,
 ) -> Any:
     _require_channel(tx, channel_id)
-    rows = [
-        dict(r)
-        for r in tx.conn.execute(
-            select(_MSG)
-            .where(_MSG.c.channel_id == channel_id)
-            .order_by(_MSG.c.created_at, _MSG.c.id)
-        ).mappings()
-    ]
-    ids = [m["id"] for m in rows]
-    if after and after in ids:
-        rows = rows[ids.index(after) + 1 :]
-    if before and before in ids:
-        ids2 = [m["id"] for m in rows]
-        rows = rows[: ids2.index(before)]
-    limit = min(max(1, limit), rest.PAGE_MAX_LIMIT)
-    page, tail = rows[:limit], rows[limit:]
-    next_cursor = page[-1]["id"] if tail and page else None
-    fmap = files_by_message(tx, [m["id"] for m in page])
+    # 正序 keyset + LIMIT 下推；before 单独出现 = 紧邻窗口回翻（_pagination docstring）。
+    # files 附着走二段式：先取页再按页内 id 批查（serialize 回调无连接上下文）。
+    page = keyset_page(
+        tx.conn,
+        _MSG,
+        select(_MSG).where(_MSG.c.channel_id == channel_id),
+        after=after,
+        before=before,
+        limit=limit,
+        serialize=lambda r: r,
+    )
+    fmap = files_by_message(tx, [m["id"] for m in page["items"]])
     return {
-        "items": [message_public(m, fmap.get(m["id"], [])) for m in page],
-        "next_cursor": next_cursor,
+        "items": [message_public(m, fmap.get(m["id"], [])) for m in page["items"]],
+        "next_cursor": page["next_cursor"],
     }
 
 

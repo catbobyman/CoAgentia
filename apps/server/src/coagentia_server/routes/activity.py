@@ -18,7 +18,7 @@ from coagentia_server.api import ApiError
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, owner_member
 from coagentia_server.ledger import service
-from coagentia_server.routes._pagination import cursor_page
+from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import activity_item_public
 
 router = APIRouter(prefix="/api", tags=["activity"])
@@ -45,14 +45,16 @@ def list_activity(
         stmt = stmt.where(_ACT.c.done_at.is_(None))
     elif filter is ActivityFilter.MENTIONS:
         stmt = stmt.where(_ACT.c.kind == ActivityKind.MENTION)
-    # 倒序（created_at desc, id desc）——最新在前；游标 after=id 往后翻。
-    rows = [
-        dict(r)
-        for r in tx.conn.execute(
-            stmt.order_by(_ACT.c.created_at.desc(), _ACT.c.id.desc())
-        ).mappings()
-    ]
-    return cursor_page(rows, after, limit, activity_item_public)
+    # 倒序（created_at desc, id desc）——最新在前；keyset 游标 + LIMIT 下推（不再全量材料化）。
+    return keyset_page(
+        tx.conn,
+        _ACT,
+        stmt,
+        after=after,
+        limit=limit,
+        desc=True,
+        serialize=activity_item_public,
+    )
 
 
 @router.post("/activity/{activity_id}/done", response_model=entities.ActivityItemPublic)

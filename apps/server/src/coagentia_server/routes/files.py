@@ -15,7 +15,7 @@ from sqlalchemy import select
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, get_tx
-from coagentia_server.routes._pagination import cursor_page
+from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import file_public
 
 router = APIRouter(prefix="/api", tags=["files"])
@@ -41,13 +41,13 @@ def list_channel_files(
     limit: int = rest.PAGE_DEFAULT_LIMIT,
 ) -> Any:
     _require_channel(tx, channel_id)
-    # 倒序（created_at desc, id desc）——最新文件在前（B §9.5）；游标 after=id 往后翻。
-    rows = [
-        dict(r)
-        for r in tx.conn.execute(
-            select(_FILE)
-            .where(_FILE.c.channel_id == channel_id)
-            .order_by(_FILE.c.created_at.desc(), _FILE.c.id.desc())
-        ).mappings()
-    ]
-    return cursor_page(rows, after, limit, file_public)
+    # 倒序（created_at desc, id desc）——最新文件在前（B §9.5）；keyset 游标 + LIMIT 下推。
+    return keyset_page(
+        tx.conn,
+        _FILE,
+        select(_FILE).where(_FILE.c.channel_id == channel_id),
+        after=after,
+        limit=limit,
+        desc=True,
+        serialize=file_public,
+    )
