@@ -5,9 +5,10 @@
 | 项 | 状态 |
 | --- | --- |
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia` |
-| 分支 | `m1-impl` |
-| 基线 HEAD | `609868f M1 fix: validate thread_root_id in post_message` |
-| 工作树 | 本批修复尚未提交；不要丢弃当前修改 |
+| 分支 | `main` |
+| 合并提交 | `f2c993f merge: complete M1 implementation and hardening` |
+| 修复提交 | `351684a fix: harden M1 runtime and consolidate handoffs` |
+| 工作树 | 干净；M1 实现与 hardening 已合并到 `main` |
 | M1 核心闭环 | 既有真实两 Agent 对话/文件产出成立；本批修复实机 review 暴露的 7 个问题 |
 | 自动测试 | 238 passed，2 skipped；Web 10 passed；双侧 typecheck、build、ruff 全绿 |
 | 浏览器实证 | 同源 8787 与 Vite 5173 均能连接真实 Server；桌面/390px 已目检 |
@@ -63,11 +64,9 @@ pnpm --filter @coagentia/web dev
 
 ## 下一步任务
 
-### P0：提交前收口
+### P0：实机补充验证
 
-1. 复查 `git diff`，确认本批 7 项修复和文档范围。
-2. 在已登录 Claude 的干净机器状态下再跑一次双 Agent 并发冷启动，重点观察真实 OAuth refresh 竞争后的自动重投；当前已有确定性单测和凭证 peer 自愈实测，但未在本批重新消耗完整双 Agent 对话。
-3. 提交建议拆成两笔：`M1 hardening fixes` 与 `M1 hardening docs/evidence`，便于回滚和审阅。
+1. 在已登录 Claude 的干净机器状态下再跑一次双 Agent 并发冷启动，重点观察真实 OAuth refresh 竞争后的自动重投；当前已有确定性单测和凭证 peer 自愈实测，但未在本批重新消耗完整双 Agent 对话。
 
 ### P1：静态类型债务
 
@@ -80,7 +79,7 @@ pnpm --filter @coagentia/web dev
 
 ### P2：产品推进
 
-1. M1 修复合并 `main` 后，选择先补 B2b/B3 或直接进入 M2 任务/看板。
+1. M1 修复已经合并 `main`；下一步选择先补 B2b/B3 或直接进入 M2 任务/看板。
 2. 补前端附件展示：当前文件上传、绑定、下载后端闭环已成立，但 P1 消息流仍不展示附件。
 3. 更新根级 `M1-DEV-PLAN.md` 的测试数字；阶段性结论统一沉淀到本目录的 `PROJECT-RECORD.md`，避免多份状态文档继续漂移。
 
