@@ -19,9 +19,14 @@ from dataclasses import dataclass, field
 from typing import Any, BinaryIO
 from urllib.parse import urlencode
 
+from coagentia_contracts.enums import TaskStatus
+
 MCP_PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "coagentia"
 SERVER_VERSION = "1.0.0"
+
+# 状态值域从契约枚举派生（单一事实源）——手写字面量会在 M3 状态机演进时漂移。
+_TASK_STATUS_VALUES = [s.value for s in TaskStatus]
 
 
 @dataclass
@@ -150,10 +155,7 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "channel_id": {"type": "string"},
-                "status": {
-                    "type": "string",
-                    "enum": ["todo", "in_progress", "in_review", "done", "closed"],
-                },
+                "status": {"type": "string", "enum": _TASK_STATUS_VALUES},
                 "owner": {"type": "string"},
                 "creator": {"type": "string"},
                 "after": {"type": "string"},
@@ -195,10 +197,7 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "task_id": {"type": "string"},
-                "to": {
-                    "type": "string",
-                    "enum": ["todo", "in_progress", "in_review", "done", "closed"],
-                },
+                "to": {"type": "string", "enum": _TASK_STATUS_VALUES},
             },
             "required": ["task_id", "to"],
         },

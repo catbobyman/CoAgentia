@@ -10,6 +10,7 @@ import {
   useComputers, useHomeTree, useMembers, usePresence,
 } from '../data/queries';
 import { presenceMap, memberMap } from '../data/queries';
+import { fmtTimeSec } from '../lib/time';
 
 const TAB_DEFS: { key: AgentTab; label: string }[] = [
   { key: 'profile', label: 'Profile' },
@@ -210,7 +211,7 @@ function DiagnosticsTab({ memberId }: { memberId: string }) {
         <div className="frow" key={e.seq}>
           <span className="lb">#{e.seq}</span>
           <span className="vl mono">{e.type}</span>
-          <span className="mono filesize">{e.created_at.slice(11, 19)}</span>
+          <span className="mono filesize">{fmtTimeSec(e.created_at)}</span>
         </div>
       ))}
     </div>

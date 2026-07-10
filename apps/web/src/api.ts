@@ -119,8 +119,21 @@ export const api = {
   presence: () => get<PresenceSnapshot>('/api/presence'),
   messages: (channelId: string) =>
     get<MessagesPage>(`/api/channels/${channelId}/messages?limit=200`),
-  tasks: (channelId: string) =>
-    get<TasksPage>(`/api/tasks?channel_id=${channelId}`).then((p) => p.items as TaskPublic[]),
+  // 跟进游标翻完全部页——server 升序分页默认 50/页,只取首页会让第 51+ 个(最新)任务
+  // 从看板/任务牌/计数整体消失(M2 二轮 review)。页数设护栏防异常游标死循环。
+  tasks: async (channelId: string): Promise<TaskPublic[]> => {
+    const all: TaskPublic[] = [];
+    let after: string | null | undefined;
+    for (let page = 0; page < 40; page += 1) {
+      const qs = new URLSearchParams({ channel_id: channelId, limit: '200' });
+      if (after) qs.set('after', after);
+      const p = await get<TasksPage>(`/api/tasks?${qs.toString()}`);
+      all.push(...(p.items as TaskPublic[]));
+      after = p.next_cursor;
+      if (!after) break;
+    }
+    return all;
+  },
 
   // ---- M2 任务域(B §9.8):详情 / 转任务 / claim-unclaim-assign / 状态流转 / patch
   taskDetail: (taskId: string) => get<TaskDetail>(`/api/tasks/${taskId}`),
@@ -165,15 +178,14 @@ export const api = {
   activityDone: (activityId: string) =>
     writeJson<void>(`/api/activity/${activityId}/done`, 'POST'),
 
-  sendMessage: async (channelId: string, body: string, asTask: boolean): Promise<MessageCreated> => {
-    const r = await fetch(`${API_BASE}/api/channels/${channelId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(asTask ? { body, as_task: {} } : { body }),
-    });
-    if (!r.ok) throw new Error(`send -> ${r.status}`);
-    return (await r.json()) as MessageCreated;
-  },
+  // 走统一写路径:发消息/As Task 失败时同样拿到结构化 ApiError(code/details),
+  // 而非裸 `send -> 422`(M2 二轮 review:主写路径绕过了 writeJson 基础设施)。
+  sendMessage: (channelId: string, body: string, asTask: boolean) =>
+    writeJson<MessageCreated>(
+      `/api/channels/${channelId}/messages`,
+      'POST',
+      asTask ? { body, as_task: {} } : { body },
+    ),
 
   thread: (rootMessageId: string) =>
     get<ThreadPage>(`/api/messages/${rootMessageId}/thread`).then((p) => p.items as MessagePublic[]),

@@ -49,18 +49,24 @@ def _require_channel(tx: Tx, channel_id: str) -> dict[str, Any]:
     return dict(row)
 
 
-def _resolve_mentions(tx: Tx, workspace_id: str, message_id: str, body: str) -> None:
-    """@名字 服务端解析一次落 message_mentions（body 是唯一事实源，契约 A messages）。"""
+def _resolve_mentions(
+    tx: Tx, workspace_id: str, message_id: str, body: str
+) -> list[dict[str, Any]]:
+    """@名字 服务端解析一次落 message_mentions（body 是唯一事实源，契约 A messages）。
+
+    返回命中的成员行（含 kind），供 _generate_activity 直接消费——省去对刚插入
+    mentions 行的回读 JOIN（M2 review：无 @ 消息也白付一次查询）。
+    """
     members = list(
         tx.conn.execute(
-            select(_MEMBER.c.id, _MEMBER.c.name).where(
+            select(_MEMBER.c.id, _MEMBER.c.name, _MEMBER.c.kind).where(
                 _MEMBER.c.workspace_id == workspace_id,
                 _MEMBER.c.removed_at.is_(None),
             )
         ).mappings()
     )
     if not members:
-        return
+        return []
 
     # 以成员名目录为事实源，而不是把 @ 后直到空白都当句柄。这样 `@Hank，让他处理`
     # 会在中文逗号处正确结束，也不会把 `@PatBot` 误解析成较短的 `@Pat`。
@@ -71,8 +77,9 @@ def _resolve_mentions(tx: Tx, workspace_id: str, message_id: str, body: str) -> 
     mention_re = re.compile(rf"@({alternatives})(?=$|[^\w.-])", re.IGNORECASE)
     handles = {match.group(1).casefold() for match in mention_re.finditer(body)}
     if not handles:
-        return
+        return []
 
+    mentioned: list[dict[str, Any]] = []
     seen: set[str] = set()
     for m in members:
         if str(m["name"]).casefold() in handles and m["id"] not in seen:
@@ -80,6 +87,8 @@ def _resolve_mentions(tx: Tx, workspace_id: str, message_id: str, body: str) -> 
                 insert(_MENTION).values(message_id=message_id, member_id=m["id"])
             )
             seen.add(m["id"])
+            mentioned.append(dict(m))
+    return mentioned
 
 
 def _resolve_task_refs(tx: Tx, channel_id: str, message_id: str, body: str) -> None:
@@ -108,12 +117,16 @@ def _emit_activity(
     *,
     workspace_id: str,
     member_id: str,
+    actor_member_id: str,
     kind: str,
     channel_id: str,
     message_id: str,
     ts: str,
 ) -> None:
-    """插一条 activity_items 并广播 activity.created（channel_id=None 全局，供前端 P9）。"""
+    """插一条 activity_items 并广播 activity.created（channel_id=None 全局，供前端 P9）。
+
+    actor_member_id（消息作者）只进 Public 载荷不落库——表列 member_id 语义=接收者。
+    """
     row = {
         "id": service.new_ulid(),
         "workspace_id": workspace_id,
@@ -126,7 +139,8 @@ def _emit_activity(
         "done_at": None,
     }
     tx.conn.execute(insert(_ACTIVITY).values(**row))
-    tx.emit(EventType.ACTIVITY_CREATED, None, {"item": activity_item_public(row)})
+    pub = activity_item_public({**row, "actor_member_id": actor_member_id})
+    tx.emit(EventType.ACTIVITY_CREATED, None, {"item": pub})
 
 
 def _generate_activity(
@@ -136,40 +150,39 @@ def _generate_activity(
     message_id: str,
     author_member_id: str,
     ts: str,
+    mentioned: list[dict[str, Any]],
 ) -> None:
     """C3b：Activity 生成（M2 子集，B §9.7）。Agent 成员永不作为接收者生成 activity。
 
-    - channel 频道：读本条消息解析出的 message_mentions，取人类且非作者的接收者 → kind='mention'。
+    - channel 频道：消费 _resolve_mentions 返回的命中成员（同事务内存数据，免回读 JOIN），
+      取人类且非作者的接收者 → kind='mention'。
     - dm 频道：取该 DM 对端人类（非作者）→ kind='dm'。DM 消息不再生成 mention（裁决：避免双写）。
     """
     channel_id = channel["id"]
     if channel["kind"] == ChannelKind.DM:
-        recipients = tx.conn.execute(
-            select(_MEMBER.c.id)
-            .select_from(
-                _CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id)
-            )
-            .where(
-                _CHANNEL_MEMBER.c.channel_id == channel_id,
-                _MEMBER.c.kind == MemberKind.HUMAN,
-                _MEMBER.c.id != author_member_id,
-                _MEMBER.c.removed_at.is_(None),
-            )
-        ).scalars()
+        recipients = list(
+            tx.conn.execute(
+                select(_MEMBER.c.id)
+                .select_from(
+                    _CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id)
+                )
+                .where(
+                    _CHANNEL_MEMBER.c.channel_id == channel_id,
+                    _MEMBER.c.kind == MemberKind.HUMAN,
+                    _MEMBER.c.id != author_member_id,
+                    _MEMBER.c.removed_at.is_(None),
+                )
+            ).scalars()
+        )
         kind = ActivityKind.DM.value
     else:
-        recipients = tx.conn.execute(
-            select(_MEMBER.c.id)
-            .select_from(
-                _MENTION.join(_MEMBER, _MENTION.c.member_id == _MEMBER.c.id)
-            )
-            .where(
-                _MENTION.c.message_id == message_id,
-                _MEMBER.c.kind == MemberKind.HUMAN,
-                _MEMBER.c.id != author_member_id,
-                _MEMBER.c.removed_at.is_(None),
-            )
-        ).scalars()
+        if not mentioned:  # 无 @ 的普通消息（绝大多数）：零额外查询
+            return
+        recipients = [
+            m["id"]
+            for m in mentioned
+            if m["kind"] == MemberKind.HUMAN and m["id"] != author_member_id
+        ]
         kind = ActivityKind.MENTION.value
 
     for recipient_id in dict.fromkeys(recipients):  # 去重（防成员多次命中）
@@ -177,6 +190,7 @@ def _generate_activity(
             tx,
             workspace_id=workspace_id,
             member_id=recipient_id,
+            actor_member_id=author_member_id,
             kind=kind,
             channel_id=channel_id,
             message_id=message_id,
@@ -329,11 +343,11 @@ def post_message(
             created_at=ts,
         )
     )
-    _resolve_mentions(tx, ws["id"], msg_id, body.body)
+    mentioned = _resolve_mentions(tx, ws["id"], msg_id, body.body)
     # C3a：解析 body 里的 task #n → message_task_refs（当前频道编号，未命中不报错）。
     _resolve_task_refs(tx, channel_id, msg_id, body.body)
     # C3b：由 mentions/DM 对端生成人类 Activity（Agent 接收者永不生成），广播 activity.created。
-    _generate_activity(tx, ws["id"], channel, msg_id, me["id"], ts)
+    _generate_activity(tx, ws["id"], channel, msg_id, me["id"], ts, mentioned)
 
     # 文件绑定（契约 D §9.2）：同事务落 files 行并把正文移入 files/<id>。
     for upload_id in dict.fromkeys(body.file_ids):

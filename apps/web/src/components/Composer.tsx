@@ -22,14 +22,11 @@ export function Composer({ channelName, onSend, variant = 'main', hideAsTask = f
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
-    // Ctrl+Shift+Enter(或 Cmd+Shift+Enter)= 直接转任务发送;普通 Enter = 常规发送。
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
-      e.preventDefault();
-      send(!hideAsTask);
-    } else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    // 输入法组合态的 Enter 是"确认候选词"不是"发送"(全中文主路径;keyCode 229 兼容旧 IME)。
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    // Ctrl/Cmd+Shift+Enter = 直接转任务;其余任意 Enter 组合一律照发(M1 语义,不静默吞键)。
+    send((e.ctrlKey || e.metaKey) && e.shiftKey && !hideAsTask);
   };
 
   return (

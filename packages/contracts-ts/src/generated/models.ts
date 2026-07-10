@@ -10,6 +10,7 @@ export type Kind = 'ack';
 export type Ref = string;
 export type AckResult = 'done' | 'noop' | 'failed';
 export type V = number;
+export type ActorMemberId = string | null;
 export type ChannelId = string | null;
 export type CreatedAt = string;
 export type DoneAt = string | null;
@@ -548,14 +549,14 @@ export type Id21 = string;
 export type SourceRef1 = string;
 export type LandingBatchStatus1 = 'running' | 'done' | 'fail_closed';
 export type WorkspaceId19 = string;
-export type ActorMemberId = string | null;
+export type ActorMemberId1 = string | null;
 export type BatchId3 = string | null;
 export type CreatedAt16 = string;
 export type Kind5 = string;
 export type OpId = string;
 export type RequestHash = string;
 export type Seq3 = number;
-export type ActorMemberId1 = string | null;
+export type ActorMemberId2 = string | null;
 export type BatchId4 = string | null;
 export type CreatedAt17 = string;
 export type Kind6 = string;
@@ -822,7 +823,7 @@ export type HeartbeatSec1 = number;
 export type ProtocolV1 = number;
 export type ServerVersion1 = string;
 export type WorkspaceId33 = string;
-export type ActorMemberId2 = string | null;
+export type ActorMemberId3 = string | null;
 export type TaskStatus1 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type TaskEventKind =
   'status_change' | 'claim' | 'unclaim' | 'assign' | 'force_start' | 'reminder_sent' | 'escalated';
@@ -851,12 +852,12 @@ export type CacheWriteTokens = number;
 export type Events2 = number;
 export type InputTokens = number;
 export type OutputTokens = number;
-export type ActorMemberId3 = string | null;
+export type ActorMemberId4 = string | null;
 export type CreatedAt31 = string;
 export type OwnerMemberId1 = string | null;
 export type Seq5 = number;
 export type TaskId15 = string;
-export type ActorMemberId4 = string | null;
+export type ActorMemberId5 = string | null;
 export type CreatedAt32 = string;
 export type OwnerMemberId2 = string | null;
 export type Seq6 = number;
@@ -1197,7 +1198,14 @@ export interface FrameError {
 export interface ActivityCreatedData {
   item: ActivityItemPublic;
 }
+/**
+ * 读面派生字段：actor_member_id = 触发本条的消息作者（自 message_id 联查，不落库）。
+ *
+ * member_id 是接收者（表列语义）；前端渲染"谁提及了你/谁发来私信"需要作者，
+ * 缺此字段时前端只能错用 member_id（M2 review 确认的行为人错位）。
+ */
 export interface ActivityItemPublic {
+  actor_member_id?: ActorMemberId;
   channel_id?: ChannelId;
   created_at: CreatedAt;
   done_at?: DoneAt;
@@ -1941,7 +1949,7 @@ export interface LandingBatchRow {
   workspace_id: WorkspaceId19;
 }
 export interface LedgerEntryPublic {
-  actor_member_id?: ActorMemberId;
+  actor_member_id?: ActorMemberId1;
   batch_id?: BatchId3;
   created_at: CreatedAt16;
   kind: Kind5;
@@ -1954,7 +1962,7 @@ export interface LedgerEntryPublic {
  * 通用幂等账本（03 §3.2 基础设施；不可变表）。opId 格式见 constants.OPID_*。
  */
 export interface LedgerEntryRow {
-  actor_member_id?: ActorMemberId1;
+  actor_member_id?: ActorMemberId2;
   batch_id?: BatchId4;
   created_at: CreatedAt17;
   kind: Kind6;
@@ -2355,7 +2363,7 @@ export interface SysHelloData {
 }
 export interface SysPongData {}
 export interface TaskChange {
-  actor_member_id?: ActorMemberId2;
+  actor_member_id?: ActorMemberId3;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
   to_status?: TaskStatus1 | null;
@@ -2414,7 +2422,7 @@ export interface TaskUsage {
   output_tokens?: OutputTokens;
 }
 export interface TaskEventPublic {
-  actor_member_id?: ActorMemberId3;
+  actor_member_id?: ActorMemberId4;
   created_at: CreatedAt31;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
@@ -2427,7 +2435,7 @@ export interface TaskEventPublic {
  * M2：状态账本（T5；不可变表）。
  */
 export interface TaskEventRow {
-  actor_member_id?: ActorMemberId4;
+  actor_member_id?: ActorMemberId5;
   created_at: CreatedAt32;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;

@@ -135,6 +135,114 @@ def test_activity_done_missing_returns_404(server_client: TestClient) -> None:
     assert err.error.code is rest.ErrorCode.NOT_FOUND
 
 
+def test_activity_done_scoped_to_owner(
+    seeded_engine: Engine, server_client: TestClient
+) -> None:
+    """归属门（M2 二轮 review 修复）：非 Owner 的条目按不存在处理（404），行不被改动。
+
+    修复前 done 端点不查归属也不走 acting_member——任何主体可清掉他人未读。
+    """
+    _owner, ws_id = _owner_and_ws(seeded_engine)
+    with seeded_engine.connect() as conn:
+        other = conn.execute(
+            select(_MEMBER.c.id).where(_MEMBER.c.kind == "agent").limit(1)
+        ).scalar_one()
+    other_item = "01K0ACT0000000000000000009"
+    _insert_activity(
+        seeded_engine, ws_id, other, other_item, "mention", "2026-07-09T13:00:00.000Z"
+    )
+    r = server_client.post(f"/api/activity/{other_item}/done")
+    assert r.status_code == 404
+    with seeded_engine.connect() as conn:
+        done_at = conn.execute(
+            select(_ACT.c.done_at).where(_ACT.c.id == other_item)
+        ).scalar_one()
+    assert done_at is None
+
+    # Agent 持 Computer Bearer 代理也不能清 Owner 的未读（acting_member 解析成 agent 成员
+    # → 与人类条目归属不匹配 → 404）。
+    import hashlib
+
+    from sqlalchemy import update as sa_update
+
+    key = "cak_activity_scope_test"
+    with seeded_engine.begin() as conn:
+        pat = conn.execute(
+            select(_MEMBER.c.id).where(_MEMBER.c.name == "Pat")
+        ).scalar_one()
+        computer_id = conn.execute(
+            select(models.Agent.__table__.c.computer_id).where(
+                models.Agent.__table__.c.member_id == pat
+            )
+        ).scalar_one()
+        conn.execute(
+            sa_update(models.Computer.__table__)
+            .where(models.Computer.__table__.c.id == computer_id)
+            .values(api_key_hash=hashlib.sha256(key.encode()).hexdigest())
+        )
+    owner_item = "01K0ACT000000000000000000A"
+    _insert_activity(
+        seeded_engine, ws_id, _owner, owner_item, "mention", "2026-07-09T14:00:00.000Z"
+    )
+    r = server_client.post(
+        f"/api/activity/{owner_item}/done",
+        headers={"Authorization": f"Bearer {key}", "X-Acting-Member": pat},
+    )
+    assert r.status_code == 404
+    with seeded_engine.connect() as conn:
+        done_at = conn.execute(
+            select(_ACT.c.done_at).where(_ACT.c.id == owner_item)
+        ).scalar_one()
+    assert done_at is None
+
+
+def test_activity_actor_member_id_from_message_author(
+    seeded_engine: Engine, server_client: TestClient
+) -> None:
+    """actor_member_id = 触发消息的作者（Public 派生字段，M2 二轮 review 修复）。
+
+    Agent Pat @Memcyo → Owner 的 activity 项 actor=Pat、member_id=Owner。
+    """
+    import hashlib
+
+    from sqlalchemy import update as sa_update
+
+    key = "cak_activity_actor_test"
+    with seeded_engine.begin() as conn:
+        pat = conn.execute(
+            select(_MEMBER.c.id).where(_MEMBER.c.name == "Pat")
+        ).scalar_one()
+        computer_id = conn.execute(
+            select(models.Agent.__table__.c.computer_id).where(
+                models.Agent.__table__.c.member_id == pat
+            )
+        ).scalar_one()
+        conn.execute(
+            sa_update(models.Computer.__table__)
+            .where(models.Computer.__table__.c.id == computer_id)
+            .values(api_key_hash=hashlib.sha256(key.encode()).hexdigest())
+        )
+    build = next(
+        c
+        for c in server_client.get("/api/channels").json()["items"]
+        if c["name"] == "build"
+    )
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "@Memcyo 请验收 actor 字段"},
+        headers={"Authorization": f"Bearer {key}", "X-Acting-Member": pat},
+    )
+    assert r.status_code == 201, r.text
+    owner, _ws = _owner_and_ws(seeded_engine)
+    page = rest.Page[entities.ActivityItemPublic].model_validate(
+        server_client.get("/api/activity").json()
+    )
+    item = next(a for a in page.items if a.message_id == r.json()["message"]["id"])
+    assert item.kind.value == "mention"
+    assert item.member_id == owner  # 接收者
+    assert item.actor_member_id == pat  # 行为人=消息作者
+
+
 # ---- WS 辅助
 
 

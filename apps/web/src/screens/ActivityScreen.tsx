@@ -10,6 +10,7 @@ import type { ActivityItemPublic, MemberPublic } from '@coagentia/contracts-ts';
 import { api, ApiError, type ActivityFilter } from '../api';
 import { memberMap, useActivity, useMembers, channelsOf, useChannelsSnapshot } from '../data/queries';
 import { useUiStore } from '../lib/store';
+import { relTime } from '../lib/time';
 import { useToast } from '../components/Toast';
 import './activity.css';
 
@@ -22,20 +23,11 @@ const TABS: { key: ActivityFilter; label: string }[] = [
 // 升级类 kind → 进置顶区(--warning 竖条卡)。
 const ESCALATION_KINDS = new Set(['silence_escalation', 'held_escalation', 'fail_closed']);
 
-function relTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  const now = new Date();
-  if (d.toDateString() === now.toDateString())
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  const yst = new Date(now); yst.setDate(now.getDate() - 1);
-  if (d.toDateString() === yst.toDateString()) return '昨天';
-  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 // 据 kind 合成事件文案(ActivityItemPublic 无预渲染文本,只有引用 id)。
+// 「谁」= actor_member_id(触发消息的作者,契约派生字段)——item.member_id 是接收者(恒为
+// 查看者本人),M2 二轮 review 确认错用它会把所有行为人渲染成自己。
 function phraseOf(item: ActivityItemPublic, byId: Record<string, MemberPublic>, chName: string): string {
-  const who = (item.member_id && byId[item.member_id]?.name) || '有人';
+  const who = (item.actor_member_id && byId[item.actor_member_id]?.name) || '有人';
   switch (item.kind) {
     case 'mention': return `${who} 在 #${chName} 提及了你`;
     case 'dm': return `${who} 给你发了私信`;

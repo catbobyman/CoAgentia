@@ -7,6 +7,7 @@ import type { FilePublic } from '@coagentia/contracts-ts';
 
 import { useChannelFiles } from '../data/queries';
 import { type Cat, catIcon, categoryOf, contentUrl, fmtSize, isTextPreview } from '../lib/fileKind';
+import { fmtTime } from '../lib/time';
 import './files-tab.css';
 
 type Filter = 'all' | Cat;
@@ -105,7 +106,7 @@ export function FilesTab({ channelId, onLocate }: {
                     >
                       <td><span className="fname">{catIcon(cat)}{f.name}</span></td>
                       <td className="num">{fmtSize(f.size_bytes)}</td>
-                      <td className="num">{f.created_at.slice(11, 16)}</td>
+                      <td className="num">{fmtTime(f.created_at)}</td>
                       <td>
                         <span className="opscell">
                           <a
@@ -145,7 +146,7 @@ export function FilesTab({ channelId, onLocate }: {
             <div className="meta-rows">
               <div className="mr"><span className="lb">Size</span><span className="vl"><span className="mono">{fmtSize(selected.size_bytes)}</span></span></div>
               {selected.message_id && (
-                <div className="mr"><span className="lb">From</span><span className="vl"><span className="mono">msg {selected.message_id.slice(0, 8)} · {selected.created_at.slice(11, 16)}</span></span></div>
+                <div className="mr"><span className="lb">From</span><span className="vl"><span className="mono">msg {selected.message_id.slice(0, 8)} · {fmtTime(selected.created_at)}</span></span></div>
               )}
               <div className="mr"><span className="lb">SHA-256</span><span className="vl"><span className="mono">{selected.sha256.slice(0, 16)}…</span></span></div>
             </div>

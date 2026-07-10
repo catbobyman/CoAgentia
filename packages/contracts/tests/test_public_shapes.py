@@ -30,8 +30,24 @@ def test_deployment_public_drops_log_path() -> None:
     assert fields(entities.DeploymentPublic) == fields(entities.DeploymentRow) - {"log_path"}
 
 
+def test_activity_item_public_adds_actor() -> None:
+    """读面增派生字段 actor_member_id（消息作者，联查得出不落库）——M2 二轮 review 裁决。"""
+    assert fields(entities.ActivityItemPublic) == fields(entities.ActivityItemRow) | {
+        "actor_member_id"
+    }
+    # 可选字段：老载荷（无 actor 键）仍验证通过。
+    legacy = entities.ActivityItemPublic.model_validate({
+        "id": "01JZKJ7GG00000000000000001",
+        "workspace_id": "01JZKJ7GG00000000000000002",
+        "member_id": "01JZKJ7GG00000000000000003",
+        "kind": "mention",
+        "created_at": "2026-07-09T12:00:00.000Z",
+    })
+    assert legacy.actor_member_id is None
+
+
 def test_all_other_publics_equal_rows() -> None:
-    """其余 Public = Row（子类零改动）；有意剔除的三个在上面单测。"""
+    """其余 Public = Row（子类零改动）；有意放宽的四个在上面单测。"""
     pairs = [
         (entities.WorkspaceRow, entities.WorkspacePublic),
         (entities.MemberRow, entities.MemberPublic),
@@ -61,6 +77,11 @@ def test_all_other_publics_equal_rows() -> None:
         (entities.ComputerRow, entities.ComputerPublic),
     ]
     for row, public in pairs:
-        if public in (entities.ComputerPublic, entities.FilePublic, entities.DeploymentPublic):
+        if public in (
+            entities.ComputerPublic,
+            entities.FilePublic,
+            entities.DeploymentPublic,
+            entities.ActivityItemPublic,
+        ):
             continue
         assert fields(public) == fields(row), f"{public.__name__} != {row.__name__}"

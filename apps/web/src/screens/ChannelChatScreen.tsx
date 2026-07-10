@@ -1,9 +1,11 @@
 // P1 会话屏(主列),在新路由/基座下渲染,行为不回退(静载 + WS 五事件无刷新更新,NFR1)。
 // 视图状态来自类型化深链 search(tab/task/thread);服务端数据来自 TanStack Query 缓存。
 // P5 线程面板由 ?thread= 驱动,在主列右侧展开(不新增顶层路由)。
+import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { FilePublic } from '@coagentia/contracts-ts';
+import type { FilePublic, TaskStatus } from '@coagentia/contracts-ts';
+import { UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 
 import type { ChannelSearch, Tab } from '../routes/search';
 import {
@@ -26,6 +28,8 @@ export function ChannelChatScreen({ search, setSearch }: {
 }) {
   const activeChannelId = useUiStore((s) => s.activeChannelId);
   const navigate = useNavigate();
+  // 「定位到消息」目标(P4 → 会话流):瞬态视图状态,不进深链。
+  const [locateId, setLocateId] = useState<string | undefined>();
 
   const channelsQ = useChannelsSnapshot();
   const membersQ = useMembers();
@@ -58,7 +62,10 @@ export function ChannelChatScreen({ search, setSearch }: {
   }, {});
 
   const taskByRoot = Object.fromEntries(tasks.map((t) => [t.root_message_id, t]));
-  const boardCount = tasks.filter((t) => !['done', 'closed'].includes(t.status ?? 'todo')).length;
+  // 「完结态」消费生成常量(纪律 7 单一事实源;当前值域 = {done, closed})。
+  const boardCount = tasks.filter(
+    (t) => !UNCLAIMABLE_STATUSES.includes((t.status ?? 'todo') as TaskStatus),
+  ).length;
   const filesCount = files.length;
   const readPos = readPositionsMap(snap)[channel.id];
   const lastReadId = readPos?.last_read_message_id;
@@ -113,6 +120,8 @@ export function ChannelChatScreen({ search, setSearch }: {
             filesByMessage={filesByMessage}
             lastReadId={lastReadId}
             selectedTaskId={search.task}
+            locateId={locateId}
+            onLocateDone={() => setLocateId(undefined)}
             onSelectTask={selectTask}
             onOpenAgent={openAgent}
           />
@@ -125,7 +134,15 @@ export function ChannelChatScreen({ search, setSearch }: {
             onSelectTask={selectTask}
           />
         ) : search.tab === 'files' ? (
-          <FilesTab channelId={channel.id} onLocate={() => setSearch({ tab: 'chat' })} />
+          <FilesTab
+            channelId={channel.id}
+            onLocate={(messageId) => {
+              // 附件绑定在线程回复上时,消息不在主流——切页签之外还要展开所在线程。
+              const target = messages.find((m) => m.id === messageId);
+              setSearch({ tab: 'chat', thread: target?.thread_root_id ?? undefined });
+              setLocateId(messageId);
+            }}
+          />
         ) : (
           <section className="flow">
             <div className="boot">「{search.tab}」屏 B2 搭建中 —— 路由/深链已就绪。</div>
@@ -145,6 +162,9 @@ export function ChannelChatScreen({ search, setSearch }: {
           meId={me?.id}
           presenceOf={(id) => presence[id]}
           usage={threadUsage}
+          filesByMessage={filesByMessage}
+          locateId={locateId}
+          onLocateDone={() => setLocateId(undefined)}
           onClose={() => setSearch({ thread: undefined, task: undefined })}
           onSend={(body) => void api.sendMessage(channel.id, body, false)}
         />

@@ -4,10 +4,11 @@
 import { useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 
-import type { MemberPublic, PresenceEntry, TaskPublic, TaskStatus } from '@coagentia/contracts-ts';
+import type { FilePublic, MemberPublic, PresenceEntry, TaskPublic, TaskStatus } from '@coagentia/contracts-ts';
 import { TASK_TRANSITIONS, UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
+import { fmtTime } from '../lib/time';
 import { useTaskDetail, useThread } from '../data/queries';
 import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
@@ -16,7 +17,8 @@ import { MessageFlow } from '../components/MessageFlow';
 import { Composer } from '../components/Composer';
 
 export function ThreadPanel({
-  task, rootMessageId, memberById, memberNames, meName, meId, presenceOf, usage, onClose, onSend,
+  task, rootMessageId, memberById, memberNames, meName, meId, presenceOf, usage,
+  filesByMessage, locateId, onLocateDone, onClose, onSend,
 }: {
   task?: TaskPublic;
   rootMessageId: string;
@@ -26,6 +28,9 @@ export function ThreadPanel({
   meId?: string;
   presenceOf: (memberId: string) => PresenceEntry | undefined;
   usage?: number;
+  filesByMessage?: Record<string, FilePublic[]>; // 线程内交付物附件卡(M2 二轮 review:面板此前无附件渲染路径)
+  locateId?: string;
+  onLocateDone?: () => void;
   onClose: () => void;
   onSend: (body: string) => void;
 }) {
@@ -41,7 +46,7 @@ export function ThreadPanel({
   const status = task?.status ?? 'todo';
   const owner = task?.owner_member_id ? memberById[task.owner_member_id] : undefined;
   const creator = task?.created_by_member_id ? memberById[task.created_by_member_id] : undefined;
-  const created = task?.created_at?.slice(11, 16);
+  const created = task?.created_at ? fmtTime(task.created_at) : undefined;
 
   // 真契约 / usage(契约 B §9.8):contracts M3 前恒空 → 契约卡收起;usage 优先取真 detail 聚合。
   const detail = detailQ.data;
@@ -72,8 +77,9 @@ export function ThreadPanel({
   };
 
   const iAmOwner = !!meId && task?.owner_member_id === meId;
-  // 终态(done/closed)不可认领(纪律 7 消费生成的 claim 语义门)——认领钮置灰,避免点击必吃 422。
-  const claimable = !UNCLAIMABLE_STATUSES.includes(status as TaskStatus);
+  // 认领钮置灰的两个必失败路径(M2 二轮 review):终态(422 语义门)+ 已被他人认领(409 CLAIM_RACE)。
+  const claimable =
+    !UNCLAIMABLE_STATUSES.includes(status as TaskStatus) && !task?.owner_member_id;
 
   const doClaim = () => {
     if (!task) return;
@@ -136,7 +142,7 @@ export function ThreadPanel({
         )}
       </section>
 
-      {/* [3] 线程回复流(复用 MessageFlow) */}
+      {/* [3] 线程回复流(复用 MessageFlow;附件卡与主流同数据源) */}
       <MessageFlow
         messages={replies}
         memberById={memberById}
@@ -145,6 +151,9 @@ export function ThreadPanel({
         presenceOf={presenceOf}
         taskByRoot={{}}
         usageByTask={{}}
+        filesByMessage={filesByMessage}
+        locateId={locateId}
+        onLocateDone={onLocateDone}
       />
 
       {/* [4] 状态操作条:claim/unclaim 三态 + 合法目标态流转下拉 */}

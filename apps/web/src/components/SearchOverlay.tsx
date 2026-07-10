@@ -201,6 +201,8 @@ export function SearchOverlay() {
       e.preventDefault();
       setSel((i) => (flat.length ? (i - 1 + flat.length) % flat.length : 0));
     } else if (e.key === 'Enter') {
+      // 输入法组合态的 Enter 是"确认候选词"——不得触发跳转并关闭弹层(与 Composer 同防护)。
+      if ((e.nativeEvent as KeyboardEvent).isComposing || e.keyCode === 229) return;
       e.preventDefault();
       const item = flat[sel];
       if (item) activate(item);

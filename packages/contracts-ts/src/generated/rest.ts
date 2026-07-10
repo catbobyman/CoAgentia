@@ -748,8 +748,16 @@ export interface components {
          * @enum {string}
          */
         ActivityFilter: "all" | "unread" | "mentions";
-        /** ActivityItemPublic */
+        /**
+         * ActivityItemPublic
+         * @description 读面派生字段：actor_member_id = 触发本条的消息作者（自 message_id 联查，不落库）。
+         *
+         *     member_id 是接收者（表列语义）；前端渲染"谁提及了你/谁发来私信"需要作者，
+         *     缺此字段时前端只能错用 member_id（M2 review 确认的行为人错位）。
+         */
         ActivityItemPublic: {
+            /** Actor Member Id */
+            actor_member_id?: string | null;
             /** Channel Id */
             channel_id?: string | null;
             /** Created At */

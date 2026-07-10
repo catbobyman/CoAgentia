@@ -11,12 +11,12 @@ from typing import Any
 from coagentia_contracts import entities, rest
 from coagentia_contracts.enums import ActivityFilter, ActivityKind
 from coagentia_contracts.ws import EventType
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, update
 
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
-from coagentia_server.deps import Tx, get_tx, owner_member
+from coagentia_server.deps import Tx, acting_member, get_tx, owner_member
 from coagentia_server.ledger import service
 from coagentia_server.routes._pagination import cursor_page
 from coagentia_server.routes.serialize import activity_item_public
@@ -24,6 +24,7 @@ from coagentia_server.routes.serialize import activity_item_public
 router = APIRouter(prefix="/api", tags=["activity"])
 
 _ACT = models.ActivityItem.__table__
+_MSG = models.Message.__table__
 
 
 @router.get("/activity", response_model=rest.Page[entities.ActivityItemPublic])
@@ -34,7 +35,12 @@ def list_activity(
     limit: int = rest.PAGE_DEFAULT_LIMIT,
 ) -> Any:
     me = owner_member(tx.conn)
-    stmt = select(_ACT).where(_ACT.c.member_id == me["id"])
+    # actor_member_id = 触发消息的作者（Public 派生字段，联查 messages，不落库）。
+    stmt = (
+        select(_ACT, _MSG.c.author_member_id.label("actor_member_id"))
+        .select_from(_ACT.outerjoin(_MSG, _ACT.c.message_id == _MSG.c.id))
+        .where(_ACT.c.member_id == me["id"])
+    )
     if filter is ActivityFilter.UNREAD:  # 未处理 = done_at IS NULL
         stmt = stmt.where(_ACT.c.done_at.is_(None))
     elif filter is ActivityFilter.MENTIONS:
@@ -50,18 +56,30 @@ def list_activity(
 
 
 @router.post("/activity/{activity_id}/done", response_model=entities.ActivityItemPublic)
-def mark_activity_done(activity_id: str, tx: Tx = Depends(get_tx)) -> Any:
-    row = tx.conn.execute(select(_ACT).where(_ACT.c.id == activity_id)).mappings().first()
+def mark_activity_done(activity_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
+    # 写面与读面同一归属门：只有条目接收者可置 done。主体走 acting_member（同 messages
+    # 写路径）——Agent 经 Bearer 代理会解析成 agent 成员，与人类条目归属不匹配 → 404，
+    # 挡住"任何主体可清 Owner 未读"（M2 二轮 review）；按不存在处理不泄露存在性。
+    me = acting_member(request, tx.conn)
+    row = (
+        tx.conn.execute(
+            select(_ACT).where(_ACT.c.id == activity_id, _ACT.c.member_id == me["id"])
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "Activity 不存在")
     row = dict(row)
+    if row["message_id"] is not None:  # 响应形状与 list 一致：补 actor 派生字段
+        row["actor_member_id"] = tx.conn.execute(
+            select(_MSG.c.author_member_id).where(_MSG.c.id == row["message_id"])
+        ).scalar_one_or_none()
     if row["done_at"] is not None:  # 幂等：已 done → 原样返回、不重复广播
         return activity_item_public(row)
     ts = service.now_iso()
     tx.conn.execute(update(_ACT).where(_ACT.c.id == activity_id).values(done_at=ts))
-    final = dict(
-        tx.conn.execute(select(_ACT).where(_ACT.c.id == activity_id)).mappings().first()
-    )
+    row["done_at"] = ts
     # activity.done 是个人面事件（无频道归属）→ 全局广播（channel_id=None）。
     tx.emit(EventType.ACTIVITY_DONE, None, {"item_id": activity_id})
-    return activity_item_public(final)
+    return activity_item_public(row)

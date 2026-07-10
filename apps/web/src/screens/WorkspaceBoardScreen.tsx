@@ -16,22 +16,10 @@ import { useUiStore } from '../lib/store';
 import { useToast } from '../components/Toast';
 import { Avatar } from '../components/Avatar';
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
+import { relTime } from '../lib/time';
 import './workspace-board.css';
 
 const COLUMNS: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'done', 'closed'];
-
-// 相对时间(纯展示):今天→HH:MM,昨天→"昨天",更早→MM-DD。
-function relTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  const yst = new Date(now);
-  yst.setDate(now.getDate() - 1);
-  if (d.toDateString() === yst.toDateString()) return '昨天';
-  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 export function WorkspaceBoardScreen() {
   const navigate = useNavigate();

@@ -26,6 +26,9 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
         if (list.some((m) => m.id === message.id)) return list; // 幂等(key/id 去重)
         return [...list, message];
       });
+      // 消息可能携带文件绑定而 channelFiles 无专属事件——失效让文件页签/消息流附件卡
+      // 在停留会话中收敛(M2 二轮 review:Agent 交付文件不实时)。仅激活观察者才 refetch。
+      void qc.invalidateQueries({ queryKey: qk.channelFiles(message.channel_id) });
       break;
     }
 
@@ -114,6 +117,9 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
           [taskId]: (cur[taskId] ?? 0) + u.totals.input_tokens + u.totals.output_tokens,
         };
       });
+      // TaskDetail.usage 是 REST 快照——失效让已打开的线程面板跟上实时上报
+      // (M2 二轮 review:面板徽章冻结在打开时刻,与消息流任务牌口径矛盾)。
+      void qc.invalidateQueries({ queryKey: qk.taskDetail(taskId) });
       break;
     }
 
@@ -121,6 +127,11 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       // 'all' 档恒 upsert(缺则建)——规范全量列表。'unread'/'mentions' 档仅在已挂载(缓存已存在)
       // 时按归属 patch,避免凭空建偏档;否则停在 Unread/Mentions 页时徽标(取自 'all')增而列表不动。
       const { item } = data as { item: ActivityItemPublic };
+      // 全局广播携带的 member_id=接收者;REST 读面只回 Owner 本人条目,缓存口径必须一致——
+      // 否则多人类工作区他人条目泄入列表/徽标,refetch 后又消失(闪烁)。members 未加载时放行(单人 MVP)。
+      const actMembers = qc.getQueryData<MemberPublic[]>(qk.members());
+      const actOwner = actMembers?.find((m) => m.kind === 'human' && m.role === 'owner');
+      if (actOwner && item.member_id !== actOwner.id) break;
       qc.setQueryData<ActivityItemPublic[]>(qk.activity('all'), (prev) => {
         const list = prev ?? [];
         return list.some((a) => a.id === item.id) ? list : [item, ...list];

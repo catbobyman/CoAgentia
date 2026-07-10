@@ -48,6 +48,12 @@ body { background: var(--bg); font-family: var(--font-sans); color: var(--text);
 
 /* 消息流 */
 .flow { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 24px 8px; display: flex; flex-direction: column; }
+/* 「定位到消息」目标闪烁(P4 文件页签 → 会话流) */
+.locate-flash { animation: locate-flash 1.6s ease; }
+@keyframes locate-flash {
+  0%, 55% { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  100% { background: transparent; }
+}
 .datesep { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; }
 .datesep::before, .datesep::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .datesep span { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }

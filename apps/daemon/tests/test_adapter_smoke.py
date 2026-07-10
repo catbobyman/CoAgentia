@@ -145,10 +145,14 @@ class _RoutingHttp:
         if req.method == "GET" and req.path == "/api/tasks":
             items = [{"id": "T1", "status": "todo"}]
             return mcp.ToolResult(200, {"items": items, "next_cursor": None})
+        # 真 server claim/status 返回裸 TaskPublic（tasks.py return task_public(...)），
+        # 桩形状必须一致——否则冒烟固化一个 server 从不产生的 {"task": ...} 包裹形。
         if req.path == "/api/tasks/T1/claim":
-            return mcp.ToolResult(200, {"task": {"id": "T1", "owner_member_id": AID}})
+            return mcp.ToolResult(
+                200, {"id": "T1", "status": "in_progress", "owner_member_id": AID}
+            )
         if req.path == "/api/tasks/T1/status":
-            return mcp.ToolResult(200, {"task": {"id": "T1", "status": "in_progress"}})
+            return mcp.ToolResult(200, {"id": "T1", "status": "in_progress"})
         return mcp.ToolResult(404, {"code": "NOT_FOUND"}, is_error=True)
 
 

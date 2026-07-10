@@ -36,12 +36,14 @@ export function BoardTab({ tasks, memberById, presenceOf, selectedTaskId, onSele
 
   const onDrop = (col: TaskStatus) => {
     if (!drag) return;
+    const ok = canDrop(col); // 合法性判定只有 canDrop 一份(与拖拽高亮同源)
     const { id, from } = drag;
     setDrag(null);
-    if (from === col) return; // 同列:无流转
-    if (!(TASK_TRANSITIONS[from] ?? []).includes(col)) {
-      toast.push(`不能从 ${STATUS_WORD[from]} 流转到 ${STATUS_WORD[col]}`, { tone: 'error' });
-      return; // 非法目标:弹回 + toast
+    if (!ok) {
+      if (from !== col) {
+        toast.push(`不能从 ${STATUS_WORD[from]} 流转到 ${STATUS_WORD[col]}`, { tone: 'error' });
+      }
+      return; // 同列无流转;非法目标弹回 + toast
     }
     void api.setTaskStatus(id, col).catch((e: unknown) => {
       if (e instanceof ApiError && e.code === 'TASK_TRANSITION_INVALID') {
@@ -62,7 +64,11 @@ export function BoardTab({ tasks, memberById, presenceOf, selectedTaskId, onSele
         key={t.id}
         className={`bcard${selectedTaskId === t.id ? ' sel' : ''}${drag?.id === t.id ? ' dragging' : ''}`}
         draggable
-        onDragStart={() => setDrag({ id: t.id, from: st })}
+        onDragStart={(e) => {
+          // Firefox 要求 dragstart 期间 setData,否则拖拽会话不启动(M2 二轮 review)。
+          e.dataTransfer.setData('text/plain', t.id);
+          setDrag({ id: t.id, from: st });
+        }}
         onDragEnd={() => setDrag(null)}
         onClick={() => onSelectTask?.(t.id)}
       >
