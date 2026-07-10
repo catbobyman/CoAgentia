@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { FilePublic, TaskStatus } from '@coagentia/contracts-ts';
+import type { TaskStatus } from '@coagentia/contracts-ts';
 import { UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 
 import type { ChannelSearch, Tab } from '../routes/search';
@@ -54,12 +54,8 @@ export function ChannelChatScreen({ search, setSearch }: {
   const tasks = tasksQ.data ?? [];
   const usageByTask = usageQ.data ?? {};
 
+  // 附件卡数据源已改消息读面派生 files(契约 A v1.0.4);channelFiles 只服务文件页签计数与列表。
   const files = filesQ.data ?? [];
-  // 附件按 message_id 聚合(消息流附件卡数据源)。
-  const filesByMessage = files.reduce<Record<string, FilePublic[]>>((acc, f) => {
-    if (f.message_id) (acc[f.message_id] ??= []).push(f);
-    return acc;
-  }, {});
 
   const taskByRoot = Object.fromEntries(tasks.map((t) => [t.root_message_id, t]));
   // 「完结态」消费生成常量(纪律 7 单一事实源;当前值域 = {done, closed})。
@@ -117,7 +113,6 @@ export function ChannelChatScreen({ search, setSearch }: {
             presenceOf={(id) => presence[id]}
             taskByRoot={taskByRoot}
             usageByTask={usageByTask}
-            filesByMessage={filesByMessage}
             lastReadId={lastReadId}
             selectedTaskId={search.task}
             locateId={locateId}
@@ -163,7 +158,6 @@ export function ChannelChatScreen({ search, setSearch }: {
           meId={me?.id}
           presenceOf={(id) => presence[id]}
           usage={threadUsage}
-          filesByMessage={filesByMessage}
           locateId={locateId}
           onLocateDone={() => setLocateId(undefined)}
           onClose={() => setSearch({ thread: undefined, task: undefined })}

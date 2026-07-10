@@ -20,6 +20,7 @@ from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.ledger import service
 from coagentia_server.routes.serialize import (
     activity_item_public,
+    file_public,
     message_public,
     read_position_public,
     task_public,
@@ -201,6 +202,24 @@ def _generate_activity(
 # ---------------------------------------------------------------- 读
 
 
+def files_by_message(tx: Tx, message_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """按 message_id 批量取附件 → FilePublic dict 列表（契约 A v1.0.4 读面派生 files）。
+
+    消息读面统一走此 helper 附着（列表/线程/发消息响应/搜索命中），前端不再依赖
+    channelFiles 首页 ≤50 的间接聚合（M2 挂账）。"""
+    if not message_ids:
+        return {}
+    rows = tx.conn.execute(
+        select(_FILE)
+        .where(_FILE.c.message_id.in_(message_ids))
+        .order_by(_FILE.c.created_at, _FILE.c.id)
+    ).mappings()
+    out: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        out.setdefault(r["message_id"], []).append(file_public(dict(r)))
+    return out
+
+
 @router.get("/channels/{channel_id}/messages", response_model=rest.Page[entities.MessagePublic])
 def get_messages(
     channel_id: str,
@@ -227,7 +246,11 @@ def get_messages(
     limit = min(max(1, limit), rest.PAGE_MAX_LIMIT)
     page, tail = rows[:limit], rows[limit:]
     next_cursor = page[-1]["id"] if tail and page else None
-    return {"items": [message_public(m) for m in page], "next_cursor": next_cursor}
+    fmap = files_by_message(tx, [m["id"] for m in page])
+    return {
+        "items": [message_public(m, fmap.get(m["id"], [])) for m in page],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.get("/messages/{message_id}/thread", response_model=rest.Page[entities.MessagePublic])
@@ -240,7 +263,9 @@ def get_thread(message_id: str, tx: Tx = Depends(get_tx), after: str | None = No
         .where(_MSG.c.thread_root_id == message_id)
         .order_by(_MSG.c.created_at, _MSG.c.id)
     ).mappings()
-    items = [message_public(dict(root)), *[message_public(dict(r)) for r in replies]]
+    rows = [dict(root), *[dict(r) for r in replies]]
+    fmap = files_by_message(tx, [m["id"] for m in rows])
+    items = [message_public(m, fmap.get(m["id"], [])) for m in rows]
     return {"items": items, "next_cursor": None}
 
 
@@ -318,8 +343,9 @@ def post_message(
                 .mappings()
                 .first()
             )
+            prior_files = files_by_message(tx, [prior_id]).get(prior_id, [])
             return {
-                "message": message_public(dict(prior)),
+                "message": message_public(dict(prior), prior_files),
                 "task": task_public(dict(prior_task)) if prior_task is not None else None,
             }
         if res["status"] == "mismatch":
@@ -371,7 +397,9 @@ def post_message(
         )
 
     msg = dict(tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first())
-    pub = message_public(msg)
+    # 响应与 message.created 广播自带刚绑定的附件——前端附件卡即时渲染，不再等
+    # channelFiles 失效重拉（v1.0.4）。
+    pub = message_public(msg, files_by_message(tx, [msg_id]).get(msg_id, []))
 
     # as_task（B §9.4）：同事务建任务；顶级/非 DM 已在上方校验通过。message.created 先、
     # task.created 后严格提交序广播；任一半失败整事务回滚，双双不落库不广播（原子）。

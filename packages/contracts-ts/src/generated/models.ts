@@ -620,6 +620,7 @@ export type CardKind = 'proposal' | 'held_draft' | 'deployment' | 'fail_closed' 
 export type CardRef = string | null;
 export type ChannelId22 = string;
 export type CreatedAt20 = string;
+export type Files = FilePublic[] | null;
 export type Id25 = string;
 export type MessageKind = 'user' | 'system';
 export type ThreadRootId3 = string | null;
@@ -2115,6 +2116,12 @@ export interface MessageCreated {
   message: MessagePublic;
   task?: TaskPublic | null;
 }
+/**
+ * 读面派生字段 files（v1.0.4，Public≠Row 放宽先例同 ActivityItemPublic.actor_member_id）：
+ * REST 消息读面（列表/线程/发消息响应/搜索命中）与 message.created 广播填充（[] = 无附件）；
+ * 未附着面（daemon backlog/deliver 帧）保持 None——否则旧消息附件卡受 channelFiles
+ * 首页 ≤50 截断（M2 挂账）。serialize 时按 message_id 联查 files，不落 messages 表。
+ */
 export interface MessagePublic {
   author_member_id?: AuthorMemberId;
   body: Body1;
@@ -2122,6 +2129,7 @@ export interface MessagePublic {
   card_ref?: CardRef;
   channel_id: ChannelId22;
   created_at: CreatedAt20;
+  files?: Files;
   id: Id25;
   kind?: MessageKind;
   thread_root_id?: ThreadRootId3;

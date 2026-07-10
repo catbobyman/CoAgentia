@@ -41,7 +41,12 @@ def channel_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.ChannelPublic, row)
 
 
-def message_public(row: dict[str, Any]) -> dict[str, Any]:
+def message_public(
+    row: dict[str, Any], files: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """files = 读面派生附件（契约 A v1.0.4）：REST 消息读面传 []/列表，未附着面留 None。"""
+    if files is not None:
+        row = {**row, "files": files}
     return _dump(entities.MessagePublic, row)
 
 

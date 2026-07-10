@@ -1238,7 +1238,13 @@ export interface components {
          * @enum {string}
          */
         MessageKind: "user" | "system";
-        /** MessagePublic */
+        /**
+         * MessagePublic
+         * @description 读面派生字段 files（v1.0.4，Public≠Row 放宽先例同 ActivityItemPublic.actor_member_id）：
+         *     REST 消息读面（列表/线程/发消息响应/搜索命中）与 message.created 广播填充（[] = 无附件）；
+         *     未附着面（daemon backlog/deliver 帧）保持 None——否则旧消息附件卡受 channelFiles
+         *     首页 ≤50 截断（M2 挂账）。serialize 时按 message_id 联查 files，不落 messages 表。
+         */
         MessagePublic: {
             /** Author Member Id */
             author_member_id?: string | null;
@@ -1251,6 +1257,8 @@ export interface components {
             channel_id: string;
             /** Created At */
             created_at: string;
+            /** Files */
+            files?: components["schemas"]["FilePublic"][] | null;
             /** Id */
             id: string;
             /** @default user */

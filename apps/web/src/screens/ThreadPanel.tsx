@@ -6,7 +6,6 @@ import { ChevronDown, CircleAlert, Sparkles, X } from 'lucide-react';
 
 import type {
   ContractKind,
-  FilePublic,
   MemberPublic,
   PresenceEntry,
   TaskContractPublic,
@@ -159,7 +158,7 @@ export function TaskHandoffCard({
 
 export function ThreadPanel({
   task, rootMessageId, memberById, memberNames, meName, meId, presenceOf, usage,
-  filesByMessage, locateId, onLocateDone, onClose, onSend,
+  locateId, onLocateDone, onClose, onSend,
 }: {
   task?: TaskPublic;
   rootMessageId: string;
@@ -169,7 +168,6 @@ export function ThreadPanel({
   meId?: string;
   presenceOf: (memberId: string) => PresenceEntry | undefined;
   usage?: number;
-  filesByMessage?: Record<string, FilePublic[]>; // 线程内交付物附件卡(M2 二轮 review:面板此前无附件渲染路径)
   locateId?: string;
   onLocateDone?: () => void;
   onClose: () => void;
@@ -358,7 +356,7 @@ export function ThreadPanel({
         )}
       </section>
 
-      {/* [3] 线程回复流(复用 MessageFlow;附件卡与主流同数据源) */}
+      {/* [3] 线程回复流(复用 MessageFlow;附件卡 = 消息读面派生 files,与主流同源) */}
       <MessageFlow
         messages={replies}
         memberById={memberById}
@@ -367,7 +365,6 @@ export function ThreadPanel({
         presenceOf={presenceOf}
         taskByRoot={{}}
         usageByTask={{}}
-        filesByMessage={filesByMessage}
         locateId={locateId}
         onLocateDone={onLocateDone}
       />

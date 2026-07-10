@@ -88,6 +88,17 @@ def test_upgrade_head_creates_m3_tables(db_url: str, alembic_cfg: Config) -> Non
     assert len(M3_EXPECTED_TABLES) == 3
 
 
+def test_upgrade_head_creates_files_indexes(db_url: str, alembic_cfg: Config) -> None:
+    # 0004：files 二级索引（消息读面派生 files 批查 + 频道文件页签游标）
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        index_names = {ix["name"] for ix in inspect(engine).get_indexes("files")}
+    finally:
+        engine.dispose()
+    assert {"ix_files_message", "ix_files_channel"} <= index_names
+
+
 def test_incremental_from_0002_to_head(db_url: str, alembic_cfg: Config) -> None:
     # 增量路径：先到 0002（M1+M2 库），再升 head——模拟线上 M2 库升 M3
     command.upgrade(alembic_cfg, "0002_m2")

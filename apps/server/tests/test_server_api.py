@@ -298,6 +298,43 @@ def test_file_staging_then_bind_moves_to_files_dir(
     assert server_client.get(f"/api/files/{meta.id}/content").content == b"# hi"
 
 
+def test_message_files_derived_field_across_read_surfaces(
+    server_client: TestClient,
+) -> None:
+    """契约 A v1.0.4：消息读面自带派生 files（响应/列表/线程/搜索），与 channelFiles
+    分页无关——旧文件附件卡不再受首页 ≤50 截断（M2 挂账）。"""
+    build = _channel(server_client, BUILD_CHANNEL)
+    meta = server_client.post(
+        "/api/files", files={"file": ("spec.md", b"# spec", "text/markdown")}
+    ).json()
+
+    r = server_client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "附件在此 attachprobe", "file_ids": [meta["id"]]},
+    )
+    assert r.status_code == 201
+    created = r.json()["message"]
+    assert [f["id"] for f in created["files"]] == [meta["id"]]
+    assert "stored_path" not in created["files"][0]  # FilePublic 剔内部列
+
+    # 列表读面：带附件消息 files 非空；无附件消息 files == []（已附着，非 None）
+    page = server_client.get(f"/api/channels/{build['id']}/messages").json()
+    by_id = {m["id"]: m for m in page["items"]}
+    assert [f["id"] for f in by_id[created["id"]]["files"]] == [meta["id"]]
+    assert all(m["files"] == [] for m in page["items"] if m["id"] != created["id"])
+
+    # 线程读面：根消息在 thread 端点同样附着
+    thread = server_client.get(f"/api/messages/{created['id']}/thread").json()
+    assert [f["id"] for f in thread["items"][0]["files"]] == [meta["id"]]
+
+    # 搜索命中读面
+    hits = server_client.get("/api/search", params={"q": "attachprobe"}).json()
+    assert any(
+        [f["id"] for f in h["message"]["files"]] == [meta["id"]]
+        for h in hits["messages"]
+    )
+
+
 def test_file_bind_rolls_back_to_staging_when_later_file_is_invalid(
     server_client: TestClient, seeded_engine: Engine
 ) -> None:

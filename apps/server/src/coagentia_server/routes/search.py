@@ -26,6 +26,7 @@ from sqlalchemy.exc import OperationalError
 
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, get_tx
+from coagentia_server.routes.messages import files_by_message
 from coagentia_server.routes.serialize import (
     channel_public,
     member_public,
@@ -109,13 +110,17 @@ def search(
             params["in_channel"] = in_channel
         sql += " ORDER BY m.created_at DESC, m.id DESC LIMIT :lim"
         try:
+            hits: list[tuple[dict[str, Any], str]] = []
             for row in tx.conn.execute(text(sql), params).mappings():
                 d = dict(row)
                 d.pop("snip", None)
-                msg = {k: d[k] for k in _MSG_COLS}
-                result["messages"].append(
-                    {"message": message_public(msg), "snippet": row["snip"]}
-                )
+                hits.append(({k: d[k] for k in _MSG_COLS}, row["snip"]))
+            # 命中消息同为读面 → 附着 files（契约 A v1.0.4）。
+            fmap = files_by_message(tx, [m["id"] for m, _ in hits])
+            result["messages"] = [
+                {"message": message_public(m, fmap.get(m["id"], [])), "snippet": snip}
+                for m, snip in hits
+            ]
         except OperationalError:
             # 病态 FTS 查询（罕见的转义边角）→ 降级空 messages，而不是 500。
             result["messages"] = []

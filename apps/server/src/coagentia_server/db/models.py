@@ -256,6 +256,11 @@ class MessageMention(Base):
 
 class File(Base):
     __tablename__ = "files"
+    __table_args__ = (
+        # 0004：消息读面按 message_id 批查附件（契约 A v1.0.4）+ 频道文件页签按 id 游标。
+        Index("ix_files_message", "message_id"),
+        Index("ix_files_channel", "channel_id", "id"),
+    )
 
     id: Mapped[str] = mapped_column(_ULID, primary_key=True)
     workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))

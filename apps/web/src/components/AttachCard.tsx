@@ -1,5 +1,5 @@
 // 消息流附件卡(FR-4.8):文件名 / 类型 / 大小 + 预览(新标签打开内容)/ 下载。
-// 数据源 = 频道文件按 message_id 聚合(ChannelChatScreen 组装,MessageFlow 逐条消息渲染)。
+// 数据源 = 消息读面派生 files(契约 A v1.0.4,MessageFlow 逐条 m.files 渲染)。
 import { Download } from 'lucide-react';
 
 import type { FilePublic } from '@coagentia/contracts-ts';
