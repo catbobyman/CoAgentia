@@ -94,6 +94,23 @@
 - **实机 verify**：真 uvicorn 8799 + **真 websockets daemon-sim** 工程三角六节点 DAG **17/17**（成环拒 / T7 门 / force-start 403·留痕 / **blocked 不唤醒·上游 done 解锁·force-start override 唤醒且真事件循环无死锁** / R4·R7 状态写不受限）+ 浏览器同源 6 截图（含 **WS 无刷新实时解锁**：#8 done → #9 blocked 徽标实时消失）+ console 0 错误（[M3B-EVIDENCE.md](../verify/M3B-EVIDENCE.md)）。
 - **M3 里程碑收口**：§9a + §9b 全绿 = **PRD M3 出口达成**。M3-HANDOFF 移入 archive/（README 约定 3）。
 
+## 10. M4a 沉默提醒与循环 Reminder（块 M4a 收口 2026-07-10）
+
+来源：[M4-HANDOFF.md](M4-HANDOFF.md) §9a · [M4-DEV-PLAN.md](M4-DEV-PLAN.md) · [M4A-EVIDENCE.md](../verify/M4A-EVIDENCE.md)（提交 `01ff2d1`）
+
+- **契约修订先行**（纪律 1，随 M4 立项 `e177328` 落笔）：A **v1.0.5**（held_drafts 增 file_ids/as_task 载荷列 + reasons 上限 50/total_unread + 活动行分区唯一）· B **v1.2**（§10 护栏与沉默提醒规范条文 + §4.14 held 三键端点 + POST /reminders 内联 loop_contract + HELD_DRAFT_RESOLVED 23 码）· D **v1.0.1**（重评估组合 wake+deliver+inject 防复扣死循环 + staging GC held 豁免）· E **v1.3**（M4 零新 Agent 工具，create_reminder 扩 loop_contract）。
+- **编排**：**F0 契约登记 ∥ F1 0006 建表 ∥ F2 挂账双修** 三路并行（文件域不相交）→ 集成守门绿 → **F3 D5 沉默链 → F4 循环 Reminder** 串行（同 hub.py 不同方法）→ 集成绿 → **B-M4-1 前端** → 实机 verify → `/code-review high` → 修复复跑。
+- **F0**：ENDPOINTS_M4(held-drafts 4) + held 干预响应模型 + HeldDraft 载荷/reasons 字段 + HELD_DRAFT_RESOLVED + ReminderCreate 删 loop_contract_id/增 loop_contract + mock GET /held-drafts + gen 确定。
+- **F1**：Alembic `0006_m4_held_drafts`（held_drafts 17 列 + `uq_held_drafts_active`（COALESCE(thread_root_id,'') where status∈held/reevaluating）+ ix_held_drafts_status）+ HeldDraft ORM + M4_TABLES；从零/增量双路 + 唯一性强制测试。
+- **F2 挂账双修**：`_emit_activity` 迁 `activity/service.py`（`emit_activity(tx, ...)` conn 注入式——hub 后台无 request 上下文可调，广播守"提交后 flush"不变量）；`patch_task` 白名单式 null 清除（silence_override_h=null 可清、不误伤 title）。
+- **F3 D5 沉默升级链**：`tasks/silence.py` 纯判定（`decide`/`compute_last_activity`/`threshold_hours`，**防自激** `SELF_EXCITE_EVENT_KINDS` 排除 reminder_sent/escalated）；hub `run_silence_scan`——三态阈值提醒（Todo→创建者 / InProg→owner / InReview→频道人类，@Agent 视同 mention 唤醒）→ 升级（频道主流系统消息 + activity silence_escalation 逐人类）→ 升级后静默；判定/升级历史全在 task_events 纯推导无状态列。
+- **F4 循环 Reminder**：`reminders/interval.py`（parse_interval/add_interval/next_after）；`create_reminder` 新门（recurring 必带 loop_contract 缺→422、once 携带→422、cadence 校验+一致）+ 同事务建 task_contracts 挂接行（kind=loop_contract, reminder_id, XOR task_id null）+ 回填 loop_contract_id；`run_reminder_scan` 按 kind 分支（once→done / recurring→塌缩重排保持 active）；daemon mcp create_reminder 扩 loop_contract 透传。
+- **B-M4-1**：RemindersTab 强化（kind/cadence/next_fire/锚点/循环·契约角标/取消）+ `cancelReminder`/`useCancelReminder` + wsBridge `reminder.created/updated` case；Activity 置顶接真（结构就位，F3 silence_escalation 产出即渲染）。
+- **`/code-review high`**（8 角度 × 25 agents → 10 CONFIRMED + 2 PLAUSIBLE）：**1 正确性 + 一簇 hub 清理/效率**全处理——① **recurring reminder 重放风暴**（旧实现每轮 +1 interval：建即触发 + 停机漏 K 周期后逐格重放洪泛）→ `interval.next_after` O(1) 塌缩到 >now 下一网格点 + 创建 recurring next_fire_at=now+interval；② 抽 hub `_post_system_message`（系统消息发射三处共用）；③ _silence_inputs 三 func.max → 单查询条件聚合；④ run_silence_scan channel N+1 → distinct IN 批取；⑤ run_reminder_scan 免回读 + `ledger.service.format_iso` 单源。PLAUSIBLE per-task SAVEPOINT **评估后不采纳**（与 tx.emit 提交后 flush 解耦产幽灵事件，单事务原子 + 下轮重试更安全）。
+- **收口基线**：后端 **542 passed / 3 skipped**（483 → +59 M4a + review 回归，零回归）、web vitest **89**（76 → +13）、pyright 0、ruff 干净、`pnpm gen` 确定、双侧 build 绿。
+- **实机 verify**：隔离临时库 + 真 uvicorn 8799 探针 **16/16**——沉默场景（todo/in_progress 双任务 reminder_sent → 任务 A escalated → @创建者/@owner/@人类目标正确 → Activity silence_escalation → 升级后静默）+ 循环 Reminder（recurring 无契约/once 携带 422 → recurring+loop_contract 201 + task_contracts 挂接行 + next_fire_at 塌缩重排）+ 3 浏览器截图（沉默流/Activity 置顶/Reminders 页签）+ console 0（[M4A-EVIDENCE.md](../verify/M4A-EVIDENCE.md)）。
+- **块 M4a 收口**；接续 = **块 M4b「freshness 与 HeldDraft」**（M4 出口前半：held 卡片可见+放行 1 分钟交付；M4-HANDOFF §9b，held_drafts 表已建、契约已就位）。M4-HANDOFF **暂留 handoffs/**（M4b 未收口，里程碑未整体完成，不移档）。
+
 ## 已失效结论
 
 | 历史表述 | 当前结论 |
@@ -110,8 +127,8 @@
 
 ## 当前接续任务
 
-1. **M3 里程碑已收口（§9a 契约与校验 + §9b 画布与 gating 全绿 = PRD M3 出口达成）**；接续 = **M4**（freshness / HeldDraft / 沉默提醒消费 · LoopContract 生成与循环 Reminder）。M3-HANDOFF 已移入 archive/。
-2. **M4 开工第一步（既有挂账）**：`_emit_activity` 从 routes 层迁 service 层（M2 二轮 review 挂账，升级类 activity 走 hub/reminder 路径复用需先迁）。
+1. **M4a 已收口（§10：D5 沉默提醒升级链 + 循环 Reminder/LoopContract 解锁，实机 16/16）**；接续 = **块 M4b「freshness 与 HeldDraft」**（M4 出口前半：held 卡片可见+放行 1 分钟交付；任务书 M4-HANDOFF §9b，held_drafts 表已建、契约已就位）。M4-HANDOFF 暂留 handoffs/（M4b 未收口不移档）。
+2. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 3. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。
 4. 真实双 Agent OAuth 冷启动复验（M1 遗留）：M3b E6 用真 websockets daemon-sim 复证了网关侧 gating/force-start；真 OAuth refresh 竞争仍依赖既有确定性单测，未在干净环境重新消耗完整双 Agent 对话，结论沿用未变。
 5. ~~FTS trigram / keyset 分页 / pyright 清零~~ 均已收（FTS 随 M3b、keyset 批2、pyright 批3）。

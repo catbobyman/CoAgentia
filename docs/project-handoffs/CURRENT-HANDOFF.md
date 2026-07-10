@@ -1,22 +1,22 @@
-# CoAgentia 当前交接（M3 收口态）
+# CoAgentia 当前交接（M4a 收口态）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-10，块 M3b「画布与 gating」收口并提交后重写（历次增补已沉淀 [PROJECT-RECORD.md](PROJECT-RECORD.md) §1–§9，本文只保留当前态） |
-| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；里程碑任务书均在 [archive/](archive/) |
-| 一句话状态 | **M1/M2/M3 三个里程碑全部收口**（PRD M3 出口「工程三角上画布跑通 + blocked gating 生效」已实机达成）；**M4 已立项（2026-07-10）：契约修订已落笔（A v1.0.5/B v1.2/D v1.0.1/E v1.3），任务书 = [M4-HANDOFF.md](M4-HANDOFF.md)** |
+| 更新 | 2026-07-10，块 M4a「沉默提醒与循环 Reminder」收口并提交后重写（历次增补已沉淀 [PROJECT-RECORD.md](PROJECT-RECORD.md)，本文只保留当前态） |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；里程碑任务书均在 [archive/](archive/)（M4-HANDOFF 仍在 handoffs/，M4b 未收口不移档） |
+| 一句话状态 | **M1/M2/M3 收口 + M4a 收口**（D5 沉默提醒升级链 + 循环 Reminder/LoopContract 解锁，实机 16/16）；**接续 = 块 M4b「freshness 与 HeldDraft」**（M4 出口前半：held 场景卡片可见+放行 1 分钟交付；任务书 [M4-HANDOFF.md](M4-HANDOFF.md) §9b） |
 
 ## 1. 当前状态
 
 | 项 | 状态 |
 | --- | --- |
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
-| 分支 / HEAD | `main` / `080ed44 M3b complete: canvas & gating`；工作树干净 |
-| 提交链（近） | `d5f092e` M3a → `58b89b5`/`9331698`/`0b61669` 挂账三批 → `85f8568` M3B-KICKOFF → `080ed44` M3b 收口 |
-| 测试基线 | 后端 **483 passed / 3 skipped**（`uv run pytest -q`）· web vitest **76** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（两跑 diff 空）· 双侧 build 绿 |
-| 契约版本 | A **v1.0.4**（+§10.4 trigram 收口结论）· B v1.1 · C · D · E **v1.2**（M3 契约面零新 Agent 工具）；事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 五契约 + `docx_agenthub\CoAgentia-PRD.md` |
-| 建表批次 | 0001 M1（17 表）→ 0002 M2（tasks/task_events/message_task_refs/activity_items + messages_fts）→ 0003 M3（task_contracts/canvas_nodes/canvas_edges）→ 0004 files 索引 → **0005 messages_fts 改 trigram**；`held_drafts` **尚未建**（M4 建表批次） |
-| 实机证据 | [M3B-EVIDENCE.md](../verify/M3B-EVIDENCE.md)（17/17 + 6 截图 + console 0 错误）；此前各批证据同目录 |
+| 分支 / HEAD | `main` / `01ff2d1 M4a complete: silence reminders & recurring reminder`（+ 本次 docs 收口提交）；工作树干净 |
+| 提交链（近） | `080ed44` M3b → `559857e` 交接重写 → `e177328` M4 立项(任务书+契约修订) → **`01ff2d1` M4a 收口(F0–F4+B-M4-1+code-review)** |
+| 测试基线 | 后端 **542 passed / 3 skipped**（`uv run pytest -q`）· web vitest **89** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（两跑 diff 空）· 双侧 build 绿 |
+| 契约版本 | A **v1.0.5**（held_drafts 载荷列+单活动行）· B **v1.2**（§10 护栏与沉默提醒规范 + §4.14 held 三键 + HELD_DRAFT_RESOLVED）· C · D **v1.0.1**（重评估组合+GC held 豁免）· E **v1.3**（M4 零新 Agent 工具，create_reminder 扩 loop_contract）；事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 五契约 + `docx_agenthub\CoAgentia-PRD.md` |
+| 建表批次 | 0001 M1（17 表）→ 0002 M2 → 0003 M3（task_contracts/canvas_nodes/canvas_edges）→ 0004 files 索引 → 0005 messages_fts trigram → **0006 M4 held_drafts**（+ 活动行分区唯一索引）；held_drafts 表建齐但**读写面属 M4b**（freshness 门/三键端点未 serve） |
+| 实机证据 | [M4A-EVIDENCE.md](../verify/M4A-EVIDENCE.md)（探针 16/16 + 3 截图 + console 0；沉默链 + 循环 Reminder）；[M3B-EVIDENCE.md](../verify/M3B-EVIDENCE.md) 等此前各批同目录 |
 
 ## 2. 里程碑总览（详情 = PROJECT-RECORD 对应节）
 
@@ -27,6 +27,7 @@
 | M3a 契约与校验 | L2 契约链路（提交/修订链/request-draft/T7 门/升格） | `d5f092e`（§7） |
 | 挂账三批 | 附件卡数据源 / keyset 分页 / pyright 清零 | `58b89b5`/`9331698`/`0b61669`（§8） |
 | **M3b 画布与 gating** | **PRD M3 出口**：画布建图/成环拒/blocked 推导+投递 gating/force-start/React Flow/FTS trigram | **`080ed44`（§9）** |
+| **M4a 沉默提醒与循环 Reminder** | D5 沉默提醒升级链 + 循环 Reminder/LoopContract 解锁（实机 16/16） | **`01ff2d1`（§10）** |
 
 ## 3. 系统当前能力面（一览）
 
@@ -35,21 +36,22 @@
 - **L2 契约**（M3a）：TaskPlan/TaskHandoff 提交与修订链、Agent 起草 request-draft S1 直投、T7 流转门（l2→in_review 校验 handoff）、升格 PATCH level l1→l2。
 - **编排画布**（M3b）：每频道画布页签（React Flow）——节点=任务（agent 节点=第三创建途径，建 L2+锚点消息）、边=依赖（写事务拓扑排序防环）、基线快照指纹推进；**blocked 实时推导**（`kernel/graph.py` 权威 + 前端 `lib/graph.ts` 镜像，`golden/graph.json` 双跑对照）；**投递层 gating**（blocked 任务线程消息不唤醒、不入投递批、read_position 水位不越过）；**force-start**（仅人类、双留痕、不改状态、本次放行）；看板 blocked 徽标。
 - **中文检索**（浮动件）：messages_fts trigram（≥3 字 MATCH + <3 字 LIKE 兜底，元字符转义）。
+- **护栏与提醒**（M4a）：**D5 沉默提醒升级链**（tasks/silence.py 防自激 last_activity + hub 后台扫描：三态阈值提醒 Todo→创建者/InProg→owner/InReview→频道人类 → 升级主流消息 + activity silence_escalation → 升级后静默；task_events 纯推导无状态列）；**循环 Reminder**（create_reminder 内联 LoopContract 建即生效 + task_contracts 挂接行 + `interval.next_after` 塌缩式重排防重放风暴）；前端 P6 Reminders 页签 + Activity 置顶。**held_drafts 表建齐但 freshness/三键属 M4b。**
 
-## 4. 接续 = M4 护栏与提醒（**已立项，2026-07-10**）
+## 4. 接续 = 块 M4b「freshness 与 HeldDraft」（M4 出口前半）
 
-**唯一任务书入口 = [M4-HANDOFF.md](M4-HANDOFF.md)**（范围/两块竖切/资产盘点/F0–F7+B-M4-1/2 模块分解/13 条裁决/14 条出口清单）。**出口验收**（PRD §8 M4 行）：制造一次 held 场景（卡片可见、放行 1 分钟内交付）+ 制造一次沉默任务（提醒与升级触达）。
+**唯一任务书入口 = [M4-HANDOFF.md](M4-HANDOFF.md) §9b**（F5 freshness 门+held 域端点 / F6 G4 定时+G5 升级+GC 豁免 / F7 端到端实机 ＋ B-M4-2 held 卡三键）。**出口验收**（PRD §8 M4 行前半）：制造一次 held 场景——卡片可见（草稿全文+原因+倒计时）、放行 1 分钟内交付。
 
-- **契约修订已先行落笔**（纪律 1 完成态）：A **v1.0.5**（held_drafts 增 file_ids/as_task + reasons 收紧 + 活动行唯一）· B **v1.2**（§10 护栏与沉默提醒规范条文 + §4.14 held 三键端点 + POST /reminders 扩 loop_contract + HELD_DRAFT_RESOLVED 23 码）· C 无修订 · D **v1.0.1**（重评估组合语义 wake+deliver+inject 防复扣死循环 + staging GC held 豁免）· E **v1.3**（M4 零新工具，create_reminder 扩 loop_contract 参数）。contracts 包 manifest 同步 = F0 模块。
-- **执行切分**：块 M4a「沉默提醒与循环 Reminder」先收（F0∥F1∥F2 三路并行开工：契约登记/0006 建表/挂账双修 `_emit_activity` 迁 service + patch_task null）→ 块 M4b「freshness 与 HeldDraft」收口即 PRD M4 出口。
-- 关键核对结论（勿重查）：channels 阈值列+ChannelPatch 全字段 M1 已建（P12 配置管道现成）；tasks.silence_override_h/status_changed_at M2 已建；TaskEventKind.REMINDER_SENT/ESCALATED 已登记（D5 留痕零新枚举）；task_contracts.reminder_id 0003 已建无循环 FK；guard.* 诊断与 Draft held 文案常量已备；daemon 侧 202 透传/inject 渲染零改动；hub run_reminder_scan 只处理 once（recurring 重排 = F4 缺口）。
+- **契约已就位**（M4a F0 已登记，M4b 零新契约）：held-drafts 端点组（§4.14）、`MessageHeld` 202、`HeldDraftReleaseResponse`/`HeldDraftResponse`、`HeldDraftRow.file_ids/as_task/reasons.total_unread`、`ErrorCode.HELD_DRAFT_RESOLVED`、`held_drafts` 表（0006，含 `uq_held_drafts_active`）——全部已在 contracts + 库。
+- **关键教训（M4-HANDOFF §7/§8 已记）**：freshness 门位次 = 全部既有校验之后、落库之前；release 跳过 freshness 复查、原载荷（file_ids/as_task）落消息；**G4 重评估必须走正常 deliver 推进 read_position**（仅直投必复扣死循环，B §10.3）；held 单活动行分区唯一索引已建（同 scope 再扣=同行 held_count+1）；staging GC 需豁免活动 held 引用（D §9.2）。
+- **M4a 收尾提示**：recurring reminder 首次触发在建后一个 interval（非建即触发，code-review 修）；沉默/reminder 系统消息发射经 hub `_post_system_message` 单点（M4b held 系统消息可复用）。
 
 ## 5. 挂账清单（非阻塞，勿当漏项重新发明）
 
 | 项 | 说明 | 归属 |
 | --- | --- | --- |
-| `_emit_activity` 迁 service 层 | 见上，**M4 开工第一步** | M4 |
-| `patch_task` 无法清空 `silence_override_h` | `if v is not None` 丢 null，无法重置任务级覆盖回 NULL；该列 M4 才消费，顺手修 | M4 顺手 |
+| ~~`_emit_activity` 迁 service 层~~ | **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式 `emit_activity(tx, ...)`，hub 后台可调、提交后广播） | ✅ M4a |
+| ~~`patch_task` 无法清空 `silence_override_h`~~ | **已收（M4a F2）**：白名单式 null 清除（`silence_override_h` 可清、不误伤 title） | ✅ M4a |
 | 性能小批 | hub `usage.batch` 逐事件 SELECT（可批内 IN 预查）；search 双 MATCH+LIKE 扫描 | 独立小批 |
 | `task #n` refs 无 UI 消费面 | refs 落库但引用消息不渲染任务 chip | 顺手评估 |
 | P11/P3 看板双实现抽 `<TaskBoard>` | blocked 徽标已同构两份，抽共享组件可收 | 顺手评估 |
@@ -66,8 +68,8 @@
 ## 7. 守门命令（全绿才算收口）
 
 ```
-uv run pytest -q                    # 483 passed / 3 skipped 基线，零回归
-pnpm -F @coagentia/web test         # vitest 76 基线，只增不减
+uv run pytest -q                    # 542 passed / 3 skipped 基线，零回归
+pnpm -F @coagentia/web test         # vitest 89 基线，只增不减
 pnpm typecheck                      # 含 pyright（0 错，新债即红）+ 双 tsc
 uv run ruff check .
 pnpm gen                            # 后 git diff 应为空（生成物确定性）
