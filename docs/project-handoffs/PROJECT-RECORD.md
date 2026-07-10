@@ -45,19 +45,30 @@
 - Pyright 仍有 109 个既有错误，作为独立技术债保留。
 - 修复以 `351684a` 提交，并通过合并提交 `f2c993f` 合入 `main`。
 
+## 6. M2 任务与看板（含二轮 review 修复）
+
+来源：[archive/M2-HANDOFF.md](archive/M2-HANDOFF.md) · [M2-DEV-PLAN.md](M2-DEV-PLAN.md) · [二轮证据](../verify/M2-REVIEW2-EVIDENCE.md)
+
+- 两块竖切完成 L1 任务协作：C0-C7 后端（契约登记/0002 建表/任务域 8 端点/task#n 解析/Activity 生成/files·search·activity 端点/MCP 六工具/usage 富化）+ 前端 B 线（P1/P5/P3/P11/P4/P8/P9/P10 接真）。
+- PRD M2 出口（番茄钟全流程）真 HTTP 17/17 + 浏览器全流程实证；纪律 7 落地（TASK_TRANSITIONS/UNCLAIMABLE_STATUSES 生成到 contracts-ts，两侧共同消费）。
+- 中文 FTS 结论回写契约 A §10.4（unicode61 不命中 CJK 子串，trigram 归 M3）。
+- 收口后二轮实机 verify 35/35 + `/code-review high`（15 CONFIRMED）修复批：安全（activity done 归属门）、数据完整（tasks 分页聚合）、输入法（IME 误发）、时区（UTC 硬切统一 lib/time.ts）、实时性（channelFiles/usage 失效）等 15 项修复 + 契约 A v1.0.3（ActivityItemPublic.actor_member_id 派生字段）。
+- 最终基线：后端 387 passed / 3 skipped，前端 vitest 18，双侧 typecheck/build/ruff 绿。
+- 提交链：`42f20f0`（C0-C2）→ `ba73f72`（hardening）→ `6c12b90`（M2 后半）→ 本修复批。
+
 ## 已失效结论
 
 | 历史表述 | 当前结论 |
 |---|---|
-| 项目只有文档与设计稿，没有产品代码 | M1 产品实现及 hardening 已完成 |
-| 下一步从 A1 或 M1 实现开工 | A1-A8 和主要前端批次已收口 |
-| M1 契约或实现任务书是当前唯一入口 | 当前入口为 `CURRENT-HANDOFF.md` |
-| `38` 或 `230 passed` 是最新测试基线 | 最新基线为 `238 passed, 2 skipped` |
+| 项目只有文档与设计稿，没有产品代码 | M1/M2 产品实现、hardening 与二轮 review 修复批已完成 |
+| 下一步从 A1 或 M1 实现开工 | M1/M2 全部收口，当前任务书 = M3-HANDOFF |
+| M1/M2 契约或实现任务书是当前唯一入口 | 当前入口为 `CURRENT-HANDOFF.md`；开工入口 = `M3-HANDOFF.md` |
+| `238`/`340`/`384 passed` 是最新测试基线 | 最新基线为 `387 passed, 3 skipped` + vitest 18 |
 | 前端仅依赖手工切换 API 基址或 mock `8642` | 已完成同源与代理路径 hardening，具体见修复报告 |
 
 ## 当前接续任务
 
-1. 在干净环境完成真实双 Agent OAuth 冷启动复验。
-2. 分批清理 Pyright 的 109 个既有错误。
-3. 推进 B2b/B3 或 M2。
-4. 补齐附件渲染等后续产品能力，并同步非交接类计划文档中的旧状态。
+1. 按 [M3-HANDOFF.md](M3-HANDOFF.md) 开工（E0 契约登记 + E1 建表；E 契约 v1.2 修订先行）。
+2. 在干净环境完成真实双 Agent OAuth 冷启动复验（可随 M3 E6 真机场景顺路）。
+3. 分批清理 Pyright 的 109 个既有错误（独立批）。
+4. keyset 分页 + LIMIT 下推统一整改（M2 二轮 review 挂账，独立小批）。
