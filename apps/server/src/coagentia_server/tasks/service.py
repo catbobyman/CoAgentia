@@ -26,6 +26,10 @@ _CHANNEL = models.Channel.__table__
 # 首非空行剥 Markdown 前缀（标题/列表/引用/有序号）。列表/引用/有序号标记须后跟空白才算前缀，
 # 否则 `3.14 is pi` 会被 `\d+\.` 误剥成 `14 is pi`、`*bold*` 被 `[-*>]` 误剥成 `bold*`。
 _MD_PREFIX = re.compile(r"^\s*(?:#{1,6}|[-*>]\s|\d+\.\s)\s*")
+
+# 终态不可认领（review 裁决 2026-07-09）：done 无出边；closed 须先 reopen→todo 再认领。
+# 这不是第二份边表（纪律 7）——claim 语义门，边表仍唯一在 TASK_TRANSITIONS。
+UNCLAIMABLE_STATUSES: frozenset[TaskStatus] = frozenset({TaskStatus.DONE, TaskStatus.CLOSED})
 _TITLE_MAX = 80
 _TITLE_FALLBACK = "未命名任务"
 
@@ -164,6 +168,7 @@ def emit_task_updated(
 
 __all__ = [
     "TASK_TRANSITIONS",
+    "UNCLAIMABLE_STATUSES",
     "allocate_number",
     "create_task",
     "default_title",

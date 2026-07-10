@@ -1,12 +1,12 @@
 # M1 Review 修复交接
 
-> **2026-07-09 增补：M2 前半（C0+C1+C2）已实现并验证。** 工作流编排多 agent 完成：C0 契约登记（enums/entities/rest/constants + mock 形状 + pnpm gen）、C1 建表迁移（Alembic `0002_m2`：tasks/task_events/message_task_refs/activity_items + messages_fts FTS5 + task_events 不可变触发器；0001 拆表清单解 create_all 泄漏坑）、C2 任务域 8 端点（convert/claim/unclaim/assign/status/list/detail/patch + as_task 原子建任务）。全量 **338 passed, 2 skipped**（较 M1 的 238 净增 100 测试含 40 例对抗性硬化），ruff 干净，pnpm gen 确定性入库，**实机 verify 真 HTTP 24/24**（as_task/convert 幂等/claim 联动/状态机合法·非法·同态·终态/并发 claim 恰一无 5xx/assign/列表/详情）。code-review high 已跑，`default_title` 小数误剥微瑕已直接修复；其余复核发现见下方"M2 前半 review 待决项"。**未提交（工作树）。** 第二半 = C3 消息联动 + C4 文件/搜索/Activity 端点 + C5 MCP 工具 + C6 usage 富化 + C7 番茄钟端到端 + 前端 B 线。
+> **2026-07-09 增补：M2 前半（C0+C1+C2）已实现并验证。** 工作流编排多 agent 完成：C0 契约登记（enums/entities/rest/constants + mock 形状 + pnpm gen）、C1 建表迁移（Alembic `0002_m2`：tasks/task_events/message_task_refs/activity_items + messages_fts FTS5 + task_events 不可变触发器；0001 拆表清单解 create_all 泄漏坑）、C2 任务域 8 端点（convert/claim/unclaim/assign/status/list/detail/patch + as_task 原子建任务）。全量 **340 passed, 2 skipped**（较 M1 的 238 净增 102 测试含 40 例对抗性硬化 + 2 例 hardening 回归），ruff 干净，pnpm gen 确定性入库，**实机 verify 真 HTTP 24/24 + hardening 复核 6/6**（as_task/convert 幂等/claim 联动/状态机合法·非法·同态·终态/并发 claim 恰一无 5xx/assign/列表/详情）。code-review high 已跑，`default_title` 小数误剥微瑕已直接修复；待决项 1-2（convert TOCTOU / claim 终态门）owner 拍板后已硬化，其余见下方"M2 前半 review 待决项"。**已提交：`42f20f0`（C0-C2 收口）+ hardening 提交。** 第二半 = C3 消息联动 + C4 文件/搜索/Activity 端点 + C5 MCP 工具 + C6 usage 富化 + C7 番茄钟端到端 + 前端 B 线。
 
-## M2 前半 review 待决项（大事给选项，未擅自改）
+## M2 前半 review 待决项
 
-1. **convert 并发 TOCTOU → 500**（中）：`routes/tasks.py:convert_message_to_task` 读-then-INSERT 幂等无并发保护；两并发 convert 同一消息 → `UNIQUE(root_message_id)` 冲突 → 未捕获 → 500（契约应幂等 200）。仓内已有正解范式 `ledger/service.py`（SAVEPOINT + IntegrityError 重分类）。建议顺手硬化或并入独立 hardening 批。
-2. **claim 未挡终态**（中低）：`claim_task` 仅条件 `owner IS NULL`，不校验 status；done/closed 且 owner 空的任务（可经 set_status 不经 claim 达终态）可被 claim，落 owner + claim 事件但 status 不变，与生命周期矛盾。契约未明确禁止——需裁决是否补 400/409 终态门。
-3. **list_tasks 游标失效重排**（低中）：`after` id 因 status/owner 过滤在翻页间离开结果集时静默从头翻 → 跨页重复项（沿袭 M1 messages 分页模式，此处因可变过滤更易触发）。
+1. ~~**convert 并发 TOCTOU → 500**~~ **已修**（owner 拍板 2026-07-09）：`convert_message_to_task` 建任务段套 SAVEPOINT（范式同 `ledger.record`），`UNIQUE(root_message_id)` 冲突回退本段（含编号自增不漏号）后重查既有任务幂等 200。并发 convert 回归测试 + 实机复核（恰一 201 / 7×200 同任务 / 无 5xx）。
+2. ~~**claim 未挡终态**~~ **已修**（owner 拍板 2026-07-09）：`tasks/service.py` 增 `UNCLAIMABLE_STATUSES = {done, closed}`（claim 语义门，非第二份边表），claim 前置校验 → 422 TASK_TRANSITION_INVALID `details{status}`；closed reopen 回 todo 后可正常认领。回归测试 + 实机复核通过。
+3. **list_tasks 游标失效重排**（低中，未修）：`after` id 因 status/owner 过滤在翻页间离开结果集时静默从头翻 → 跨页重复项（沿袭 M1 messages 分页模式，此处因可变过滤更易触发）。
 4. **patch_task 无法清空 `silence_override_h`**（低，M4 才消费）：`if v is not None` 丢弃 null，无法把任务级覆盖重置回 NULL。
 5. 挂账（低）：messages_fts 键于 messages.rowid（ULID PK 的隐式 rowid），未来 VACUUM 会失同步；allocate_number 依赖 SQLite≥3.35 的 RETURNING。
 6. 整洁/altitude（非阻塞）：as_task 与 convert 的前置校验三件套（archived/DM/顶级）复制两份、claim/unclaim status 联动字面量硬编码未走 TASK_TRANSITIONS、M1_TABLES/M2_TABLES 无完整性守卫。

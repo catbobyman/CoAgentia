@@ -108,6 +108,26 @@ def test_convert_idempotent_returns_same_task(server_client: TestClient) -> None
     assert r2.json()["title"] == "首次"  # 不覆盖
 
 
+def test_concurrent_convert_exactly_one_creates(server_client: TestClient) -> None:
+    """并发 convert 同一消息：恰一 201，其余幂等 200 同任务，无 5xx（TOCTOU 硬化）。"""
+    build = _channel(server_client, BUILD)
+    msg = server_client.post(
+        f"/api/channels/{build['id']}/messages", json={"body": "并发转任务目标"}
+    ).json()["message"]
+
+    def _convert(_: int) -> tuple[int, str | None]:
+        r = server_client.post(f"/api/messages/{msg['id']}/task", json={})
+        return r.status_code, r.json().get("id") if r.status_code < 300 else None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(_convert, range(8)))
+
+    codes = [c for c, _ in results]
+    assert codes.count(201) == 1, codes  # 恰一新建
+    assert codes.count(200) == 7, codes  # 其余幂等命中，无 500
+    assert len({tid for _, tid in results}) == 1  # 全部返回同一任务
+
+
 def test_convert_thread_reply_rejected(server_client: TestClient) -> None:
     build = _channel(server_client, BUILD)
     root = server_client.post(
@@ -161,6 +181,43 @@ def test_concurrent_claim_exactly_one(server_client: TestClient) -> None:
     err = rest.ErrorResponse.model_validate(loser.json())
     assert err.error.code is rest.ErrorCode.CLAIM_RACE
     assert err.error.details["current_owner"] == owner
+
+
+def test_claim_terminal_state_rejected(server_client: TestClient) -> None:
+    """终态门（review 裁决）：done/closed 不可认领；closed reopen 回 todo 后可认领。"""
+    build = _channel(server_client, BUILD)
+    # done：todo→in_progress→in_review→done 全走 status API（owner 保持 NULL）
+    done_task = _new_task(server_client, build["id"], "终态done")
+    for to in ("in_progress", "in_review", "done"):
+        assert (
+            server_client.post(f"/api/tasks/{done_task['id']}/status", json={"to": to}).status_code
+            == 200
+        )
+    r = server_client.post(f"/api/tasks/{done_task['id']}/claim")
+    assert r.status_code == 422
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.TASK_TRANSITION_INVALID
+    assert err.error.details["status"] == "done"
+    # closed：拒绝认领；reopen→todo 后认领成功
+    closed_task = _new_task(server_client, build["id"], "终态closed")
+    assert (
+        server_client.post(f"/api/tasks/{closed_task['id']}/status", json={"to": "closed"})
+        .status_code
+        == 200
+    )
+    r = server_client.post(f"/api/tasks/{closed_task['id']}/claim")
+    assert r.status_code == 422
+    assert (
+        rest.ErrorResponse.model_validate(r.json()).error.code
+        is rest.ErrorCode.TASK_TRANSITION_INVALID
+    )
+    assert (
+        server_client.post(f"/api/tasks/{closed_task['id']}/status", json={"to": "todo"})
+        .status_code
+        == 200
+    )
+    r = server_client.post(f"/api/tasks/{closed_task['id']}/claim")
+    assert r.status_code == 200 and r.json()["status"] == "in_progress"
 
 
 def test_claim_links_todo_to_in_progress(server_client: TestClient) -> None:

@@ -12,6 +12,7 @@ from coagentia_contracts import entities, rest
 from coagentia_contracts.enums import ChannelKind, TaskEventKind, TaskStatus
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
@@ -74,15 +75,30 @@ def convert_message_to_task(
         raise ApiError(422, rest.ErrorCode.NOT_TOP_LEVEL_MESSAGE, "仅顶级消息可转任务", rule="T3")
 
     me = acting_member(request, tx.conn)
-    task_row = tasks_service.create_task(
-        tx,
-        workspace_id=msg["workspace_id"],
-        channel_id=msg["channel_id"],
-        root_message_id=message_id,
-        created_by=me["id"],
-        title=body.title,
-        source_body=msg["body"],
-    )
+    try:
+        # SAVEPOINT 包裹建任务（范式同 ledger.record）：上方 prior 预查有 TOCTOU 窗口，
+        # 并发 convert 抢先时 UNIQUE(root_message_id) 触发 IntegrityError——只回退本段
+        # （含 allocate_number 的编号自增，不漏号），退化为幂等命中返回既有任务 200。
+        with tx.conn.begin_nested():
+            task_row = tasks_service.create_task(
+                tx,
+                workspace_id=msg["workspace_id"],
+                channel_id=msg["channel_id"],
+                root_message_id=message_id,
+                created_by=me["id"],
+                title=body.title,
+                source_body=msg["body"],
+            )
+    except IntegrityError:
+        prior = (
+            tx.conn.execute(select(_TASK).where(_TASK.c.root_message_id == message_id))
+            .mappings()
+            .first()
+        )
+        if prior is None:  # 非 root_message_id 冲突（防御：其它完整性错误不吞）
+            raise
+        response.status_code = 200
+        return task_public(dict(prior))
     tasks_service.emit_task_created(tx, task_row)
     return task_public(task_row)
 
@@ -92,8 +108,17 @@ def convert_message_to_task(
 
 @router.post("/tasks/{task_id}/claim", response_model=entities.TaskPublic)
 def claim_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
-    _require_task(tx, task_id)
+    task = _require_task(tx, task_id)
     me = acting_member(request, tx.conn)
+    cur = TaskStatus(task["status"])
+    if cur in tasks_service.UNCLAIMABLE_STATUSES:  # 终态门（review 裁决）：done/closed 不可认领
+        raise ApiError(
+            422,
+            rest.ErrorCode.TASK_TRANSITION_INVALID,
+            f"{cur.value} 任务不可认领（closed 需先 reopen 回 todo）",
+            rule="T2",
+            details={"status": cur.value},
+        )
     # 条件更新 = 并发闸：同刻仅一事务能把 NULL→非空（T2 恰一成功）。
     res = tx.conn.execute(
         update(_TASK)
