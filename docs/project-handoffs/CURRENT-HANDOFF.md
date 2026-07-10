@@ -4,7 +4,7 @@
 | --- | --- |
 | 更新 | 2026-07-10，块 M3b「画布与 gating」收口并提交后重写（历次增补已沉淀 [PROJECT-RECORD.md](PROJECT-RECORD.md) §1–§9，本文只保留当前态） |
 | 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；里程碑任务书均在 [archive/](archive/) |
-| 一句话状态 | **M1/M2/M3 三个里程碑全部收口**（PRD M3 出口「工程三角上画布跑通 + blocked gating 生效」已实机达成）；**接续 = M4 护栏与提醒（尚未立项）** |
+| 一句话状态 | **M1/M2/M3 三个里程碑全部收口**（PRD M3 出口「工程三角上画布跑通 + blocked gating 生效」已实机达成）；**M4 已立项（2026-07-10）：契约修订已落笔（A v1.0.5/B v1.2/D v1.0.1/E v1.3），任务书 = [M4-HANDOFF.md](M4-HANDOFF.md)** |
 
 ## 1. 当前状态
 
@@ -36,15 +36,13 @@
 - **编排画布**（M3b）：每频道画布页签（React Flow）——节点=任务（agent 节点=第三创建途径，建 L2+锚点消息）、边=依赖（写事务拓扑排序防环）、基线快照指纹推进；**blocked 实时推导**（`kernel/graph.py` 权威 + 前端 `lib/graph.ts` 镜像，`golden/graph.json` 双跑对照）；**投递层 gating**（blocked 任务线程消息不唤醒、不入投递批、read_position 水位不越过）；**force-start**（仅人类、双留痕、不改状态、本次放行）；看板 blocked 徽标。
 - **中文检索**（浮动件）：messages_fts trigram（≥3 字 MATCH + <3 字 LIKE 兜底，元字符转义）。
 
-## 4. 接续 = M4 护栏与提醒（尚未立项）
+## 4. 接续 = M4 护栏与提醒（**已立项，2026-07-10**）
 
-**PRD §8 M4 行**：freshness check + HeldDraft 卡片 + 三键干预 + 超时自愈 + 升级（G1–G6）；沉默提醒升级链（D5）。**出口验收**：制造一次 held 场景（卡片可见、放行 1 分钟内交付）+ 制造一次沉默任务（提醒与升级触达）。
+**唯一任务书入口 = [M4-HANDOFF.md](M4-HANDOFF.md)**（范围/两块竖切/资产盘点/F0–F7+B-M4-1/2 模块分解/13 条裁决/14 条出口清单）。**出口验收**（PRD §8 M4 行）：制造一次 held 场景（卡片可见、放行 1 分钟内交付）+ 制造一次沉默任务（提醒与升级触达）。
 
-开工建议（体例沿用 M2/M3 先例）：
-
-1. **建 M4-HANDOFF 任务书**（范围/模块分解/DoD/出口清单，两块竖切评估）+ 契约修订核对先行（纪律 1：D 契约 freshness/held 触发器语义、A 契约 held_drafts 表批次、E 契约 Agent 工具位增减——修订完成后才动代码）。
-2. **M4 开工第一步 = 既有挂账**：`_emit_activity` 从 [routes/messages.py:117](../../apps/server/src/coagentia_server/routes/messages.py) 迁 service 层——M4 升级类 activity 走 hub/reminder 后台路径，无法合理 import 路由层私有函数（M2 二轮 review 挂账，已两次顺延，勿再跳过）。
-3. **可复用资产**（已就位勿重建）：`HeldDraftRow`/`HeldDraftStatus`/`HeldReasons` 契约形状已冻结（entities.py，表未建）；WS `held_draft.created/updated` + Envelope 已登记；`reminders` 表+扫描循环 M1 在线（hub `run_reminder_scan`）；`LoopContractBody` 模型 M3a 已建齐（生成归 M4）；投递 gating/唤醒判定点已在 hub 两处收口（freshness 门大概率挂同一层）；`tasks.silence_override_h` 列 M2 已建。
+- **契约修订已先行落笔**（纪律 1 完成态）：A **v1.0.5**（held_drafts 增 file_ids/as_task + reasons 收紧 + 活动行唯一）· B **v1.2**（§10 护栏与沉默提醒规范条文 + §4.14 held 三键端点 + POST /reminders 扩 loop_contract + HELD_DRAFT_RESOLVED 23 码）· C 无修订 · D **v1.0.1**（重评估组合语义 wake+deliver+inject 防复扣死循环 + staging GC held 豁免）· E **v1.3**（M4 零新工具，create_reminder 扩 loop_contract 参数）。contracts 包 manifest 同步 = F0 模块。
+- **执行切分**：块 M4a「沉默提醒与循环 Reminder」先收（F0∥F1∥F2 三路并行开工：契约登记/0006 建表/挂账双修 `_emit_activity` 迁 service + patch_task null）→ 块 M4b「freshness 与 HeldDraft」收口即 PRD M4 出口。
+- 关键核对结论（勿重查）：channels 阈值列+ChannelPatch 全字段 M1 已建（P12 配置管道现成）；tasks.silence_override_h/status_changed_at M2 已建；TaskEventKind.REMINDER_SENT/ESCALATED 已登记（D5 留痕零新枚举）；task_contracts.reminder_id 0003 已建无循环 FK；guard.* 诊断与 Draft held 文案常量已备；daemon 侧 202 透传/inject 渲染零改动；hub run_reminder_scan 只处理 once（recurring 重排 = F4 缺口）。
 
 ## 5. 挂账清单（非阻塞，勿当漏项重新发明）
 
