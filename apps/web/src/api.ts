@@ -12,7 +12,10 @@ import type {
   PresenceSnapshot,
   ReminderPublic,
   RestPaths,
+  SearchResponse,
+  TaskDetail,
   TaskPublic,
+  TaskStatus,
   WorkspaceCreate,
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
@@ -30,6 +33,67 @@ type ThreadPage =
   RestPaths['/api/messages/{message_id}/thread']['get']['responses']['200']['content']['application/json'];
 type DiagnosticsPage =
   RestPaths['/api/agents/{member_id}/diagnostics']['get']['responses']['200']['content']['application/json'];
+type FilesPage =
+  RestPaths['/api/channels/{channel_id}/files']['get']['responses']['200']['content']['application/json'];
+type ActivityPage =
+  RestPaths['/api/activity']['get']['responses']['200']['content']['application/json'];
+
+// 契约里 filter/kind 的值域派生自 REST 查询参数(零手写枚举字面量)。
+export type ActivityFilter =
+  NonNullable<NonNullable<RestPaths['/api/activity']['get']['parameters']['query']>['filter']>;
+export type SearchKind =
+  NonNullable<NonNullable<RestPaths['/api/search']['get']['parameters']['query']>['kind']>;
+
+// 契约错误体 { error: { code, message, rule?, details? } }(server api.py ErrorResponse 形状)。
+interface ErrorEnvelope {
+  error?: { code?: string; message?: string; rule?: string | null; details?: unknown };
+}
+
+/** 带契约错误码的前端异常:UI 层 catch 后据 code/details 组 toast 文案(纪律:结构化错误上浮)。 */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details: unknown;
+  constructor(status: number, code: string, message: string, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+/** 统一写请求:非 2xx 时解析契约错误体 → 抛 ApiError(带 code/details 供 toast)。 */
+async function writeJson<T>(
+  path: string,
+  method: 'POST' | 'PATCH' | 'PUT',
+  body?: unknown,
+): Promise<T> {
+  const r = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!r.ok) {
+    let code = `HTTP_${r.status}`;
+    let message = `${method} ${path} -> ${r.status}`;
+    let details: unknown;
+    try {
+      const parsed = (await r.json()) as ErrorEnvelope;
+      if (parsed.error) {
+        code = parsed.error.code ?? code;
+        message = parsed.error.message ?? message;
+        details = parsed.error.details;
+      }
+    } catch {
+      // 非 JSON 错误体:保留默认 code/message
+    }
+    throw new ApiError(r.status, code, message, details);
+  }
+  // 204/空体容错(某些 done/unclaim 端点可能无 body)。
+  const text = await r.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
 
 // home/tree 是 daemon 查询帧代理(契约 D §6),mock 无 response_model → OpenAPI 未定形状;此处窄化为 UI 消费形。
 export interface HomeEntry {
@@ -56,11 +120,50 @@ export const api = {
   messages: (channelId: string) =>
     get<MessagesPage>(`/api/channels/${channelId}/messages?limit=200`),
   tasks: (channelId: string) =>
-    IS_MOCK
-      ? get<TasksPage>(`/api/tasks?channel_id=${channelId}`).then(
-          (p) => p.items as TaskPublic[],
-        )
-      : Promise.resolve([] as TaskPublic[]),
+    get<TasksPage>(`/api/tasks?channel_id=${channelId}`).then((p) => p.items as TaskPublic[]),
+
+  // ---- M2 任务域(B §9.8):详情 / 转任务 / claim-unclaim-assign / 状态流转 / patch
+  taskDetail: (taskId: string) => get<TaskDetail>(`/api/tasks/${taskId}`),
+  convertToTask: (messageId: string, title?: string) =>
+    writeJson<TaskPublic>(`/api/messages/${messageId}/task`, 'POST', title ? { title } : {}),
+  claimTask: (taskId: string) => writeJson<TaskPublic>(`/api/tasks/${taskId}/claim`, 'POST'),
+  unclaimTask: (taskId: string) => writeJson<TaskPublic>(`/api/tasks/${taskId}/unclaim`, 'POST'),
+  assignTask: (taskId: string, memberId: string | null) =>
+    writeJson<TaskPublic>(`/api/tasks/${taskId}/assign`, 'POST', { member_id: memberId }),
+  setTaskStatus: (taskId: string, to: TaskStatus) =>
+    writeJson<TaskPublic>(`/api/tasks/${taskId}/status`, 'POST', { to }),
+  patchTask: (taskId: string, patch: Partial<Pick<TaskPublic, 'title' | 'silence_override_h'>>) =>
+    writeJson<TaskPublic>(`/api/tasks/${taskId}`, 'PATCH', patch),
+
+  // ---- M2 文件 / 搜索 / 活动(B §9.6 / §4.6-4.8)
+  channelFiles: (channelId: string, after?: string) =>
+    get<FilesPage>(
+      `/api/channels/${channelId}/files${after ? `?after=${encodeURIComponent(after)}` : ''}`,
+    ),
+  search: (params: {
+    q: string;
+    kind?: SearchKind;
+    from_member?: string;
+    in_channel?: string;
+    limit?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    qs.set('q', params.q);
+    if (params.kind) qs.set('kind', params.kind);
+    if (params.from_member) qs.set('from_member', params.from_member);
+    if (params.in_channel) qs.set('in_channel', params.in_channel);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    return get<SearchResponse>(`/api/search?${qs.toString()}`);
+  },
+  activity: (filter?: ActivityFilter, after?: string) => {
+    const qs = new URLSearchParams();
+    if (filter) qs.set('filter', filter);
+    if (after) qs.set('after', after);
+    const q = qs.toString();
+    return get<ActivityPage>(`/api/activity${q ? `?${q}` : ''}`);
+  },
+  activityDone: (activityId: string) =>
+    writeJson<void>(`/api/activity/${activityId}/done`, 'POST'),
 
   sendMessage: async (channelId: string, body: string, asTask: boolean): Promise<MessageCreated> => {
     const r = await fetch(`${API_BASE}/api/channels/${channelId}/messages`, {

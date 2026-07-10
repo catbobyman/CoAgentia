@@ -7,7 +7,7 @@ from typing import Any
 
 from coagentia_contracts import entities, rest
 from coagentia_contracts.constants import OPID_REST_IDEMPOTENCY
-from coagentia_contracts.enums import ChannelKind, MessageKind
+from coagentia_contracts.enums import ActivityKind, ChannelKind, MemberKind, MessageKind
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends, Header, Request, Response, UploadFile
@@ -18,7 +18,12 @@ from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, require_workspace
 from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.ledger import service
-from coagentia_server.routes.serialize import message_public, read_position_public, task_public
+from coagentia_server.routes.serialize import (
+    activity_item_public,
+    message_public,
+    read_position_public,
+    task_public,
+)
 from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["messages"])
@@ -30,6 +35,12 @@ _MEMBER = models.Member.__table__
 _FILE = models.File.__table__
 _READ = models.ReadPosition.__table__
 _TASK = models.Task.__table__
+_MTR = models.MessageTaskRef.__table__
+_ACTIVITY = models.ActivityItem.__table__
+_CHANNEL_MEMBER = models.ChannelMember.__table__
+
+# task #n 解析（B §9.5）：task 与 # 间允许空白，# 与数字紧邻；大小写不敏感。
+_TASK_REF_RE = re.compile(r"task\s*#(\d+)", re.IGNORECASE)
 
 def _require_channel(tx: Tx, channel_id: str) -> dict[str, Any]:
     row = tx.conn.execute(select(_CHANNEL).where(_CHANNEL.c.id == channel_id)).mappings().first()
@@ -69,6 +80,108 @@ def _resolve_mentions(tx: Tx, workspace_id: str, message_id: str, body: str) -> 
                 insert(_MENTION).values(message_id=message_id, member_id=m["id"])
             )
             seen.add(m["id"])
+
+
+def _resolve_task_refs(tx: Tx, channel_id: str, message_id: str, body: str) -> None:
+    """C3a：body 里的 `task #<n>` 服务端解析一次落 message_task_refs（B §9.5）。
+
+    编号是频道内自增，故只解析**当前频道**的编号；未命中保持纯文本、不报错。body 是
+    唯一事实源，refs 是派生持久化（与 message_mentions 同构）。同一 task 只插一行。
+    """
+    numbers = {int(match.group(1)) for match in _TASK_REF_RE.finditer(body)}
+    if not numbers:
+        return
+    seen: set[str] = set()
+    for n in numbers:
+        task_id = tx.conn.execute(
+            select(_TASK.c.id).where(_TASK.c.channel_id == channel_id, _TASK.c.number == n)
+        ).scalar_one_or_none()
+        if task_id is not None and task_id not in seen:
+            tx.conn.execute(
+                insert(_MTR).values(message_id=message_id, task_id=task_id)
+            )
+            seen.add(task_id)
+
+
+def _emit_activity(
+    tx: Tx,
+    *,
+    workspace_id: str,
+    member_id: str,
+    kind: str,
+    channel_id: str,
+    message_id: str,
+    ts: str,
+) -> None:
+    """插一条 activity_items 并广播 activity.created（channel_id=None 全局，供前端 P9）。"""
+    row = {
+        "id": service.new_ulid(),
+        "workspace_id": workspace_id,
+        "member_id": member_id,
+        "kind": kind,
+        "channel_id": channel_id,
+        "message_id": message_id,
+        "task_id": None,
+        "created_at": ts,
+        "done_at": None,
+    }
+    tx.conn.execute(insert(_ACTIVITY).values(**row))
+    tx.emit(EventType.ACTIVITY_CREATED, None, {"item": activity_item_public(row)})
+
+
+def _generate_activity(
+    tx: Tx,
+    workspace_id: str,
+    channel: dict[str, Any],
+    message_id: str,
+    author_member_id: str,
+    ts: str,
+) -> None:
+    """C3b：Activity 生成（M2 子集，B §9.7）。Agent 成员永不作为接收者生成 activity。
+
+    - channel 频道：读本条消息解析出的 message_mentions，取人类且非作者的接收者 → kind='mention'。
+    - dm 频道：取该 DM 对端人类（非作者）→ kind='dm'。DM 消息不再生成 mention（裁决：避免双写）。
+    """
+    channel_id = channel["id"]
+    if channel["kind"] == ChannelKind.DM:
+        recipients = tx.conn.execute(
+            select(_MEMBER.c.id)
+            .select_from(
+                _CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id)
+            )
+            .where(
+                _CHANNEL_MEMBER.c.channel_id == channel_id,
+                _MEMBER.c.kind == MemberKind.HUMAN,
+                _MEMBER.c.id != author_member_id,
+                _MEMBER.c.removed_at.is_(None),
+            )
+        ).scalars()
+        kind = ActivityKind.DM.value
+    else:
+        recipients = tx.conn.execute(
+            select(_MEMBER.c.id)
+            .select_from(
+                _MENTION.join(_MEMBER, _MENTION.c.member_id == _MEMBER.c.id)
+            )
+            .where(
+                _MENTION.c.message_id == message_id,
+                _MEMBER.c.kind == MemberKind.HUMAN,
+                _MEMBER.c.id != author_member_id,
+                _MEMBER.c.removed_at.is_(None),
+            )
+        ).scalars()
+        kind = ActivityKind.MENTION.value
+
+    for recipient_id in dict.fromkeys(recipients):  # 去重（防成员多次命中）
+        _emit_activity(
+            tx,
+            workspace_id=workspace_id,
+            member_id=recipient_id,
+            kind=kind,
+            channel_id=channel_id,
+            message_id=message_id,
+            ts=ts,
+        )
 
 
 # ---------------------------------------------------------------- 读
@@ -217,6 +330,10 @@ def post_message(
         )
     )
     _resolve_mentions(tx, ws["id"], msg_id, body.body)
+    # C3a：解析 body 里的 task #n → message_task_refs（当前频道编号，未命中不报错）。
+    _resolve_task_refs(tx, channel_id, msg_id, body.body)
+    # C3b：由 mentions/DM 对端生成人类 Activity（Agent 接收者永不生成），广播 activity.created。
+    _generate_activity(tx, ws["id"], channel, msg_id, me["id"], ts)
 
     # 文件绑定（契约 D §9.2）：同事务落 files 行并把正文移入 files/<id>。
     for upload_id in dict.fromkeys(body.file_ids):

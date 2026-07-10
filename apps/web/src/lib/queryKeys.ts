@@ -14,4 +14,9 @@ export const qk = {
   agentReminders: (memberId: string) => ['agentReminders', memberId] as const,
   agentDiagnostics: (memberId: string) => ['agentDiagnostics', memberId] as const,
   homeTree: (memberId: string) => ['homeTree', memberId] as const,
+  // ---- M2
+  taskDetail: (taskId: string) => ['taskDetail', taskId] as const,
+  channelFiles: (channelId: string) => ['channelFiles', channelId] as const,
+  activity: (filter: string) => ['activity', filter] as const,
+  search: (q: string) => ['search', q] as const,
 };

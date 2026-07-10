@@ -54,7 +54,30 @@ def main() -> None:
         json.dumps(app.openapi(), ensure_ascii=False, indent=1, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print(f"{len(models)} models -> build/contracts.schema.json; openapi -> build/openapi.json")
+
+    # 运行时常量：状态机边表 + claim 语义门 → TS 防呆与 server 同源（纪律 7 单一事实源）。
+    from coagentia_contracts.constants import TASK_TRANSITIONS, UNCLAIMABLE_STATUSES
+
+    transitions = {
+        frm.value: sorted(to.value for to in tos) for frm, tos in TASK_TRANSITIONS.items()
+    }
+    (BUILD / "constants.json").write_text(
+        json.dumps(
+            {
+                "TASK_TRANSITIONS": dict(sorted(transitions.items())),
+                "UNCLAIMABLE_STATUSES": sorted(s.value for s in UNCLAIMABLE_STATUSES),
+            },
+            ensure_ascii=False,
+            indent=1,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"{len(models)} models -> build/contracts.schema.json; "
+        "openapi -> build/openapi.json; constants -> build/constants.json"
+    )
 
 
 if __name__ == "__main__":

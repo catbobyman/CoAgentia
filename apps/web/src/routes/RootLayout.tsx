@@ -17,6 +17,8 @@ import {
 import { Rail } from '../components/Rail';
 import { ChannelList } from '../components/ChannelList';
 import { ReconnectBar } from '../components/ReconnectBar';
+import { ToastProvider, Toaster } from '../components/Toast';
+import { SearchOverlay } from '../components/SearchOverlay';
 
 export function RootLayout() {
   useWsSync(); // 基座级 WS:连接 + 事件 patch + 重连 + 重同步
@@ -24,6 +26,21 @@ export function RootLayout() {
 
   const activeChannelId = useUiStore((s) => s.activeChannelId);
   const setActiveChannel = useUiStore((s) => s.setActiveChannel);
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen);
+
+  // 全局 Ctrl/Cmd+K 打开搜索;Esc 在开启态关闭(P10)。注册一次,窗口级。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setSearchOpen(true);
+      } else if (e.key === 'Escape' && useUiStore.getState().searchOpen) {
+        setSearchOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setSearchOpen]);
 
   const channelsQ = useChannelsSnapshot();
   const membersQ = useMembers();
@@ -76,7 +93,7 @@ export function RootLayout() {
   }
 
   return (
-    <>
+    <ToastProvider>
       <ReconnectBar />
       <div className="app">
         <Rail
@@ -104,6 +121,8 @@ export function RootLayout() {
         />
         <Outlet />
       </div>
-    </>
+      <SearchOverlay />
+      <Toaster />
+    </ToastProvider>
   );
 }

@@ -17,6 +17,9 @@ import { RootLayout } from './routes/RootLayout';
 import { ChannelChatScreen } from './screens/ChannelChatScreen';
 import { AgentDetailScreen } from './screens/AgentDetailScreen';
 import { ComputersScreen } from './screens/ComputersScreen';
+import { WorkspaceBoardScreen } from './screens/WorkspaceBoardScreen';
+import { MembersScreen } from './screens/MembersScreen';
+import { ActivityScreen } from './screens/ActivityScreen';
 import { BootScreen } from './screens/BootScreen';
 import { CreateWorkspaceScreen } from './screens/CreateWorkspaceScreen';
 import { SetupChecklistScreen } from './screens/SetupChecklistScreen';
@@ -73,6 +76,23 @@ const computersRoute = createRoute({
   component: ComputersScreen,
 });
 
+// M2 工作区级表面(P11/P8/P9),复用主壳,无深链 search(照 computersRoute 范式)。
+const tasksRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/tasks',
+  component: WorkspaceBoardScreen,
+});
+const membersRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/members',
+  component: MembersScreen,
+});
+const activityRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/activity',
+  component: ActivityScreen,
+});
+
 // ---- 独立于主壳的首跑/工作区流程(P0a/P0b/P0c)
 const bootRoute = createRoute({
   getParentRoute: () => rootRoute, path: '/boot', component: BootScreen,
@@ -85,7 +105,9 @@ const setupRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  appLayoutRoute.addChildren([indexRoute, agentRoute, computersRoute]),
+  appLayoutRoute.addChildren([
+    indexRoute, agentRoute, computersRoute, tasksRoute, membersRoute, activityRoute,
+  ]),
   bootRoute,
   createWorkspaceRoute,
   setupRoute,

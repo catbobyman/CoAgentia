@@ -164,6 +164,10 @@ TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.CLOSED: frozenset({TaskStatus.TODO}),  # reopen
 }
 
+# ---------------- claim 语义门（契约 B §9.2；非第二份边表，claim 前置校验，纪律 7 独立于边表）
+# 终态不可认领：done 无出边；closed 须先 reopen→todo。server claim 前置 + 前端认领钮防呆同源。
+UNCLAIMABLE_STATUSES: frozenset[TaskStatus] = frozenset({TaskStatus.DONE, TaskStatus.CLOSED})
+
 # ---------------- coagentia MCP 工具目录（契约 E §3；Agent 行为唯一出口，每工具↔一 REST 端点）
 # 纯代理：daemon adapters/mcp.py 零业务规则；与 DISALLOWED_TOOLS 不重叠（内置 TaskCreate 已禁）。
 COAGENTIA_MCP_TOOLS: tuple[str, ...] = (

@@ -1,0 +1,86 @@
+/* P3 频道看板页签样式(对照 P3-board.html;token 零发明,只用 afterglow 变量)。
+   类名带 b 前缀,避开 styles.css 里已占用的 .board/.tcard(P0c 设置屏另一形状)。 */
+.boardtab {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  align-items: flex-start;
+}
+.bcol {
+  width: 280px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-0);
+  transition: border-color var(--t-slow), background var(--t-slow);
+}
+.bcol.drop-ok {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+.bcolhd { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 2px; }
+.bcolhd i { width: 8px; height: 8px; flex: none; }
+.bcolhd b { font-size: 13px; font-weight: 500; color: var(--text); }
+.bcolhd .n { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); flex: 1; }
+.bcolhd .fold { font-size: 12px; color: var(--text-muted); cursor: pointer; padding: 0 4px; }
+.bcolhd .fold:hover { color: var(--text); }
+
+.bcard {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-0);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: box-shadow var(--t-slow), border-color var(--t-slow), opacity var(--t-slow);
+}
+.bcard:hover { background: var(--surface-hover); }
+.bcard.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.bcard.dragging { border-color: var(--accent); box-shadow: var(--glow-accent); opacity: .6; }
+.bcard .no { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.bcard .ti {
+  font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.45; margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.bcard .bt { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.bcard .bt .bar { width: 24px; height: 3px; flex: none; }
+.bcard .bt .sp { flex: 1; }
+
+.bempty {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-0);
+  padding: 16px;
+  text-align: center;
+}
+
+/* 折叠窄条(Done/Closed 默认态) */
+.bcolfold {
+  width: 36px;
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  cursor: pointer;
+  min-height: 160px;
+  transition: border-color var(--t-slow), background var(--t-slow);
+}
+.bcolfold:hover { background: var(--surface-hover); }
+.bcolfold.drop-ok { border-color: var(--accent); background: var(--accent-subtle); }
+.bcolfold i.sq { width: 8px; height: 8px; flex: none; }
+.bcolfold .vt {
+  writing-mode: vertical-rl; font-size: 13px; font-weight: 500;
+  color: var(--text-secondary); letter-spacing: .04em;
+}
+.bcolfold .n { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.bcolfold .ar { color: var(--text-muted); font-size: 12px; }

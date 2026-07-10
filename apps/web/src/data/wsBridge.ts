@@ -3,6 +3,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 
 import type {
+  ActivityItemPublic,
   ChannelsSnapshot,
   Envelope,
   MemberPublic,
@@ -113,6 +114,45 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
           [taskId]: (cur[taskId] ?? 0) + u.totals.input_tokens + u.totals.output_tokens,
         };
       });
+      break;
+    }
+
+    case 'activity.created': {
+      // 'all' 档恒 upsert(缺则建)——规范全量列表。'unread'/'mentions' 档仅在已挂载(缓存已存在)
+      // 时按归属 patch,避免凭空建偏档;否则停在 Unread/Mentions 页时徽标(取自 'all')增而列表不动。
+      const { item } = data as { item: ActivityItemPublic };
+      qc.setQueryData<ActivityItemPublic[]>(qk.activity('all'), (prev) => {
+        const list = prev ?? [];
+        return list.some((a) => a.id === item.id) ? list : [item, ...list];
+      });
+      const belongs = (filter: unknown): boolean =>
+        (filter === 'unread' && !item.done_at) ||
+        (filter === 'mentions' && item.kind === 'mention');
+      for (const [key, value] of qc.getQueriesData<ActivityItemPublic[]>({
+        queryKey: ['activity'],
+      })) {
+        if (key[1] === 'all' || !value || !belongs(key[1]) || value.some((a) => a.id === item.id)) {
+          continue;
+        }
+        qc.setQueryData<ActivityItemPublic[]>(key, [item, ...value]);
+      }
+      break;
+    }
+
+    case 'activity.done': {
+      // 标记已读:在所有 activity 档缓存里把该 item 的 done_at 置为事件时间戳(过滤档下轮 refetch 再收敛)。
+      const { item_id } = data as { item_id: string };
+      const stamp = env.at;
+      for (const [key, value] of qc.getQueriesData<ActivityItemPublic[]>({
+        queryKey: ['activity'],
+      })) {
+        if (!value) continue;
+        const i = value.findIndex((a) => a.id === item_id);
+        if (i < 0) continue;
+        const next = value.slice();
+        next[i] = { ...next[i]!, done_at: stamp };
+        qc.setQueryData<ActivityItemPublic[]>(key, next);
+      }
       break;
     }
 

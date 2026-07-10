@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 import os
 import shutil
 
@@ -20,6 +22,7 @@ import pytest
 from adapter_helpers import RecordingSink
 from coagentia_contracts.daemon import AgentBoot
 from coagentia_contracts.enums import AgentStatus
+from coagentia_daemon.adapters import mcp
 from coagentia_daemon.adapters.claude_code import ClaudeCodeAdapter
 from coagentia_daemon.paths import DataPaths
 from helpers import until
@@ -129,3 +132,58 @@ async def test_smoke_case3_restart_resume_keeps_context(tmp_path) -> None:
         assert "BANANA123" in recalled, f"Restart 后应记得上下文，实际预览: {recalled[:200]}"
     finally:
         await adapter.stop(AID)
+
+
+class _RoutingHttp:
+    """按 (method, path) 路由的桩 HTTP：模拟真 server 对任务工具的响应序列。"""
+
+    def __init__(self) -> None:
+        self.calls: list[mcp.ToolRequest] = []
+
+    def __call__(self, req: mcp.ToolRequest) -> mcp.ToolResult:
+        self.calls.append(req)
+        if req.method == "GET" and req.path == "/api/tasks":
+            items = [{"id": "T1", "status": "todo"}]
+            return mcp.ToolResult(200, {"items": items, "next_cursor": None})
+        if req.path == "/api/tasks/T1/claim":
+            return mcp.ToolResult(200, {"task": {"id": "T1", "owner_member_id": AID}})
+        if req.path == "/api/tasks/T1/status":
+            return mcp.ToolResult(200, {"task": {"id": "T1", "status": "in_progress"}})
+        return mcp.ToolResult(404, {"code": "NOT_FOUND"}, is_error=True)
+
+
+def test_smoke_mcp_task_tools_roundtrip() -> None:
+    """用例扩展：Agent 经真 MCP JSON-RPC 走 list_tasks → claim → set_status（StubHttp 集成，
+    因夹具 server_url 为死地址 127.0.0.1:1，用路由桩替真 server 打通 serve_stdio 全链路）。"""
+    http = _RoutingHttp()
+    lines = [
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+        json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+        json.dumps({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "list_tasks", "arguments": {"status": "todo"}},
+        }),
+        json.dumps({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "claim_task", "arguments": {"task_id": "T1"}},
+        }),
+        json.dumps({
+            "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+            "params": {
+                "name": "set_task_status",
+                "arguments": {"task_id": "T1", "to": "in_progress"},
+            },
+        }),
+    ]
+    stdin = io.StringIO("\n".join(lines) + "\n")
+    stdout = io.StringIO()
+    mcp.serve_stdio(http, stdin=stdin, stdout=stdout)
+    responses = [json.loads(x) for x in stdout.getvalue().splitlines() if x.strip()]
+    # initialize + 3 tools/call（notification 无响应）
+    assert [r["id"] for r in responses] == [1, 2, 3, 4]
+    assert all(r["result"]["isError"] is False for r in responses[1:])
+    # 请求序列正确落到三个端点
+    assert http.calls[0].path == "/api/tasks" and http.calls[0].query == {"status": "todo"}
+    assert http.calls[1].path == "/api/tasks/T1/claim" and http.calls[1].method == "POST"
+    assert http.calls[2].path == "/api/tasks/T1/status"
+    assert http.calls[2].json_body == {"to": "in_progress"}

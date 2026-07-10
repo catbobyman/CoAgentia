@@ -1,0 +1,69 @@
+/* P11 任务聚合板 /tasks(改编自设计稿 P11-tasks-board.html,token 零发明)。
+   作用域全部收在 .wsboard 下,不污染共享 styles.css。 */
+.wsboard { overflow: hidden; }
+
+.wsboard .wsb-head { flex: none; display: flex; align-items: center; gap: 14px; padding: 24px 24px 16px; }
+.wsboard .wsb-head h1 { font-size: 20px; font-weight: 600; color: var(--text); }
+.wsboard .wsb-head .sp { flex: 1; }
+
+/* Board/List 分段切换 */
+.wsboard .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-s); overflow: hidden; }
+.wsboard .seg button { height: 28px; padding: 0 14px; font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--text-secondary); background: transparent; border: 0; cursor: pointer; }
+.wsboard .seg button + button { border-left: 1px solid var(--border-strong); }
+.wsboard .seg button.active { background: var(--accent-subtle); color: var(--accent); }
+.wsboard .seg button:hover:not(.active) { background: var(--surface-hover); color: var(--text); }
+
+/* 过滤条 */
+.wsboard .wsb-filter { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 24px 12px; flex-wrap: wrap; }
+.wsboard .wsb-sel { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: transparent; font-size: 13px; font-weight: 500; color: var(--text); }
+.wsboard .wsb-sel .mu { color: var(--text-muted); font-weight: 400; }
+.wsboard .wsb-sel select { font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--text); background: transparent; border: 0; outline: none; cursor: pointer; }
+.wsboard .wsb-sel select option { background: var(--surface-2); color: var(--text); }
+.wsboard .wsb-count { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+/* 共享小构件 */
+.wsboard .chchip { display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 2px 8px; background: var(--surface-2); flex: none; }
+.wsboard .chchip .hash { color: var(--accent); margin-right: 1px; }
+.wsboard .ownercell { display: inline-flex; align-items: center; gap: 6px; }
+.wsboard .stcell { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text); }
+.wsboard .stcell i { width: 8px; height: 8px; flex: none; }
+.wsboard .mu { color: var(--text-muted); }
+
+/* ===== Board 视图:5 态分列 ===== */
+.wsboard .wsb-board { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(200px, 1fr)); gap: 12px; padding: 0 24px 24px; overflow-x: auto; }
+.wsboard .wcol { display: flex; flex-direction: column; min-height: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-0); transition: background var(--t-slow) var(--ease), border-color var(--t-slow) var(--ease); }
+.wsboard .wcol.dragover { border-color: var(--accent); background: var(--surface-hover); }
+.wsboard .wcol-hd { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 500; color: var(--text); }
+.wsboard .wcol-hd i { width: 8px; height: 8px; flex: none; }
+.wsboard .wcol-hd .n { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.wsboard .wcol-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+
+.wsboard .wcard { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-0); padding: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: background var(--t-slow) var(--ease), border-color var(--t-slow) var(--ease); animation: wcard-in var(--t-slow) var(--ease); }
+.wsboard .wcard:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.wsboard .wcard-top { display: flex; align-items: center; gap: 8px; }
+.wsboard .wcard-top .no { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.wsboard .wcard-ttl { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
+.wsboard .wcard-owner { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+@keyframes wcard-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* ===== List 视图:表格 ===== */
+.wsboard .wsb-tablewrap { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 24px; }
+.wsboard .wsb-tbl { border-collapse: collapse; width: 100%; }
+.wsboard .wsb-tbl th { font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); font-weight: 500; text-align: left; padding: 0 12px; height: 32px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--bg); }
+.wsboard .wsb-tbl td { font-size: 13px; color: var(--text); padding: 0 12px; height: 40px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.wsboard .wsb-tbl tr.row { cursor: pointer; }
+.wsboard .wsb-tbl tr.row:hover td { background: var(--surface-hover); }
+.wsboard .wsb-tbl .no { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.wsboard .wsb-tbl .title { font-weight: 500; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wsboard .wsb-tbl .rt { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.wsboard .wsb-tbl tr.done td .title,
+.wsboard .wsb-tbl tr.done td .stcell,
+.wsboard .wsb-tbl tr.done td.rt,
+.wsboard .wsb-tbl tr.done td .no { color: var(--text-muted); }
+.wsboard .wsb-empty { text-align: center; color: var(--text-muted); height: 80px; }
+
+@media (max-width: 720px) {
+  .wsboard .wsb-head, .wsboard .wsb-filter { padding-left: 12px; padding-right: 12px; }
+  .wsboard .wsb-board { padding: 0 12px 16px; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 82vw; }
+  .wsboard .wsb-tablewrap { padding: 0 12px 16px; }
+}

@@ -562,7 +562,9 @@ async def list_channel_files(channel_id: str, after: str | None = None,
 
 @app.get("/api/search", response_model=rest.SearchResponse)
 async def search(q: str = "", kind: SearchKind | None = None,
+                 from_member: str | None = None, in_channel: str | None = None,
                  limit: int = rest.PAGE_DEFAULT_LIMIT) -> Any:
+    # 形状源须声明真 server 全部 query 参（B §9.6），否则生成 TS 类型漏 from_member/in_channel。
     return {"jumps": {"channels": [], "members": []}, "messages": [], "tasks": []}
 
 

@@ -15,12 +15,16 @@ export interface UiState {
   // 画布/面板轻状态(B2 起用;基座先立字段与 setter)
   selectedNodeId: string | null;
   threadPanelOpen: boolean;
+  // 全局搜索覆盖层(P10,Ctrl+K)开合。纯 UI 态,服务端数据仍在 Query 缓存。
+  searchOpen: boolean;
   // WS 连接态(重连 2px 进度条 + toast 的唯一数据源,契约 C §2 / 交互 §13)
   connection: ConnectionState;
 
   setActiveChannel: (id: string | null) => void;
   setSelectedNode: (id: string | null) => void;
   setThreadPanelOpen: (open: boolean) => void;
+  setSearchOpen: (open: boolean) => void;
+  toggleSearch: () => void;
   setConnection: (c: ConnectionState) => void;
 }
 
@@ -28,10 +32,13 @@ export const useUiStore = create<UiState>((set) => ({
   activeChannelId: null,
   selectedNodeId: null,
   threadPanelOpen: false,
+  searchOpen: false,
   connection: { status: 'connecting', attempt: 0 },
 
   setActiveChannel: (activeChannelId) => set({ activeChannelId }),
   setSelectedNode: (selectedNodeId) => set({ selectedNodeId }),
   setThreadPanelOpen: (threadPanelOpen) => set({ threadPanelOpen }),
+  setSearchOpen: (searchOpen) => set({ searchOpen }),
+  toggleSearch: () => set((s) => ({ searchOpen: !s.searchOpen })),
   setConnection: (connection) => set({ connection }),
 }));

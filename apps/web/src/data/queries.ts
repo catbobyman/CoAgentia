@@ -13,7 +13,7 @@ import type {
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
-import { api } from '../api';
+import { api, type ActivityFilter } from '../api';
 import { qk } from '../lib/queryKeys';
 
 // ---- 单实体/列表查询
@@ -91,6 +91,27 @@ export const useHomeTree = (memberId: string | undefined) =>
     queryKey: qk.homeTree(memberId ?? '_'),
     queryFn: () => api.homeTree(memberId!),
     enabled: !!memberId,
+  });
+
+// ---- M2 只读查询(stage2 消费)。写路径依赖 WS task.updated 实时回灌,不做乐观更新。
+export const useTaskDetail = (taskId: string | undefined) =>
+  useQuery({
+    queryKey: qk.taskDetail(taskId ?? '_'),
+    queryFn: () => api.taskDetail(taskId!),
+    enabled: !!taskId,
+  });
+
+export const useChannelFiles = (channelId: string | undefined) =>
+  useQuery({
+    queryKey: qk.channelFiles(channelId ?? '_'),
+    queryFn: async () => (await api.channelFiles(channelId!)).items,
+    enabled: !!channelId,
+  });
+
+export const useActivity = (filter: ActivityFilter = 'all') =>
+  useQuery({
+    queryKey: qk.activity(filter),
+    queryFn: async () => (await api.activity(filter)).items,
   });
 
 // usageByTask 无 REST 源:初值空,由 token_usage.reported 累加(wsBridge)。

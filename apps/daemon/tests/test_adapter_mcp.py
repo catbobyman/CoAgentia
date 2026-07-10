@@ -35,6 +35,115 @@ def test_build_request_mapping() -> None:
     assert gm.query == {"limit": 5}
 
 
+def test_build_request_m2_task_tools() -> None:
+    """M2 六工具 → REST 端点映射（纯透传，method/path/query/json_body 一一断言）。"""
+    lt = mcp.build_request(
+        "list_tasks",
+        {"channel_id": "C1", "status": "todo", "owner": "M1", "limit": 5},
+    )
+    assert lt.method == "GET"
+    assert lt.path == "/api/tasks"
+    assert lt.query == {"channel_id": "C1", "status": "todo", "owner": "M1", "limit": 5}
+    assert lt.json_body is None
+
+    # 全空过滤 → query 收敛为 None（不发空 querystring）
+    assert mcp.build_request("list_tasks", {}).query is None
+
+    gt = mcp.build_request("get_task", {"task_id": "T1"})
+    assert gt.method == "GET"
+    assert gt.path == "/api/tasks/T1"
+
+    cl = mcp.build_request("claim_task", {"task_id": "T1"})
+    assert cl.method == "POST"
+    assert cl.path == "/api/tasks/T1/claim"
+    assert cl.json_body is None
+
+    un = mcp.build_request("unclaim_task", {"task_id": "T1"})
+    assert un.method == "POST"
+    assert un.path == "/api/tasks/T1/unclaim"
+    assert un.json_body is None
+
+    ss = mcp.build_request("set_task_status", {"task_id": "T1", "to": "in_progress"})
+    assert ss.method == "POST"
+    assert ss.path == "/api/tasks/T1/status"
+    assert ss.json_body == {"to": "in_progress"}
+
+    se = mcp.build_request(
+        "search", {"q": "hello", "kind": "message", "from_member": "M1", "in_channel": "C1"}
+    )
+    assert se.method == "GET"
+    assert se.path == "/api/search"
+    assert se.query == {"q": "hello", "kind": "message", "from_member": "M1", "in_channel": "C1"}
+
+
+def test_set_task_status_body_matches_contract() -> None:
+    """set_task_status 的 body 必须过 TaskStatusChange 契约校验。"""
+    from coagentia_contracts.rest import TaskStatusChange
+
+    req = mcp.build_request("set_task_status", {"task_id": "T1", "to": "done"})
+    TaskStatusChange.model_validate(req.json_body)  # 字段名 / 值域对齐
+
+
+def test_send_message_as_task_passthrough() -> None:
+    """send_message 的 as_task 原样透传，且构造 body 过 MessageCreate 契约。"""
+    from coagentia_contracts.rest import MessageCreate
+
+    req = mcp.build_request(
+        "send_message",
+        {"channel_id": "C1", "body": "做这个", "as_task": {"title": "标题"}},
+    )
+    assert req.json_body["as_task"] == {"title": "标题"}
+    MessageCreate.model_validate(req.json_body)
+
+    # 空 {} 也透传（server 用缺省 title）
+    empty = mcp.build_request("send_message", {"channel_id": "C1", "body": "x", "as_task": {}})
+    assert empty.json_body["as_task"] == {}
+    MessageCreate.model_validate(empty.json_body)
+
+    # 未给 as_task → body 不含该键
+    none = mcp.build_request("send_message", {"channel_id": "C1", "body": "x"})
+    assert "as_task" not in none.json_body
+
+
+def test_claim_task_race_passthrough() -> None:
+    """claim_task 收 409 CLAIM_RACE → isError=True 且 data 原样带 code/details。"""
+    data = {"code": "CLAIM_RACE", "details": {"current_owner": "01K5MEMB00000000000000000A"}}
+    http = StubHttp(status=409, data=data)
+    out = mcp.call_tool("claim_task", {"task_id": "T1"}, http)
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 409
+    assert payload["data"]["code"] == "CLAIM_RACE"
+    assert payload["data"]["details"]["current_owner"] == "01K5MEMB00000000000000000A"
+
+
+def test_set_task_status_transition_invalid_passthrough() -> None:
+    """set_task_status 收 422 TASK_TRANSITION_INVALID → isError=True 原样透传。"""
+    http = StubHttp(status=422, data={"code": "TASK_TRANSITION_INVALID"})
+    out = mcp.call_tool("set_task_status", {"task_id": "T1", "to": "done"}, http)
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 422
+    assert payload["data"]["code"] == "TASK_TRANSITION_INVALID"
+
+
+def test_tools_list_includes_m2_tools() -> None:
+    """tools/list 往返：6 个 M2 工具全部出现，且 send_message 声明 as_task 属性。"""
+    state = mcp._RpcState(http=StubHttp())
+    listed = mcp.handle_rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, state)
+    names = {t["name"] for t in listed["result"]["tools"]}
+    assert {
+        "list_tasks",
+        "get_task",
+        "claim_task",
+        "unclaim_task",
+        "set_task_status",
+        "search",
+    } <= names
+    send = next(t for t in listed["result"]["tools"] if t["name"] == "send_message")
+    assert "as_task" in send["inputSchema"]["properties"]
+
+
 def test_call_tool_success() -> None:
     http = StubHttp(status=201, data={"message": {"id": "01K5MSG100000000000000000A"}})
     out = mcp.call_tool("send_message", {"channel_id": "C1", "body": "hi"}, http)

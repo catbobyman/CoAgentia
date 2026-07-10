@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from coagentia_contracts.constants import TASK_TRANSITIONS
+from coagentia_contracts.constants import TASK_TRANSITIONS, UNCLAIMABLE_STATUSES
 from coagentia_contracts.enums import TaskEventKind, TaskLevel, TaskStatus
 from coagentia_contracts.ws import EventType
 from sqlalchemy import insert, select, update
@@ -28,8 +28,8 @@ _CHANNEL = models.Channel.__table__
 _MD_PREFIX = re.compile(r"^\s*(?:#{1,6}|[-*>]\s|\d+\.\s)\s*")
 
 # 终态不可认领（review 裁决 2026-07-09）：done 无出边；closed 须先 reopen→todo 再认领。
-# 这不是第二份边表（纪律 7）——claim 语义门，边表仍唯一在 TASK_TRANSITIONS。
-UNCLAIMABLE_STATUSES: frozenset[TaskStatus] = frozenset({TaskStatus.DONE, TaskStatus.CLOSED})
+# 这不是第二份边表（纪律 7）——claim 语义门；唯一事实源 = contracts UNCLAIMABLE_STATUSES
+# （server 校验 + 前端认领钮防呆同源，同 TASK_TRANSITIONS 机读化到 contracts-ts）。
 _TITLE_MAX = 80
 _TITLE_FALLBACK = "未命名任务"
 

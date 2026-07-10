@@ -1,9 +1,10 @@
-// 消息流(设计稿 [E])。折叠头、日期分隔、未读线、系统消息、行内任务牌 —— 从 App.tsx 抽出。
-import type { MemberPublic, MessagePublic, PresenceEntry, TaskPublic } from '@coagentia/contracts-ts';
+// 消息流(设计稿 [E])。折叠头、日期分隔、未读线、系统消息、行内任务牌、附件卡 —— 从 App.tsx 抽出。
+import type { FilePublic, MemberPublic, MessagePublic, PresenceEntry, TaskPublic } from '@coagentia/contracts-ts';
 
 import { PRESENCE_VAR } from '../lib/uiMaps';
 import { renderBody } from '../lib/render';
 import { Avatar } from './Avatar';
+import { AttachCard } from './AttachCard';
 import { TaskChip } from './TaskChip';
 
 export interface MessageFlowProps {
@@ -14,6 +15,7 @@ export interface MessageFlowProps {
   presenceOf: (memberId: string) => PresenceEntry | undefined;
   taskByRoot: Record<string, TaskPublic>;
   usageByTask: Record<string, number>;
+  filesByMessage?: Record<string, FilePublic[]>; // 消息附件卡数据源(FR-4.8;M1 遗留并入 B-M2-3)
   lastReadId?: string;
   selectedTaskId?: string;
   onSelectTask?: (taskId: string) => void;
@@ -23,7 +25,7 @@ export interface MessageFlowProps {
 export function MessageFlow(props: MessageFlowProps) {
   const {
     messages, memberById, memberNames, meName, presenceOf,
-    taskByRoot, usageByTask, lastReadId, selectedTaskId, onSelectTask, onOpenAgent,
+    taskByRoot, usageByTask, filesByMessage, lastReadId, selectedTaskId, onSelectTask, onOpenAgent,
   } = props;
   const lastReadIdx = messages.findIndex((m) => m.id === lastReadId);
 
@@ -84,6 +86,7 @@ export function MessageFlow(props: MessageFlowProps) {
                     </div>
                   )}
                   <div className="body" dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
+                  {filesByMessage?.[m.id]?.map((f) => <AttachCard key={f.id} file={f} />)}
                   {task && (
                     <TaskChip
                       task={task}

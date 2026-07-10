@@ -5,14 +5,15 @@ const TAB_LABELS: Record<Tab, string> = {
   chat: '会话', canvas: '画布', board: '看板', files: '文件',
 };
 
-export function Tabs({ active, canvasCount, boardCount, onSelect }: {
+export function Tabs({ active, canvasCount, boardCount, filesCount, onSelect }: {
   active: Tab;
   canvasCount?: number;
   boardCount?: number;
+  filesCount?: number;
   onSelect: (tab: Tab) => void;
 }) {
   const counts: Partial<Record<Tab, number | undefined>> = {
-    canvas: canvasCount, board: boardCount,
+    canvas: canvasCount, board: boardCount, files: filesCount,
   };
   return (
     <nav className="tabs">

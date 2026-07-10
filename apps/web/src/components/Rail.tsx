@@ -7,6 +7,7 @@ import {
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 
 import { LOGO_A_BITS } from '../lib/uiMaps';
+import { useUiStore } from '../lib/store';
 
 function RailItem({ label, active, dot, onClick, className = '', children }: {
   label: string; active?: boolean; dot?: boolean; onClick?: () => void;
@@ -25,13 +26,14 @@ function RailItem({ label, active, dot, onClick, className = '', children }: {
   );
 }
 
-export function Rail({ meName, firstAgentId, onToggleChannels }: {
+export function Rail({ meName, onToggleChannels }: {
   meName: string;
-  firstAgentId?: string;
+  firstAgentId?: string; // 保留:RootLayout 仍传入(成员图标已改跳 /members,不再消费)
   onToggleChannels?: () => void;
 }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   return (
     <nav className="rail">
@@ -45,13 +47,22 @@ export function Rail({ meName, firstAgentId, onToggleChannels }: {
         {LOGO_A_BITS.map((b, i) => <i key={i} className={b ? 'on' : ''} />)}
       </div>
       <RailItem label="频道" className="mobile-menu" onClick={onToggleChannels}><Menu /></RailItem>
-      <RailItem label="搜索 Ctrl+K"><Search /></RailItem>
-      <RailItem label="Activity(有未读)" dot><Activity /></RailItem>
-      <RailItem label="任务"><ListTodo /></RailItem>
+      <RailItem label="搜索 Ctrl+K" onClick={() => setSearchOpen(true)}><Search /></RailItem>
+      <RailItem
+        label="Activity(有未读)"
+        dot
+        active={pathname.startsWith('/activity')}
+        onClick={() => void navigate({ to: '/activity' })}
+      ><Activity /></RailItem>
+      <RailItem
+        label="任务"
+        active={pathname.startsWith('/tasks')}
+        onClick={() => void navigate({ to: '/tasks' })}
+      ><ListTodo /></RailItem>
       <RailItem
         label="成员"
-        active={pathname.startsWith('/agents')}
-        onClick={() => firstAgentId && void navigate({ to: '/agents/$memberId', params: { memberId: firstAgentId }, search: { tab: 'profile' } })}
+        active={pathname.startsWith('/members') || pathname.startsWith('/agents')}
+        onClick={() => void navigate({ to: '/members' })}
       ><Users /></RailItem>
       <RailItem
         label="机器"

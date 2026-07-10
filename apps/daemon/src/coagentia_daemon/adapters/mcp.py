@@ -57,6 +57,10 @@ TOOLS: list[dict[str, Any]] = [
                 "body": {"type": "string"},
                 "thread_root_id": {"type": "string"},
                 "file_ids": {"type": "array", "items": {"type": "string"}},
+                "as_task": {
+                    "type": "object",
+                    "properties": {"title": {"type": "string"}},
+                },
             },
             "required": ["channel_id", "body"],
         },
@@ -138,6 +142,82 @@ TOOLS: list[dict[str, Any]] = [
         "description": "列出工作区成员（自我融入所需读面）。",
         "inputSchema": {"type": "object", "properties": {}},
     },
+    # M2（契约 E v1.1）任务域 + 搜索
+    {
+        "name": "list_tasks",
+        "description": "列出任务（可按频道 / 状态 / owner / 创建者过滤，游标分页）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["todo", "in_progress", "in_review", "done", "closed"],
+                },
+                "owner": {"type": "string"},
+                "creator": {"type": "string"},
+                "after": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+        },
+    },
+    {
+        "name": "get_task",
+        "description": "拉取单个任务详情（含成本聚合 usage）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "claim_task",
+        "description": "认领无主任务（并发抢占失败 → 409 CLAIM_RACE 结构化透传）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "unclaim_task",
+        "description": "释放自己认领的任务（仅本人为 owner 时有效）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "set_task_status",
+        "description": "推进任务状态（非法边 → 422 TASK_TRANSITION_INVALID 透传）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "to": {
+                    "type": "string",
+                    "enum": ["todo", "in_progress", "in_review", "done", "closed"],
+                },
+            },
+            "required": ["task_id", "to"],
+        },
+    },
+    {
+        "name": "search",
+        "description": "跨工作区搜索（频道 / 成员跳转 + 消息 FTS + 任务，三分组）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string"},
+                "kind": {"type": "string", "enum": ["message", "task"]},
+                "from_member": {"type": "string"},
+                "in_channel": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["q"],
+        },
+    },
 ]
 
 _TOOL_NAMES = frozenset(t["name"] for t in TOOLS)
@@ -152,6 +232,8 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
             body["thread_root_id"] = a["thread_root_id"]
         if a.get("file_ids"):
             body["file_ids"] = a["file_ids"]
+        if a.get("as_task") is not None:  # 空 {} 也透传 → server 用缺省 title（契约 AsTask）
+            body["as_task"] = a["as_task"]
         return ToolRequest("POST", f"/api/channels/{a['channel_id']}/messages", json_body=body)
     if tool == "get_messages":
         query = {k: a[k] for k in ("limit", "before", "after") if a.get(k) is not None}
@@ -179,6 +261,30 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
         return ToolRequest("GET", "/api/channels")
     if tool == "list_members":
         return ToolRequest("GET", "/api/members")
+    if tool == "list_tasks":
+        query = {
+            k: a[k]
+            for k in ("channel_id", "status", "owner", "creator", "after", "limit")
+            if a.get(k) is not None
+        }
+        return ToolRequest("GET", "/api/tasks", query=query or None)
+    if tool == "get_task":
+        return ToolRequest("GET", f"/api/tasks/{a['task_id']}")
+    if tool == "claim_task":
+        return ToolRequest("POST", f"/api/tasks/{a['task_id']}/claim")
+    if tool == "unclaim_task":
+        return ToolRequest("POST", f"/api/tasks/{a['task_id']}/unclaim")
+    if tool == "set_task_status":
+        return ToolRequest(
+            "POST", f"/api/tasks/{a['task_id']}/status", json_body={"to": a["to"]}
+        )
+    if tool == "search":
+        query = {
+            k: a[k]
+            for k in ("q", "kind", "from_member", "in_channel", "limit")
+            if a.get(k) is not None
+        }
+        return ToolRequest("GET", "/api/search", query=query)
     raise KeyError(tool)
 
 

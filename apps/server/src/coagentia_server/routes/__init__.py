@@ -2,9 +2,29 @@
 
 from fastapi import FastAPI
 
-from coagentia_server.routes import channels, computers, members, messages, tasks, workspace
+from coagentia_server.routes import (
+    activity,
+    channels,
+    computers,
+    files,
+    members,
+    messages,
+    search,
+    tasks,
+    workspace,
+)
 
 
 def install_routes(app: FastAPI) -> None:
-    for module in (workspace, computers, members, channels, messages, tasks):
+    for module in (
+        workspace,
+        computers,
+        members,
+        channels,
+        messages,
+        tasks,
+        files,
+        search,
+        activity,
+    ):
         app.include_router(module.router)

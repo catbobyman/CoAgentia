@@ -255,6 +255,31 @@ def test_task_created_broadcast(dual: DualClient) -> None:
         assert task_created.data["task"]["id"] == r.json()["task"]["id"]
 
 
+# ------------------------------------------------------ files / search / activity 形状（C4 双跑）
+
+
+def test_channel_files_page_shape(dual: DualClient) -> None:
+    _, client = dual
+    build = _build_channel(client)
+    rest.Page[entities.FilePublic].model_validate(
+        client.get(f"/api/channels/{build['id']}/files").json()
+    )
+
+
+def test_search_response_shape(dual: DualClient) -> None:
+    _, client = dual
+    rest.SearchResponse.model_validate(
+        client.get("/api/search", params={"q": "build"}).json()
+    )
+
+
+def test_activity_page_shape(dual: DualClient) -> None:
+    _, client = dual
+    rest.Page[entities.ActivityItemPublic].model_validate(
+        client.get("/api/activity").json()
+    )
+
+
 # ---------------------------------------------------------------- WS 信封与广播（A4 双跑）
 
 

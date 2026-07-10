@@ -87,6 +87,7 @@ _MENTION = models.MessageMention.__table__
 _READ = models.ReadPosition.__table__
 _DIAG = models.DiagnosticEvent.__table__
 _USAGE = models.TokenUsageEvent.__table__
+_TASK = models.Task.__table__
 _REMINDER = models.Reminder.__table__
 
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
@@ -480,12 +481,21 @@ class DaemonHub:
                 ).first()
                 if exists is not None:
                     continue  # 重传去重（铁律 5）
+                # 归属富化（契约 E §7.4）：thread_root_id 命中 tasks.root_message_id → task_id。
+                # 三路：无提示→None；有提示无匹配→None；命中→task.id。
+                task_id: str | None = None
+                if ev.thread_root_id is not None:
+                    task_row = tx.conn.execute(
+                        select(_TASK.c.id).where(_TASK.c.root_message_id == ev.thread_root_id)
+                    ).first()
+                    if task_row is not None:
+                        task_id = task_row[0]
                 tx.conn.execute(
                     insert(_USAGE).values(
                         id=ev.id,
                         workspace_id=conn.workspace_id,
                         agent_member_id=ev.agent_member_id,
-                        task_id=None,  # thread_root_id→task_id 富化：M1 无 tasks 表，恒 NULL 留接缝
+                        task_id=task_id,
                         channel_id=ev.channel_id,
                         input_tokens=ev.input_tokens,
                         output_tokens=ev.output_tokens,
@@ -500,7 +510,7 @@ class DaemonHub:
                     None,
                     {
                         "agent_member_id": ev.agent_member_id,
-                        "task_id": None,
+                        "task_id": task_id,
                         "totals": {
                             "input_tokens": ev.input_tokens,
                             "output_tokens": ev.output_tokens,

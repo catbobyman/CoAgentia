@@ -4,6 +4,14 @@
   "private": true,
   "description": "Generated TS mirror of coagentia-contracts (do not hand-edit src/generated)",
   "types": "src/index.ts",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "gen": "node gen.mjs",
     "typecheck": "tsc --noEmit"

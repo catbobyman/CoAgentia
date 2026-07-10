@@ -2950,6 +2950,8 @@ export interface operations {
             query?: {
                 q?: string;
                 kind?: components["schemas"]["SearchKind"] | null;
+                from_member?: string | null;
+                in_channel?: string | null;
                 limit?: number;
             };
             header?: never;

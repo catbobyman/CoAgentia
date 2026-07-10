@@ -3,14 +3,18 @@
 // P5 线程面板由 ?thread= 驱动,在主列右侧展开(不新增顶层路由)。
 import { useNavigate } from '@tanstack/react-router';
 
+import type { FilePublic } from '@coagentia/contracts-ts';
+
 import type { ChannelSearch, Tab } from '../routes/search';
 import {
   memberMap, presenceMap, readPositionsMap,
-  useChannelsSnapshot, useMembers, useMessages, usePresence, useTasks, useUsageByTask,
+  useChannelFiles, useChannelsSnapshot, useMembers, useMessages, usePresence, useTasks, useUsageByTask,
 } from '../data/queries';
 import { useUiStore } from '../lib/store';
 import { Composer } from '../components/Composer';
 import { MessageFlow } from '../components/MessageFlow';
+import { BoardTab } from '../components/BoardTab';
+import { FilesTab } from '../components/FilesTab';
 import { Tabs } from '../components/Tabs';
 import { Topbar } from '../components/Topbar';
 import { ThreadPanel } from './ThreadPanel';
@@ -29,6 +33,7 @@ export function ChannelChatScreen({ search, setSearch }: {
   const messagesQ = useMessages(activeChannelId ?? undefined);
   const tasksQ = useTasks(activeChannelId ?? undefined);
   const usageQ = useUsageByTask();
+  const filesQ = useChannelFiles(activeChannelId ?? undefined);
 
   const snap = channelsQ.data;
   const channel = snap?.items?.find((c) => c.id === activeChannelId);
@@ -45,8 +50,16 @@ export function ChannelChatScreen({ search, setSearch }: {
   const tasks = tasksQ.data ?? [];
   const usageByTask = usageQ.data ?? {};
 
+  const files = filesQ.data ?? [];
+  // 附件按 message_id 聚合(消息流附件卡数据源)。
+  const filesByMessage = files.reduce<Record<string, FilePublic[]>>((acc, f) => {
+    if (f.message_id) (acc[f.message_id] ??= []).push(f);
+    return acc;
+  }, {});
+
   const taskByRoot = Object.fromEntries(tasks.map((t) => [t.root_message_id, t]));
   const boardCount = tasks.filter((t) => !['done', 'closed'].includes(t.status ?? 'todo')).length;
+  const filesCount = files.length;
   const readPos = readPositionsMap(snap)[channel.id];
   const lastReadId = readPos?.last_read_message_id;
 
@@ -80,7 +93,13 @@ export function ChannelChatScreen({ search, setSearch }: {
     <div className="chatwrap">
       <main className="main">
         <Topbar channel={channel} stackNames={stackNames} />
-        <Tabs active={search.tab} canvasCount={3} boardCount={boardCount} onSelect={selectTab} />
+        <Tabs
+          active={search.tab}
+          canvasCount={3}
+          boardCount={boardCount}
+          filesCount={filesCount}
+          onSelect={selectTab}
+        />
 
         {search.tab === 'chat' ? (
           <MessageFlow
@@ -91,11 +110,22 @@ export function ChannelChatScreen({ search, setSearch }: {
             presenceOf={(id) => presence[id]}
             taskByRoot={taskByRoot}
             usageByTask={usageByTask}
+            filesByMessage={filesByMessage}
             lastReadId={lastReadId}
             selectedTaskId={search.task}
             onSelectTask={selectTask}
             onOpenAgent={openAgent}
           />
+        ) : search.tab === 'board' ? (
+          <BoardTab
+            tasks={tasks}
+            memberById={byId}
+            presenceOf={(id) => presence[id]}
+            selectedTaskId={search.task}
+            onSelectTask={selectTask}
+          />
+        ) : search.tab === 'files' ? (
+          <FilesTab channelId={channel.id} onLocate={() => setSearch({ tab: 'chat' })} />
         ) : (
           <section className="flow">
             <div className="boot">「{search.tab}」屏 B2 搭建中 —— 路由/深链已就绪。</div>
@@ -112,6 +142,7 @@ export function ChannelChatScreen({ search, setSearch }: {
           memberById={byId}
           memberNames={memberNames}
           meName={me?.name ?? ''}
+          meId={me?.id}
           presenceOf={(id) => presence[id]}
           usage={threadUsage}
           onClose={() => setSearch({ thread: undefined, task: undefined })}
