@@ -18,7 +18,8 @@ from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, require_workspace
 from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.ledger import service
-from coagentia_server.routes.serialize import message_public, read_position_public
+from coagentia_server.routes.serialize import message_public, read_position_public, task_public
+from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["messages"])
 
@@ -28,6 +29,7 @@ _MENTION = models.MessageMention.__table__
 _MEMBER = models.Member.__table__
 _FILE = models.File.__table__
 _READ = models.ReadPosition.__table__
+_TASK = models.Task.__table__
 
 def _require_channel(tx: Tx, channel_id: str) -> dict[str, Any]:
     row = tx.conn.execute(select(_CHANNEL).where(_CHANNEL.c.id == channel_id)).mappings().first()
@@ -183,7 +185,16 @@ def post_message(
             prior = tx.conn.execute(select(_MSG).where(_MSG.c.id == prior_id)).mappings().first()
             if prior is None:
                 raise ApiError(404, rest.ErrorCode.NOT_FOUND, "幂等命中但原消息缺失")
-            return {"message": message_public(dict(prior)), "task": None}
+            # as_task 幂等：凭 root_message_id UNIQUE 回查既有任务（B §9.4）。
+            prior_task = (
+                tx.conn.execute(select(_TASK).where(_TASK.c.root_message_id == prior_id))
+                .mappings()
+                .first()
+            )
+            return {
+                "message": message_public(dict(prior)),
+                "task": task_public(dict(prior_task)) if prior_task is not None else None,
+            }
         if res["status"] == "mismatch":
             raise ApiError(
                 409, rest.ErrorCode.IDEMPOTENCY_MISMATCH, "同 Idempotency-Key 不同请求体"
@@ -230,10 +241,26 @@ def post_message(
 
     msg = dict(tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first())
     pub = message_public(msg)
+
+    # as_task（B §9.4）：同事务建任务；顶级/非 DM 已在上方校验通过。message.created 先、
+    # task.created 后严格提交序广播；任一半失败整事务回滚，双双不落库不广播（原子）。
+    task_pub = None
+    if body.as_task is not None:
+        task_row = tasks_service.create_task(
+            tx,
+            workspace_id=ws["id"],
+            channel_id=channel_id,
+            root_message_id=msg_id,
+            created_by=me["id"],
+            title=body.as_task.title,
+            source_body=body.body,
+        )
+        task_pub = task_public(task_row)
+
     tx.emit(EventType.MESSAGE_CREATED, channel_id, {"message": pub})
-    # as_task：tasks 是 M2 表（未建）→ M1 返回 task=null（MessageCreated.task 是 Optional）。
-    # TODO(M2)：as_task 成功建 L2 任务 + 广播 task.created（原子）。
-    return {"message": pub, "task": None}
+    if task_pub is not None:
+        tx.emit(EventType.TASK_CREATED, channel_id, {"task": task_pub})
+    return {"message": pub, "task": task_pub}
 
 
 # ---------------------------------------------------------------- 文件

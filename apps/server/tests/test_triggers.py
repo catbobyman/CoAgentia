@@ -51,6 +51,21 @@ def _insert_extra_immutable_rows(engine: Engine) -> None:
             ),
             {"ws": _WS, "am": _MEMBER_AGENT, "ts": _TS},
         )
+        conn.execute(
+            text(
+                "INSERT INTO tasks (id, workspace_id, channel_id, number, root_message_id, "
+                "title, created_by_member_id, status_changed_at, created_at) VALUES "
+                "(:id, :ws, :ch, 1, :msg, 'T1', :by, :ts, :ts)"
+            ),
+            {"id": "01K0TASK000000000000000001", "ws": _WS, "ch": _CH, "msg": _MSG,
+             "by": "01K0MMBR000000000000000001", "ts": _TS},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO task_events (task_id, kind, created_at) VALUES (:tid, 'claim', :ts)"
+            ),
+            {"tid": "01K0TASK000000000000000001", "ts": _TS},
+        )
 
 
 # (表, UPDATE 语句, DELETE 语句)
@@ -66,6 +81,8 @@ _CASES = [
     ("token_usage_events",
      "UPDATE token_usage_events SET input_tokens=9 WHERE id='01K0TKNE000000000000000001'",
      "DELETE FROM token_usage_events WHERE id='01K0TKNE000000000000000001'"),
+    ("task_events", "UPDATE task_events SET kind='x' WHERE seq=1",
+     "DELETE FROM task_events WHERE seq=1"),
 ]
 
 

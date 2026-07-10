@@ -44,6 +44,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Activity */
+        get: operations["list_activity_api_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity/{activity_id}/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Activity Done */
+        post: operations["mark_activity_done_api_activity__activity_id__done_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents": {
         parameters: {
             query?: never;
@@ -250,6 +284,23 @@ export interface paths {
         put?: never;
         /** Archive Channel */
         post: operations["archive_channel_api_channels__channel_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/channels/{channel_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Channel Files */
+        get: operations["list_channel_files_api_channels__channel_id__files_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -463,6 +514,23 @@ export interface paths {
         patch: operations["patch_member_api_members__member_id__patch"];
         trace?: never;
     };
+    "/api/messages/{message_id}/task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert Message To Task */
+        post: operations["convert_message_to_task_api_messages__message_id__task_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/messages/{message_id}/thread": {
         parameters: {
             query?: never;
@@ -531,6 +599,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -542,6 +627,92 @@ export interface paths {
         get: operations["list_tasks_api_tasks_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task Detail */
+        get: operations["get_task_detail_api_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Task */
+        patch: operations["patch_task_api_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign Task */
+        post: operations["assign_task_api_tasks__task_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim Task */
+        post: operations["claim_task_api_tasks__task_id__claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Task Status */
+        post: operations["set_task_status_api_tasks__task_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/unclaim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unclaim Task */
+        post: operations["unclaim_task_api_tasks__task_id__unclaim_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -571,6 +742,37 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityFilter
+         * @description GET /activity?filter=（B §9.7.3）。
+         * @enum {string}
+         */
+        ActivityFilter: "all" | "unread" | "mentions";
+        /** ActivityItemPublic */
+        ActivityItemPublic: {
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Done At */
+            done_at?: string | null;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ActivityKind"];
+            /** Member Id */
+            member_id: string;
+            /** Message Id */
+            message_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * ActivityKind
+         * @enum {string}
+         */
+        ActivityKind: "mention" | "dm" | "silence_escalation" | "held_escalation" | "fail_closed" | "system";
         /** AgentCreate */
         AgentCreate: {
             /** Computer Id */
@@ -643,6 +845,14 @@ export interface components {
         AsTask: {
             /** Title */
             title?: string | null;
+        };
+        /**
+         * AssignRequest
+         * @description 改派（B §9.2）——POST /tasks/{id}/assign；member_id=None → 取消指派（不动 status）。
+         */
+        AssignRequest: {
+            /** Member Id */
+            member_id?: string | null;
         };
         /** Body_upload_file_api_files_post */
         Body_upload_file_api_files_post: {
@@ -848,6 +1058,21 @@ export interface components {
          */
         ComputerStatus: "connected" | "offline";
         /**
+         * ContractKind
+         * @enum {string}
+         */
+        ContractKind: "task_plan" | "task_handoff" | "loop_contract";
+        /**
+         * ConvertToTask
+         * @description Convert to Task（B §9.3）——POST /messages/{id}/task。
+         *
+         *     title 缺省 = 锚点 body 首非空行剥 MD 前缀、>80 截断。
+         */
+        ConvertToTask: {
+            /** Title */
+            title?: string | null;
+        };
+        /**
          * DecompMode
          * @enum {string}
          */
@@ -1007,10 +1232,24 @@ export interface components {
             /** Workspace Id */
             workspace_id: string;
         };
+        /** Page[ActivityItemPublic] */
+        Page_ActivityItemPublic_: {
+            /** Items */
+            items: components["schemas"]["ActivityItemPublic"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[DiagnosticEventPublic] */
         Page_DiagnosticEventPublic_: {
             /** Items */
             items: components["schemas"]["DiagnosticEventPublic"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[FilePublic] */
+        Page_FilePublic_: {
+            /** Items */
+            items: components["schemas"]["FilePublic"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -1128,16 +1367,110 @@ export interface components {
          * @enum {string}
          */
         Runtime: "claude_code" | "codex";
+        /**
+         * SearchJumps
+         * @description GET /search 的跳转分组（名称子串命中，NOCASE）。
+         */
+        SearchJumps: {
+            /**
+             * Channels
+             * @default []
+             */
+            channels: components["schemas"]["ChannelPublic"][];
+            /**
+             * Members
+             * @default []
+             */
+            members: components["schemas"]["MemberPublic"][];
+        };
+        /**
+         * SearchKind
+         * @description GET /search?kind=（B §9.6.1；缺省全搜）。
+         * @enum {string}
+         */
+        SearchKind: "message" | "task";
+        /** SearchMessageResult */
+        SearchMessageResult: {
+            message: components["schemas"]["MessagePublic"];
+            /** Snippet */
+            snippet: string;
+        };
+        /**
+         * SearchResponse
+         * @description 搜索（B §9.6）——GET /search，三分组。
+         */
+        SearchResponse: {
+            jumps: components["schemas"]["SearchJumps"];
+            /**
+             * Messages
+             * @default []
+             */
+            messages: components["schemas"]["SearchMessageResult"][];
+            /**
+             * Tasks
+             * @default []
+             */
+            tasks: components["schemas"]["TaskPublic"][];
+        };
         /** SkillsPut */
         SkillsPut: {
             /** Skills */
             skills: string[];
+        };
+        /** TaskContractPublic */
+        TaskContractPublic: {
+            body: components["schemas"]["JsonValue"];
+            /** Created At */
+            created_at: string;
+            /** Created By Member Id */
+            created_by_member_id: string;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ContractKind"];
+            /** Reminder Id */
+            reminder_id?: string | null;
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            /** Superseded At */
+            superseded_at?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Version */
+            version: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * TaskDetail
+         * @description GET /tasks/{id}（B §9.8）。
+         */
+        TaskDetail: {
+            /**
+             * Contracts
+             * @default []
+             */
+            contracts: components["schemas"]["TaskContractPublic"][];
+            task: components["schemas"]["TaskPublic"];
+            usage: components["schemas"]["TaskUsage"];
         };
         /**
          * TaskLevel
          * @enum {string}
          */
         TaskLevel: "l1" | "l2";
+        /**
+         * TaskPatch
+         * @description 元数据补丁（B §4.7）——PATCH /tasks/{id}；不写 task_events，广播 task.updated。
+         */
+        TaskPatch: {
+            /** Silence Override H */
+            silence_override_h?: number | null;
+            /** Title */
+            title?: string | null;
+        };
         /** TaskPublic */
         TaskPublic: {
             /** Channel Id */
@@ -1172,6 +1505,46 @@ export interface components {
          * @enum {string}
          */
         TaskStatus: "todo" | "in_progress" | "in_review" | "done" | "closed";
+        /**
+         * TaskStatusChange
+         * @description 状态写（B §9.1）——POST /tasks/{id}/status。
+         *
+         *     非法边 → 422 TASK_TRANSITION_INVALID；to==当前 → 幂等 200。
+         */
+        TaskStatusChange: {
+            to: components["schemas"]["TaskStatus"];
+        };
+        /**
+         * TaskUsage
+         * @description TaskDetail 的成本聚合（token_usage_events 按 task_id 汇总）。
+         */
+        TaskUsage: {
+            /**
+             * Cache Read Tokens
+             * @default 0
+             */
+            cache_read_tokens: number;
+            /**
+             * Cache Write Tokens
+             * @default 0
+             */
+            cache_write_tokens: number;
+            /**
+             * Events
+             * @default 0
+             */
+            events: number;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+        };
         /**
          * UiTheme
          * @enum {string}
@@ -1299,6 +1672,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_activity_api_activity_get: {
+        parameters: {
+            query?: {
+                filter?: components["schemas"]["ActivityFilter"];
+                after?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ActivityItemPublic_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_activity_done_api_activity__activity_id__done_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                activity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityItemPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1843,6 +2280,40 @@ export interface operations {
             };
         };
     };
+    list_channel_files_api_channels__channel_id__files_get: {
+        parameters: {
+            query?: {
+                after?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_FilePublic_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_channel_member_api_channels__channel_id__members_post: {
         parameters: {
             query?: never;
@@ -2324,6 +2795,41 @@ export interface operations {
             };
         };
     };
+    convert_message_to_task_api_messages__message_id__task_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertToTask"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_thread_api_messages__message_id__thread_get: {
         parameters: {
             query?: {
@@ -2439,11 +2945,48 @@ export interface operations {
             };
         };
     };
+    search_api_search_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                kind?: components["schemas"]["SearchKind"] | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tasks_api_tasks_get: {
         parameters: {
             query?: {
                 channel_id?: string | null;
                 status?: string | null;
+                owner?: string | null;
+                creator?: string | null;
+                after?: string | null;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -2458,6 +3001,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_TaskPublic_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_detail_api_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_task_api_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_task_api_tasks__task_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_task_api_tasks__task_id__claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_task_status_api_tasks__task_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskStatusChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unclaim_task_api_tasks__task_id__unclaim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPublic"];
                 };
             };
             /** @description Validation Error */

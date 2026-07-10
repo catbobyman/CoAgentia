@@ -1,5 +1,7 @@
 """常量目录：opId 前缀（契约 A §4.7）、活动文案（契约 E §7.2）、
-禁用工具、诊断类型、规则号、schema 版本号。"""
+禁用工具、诊断类型、规则号、schema 版本号、任务状态机合法边、MCP 工具目录。"""
+
+from coagentia_contracts.enums import TaskStatus
 
 # ---------------- opId（契约 A §4.7 账本；01 §5.1 修订采纳）
 
@@ -146,3 +148,40 @@ SCHEMA_DECOMPOSITION_ERRORS_V1 = "coagentia.decomposition-errors.v1"
 BUFFER_DIAGNOSTICS_MAX = 10_000
 BUFFER_USAGE_MAX = 100_000
 BUFFER_DEPLOY_LOG_MAX_BYTES = 5 * 1024 * 1024
+
+# ---------------- 任务状态机合法边（契约 B §9.1；纪律 7 单一事实源，server 校验+前端防呆同源）
+# 值 = 合法目标态集合（不含自身；to==from → 幂等 200 不写事件；空集 = 终态）。
+# claim 联动 todo→in_progress、unclaim 联动 in_progress→todo 均落在合法边内（§9.2）。
+TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
+    TaskStatus.TODO: frozenset({TaskStatus.IN_PROGRESS, TaskStatus.CLOSED}),
+    TaskStatus.IN_PROGRESS: frozenset(
+        {TaskStatus.TODO, TaskStatus.IN_REVIEW, TaskStatus.CLOSED}
+    ),
+    TaskStatus.IN_REVIEW: frozenset(
+        {TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.CLOSED}
+    ),
+    TaskStatus.DONE: frozenset(),  # 终态（PRD §4.2 Done→[*]）
+    TaskStatus.CLOSED: frozenset({TaskStatus.TODO}),  # reopen
+}
+
+# ---------------- coagentia MCP 工具目录（契约 E §3；Agent 行为唯一出口，每工具↔一 REST 端点）
+# 纯代理：daemon adapters/mcp.py 零业务规则；与 DISALLOWED_TOOLS 不重叠（内置 TaskCreate 已禁）。
+COAGENTIA_MCP_TOOLS: tuple[str, ...] = (
+    # M1（契约 E v1.0）
+    "send_message",     # POST /channels/{id}/messages（M2 起支持 as_task 参数，B §9.4）
+    "get_messages",     # GET  /channels/{id}/messages
+    "get_thread",       # GET  /messages/{id}/thread
+    "upload_file",      # POST /files
+    "get_file",         # GET  /files/{id}/content
+    "create_reminder",  # POST /reminders
+    "cancel_reminder",  # DELETE /reminders/{id}
+    "list_channels",    # GET  /channels
+    "list_members",     # GET  /members
+    # M2（契约 E v1.1）
+    "list_tasks",       # GET  /tasks
+    "get_task",         # GET  /tasks/{id}（TaskDetail）
+    "claim_task",       # POST /tasks/{id}/claim（CLAIM_RACE 结构化透传）
+    "unclaim_task",     # POST /tasks/{id}/unclaim（仅本人为 owner）
+    "set_task_status",  # POST /tasks/{id}/status（TASK_TRANSITION_INVALID 透传）
+    "search",           # GET  /search（三分组）
+)

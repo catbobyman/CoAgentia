@@ -60,3 +60,19 @@ def file_public(row: dict[str, Any]) -> dict[str, Any]:
 
 def diagnostic_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.DiagnosticEventPublic, row)
+
+
+def task_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.TaskPublic, row)
+
+
+def task_event_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.TaskEventPublic, row)
+
+
+def message_task_ref_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.MessageTaskRefPublic, row)
+
+
+def activity_item_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.ActivityItemPublic, row)

@@ -12,8 +12,10 @@ from coagentia_contracts.entities import (
     ComputerPublic,
     ContractModel,
     HeldDraftPublic,
+    MemberPublic,
     MessagePublic,
     ReadPositionPublic,
+    TaskContractPublic,
     TaskPublic,
 )
 from coagentia_contracts.enums import (
@@ -21,6 +23,7 @@ from coagentia_contracts.enums import (
     MemberKind,
     MemberRole,
     PresenceStatus,
+    TaskStatus,
     UiTheme,
 )
 from coagentia_contracts.ids import Ulid
@@ -38,6 +41,7 @@ class ErrorCode(StrEnum):
     NOT_TOP_LEVEL_MESSAGE = "NOT_TOP_LEVEL_MESSAGE"  # 422（T3）
     CLAIM_RACE = "CLAIM_RACE"  # 409（T2）
     HANDOFF_INCOMPLETE = "HANDOFF_INCOMPLETE"  # 422（T7）
+    TASK_TRANSITION_INVALID = "TASK_TRANSITION_INVALID"  # 422（§9.1；details {from,to,allowed}）
     GRAPH_CYCLE = "GRAPH_CYCLE"  # 422（V9 报告格式）
     STALE_CONFIRM = "STALE_CONFIRM"  # 409（S2；响应携带最新态）
     DELTA_BASE_MISMATCH = "DELTA_BASE_MISMATCH"  # 409（F9）
@@ -253,6 +257,78 @@ class ReadPositionPut(ContractModel):
     last_read_message_id: Ulid
 
 
+# ------------------------------------------------------------ 4.7/4.8 任务域（M2）
+
+
+class TaskStatusChange(ContractModel):
+    """状态写（B §9.1）——POST /tasks/{id}/status。
+
+    非法边 → 422 TASK_TRANSITION_INVALID；to==当前 → 幂等 200。
+    """
+
+    to: TaskStatus
+
+
+class AssignRequest(ContractModel):
+    """改派（B §9.2）——POST /tasks/{id}/assign；member_id=None → 取消指派（不动 status）。"""
+
+    member_id: Ulid | None = None
+
+
+class ConvertToTask(ContractModel):
+    """Convert to Task（B §9.3）——POST /messages/{id}/task。
+
+    title 缺省 = 锚点 body 首非空行剥 MD 前缀、>80 截断。
+    """
+
+    title: str | None = None
+
+
+class TaskPatch(ContractModel):
+    """元数据补丁（B §4.7）——PATCH /tasks/{id}；不写 task_events，广播 task.updated。"""
+
+    title: str | None = None
+    silence_override_h: int | None = None  # 列 M2 就位；D5 消费方随 M4
+
+
+class TaskUsage(ContractModel):
+    """TaskDetail 的成本聚合（token_usage_events 按 task_id 汇总）。"""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    events: int = 0  # token_usage_events 按 task_id 聚合的行数
+
+
+class TaskDetail(ContractModel):
+    """GET /tasks/{id}（B §9.8）。"""
+
+    task: TaskPublic
+    contracts: list[TaskContractPublic] = []  # M3 前恒空
+    usage: TaskUsage
+
+
+class SearchJumps(ContractModel):
+    """GET /search 的跳转分组（名称子串命中，NOCASE）。"""
+
+    channels: list[ChannelPublic] = []
+    members: list[MemberPublic] = []
+
+
+class SearchMessageResult(ContractModel):
+    message: MessagePublic
+    snippet: str  # FTS5 snippet()：«»高亮 + …省略、窗口 12 token（B §9.6.3）
+
+
+class SearchResponse(ContractModel):
+    """搜索（B §9.6）——GET /search，三分组。"""
+
+    jumps: SearchJumps
+    messages: list[SearchMessageResult] = []  # messages_fts 命中
+    tasks: list[TaskPublic] = []  # title 子串 ∪ 锚点 FTS 去重
+
+
 # ---------------------------------------------------- M1 端点清单（mock 一致性测试的基准）
 
 ENDPOINTS_M1: tuple[tuple[str, str], ...] = (
@@ -295,4 +371,24 @@ ENDPOINTS_M1: tuple[tuple[str, str], ...] = (
     ("POST", "/files"),
     ("GET", "/files/{file_id}/content"),
     ("PUT", "/channels/{channel_id}/read-position"),
+)
+
+# ---------------------------------------------------- M2 端点清单（§4.7/§4.8 M2 集 + files 页签）
+# force-start / 契约端点归 M3，不列。路径参数命名沿用 M1 约定。
+ENDPOINTS_M2: tuple[tuple[str, str], ...] = (
+    # §4.7 任务域（M2）
+    ("GET", "/tasks"),
+    ("POST", "/messages/{message_id}/task"),
+    ("GET", "/tasks/{task_id}"),
+    ("POST", "/tasks/{task_id}/claim"),
+    ("POST", "/tasks/{task_id}/unclaim"),
+    ("POST", "/tasks/{task_id}/assign"),
+    ("POST", "/tasks/{task_id}/status"),
+    ("PATCH", "/tasks/{task_id}"),
+    # §4.6 文件页签（v1.1 新增）
+    ("GET", "/channels/{channel_id}/files"),
+    # §4.8 搜索与 Activity
+    ("GET", "/search"),
+    ("GET", "/activity"),
+    ("POST", "/activity/{activity_id}/done"),
 )

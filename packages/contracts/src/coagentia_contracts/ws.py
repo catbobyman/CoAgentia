@@ -220,7 +220,9 @@ class TaskChange(ContractModel):
 
 class TaskUpdatedData(ContractModel):
     task: TaskPublic
-    change: TaskChange
+    # PATCH /tasks/{id}（元数据改）无对应 TaskEventKind → change 可空（契约 C §6.4 编辑性放宽，
+    # 向后兼容；claim/unclaim/assign/status 仍携带完整 change）。
+    change: TaskChange | None = None
 
 
 class TaskContractData(ContractModel):

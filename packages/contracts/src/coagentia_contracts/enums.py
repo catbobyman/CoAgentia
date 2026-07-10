@@ -85,6 +85,7 @@ class TaskEventKind(StrEnum):
     STATUS_CHANGE = "status_change"
     CLAIM = "claim"
     UNCLAIM = "unclaim"
+    ASSIGN = "assign"  # v1.0.2：B §4.7 assign 端点留痕载体（owner_member_id=新值或 NULL）
     FORCE_START = "force_start"
     REMINDER_SENT = "reminder_sent"
     ESCALATED = "escalated"
@@ -140,10 +141,26 @@ class ReminderStatus(StrEnum):
 
 class ActivityKind(StrEnum):
     MENTION = "mention"
+    DM = "dm"  # v1.0.2：DM 新消息给对方人类成员（FR-4.7 必达；生成规则 B §9.7）
     SILENCE_ESCALATION = "silence_escalation"
     HELD_ESCALATION = "held_escalation"
     FAIL_CLOSED = "fail_closed"
     SYSTEM = "system"
+
+
+class ActivityFilter(StrEnum):
+    """GET /activity?filter=（B §9.7.3）。"""
+
+    ALL = "all"
+    UNREAD = "unread"
+    MENTIONS = "mentions"
+
+
+class SearchKind(StrEnum):
+    """GET /search?kind=（B §9.6.1；缺省全搜）。"""
+
+    MESSAGE = "message"
+    TASK = "task"
 
 
 class LandingBatchKind(StrEnum):

@@ -14,7 +14,7 @@ export type ChannelId = string | null;
 export type CreatedAt = string;
 export type DoneAt = string | null;
 export type Id = string;
-export type ActivityKind = 'mention' | 'silence_escalation' | 'held_escalation' | 'fail_closed' | 'system';
+export type ActivityKind = 'mention' | 'dm' | 'silence_escalation' | 'held_escalation' | 'fail_closed' | 'system';
 export type MemberId = string;
 export type MessageId = string | null;
 export type TaskId = string | null;
@@ -100,6 +100,7 @@ export type MessageIds = string[] | null;
 export type NodeId = string | null;
 export type ReminderId = string | null;
 export type Title = string | null;
+export type MemberId5 = string | null;
 export type Diagnostics = number;
 export type Usage = number;
 export type BaselineHash = string;
@@ -175,20 +176,20 @@ export type RemindInprogH = number;
 export type RemindReviewH = number;
 export type RemindTodoH = number;
 export type WorkspaceId4 = string;
-export type MemberId5 = string;
+export type MemberId6 = string;
 export type ChannelId4 = string;
 export type JoinedAt = string;
-export type MemberId6 = string;
+export type MemberId7 = string;
 export type ChannelId5 = string;
 export type JoinedAt1 = string;
-export type MemberId7 = string;
-export type ChannelId6 = string;
 export type MemberId8 = string;
-export type ChannelId7 = string;
+export type ChannelId6 = string;
 export type MemberId9 = string;
+export type ChannelId7 = string;
+export type MemberId10 = string;
 export type NotificationMode = 'all' | 'mentions' | 'mute';
 export type ChannelId8 = string;
-export type MemberId10 = string;
+export type MemberId11 = string;
 export type NotificationMode1 = 'all' | 'mentions' | 'mute';
 export type DecompMode1 = string | null;
 export type DecompNodeLimit1 = number | null;
@@ -228,7 +229,7 @@ export type Items = ChannelPublic[];
 export type ChannelId11 = string;
 export type LastReadAt = string;
 export type LastReadMessageId = string;
-export type MemberId11 = string;
+export type MemberId12 = string;
 export type ReadPositions = ReadPositionPublic[];
 export type Name7 = string;
 export type ApiKey = string;
@@ -257,6 +258,7 @@ export type Name10 = string;
 export type Os1 = string | null;
 export type ComputerStatus1 = 'connected' | 'offline';
 export type WorkspaceId7 = string;
+export type Title1 = string | null;
 export type AgentMemberId6 = string;
 export type Detail1 = string;
 export type AgentMemberId7 = string;
@@ -335,7 +337,7 @@ export type TaskId6 = string | null;
 export type Type2 = string;
 export type WorkspaceId12 = string;
 export type Events1 = DiagnosticEventIn[];
-export type MemberId12 = string;
+export type MemberId13 = string;
 export type Adjustments = JsonValue[];
 export type ProposalId = string;
 export type At1 = string;
@@ -413,6 +415,7 @@ export type ErrorCode =
   | 'NOT_TOP_LEVEL_MESSAGE'
   | 'CLAIM_RACE'
   | 'HANDOFF_INCOMPLETE'
+  | 'TASK_TRANSITION_INVALID'
   | 'GRAPH_CYCLE'
   | 'STALE_CONFIRM'
   | 'DELTA_BASE_MISMATCH'
@@ -604,7 +607,7 @@ export type RootMessageId = string;
 export type SilenceOverrideH = number | null;
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt = string;
-export type Title1 = string;
+export type Title2 = string;
 export type WorkspaceId23 = string;
 export type AgentMemberId16 = string;
 export type ChannelId24 = string;
@@ -613,9 +616,9 @@ export type ThreadRootId4 = string | null;
 export type AgentMemberId17 = string;
 export type Body2 = string;
 export type DiagnosticType = string;
-export type MemberId13 = string;
-export type MessageId4 = string;
 export type MemberId14 = string;
+export type MessageId4 = string;
+export type MemberId15 = string;
 export type MessageId5 = string;
 export type AuthorMemberId1 = string | null;
 export type Body3 = string;
@@ -633,13 +636,13 @@ export type TaskId9 = string;
 export type Items1 = unknown[];
 export type NextCursor = string | null;
 export type Type3 = 'ping';
-export type MemberId15 = string;
+export type MemberId16 = string;
 /**
  * `GET /presence` 与 `presence.changed` 的合并视图值域：人类 online/offline，Agent 五态。
  */
 export type PresenceStatus = 'online' | 'offline' | 'starting' | 'idle' | 'busy' | 'error';
 export type BusyDetail = string | null;
-export type MemberId16 = string;
+export type MemberId17 = string;
 export type Items2 = PresenceEntry[];
 export type Id27 = string;
 export type LastActiveAt = string | null;
@@ -745,10 +748,10 @@ export type LastReadMessageId1 = string;
 export type ChannelId28 = string;
 export type LastReadAt1 = string;
 export type LastReadMessageId2 = string;
-export type MemberId17 = string;
+export type MemberId18 = string;
 export type ChannelId29 = string;
 export type LastReadMessageId3 = string;
-export type MemberId18 = string;
+export type MemberId19 = string;
 export type AnchorChannelId = string;
 export type AnchorMessageId = string | null;
 export type AnchorTaskId = string | null;
@@ -802,6 +805,11 @@ export type ReportType =
   | 'worktree.status';
 export type V5 = number;
 export type Runtimes = DetectedRuntime[];
+export type Channels = ChannelPublic[];
+export type Members = MemberPublic[];
+export type Snippet = string;
+export type Messages1 = SearchMessageResult[];
+export type Tasks = TaskPublic[];
 export type Skills1 = string[];
 export type DeploymentId4 = string;
 export type Stream = 'deploy_log';
@@ -816,7 +824,8 @@ export type ServerVersion1 = string;
 export type WorkspaceId33 = string;
 export type ActorMemberId2 = string | null;
 export type TaskStatus1 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
-export type TaskEventKind = 'status_change' | 'claim' | 'unclaim' | 'force_start' | 'reminder_sent' | 'escalated';
+export type TaskEventKind =
+  'status_change' | 'claim' | 'unclaim' | 'assign' | 'force_start' | 'reminder_sent' | 'escalated';
 export type CreatedAt29 = string;
 export type CreatedByMemberId3 = string;
 export type Id35 = string;
@@ -836,26 +845,36 @@ export type SupersededAt1 = string | null;
 export type TaskId14 = string | null;
 export type Version1 = string;
 export type WorkspaceId35 = string;
+export type Contracts = TaskContractPublic[];
+export type CacheReadTokens = number;
+export type CacheWriteTokens = number;
+export type Events2 = number;
+export type InputTokens = number;
+export type OutputTokens = number;
 export type ActorMemberId3 = string | null;
 export type CreatedAt31 = string;
+export type OwnerMemberId1 = string | null;
 export type Seq5 = number;
 export type TaskId15 = string;
 export type ActorMemberId4 = string | null;
 export type CreatedAt32 = string;
+export type OwnerMemberId2 = string | null;
 export type Seq6 = number;
 export type TaskId16 = string;
+export type SilenceOverrideH1 = number | null;
+export type Title3 = string | null;
 export type ChannelId30 = string;
 export type CreatedAt33 = string;
 export type CreatedByMemberId5 = string;
 export type Id37 = string;
 export type TaskLevel1 = 'l1' | 'l2';
 export type Number1 = number;
-export type OwnerMemberId1 = string | null;
+export type OwnerMemberId3 = string | null;
 export type RootMessageId1 = string;
-export type SilenceOverrideH1 = number | null;
+export type SilenceOverrideH2 = number | null;
 export type TaskStatus2 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt1 = string;
-export type Title2 = string;
+export type Title4 = string;
 export type WorkspaceId36 = string;
 export type Builtin2 = boolean;
 export type CreatedAt34 = string;
@@ -871,45 +890,45 @@ export type Description9 = string;
 export type Id39 = string;
 export type Name19 = string;
 export type WorkspaceId38 = string;
-export type CacheReadTokens = number;
-export type CacheWriteTokens = number;
-export type InputTokens = number;
-export type OutputTokens = number;
-export type AgentMemberId21 = string;
 export type CacheReadTokens1 = number;
 export type CacheWriteTokens1 = number;
-export type ChannelId31 = string | null;
-export type Id40 = string;
 export type InputTokens1 = number;
 export type OutputTokens1 = number;
+export type AgentMemberId21 = string;
+export type CacheReadTokens2 = number;
+export type CacheWriteTokens2 = number;
+export type ChannelId31 = string | null;
+export type Id40 = string;
+export type InputTokens2 = number;
+export type OutputTokens2 = number;
 export type ReportedAt = string;
 export type SourceSession1 = string | null;
 export type ThreadRootId6 = string | null;
 export type AgentMemberId22 = string;
-export type CacheReadTokens2 = number;
-export type CacheWriteTokens2 = number;
+export type CacheReadTokens3 = number;
+export type CacheWriteTokens3 = number;
 export type ChannelId32 = string | null;
 export type Id41 = string;
-export type InputTokens2 = number;
-export type OutputTokens2 = number;
+export type InputTokens3 = number;
+export type OutputTokens3 = number;
 export type ReportedAt1 = string;
 export type SourceSession2 = string | null;
 export type TaskId17 = string | null;
 export type WorkspaceId39 = string;
 export type AgentMemberId23 = string;
-export type CacheReadTokens3 = number;
-export type CacheWriteTokens3 = number;
+export type CacheReadTokens4 = number;
+export type CacheWriteTokens4 = number;
 export type ChannelId33 = string | null;
 export type Id42 = string;
-export type InputTokens3 = number;
-export type OutputTokens3 = number;
+export type InputTokens4 = number;
+export type OutputTokens4 = number;
 export type ReportedAt2 = string;
 export type SourceSession3 = string | null;
 export type TaskId18 = string | null;
 export type WorkspaceId40 = string;
 export type AgentMemberId24 = string;
 export type TaskId19 = string | null;
-export type Events2 = TokenUsageEventIn[];
+export type Events3 = TokenUsageEventIn[];
 export type Name20 = string;
 export type Slug = string;
 export type AttachmentMaxMb = number | null;
@@ -993,6 +1012,7 @@ export interface CoAgentiaContracts {
   AgentUpdatedData?: AgentUpdatedData;
   AgentWakeData?: AgentWakeData;
   AsTask?: AsTask;
+  AssignRequest?: AssignRequest;
   BufferedCounts?: BufferedCounts;
   CanvasBaselineAdvancedData?: CanvasBaselineAdvancedData;
   CanvasEdgeData?: CanvasEdgeData;
@@ -1026,6 +1046,7 @@ export interface CoAgentiaContracts {
   ComputerPatch?: ComputerPatch;
   ComputerPublic?: ComputerPublic;
   ComputerRow?: ComputerRow;
+  ConvertToTask?: ConvertToTask;
   DaemonAgentActivityData?: DaemonAgentActivityData;
   DaemonAgentState?: DaemonAgentState;
   DaemonHelloAckData?: DaemonHelloAckData;
@@ -1117,6 +1138,9 @@ export interface CoAgentiaContracts {
   ReportFrame?: ReportFrame;
   RuntimeRescanData?: RuntimeRescanData;
   RuntimesDetectedData?: RuntimesDetectedData;
+  SearchJumps?: SearchJumps;
+  SearchMessageResult?: SearchMessageResult;
+  SearchResponse?: SearchResponse;
   SkillsPut?: SkillsPut;
   SubDeployLogMsg?: SubDeployLogMsg;
   SubDiagnosticMsg?: SubDiagnosticMsg;
@@ -1127,11 +1151,15 @@ export interface CoAgentiaContracts {
   TaskContractPublic?: TaskContractPublic;
   TaskContractRow?: TaskContractRow;
   TaskCreatedData?: TaskCreatedData;
+  TaskDetail?: TaskDetail;
   TaskEventPublic?: TaskEventPublic;
   TaskEventRow?: TaskEventRow;
+  TaskPatch?: TaskPatch;
   TaskPublic?: TaskPublic;
   TaskRow?: TaskRow;
+  TaskStatusChange?: TaskStatusChange;
   TaskUpdatedData?: TaskUpdatedData;
+  TaskUsage?: TaskUsage;
   TemplatePublic?: TemplatePublic;
   TemplateRow?: TemplateRow;
   TokenTotals?: TokenTotals;
@@ -1312,6 +1340,12 @@ export interface WakeRefs {
 export interface AsTask {
   title?: Title;
 }
+/**
+ * 改派（B §9.2）——POST /tasks/{id}/assign；member_id=None → 取消指派（不动 status）。
+ */
+export interface AssignRequest {
+  member_id?: MemberId5;
+}
 export interface BufferedCounts {
   diagnostics?: Diagnostics;
   usage?: Usage;
@@ -1437,25 +1471,25 @@ export interface ChannelPublic {
   workspace_id: WorkspaceId4;
 }
 export interface ChannelMemberAdd {
-  member_id: MemberId5;
+  member_id: MemberId6;
 }
 export interface ChannelMemberPublic {
   channel_id: ChannelId4;
   joined_at: JoinedAt;
-  member_id: MemberId6;
+  member_id: MemberId7;
 }
 export interface ChannelMemberRow {
   channel_id: ChannelId5;
   joined_at: JoinedAt1;
-  member_id: MemberId7;
+  member_id: MemberId8;
 }
 export interface ChannelMembershipData {
   channel_id: ChannelId6;
-  member_id: MemberId8;
+  member_id: MemberId9;
 }
 export interface ChannelNotificationSettingPublic {
   channel_id: ChannelId7;
-  member_id: MemberId9;
+  member_id: MemberId10;
   mode?: NotificationMode;
 }
 /**
@@ -1463,7 +1497,7 @@ export interface ChannelNotificationSettingPublic {
  */
 export interface ChannelNotificationSettingRow {
   channel_id: ChannelId8;
-  member_id: MemberId10;
+  member_id: MemberId11;
   mode?: NotificationMode1;
 }
 export interface ChannelPatch {
@@ -1520,7 +1554,7 @@ export interface ReadPositionPublic {
   channel_id: ChannelId11;
   last_read_at: LastReadAt;
   last_read_message_id: LastReadMessageId;
-  member_id: MemberId11;
+  member_id: MemberId12;
 }
 export interface ComputerCreate {
   name: Name7;
@@ -1574,6 +1608,14 @@ export interface ComputerRow {
   os?: Os1;
   status?: ComputerStatus1;
   workspace_id: WorkspaceId7;
+}
+/**
+ * Convert to Task（B §9.3）——POST /messages/{id}/task。
+ *
+ * title 缺省 = 锚点 body 首非空行剥 MD 前缀、>80 截断。
+ */
+export interface ConvertToTask {
+  title?: Title1;
 }
 export interface DaemonAgentActivityData {
   agent_member_id: AgentMemberId6;
@@ -1713,7 +1755,7 @@ export interface DiagnosticsBatchData {
   events: Events1;
 }
 export interface DmCreate {
-  member_id: MemberId12;
+  member_id: MemberId13;
 }
 export interface DraftAdjustedData {
   adjustments: Adjustments;
@@ -1985,7 +2027,7 @@ export interface TaskPublic {
   silence_override_h?: SilenceOverrideH;
   status?: TaskStatus;
   status_changed_at: StatusChangedAt;
-  title: Title1;
+  title: Title2;
   workspace_id: WorkspaceId23;
 }
 export interface MessageCreatedData {
@@ -2016,14 +2058,14 @@ export interface MessageInjectData {
   source: InjectSource;
 }
 export interface MessageMentionPublic {
-  member_id: MemberId13;
+  member_id: MemberId14;
   message_id: MessageId4;
 }
 /**
  * 发送时服务端解析一次的派生持久化；body 是唯一事实源。
  */
 export interface MessageMentionRow {
-  member_id: MemberId14;
+  member_id: MemberId15;
   message_id: MessageId5;
 }
 /**
@@ -2064,7 +2106,7 @@ export interface PingMsg {
 }
 export interface PresenceChangedData {
   kind: MemberKind;
-  member_id: MemberId15;
+  member_id: MemberId16;
   status: PresenceStatus;
 }
 /**
@@ -2073,7 +2115,7 @@ export interface PresenceChangedData {
 export interface PresenceEntry {
   busy_detail?: BusyDetail;
   kind: MemberKind;
-  member_id: MemberId16;
+  member_id: MemberId17;
   status: PresenceStatus;
 }
 export interface PresenceSnapshot {
@@ -2200,12 +2242,12 @@ export interface ReadPositionRow {
   channel_id: ChannelId28;
   last_read_at: LastReadAt1;
   last_read_message_id: LastReadMessageId2;
-  member_id: MemberId17;
+  member_id: MemberId18;
 }
 export interface ReadUpdatedData {
   channel_id: ChannelId29;
   last_read_message_id: LastReadMessageId3;
-  member_id: MemberId18;
+  member_id: MemberId19;
 }
 /**
  * Agent 主体自设（FR-3.9）；recurring 无 loop_contract → 422（D1-L2）。
@@ -2272,6 +2314,25 @@ export interface RuntimeRescanData {}
 export interface RuntimesDetectedData {
   runtimes: Runtimes;
 }
+/**
+ * GET /search 的跳转分组（名称子串命中，NOCASE）。
+ */
+export interface SearchJumps {
+  channels?: Channels;
+  members?: Members;
+}
+export interface SearchMessageResult {
+  message: MessagePublic;
+  snippet: Snippet;
+}
+/**
+ * 搜索（B §9.6）——GET /search，三分组。
+ */
+export interface SearchResponse {
+  jumps: SearchJumps;
+  messages?: Messages1;
+  tasks?: Tasks;
+}
 export interface SkillsPut {
   skills: Skills1;
 }
@@ -2334,11 +2395,30 @@ export interface TaskContractRow {
 export interface TaskCreatedData {
   task: TaskPublic;
 }
+/**
+ * GET /tasks/{id}（B §9.8）。
+ */
+export interface TaskDetail {
+  contracts?: Contracts;
+  task: TaskPublic;
+  usage: TaskUsage;
+}
+/**
+ * TaskDetail 的成本聚合（token_usage_events 按 task_id 汇总）。
+ */
+export interface TaskUsage {
+  cache_read_tokens?: CacheReadTokens;
+  cache_write_tokens?: CacheWriteTokens;
+  events?: Events2;
+  input_tokens?: InputTokens;
+  output_tokens?: OutputTokens;
+}
 export interface TaskEventPublic {
   actor_member_id?: ActorMemberId3;
   created_at: CreatedAt31;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
+  owner_member_id?: OwnerMemberId1;
   seq: Seq5;
   task_id: TaskId15;
   to_status?: TaskStatus1 | null;
@@ -2351,9 +2431,17 @@ export interface TaskEventRow {
   created_at: CreatedAt32;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
+  owner_member_id?: OwnerMemberId2;
   seq: Seq6;
   task_id: TaskId16;
   to_status?: TaskStatus1 | null;
+}
+/**
+ * 元数据补丁（B §4.7）——PATCH /tasks/{id}；不写 task_events，广播 task.updated。
+ */
+export interface TaskPatch {
+  silence_override_h?: SilenceOverrideH1;
+  title?: Title3;
 }
 /**
  * M2：带元数据的消息（T1）。blocked 不入库——画布边实时推导（C3）。
@@ -2365,16 +2453,24 @@ export interface TaskRow {
   id: Id37;
   level?: TaskLevel1;
   number: Number1;
-  owner_member_id?: OwnerMemberId1;
+  owner_member_id?: OwnerMemberId3;
   root_message_id: RootMessageId1;
-  silence_override_h?: SilenceOverrideH1;
+  silence_override_h?: SilenceOverrideH2;
   status?: TaskStatus2;
   status_changed_at: StatusChangedAt1;
-  title: Title2;
+  title: Title4;
   workspace_id: WorkspaceId36;
 }
+/**
+ * 状态写（B §9.1）——POST /tasks/{id}/status。
+ *
+ * 非法边 → 422 TASK_TRANSITION_INVALID；to==当前 → 幂等 200。
+ */
+export interface TaskStatusChange {
+  to: TaskStatus1;
+}
 export interface TaskUpdatedData {
-  change: TaskChange;
+  change?: TaskChange | null;
   task: TaskPublic;
 }
 export interface TemplatePublic {
@@ -2401,10 +2497,10 @@ export interface TemplateRow {
   workspace_id: WorkspaceId38;
 }
 export interface TokenTotals {
-  cache_read_tokens?: CacheReadTokens;
-  cache_write_tokens?: CacheWriteTokens;
-  input_tokens?: InputTokens;
-  output_tokens?: OutputTokens;
+  cache_read_tokens?: CacheReadTokens1;
+  cache_write_tokens?: CacheWriteTokens1;
+  input_tokens?: InputTokens1;
+  output_tokens?: OutputTokens1;
 }
 /**
  * usage 上行条目：id = 适配器 ULID（exactly-once 去重根基，契约 E §7.4）；
@@ -2412,24 +2508,24 @@ export interface TokenTotals {
  */
 export interface TokenUsageEventIn {
   agent_member_id: AgentMemberId21;
-  cache_read_tokens?: CacheReadTokens1;
-  cache_write_tokens?: CacheWriteTokens1;
+  cache_read_tokens?: CacheReadTokens2;
+  cache_write_tokens?: CacheWriteTokens2;
   channel_id?: ChannelId31;
   id: Id40;
-  input_tokens?: InputTokens1;
-  output_tokens?: OutputTokens1;
+  input_tokens?: InputTokens2;
+  output_tokens?: OutputTokens2;
   reported_at: ReportedAt;
   source_session?: SourceSession1;
   thread_root_id?: ThreadRootId6;
 }
 export interface TokenUsageEventPublic {
   agent_member_id: AgentMemberId22;
-  cache_read_tokens?: CacheReadTokens2;
-  cache_write_tokens?: CacheWriteTokens2;
+  cache_read_tokens?: CacheReadTokens3;
+  cache_write_tokens?: CacheWriteTokens3;
   channel_id?: ChannelId32;
   id: Id41;
-  input_tokens?: InputTokens2;
-  output_tokens?: OutputTokens2;
+  input_tokens?: InputTokens3;
+  output_tokens?: OutputTokens3;
   reported_at: ReportedAt1;
   source_session?: SourceSession2;
   task_id?: TaskId17;
@@ -2440,12 +2536,12 @@ export interface TokenUsageEventPublic {
  */
 export interface TokenUsageEventRow {
   agent_member_id: AgentMemberId23;
-  cache_read_tokens?: CacheReadTokens3;
-  cache_write_tokens?: CacheWriteTokens3;
+  cache_read_tokens?: CacheReadTokens4;
+  cache_write_tokens?: CacheWriteTokens4;
   channel_id?: ChannelId33;
   id: Id42;
-  input_tokens?: InputTokens3;
-  output_tokens?: OutputTokens3;
+  input_tokens?: InputTokens4;
+  output_tokens?: OutputTokens4;
   reported_at: ReportedAt2;
   source_session?: SourceSession3;
   task_id?: TaskId18;
@@ -2457,7 +2553,7 @@ export interface TokenUsageReportedData {
   totals: TokenTotals;
 }
 export interface UsageBatchData {
-  events: Events2;
+  events: Events3;
 }
 export interface WorkspaceCreate {
   name: Name20;

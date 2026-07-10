@@ -31,18 +31,24 @@ def _immutable_trigger_ddl(table: str) -> tuple[str, str]:
     return upd, dele
 
 
+def _m1_tables() -> list:
+    return [models.Base.metadata.tables[name] for name in models.M1_TABLES]
+
+
 def upgrade() -> None:
     bind = op.get_bind()
-    # 步骤 4：17 张表全量 DDL（含约束/索引），源自 models.Base.metadata。
-    models.Base.metadata.create_all(bind=bind)
-    # 步骤 5：五张不可变表的 BEFORE UPDATE/DELETE 触发器（body 仅 RAISE(ABORT)）。
-    for table in models.IMMUTABLE_TABLES:
+    # 步骤 4：只建 M1 的 17 张（含约束/索引），源自 models.Base.metadata。
+    # 显式点名 tables=——否则 create_all 读实时全集会连带建出 M2 表（坑1）。
+    models.Base.metadata.create_all(bind=bind, tables=_m1_tables())
+    # 步骤 5：M1 五张不可变表的 BEFORE UPDATE/DELETE 触发器（body 仅 RAISE(ABORT)）。
+    # task_events 是第 6 张，但它 0002 才建，故此处只遍历 M1_IMMUTABLE_TABLES（坑2）。
+    for table in models.M1_IMMUTABLE_TABLES:
         for ddl in _immutable_trigger_ddl(table):
             op.execute(ddl)
 
 
 def downgrade() -> None:
-    for table in models.IMMUTABLE_TABLES:
+    for table in models.M1_IMMUTABLE_TABLES:
         op.execute(f"DROP TRIGGER IF EXISTS trg_{table}_no_update")
         op.execute(f"DROP TRIGGER IF EXISTS trg_{table}_no_delete")
-    models.Base.metadata.drop_all(bind=op.get_bind())
+    models.Base.metadata.drop_all(bind=op.get_bind(), tables=_m1_tables())

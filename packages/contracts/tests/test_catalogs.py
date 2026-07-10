@@ -1,14 +1,16 @@
 """契约 B/C/D 目录对照：错误码、WS 事件、daemon 帧类型逐名一致。"""
 
-from coagentia_contracts import daemon, rest, ws
+from coagentia_contracts import constants, daemon, rest, ws
+from coagentia_contracts.enums import TaskStatus
 
-# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.0.2 起 21 个，新增 CHANNEL_NOT_EMPTY）
+# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.1 起 22 个，新增 TASK_TRANSITION_INVALID）
 ERROR_CODES = {
     "VALIDATION_FAILED", "TASK_IN_DM", "NOT_TOP_LEVEL_MESSAGE", "CLAIM_RACE",
-    "HANDOFF_INCOMPLETE", "GRAPH_CYCLE", "STALE_CONFIRM", "DELTA_BASE_MISMATCH",
-    "NODE_ACTIVE", "NO_ORCHESTRATOR", "IDEMPOTENCY_MISMATCH", "NAME_TAKEN",
-    "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS", "WORKSPACE_EXISTS",
-    "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE", "PERMISSION_DENIED", "NOT_FOUND",
+    "HANDOFF_INCOMPLETE", "TASK_TRANSITION_INVALID", "GRAPH_CYCLE", "STALE_CONFIRM",
+    "DELTA_BASE_MISMATCH", "NODE_ACTIVE", "NO_ORCHESTRATOR", "IDEMPOTENCY_MISMATCH",
+    "NAME_TAKEN", "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS",
+    "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE",
+    "PERMISSION_DENIED", "NOT_FOUND",
 }
 
 # 契约 C §6/§7/§8 全集（转录自 03-WS事件协议.md v1.0）
@@ -59,7 +61,7 @@ REPORT_TYPES = {
 
 def test_error_codes_exact() -> None:
     assert {c.value for c in rest.ErrorCode} == ERROR_CODES
-    assert len(ERROR_CODES) == 21
+    assert len(ERROR_CODES) == 22
 
 
 def test_ws_event_catalog_exact() -> None:
@@ -117,3 +119,38 @@ def test_m1_endpoint_catalog_size() -> None:
     """M1 端点清单：39 条（契约 B §4.1–4.6 的 M1 面，mock 一致性测试的基准）。"""
     assert len(rest.ENDPOINTS_M1) == 39
     assert len(set(rest.ENDPOINTS_M1)) == 39
+
+
+def test_m2_endpoint_catalog_size() -> None:
+    """M2 端点清单：12 条（契约 B §4.7/§4.8 M2 集 + files 页签），与 M1 不相交。"""
+    assert len(rest.ENDPOINTS_M2) == 12
+    assert len(set(rest.ENDPOINTS_M2)) == 12
+    assert set(rest.ENDPOINTS_M1).isdisjoint(rest.ENDPOINTS_M2)
+
+
+# 契约 B §9.1 状态机合法边（转录；纪律 7 单一事实源钉死）
+EXPECTED_TRANSITIONS = {
+    TaskStatus.TODO: {TaskStatus.IN_PROGRESS, TaskStatus.CLOSED},
+    TaskStatus.IN_PROGRESS: {TaskStatus.TODO, TaskStatus.IN_REVIEW, TaskStatus.CLOSED},
+    TaskStatus.IN_REVIEW: {TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.CLOSED},
+    TaskStatus.DONE: set(),
+    TaskStatus.CLOSED: {TaskStatus.TODO},
+}
+
+
+def test_task_transitions_match_contract() -> None:
+    assert set(constants.TASK_TRANSITIONS) == set(TaskStatus)  # 全态有键
+    assert {s: set(v) for s, v in constants.TASK_TRANSITIONS.items()} == EXPECTED_TRANSITIONS
+    assert constants.TASK_TRANSITIONS[TaskStatus.DONE] == frozenset()  # done 终态
+    for src, dsts in constants.TASK_TRANSITIONS.items():
+        assert src not in dsts  # 无自环（幂等另处理）
+        for dst in dsts:
+            assert isinstance(dst, TaskStatus)  # 每条边目标都是合法 TaskStatus
+
+
+def test_mcp_tool_catalog() -> None:
+    """MCP 正目录含 M2 组，且与 DISALLOWED_TOOLS 负目录不相交（契约 E §3/§2）。"""
+    assert set(constants.COAGENTIA_MCP_TOOLS) >= {
+        "list_tasks", "get_task", "claim_task", "unclaim_task", "set_task_status", "search",
+    }
+    assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)

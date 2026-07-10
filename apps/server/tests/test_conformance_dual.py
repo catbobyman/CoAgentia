@@ -176,7 +176,83 @@ def test_post_message_shape(dual: DualClient) -> None:
     r = client.post(f"/api/channels/{build['id']}/messages", json={"body": "契约即形状。"})
     assert r.status_code == 201
     created = rest.MessageCreated.model_validate(r.json())
-    assert created.task is None  # M1：tasks 是 M2 表，as_task 缺省 → task=null
+    assert created.task is None  # 无 as_task → task=null
+
+
+# ---------------------------------------------------------------- 任务域形状（M2 双跑）
+
+
+def test_as_task_creates_task(dual: DualClient) -> None:
+    _, client = dual
+    build = _build_channel(client)
+    r = client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "修一下登录 bug", "as_task": {"title": "登录 bug"}},
+    )
+    assert r.status_code == 201
+    created = rest.MessageCreated.model_validate(r.json())
+    assert created.task is not None
+    assert created.task.number >= 1
+    assert created.task.status is entities.TaskStatus.TODO
+    assert created.task.root_message_id == created.message.id
+
+
+def test_convert_message_to_task_shape(dual: DualClient) -> None:
+    _, client = dual
+    build = _build_channel(client)
+    msg = client.post(
+        f"/api/channels/{build['id']}/messages", json={"body": "# 顶级消息\n正文"}
+    ).json()["message"]
+    r = client.post(f"/api/messages/{msg['id']}/task", json={})
+    assert r.status_code == 201
+    task = entities.TaskPublic.model_validate(r.json())
+    assert task.root_message_id == msg["id"]
+
+
+def test_get_tasks_shape(dual: DualClient) -> None:
+    _, client = dual
+    build = _build_channel(client)
+    client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "任务列表形状", "as_task": {"title": "t"}},
+    )
+    page = rest.Page[entities.TaskPublic].model_validate(client.get("/api/tasks").json())
+    assert page.items, "至少一条任务"
+    # channel 过滤面
+    filtered = rest.Page[entities.TaskPublic].model_validate(
+        client.get("/api/tasks", params={"channel_id": build["id"]}).json()
+    )
+    assert all(t.channel_id == build["id"] for t in filtered.items)
+
+
+def test_task_detail_shape(dual: DualClient) -> None:
+    _, client = dual
+    build = _build_channel(client)
+    created = client.post(
+        f"/api/channels/{build['id']}/messages",
+        json={"body": "详情形状", "as_task": {"title": "t"}},
+    ).json()
+    detail = rest.TaskDetail.model_validate(
+        client.get(f"/api/tasks/{created['task']['id']}").json()
+    )
+    assert detail.contracts == []  # M3 前恒空
+    assert detail.usage.events == 0  # 无 usage 富化 → 0（优雅缺席）
+
+
+def test_task_created_broadcast(dual: DualClient) -> None:
+    _, client = dual
+    build = _build_channel(client)
+    with client.websocket_connect("/api/ws") as sock:
+        hello = _envelope_of(sock.receive_json())
+        r = client.post(
+            f"/api/channels/{build['id']}/messages",
+            json={"body": "广播序", "as_task": {"title": "t"}},
+        )
+        assert r.status_code == 201
+        # message.created 先于 task.created（B §9.4 严格提交序）。
+        created = _drain_until(sock, ws.EventType.MESSAGE_CREATED, hello.seq)
+        task_created = _drain_until(sock, ws.EventType.TASK_CREATED, created.seq)
+        assert task_created.data["task"]["id"] == r.json()["task"]["id"]
 
 
 # ---------------------------------------------------------------- WS 信封与广播（A4 双跑）

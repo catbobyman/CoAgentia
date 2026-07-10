@@ -32,6 +32,15 @@ M1_TABLE_TO_ROW = {
 }
 
 
+# 表名 → 对应 contracts *Row 模型（契约 A §5 M2 批次 4 张；messages_fts 虚表无 Row，不列）
+M2_TABLE_TO_ROW = {
+    "tasks": entities.TaskRow,
+    "task_events": entities.TaskEventRow,
+    "message_task_refs": entities.MessageTaskRefRow,
+    "activity_items": entities.ActivityItemRow,
+}
+
+
 def _row_fields(model: type) -> set[str]:
     return set(model.model_fields)  # type: ignore[attr-defined]
 
@@ -40,9 +49,23 @@ def test_m1_batch_has_17_tables() -> None:
     assert len(M1_TABLE_TO_ROW) == 17
 
 
+def test_m2_batch_has_4_tables() -> None:
+    assert len(M2_TABLE_TO_ROW) == 4
+
+
 @pytest.mark.parametrize("table_name", sorted(M1_TABLE_TO_ROW))
 def test_columns_match_contract_row(migrated_engine: Engine, table_name: str) -> None:
     row_model = M1_TABLE_TO_ROW[table_name]
+    reflected = {col["name"] for col in inspect(migrated_engine).get_columns(table_name)}
+    assert reflected == _row_fields(row_model), (
+        f"{table_name}: 反射列集与 {row_model.__name__} 字段集不一致 "
+        f"（多 {reflected - _row_fields(row_model)} / 缺 {_row_fields(row_model) - reflected}）"
+    )
+
+
+@pytest.mark.parametrize("table_name", sorted(M2_TABLE_TO_ROW))
+def test_m2_columns_match_contract_row(migrated_engine: Engine, table_name: str) -> None:
+    row_model = M2_TABLE_TO_ROW[table_name]
     reflected = {col["name"] for col in inspect(migrated_engine).get_columns(table_name)}
     assert reflected == _row_fields(row_model), (
         f"{table_name}: 反射列集与 {row_model.__name__} 字段集不一致 "

@@ -65,7 +65,8 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
         "status_changed_at", "created_at",
     }),
     "task_events": (entities.TaskEventRow, {
-        "seq", "task_id", "kind", "from_status", "to_status", "actor_member_id", "created_at",
+        "seq", "task_id", "kind", "from_status", "to_status", "owner_member_id",
+        "actor_member_id", "created_at",
     }),
     "task_contracts": (entities.TaskContractRow, {
         "id", "workspace_id", "task_id", "reminder_id", "kind", "version", "body", "revision",

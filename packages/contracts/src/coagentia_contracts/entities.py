@@ -352,6 +352,7 @@ class TaskEventRow(ContractModel):
     kind: TaskEventKind
     from_status: TaskStatus | None = None
     to_status: TaskStatus | None = None
+    owner_member_id: Ulid | None = None  # v1.0.2：claim/assign 时=新 owner（assign 取消置 NULL）
     actor_member_id: Ulid | None = None  # 系统动作为 NULL
     created_at: TimestampZ
 

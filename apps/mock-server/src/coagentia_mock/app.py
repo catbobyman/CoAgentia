@@ -10,6 +10,7 @@ from typing import Any
 
 import uvicorn
 from coagentia_contracts import entities, rest
+from coagentia_contracts.enums import ActivityFilter, SearchKind
 from coagentia_contracts.ws import EventType
 from fastapi import FastAPI, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -474,15 +475,108 @@ async def put_read_position(channel_id: str, body: rest.ReadPositionPut) -> Any:
     return row
 
 
-# ---------------------------------------------------------------- M2 只读提前面（P1 任务牌数据源）
+# ---------------------------------------------------------------- M2 任务/搜索/Activity（纯形状）
+#
+# C0 登记：mock 只验形状不做业务（无状态机/竞态/FTS，纪律 4）——喂 OpenAPI→rest.ts。
+# 状态机（TASK_TRANSITION_INVALID）、CLAIM_RACE、FTS 命中都活在真 server（C1/C2）。
+
+
+def require_task(task_id: str) -> dict[str, Any]:
+    task = next((t for t in store.tasks if t["id"] == task_id), None)
+    if task is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "task not found")
+    return task
 
 
 @app.get("/api/tasks", response_model=rest.Page[entities.TaskPublic])
-async def list_tasks(channel_id: str | None = None, status: str | None = None) -> Any:
+async def list_tasks(channel_id: str | None = None, status: str | None = None,
+                     owner: str | None = None, creator: str | None = None,
+                     after: str | None = None, limit: int = rest.PAGE_DEFAULT_LIMIT) -> Any:
     items = [t for t in store.tasks
              if (channel_id is None or t["channel_id"] == channel_id)
-             and (status is None or t["status"] == status)]
+             and (status is None or t["status"] == status)
+             and (owner is None or t.get("owner_member_id") == owner)
+             and (creator is None or t.get("created_by_member_id") == creator)]
     return {"items": sorted(items, key=lambda t: t["number"]), "next_cursor": None}
+
+
+@app.get("/api/tasks/{task_id}", response_model=rest.TaskDetail)
+async def get_task_detail(task_id: str) -> Any:
+    task = require_task(task_id)
+    usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+             "cache_write_tokens": 0, "events": 0}
+    for e in store.token_usage_events:
+        if e.get("task_id") == task_id:
+            for k in ("input_tokens", "output_tokens", "cache_read_tokens",
+                      "cache_write_tokens"):
+                usage[k] += e.get(k, 0)
+            usage["events"] += 1
+    return {"task": task, "contracts": [], "usage": usage}
+
+
+@app.post("/api/messages/{message_id}/task", response_model=entities.TaskPublic,
+          status_code=201)
+async def convert_message_to_task(message_id: str, body: rest.ConvertToTask) -> Any:
+    msg = next((m for m in store.messages if m["id"] == message_id), None)
+    if msg is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "message not found")
+    title = body.title or msg["body"][:80]
+    task = store.create_task(msg["channel_id"], message_id, title, store.members[0]["id"])
+    await hub.broadcast(EventType.TASK_CREATED, msg["channel_id"], {"task": task})
+    return task
+
+
+@app.post("/api/tasks/{task_id}/claim", response_model=entities.TaskPublic)
+async def claim_task(task_id: str) -> Any:
+    return require_task(task_id)
+
+
+@app.post("/api/tasks/{task_id}/unclaim", response_model=entities.TaskPublic)
+async def unclaim_task(task_id: str) -> Any:
+    return require_task(task_id)
+
+
+@app.post("/api/tasks/{task_id}/assign", response_model=entities.TaskPublic)
+async def assign_task(task_id: str, body: rest.AssignRequest) -> Any:
+    return require_task(task_id)
+
+
+@app.post("/api/tasks/{task_id}/status", response_model=entities.TaskPublic)
+async def set_task_status(task_id: str, body: rest.TaskStatusChange) -> Any:
+    return require_task(task_id)
+
+
+@app.patch("/api/tasks/{task_id}", response_model=entities.TaskPublic)
+async def patch_task(task_id: str, body: rest.TaskPatch) -> Any:
+    return require_task(task_id)
+
+
+@app.get("/api/channels/{channel_id}/files", response_model=rest.Page[entities.FilePublic])
+async def list_channel_files(channel_id: str, after: str | None = None,
+                             limit: int = rest.PAGE_DEFAULT_LIMIT) -> Any:
+    require_channel(channel_id)
+    files = [f["meta"] for f in store.files.values()
+             if f["meta"].get("channel_id") == channel_id]
+    return {"items": files, "next_cursor": None}
+
+
+@app.get("/api/search", response_model=rest.SearchResponse)
+async def search(q: str = "", kind: SearchKind | None = None,
+                 limit: int = rest.PAGE_DEFAULT_LIMIT) -> Any:
+    return {"jumps": {"channels": [], "members": []}, "messages": [], "tasks": []}
+
+
+@app.get("/api/activity", response_model=rest.Page[entities.ActivityItemPublic])
+async def list_activity(filter: ActivityFilter = ActivityFilter.ALL, after: str | None = None,
+                        limit: int = rest.PAGE_DEFAULT_LIMIT) -> Any:
+    return {"items": [], "next_cursor": None}
+
+
+@app.post("/api/activity/{activity_id}/done", response_model=entities.ActivityItemPublic)
+async def mark_activity_done(activity_id: str) -> Any:
+    return {"id": activity_id, "workspace_id": store.workspace["id"],
+            "member_id": store.members[0]["id"], "kind": "mention", "channel_id": None,
+            "message_id": None, "task_id": None, "created_at": now_ts(), "done_at": now_ts()}
 
 
 # ---------------------------------------------------------------- WS 与 mock 控制面

@@ -12,6 +12,7 @@ token_usage_events）的禁 UPDATE/DELETE 触发器由 Alembic 迁移 op.execute
 from __future__ import annotations
 
 from coagentia_contracts.enums import (
+    ActivityKind,
     AgentStatus,
     CardKind,
     ChannelKind,
@@ -25,6 +26,9 @@ from coagentia_contracts.enums import (
     ReminderKind,
     ReminderStatus,
     Runtime,
+    TaskEventKind,
+    TaskLevel,
+    TaskStatus,
     UiTheme,
 )
 from sqlalchemy import (
@@ -45,14 +49,28 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-# 五张不可变表（契约 A §1 写入纪律）——触发器在迁移里生成。
-IMMUTABLE_TABLES: tuple[str, ...] = (
-    "messages",
-    "files",
-    "ledger_entries",
-    "diagnostic_events",
-    "token_usage_events",
+# ── 建表批次清单（契约 A §5 建表节奏）──────────────────────────────
+# 迁移按批次冻结：0001 只建 M1_TABLES，0002 只建 M2_TABLES。
+# 若用 Base.metadata.create_all(bind) 读实时全集，M2 模型入库后 0001 会连带
+# 建出 M2 表，0002 再建即 "table already exists"（坑1）——故两迁移各自显式点名。
+M1_TABLES: tuple[str, ...] = (
+    "workspaces", "computers", "members", "agents", "agent_skills",
+    "channels", "channel_members", "messages", "message_mentions", "files",
+    "read_positions", "reminders", "diagnostic_events", "token_usage_events",
+    "ledger_entries", "landing_batches", "canvases",
 )
+M2_TABLES: tuple[str, ...] = (
+    "tasks", "task_events", "message_task_refs", "activity_items",
+)
+
+# ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
+# task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
+M1_IMMUTABLE_TABLES: tuple[str, ...] = (
+    "messages", "files", "ledger_entries", "diagnostic_events", "token_usage_events",
+)
+M2_IMMUTABLE_TABLES: tuple[str, ...] = ("task_events",)
+# 并集 = head 后应有触发器的全集（测试 test_upgrade_creates_immutable_triggers 遍历此集）。
+IMMUTABLE_TABLES: tuple[str, ...] = M1_IMMUTABLE_TABLES + M2_IMMUTABLE_TABLES
 
 _ULID = String(26)
 
@@ -368,3 +386,84 @@ class Canvas(Base):
     baseline_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     baseline_hash: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[str] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- 4.3 任务与契约（M2）
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+    __table_args__ = (
+        # UNIQUE(channel_id, number)——取自 channels.next_task_number（契约 A §4.3）
+        UniqueConstraint("channel_id", "number", name="uq_tasks_channel_number"),
+        Index("ix_tasks_channel_status", "channel_id", "status"),
+        Index("ix_tasks_owner_status", "owner_member_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    channel_id: Mapped[str] = mapped_column(_ULID, ForeignKey("channels.id"))
+    number: Mapped[int] = mapped_column(Integer)
+    # 锚点消息：一条消息至多一个任务（root_message_id UNIQUE，契约 A §4.3 / B §9.3）
+    root_message_id: Mapped[str] = mapped_column(
+        _ULID, ForeignKey("messages.id"), unique=True
+    )
+    title: Mapped[str] = mapped_column(Text)
+    # CHECK ∈ (todo,in_progress,in_review,done,closed) 由 _enum(TaskStatus) 生成
+    status: Mapped[str] = mapped_column(_enum(TaskStatus), server_default=text("'todo'"))
+    # 同刻唯一 owner = 单列天然满足；claim 防重 = 条件更新 owner IS NULL（T2）
+    owner_member_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("members.id"))
+    level: Mapped[str] = mapped_column(_enum(TaskLevel), server_default=text("'l1'"))
+    created_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    silence_override_h: Mapped[int | None] = mapped_column(Integer)  # D5，M4 才消费
+    status_changed_at: Mapped[str] = mapped_column(Text)  # 沉默提醒计时锚
+    created_at: Mapped[str] = mapped_column(Text)
+
+
+class TaskEvent(Base):
+    __tablename__ = "task_events"
+    __table_args__ = (
+        Index("ix_task_events_task_seq", "task_id", "seq"),
+        {"sqlite_autoincrement": True},
+    )
+
+    # 契约 A §4.3：seq INTEGER PK AUTOINCREMENT（同 ledger_entries/diagnostic_events 口径）
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(_ULID, ForeignKey("tasks.id"))
+    # CHECK ∈ (status_change,claim,unclaim,assign,force_start,reminder_sent,escalated)
+    # ——assign 由 C0 增补进 TaskEventKind，_enum 自动纳入 CHECK
+    kind: Mapped[str] = mapped_column(_enum(TaskEventKind))
+    # kind=status_change 时必填（app 级；DB 允空以承载 claim/assign 行）
+    from_status: Mapped[str | None] = mapped_column(_enum(TaskStatus))
+    to_status: Mapped[str | None] = mapped_column(_enum(TaskStatus))
+    # C0 增列：kind∈claim/assign 时 = 新 owner（assign 置空为 NULL）——owner 变更审计闭环
+    owner_member_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("members.id"))
+    actor_member_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("members.id"))
+    created_at: Mapped[str] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- 4.2 会话面派生（M2）
+
+
+class MessageTaskRef(Base):
+    __tablename__ = "message_task_refs"
+    __table_args__ = (PrimaryKeyConstraint("message_id", "task_id"),)  # 复合 PK
+
+    message_id: Mapped[str] = mapped_column(_ULID, ForeignKey("messages.id"))
+    task_id: Mapped[str] = mapped_column(_ULID, ForeignKey("tasks.id"))
+
+
+class ActivityItem(Base):
+    __tablename__ = "activity_items"
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))  # 接收者
+    # CHECK ∈ (mention,dm,silence_escalation,held_escalation,fail_closed,system)
+    # ——dm 由 C0 增补进 ActivityKind
+    kind: Mapped[str] = mapped_column(_enum(ActivityKind))
+    channel_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("channels.id"))
+    message_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("messages.id"))
+    task_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("tasks.id"))
+    created_at: Mapped[str] = mapped_column(Text)
+    done_at: Mapped[str | None] = mapped_column(Text)  # "Mark as done"
