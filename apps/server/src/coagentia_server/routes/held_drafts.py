@@ -227,7 +227,8 @@ def reevaluate_held_draft(held_draft_id: str, request: Request, tx: Tx = Depends
 
     hub = request.app.state.daemon_hub
     # hub 在独立已提交事务里改状态 + 做 daemon I/O。终态守卫在其 UPDATE 里（评审 #5）：
-    # 路由校验与该 UPDATE 之间若并发终解 → HeldDraftResolved → 以最新态回 409（与 _reject_terminal 一致）。
+    # 路由校验与该 UPDATE 之间若并发终解 → HeldDraftResolved
+    # → 以最新态回 409（与 _reject_terminal 一致）。
     engine = request.app.state.engine
     try:
         hub.reevaluate_held(held_draft_id, resolved_by=me["id"])
