@@ -5,11 +5,12 @@
 | 文档 | 定位 | 维护规则 |
 |---|---|---|
 | [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) | 当前唯一有效的交接入口 | 每次阶段收口时更新 |
-| [M3-DEV-PLAN.md](M3-DEV-PLAN.md) | M3 逐模块执行计划与进度表（§6 块 M3a / §7 块 M3b，均收口） | 阶段记录，收口后保留只读 |
+| [M5-HANDOFF.md](M5-HANDOFF.md) | **M5 模板与第二 runtime 任务书（进行中，2026-07-11 立项）** | 收口后移入 archive/ |
+| [M2-DEV-PLAN.md](M2-DEV-PLAN.md) / [M3-DEV-PLAN.md](M3-DEV-PLAN.md) / [M4-DEV-PLAN.md](M4-DEV-PLAN.md) | 各里程碑逐模块执行计划与进度表（均收口） | 阶段记录，收口后保留只读 |
 | [PROJECT-RECORD.md](PROJECT-RECORD.md) | 历史阶段、关键结果与过时结论汇总 | 阶段完成后追加，不覆盖历史 |
-| [archive/](archive/) | 原始任务书快照（M1/M2/M3 任务书收口后均移入） | 只读归档，不再维护状态 |
+| [archive/](archive/) | 原始任务书快照（M1/M2/M3/M4 任务书收口后均移入） | 只读归档，不再维护状态 |
 
-> **M1/M2/M3 里程碑任务书均已收口并移入 `archive/`**（M1-HANDOFF / M2-HANDOFF / M3-HANDOFF）。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。接续 = M4。
+> **M1/M2/M3/M4 里程碑任务书均已收口并移入 `archive/`**。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。接续 = **M5（已立项，任务书见上）**。
 
 ## 原文件迁移表
 

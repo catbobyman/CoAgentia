@@ -2,9 +2,9 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-10，**块 M4b「freshness 与 HeldDraft」收口 = M4 里程碑完成**后重写（历次增补已沉淀 [PROJECT-RECORD.md](PROJECT-RECORD.md)，本文只保留当前态） |
-| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；里程碑任务书均在 [archive/](archive/)（M4-HANDOFF 已随 M4 收口移档） |
-| 一句话状态 | **M1/M2/M3/M4 全部收口**——M4 = 护栏（freshness/HeldDraft 三键/G4 超时自愈/G5 升级喊人）+ 提醒（D5 沉默升级链 + 循环 Reminder）。M4b 实机 38/38 + `/code-review high` 17 CONFIRMED 全处理。**无待收口里程碑**（下一步 = M5+，见 PRD §8，尚未立项） |
+| 更新 | 2026-07-11，**M5 立项**（契约修订六份落笔 + [M5-HANDOFF.md](M5-HANDOFF.md) 任务书建立）；M4 收口态详情已沉淀 [PROJECT-RECORD.md](PROJECT-RECORD.md) |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；**M5 开工读 [M5-HANDOFF.md](M5-HANDOFF.md)**；历史背景读 PROJECT-RECORD；已收口任务书在 [archive/](archive/) |
+| 一句话状态 | **M1–M4 全部收口，M5「模板与第二 runtime」已立项未开工**——契约修订已先行落笔（A v1.0.6/B v1.3/D v1.0.2/E v1.4 + **E2 v1.0 新建**（06-Codex适配器）/C 零修订核对），owner 四项拍板（Codex 真机可用/FR-7.5 话术承载/cron 收进/技能池探测），任务书两块竖切（M5a 第二 runtime 与配置面 → M5b 模板与向导 = PRD M5 出口） |
 
 ## 1. 当前状态
 
@@ -14,7 +14,7 @@
 | 分支 / HEAD | `main` / `1052ee6 M4b complete: freshness & HeldDraft`（+ 本次 docs 收口提交）；工作树干净 |
 | 提交链（近） | `e177328` M4 立项 → `01ff2d1` M4a 收口 → `dc650f5` M4a docs → **`1052ee6` M4b 收口(F5–F7+B-M4-2+code-review)** |
 | 测试基线 | 后端 **572 passed / 3 skipped**（`uv run pytest -q`）· web vitest **106** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（两跑 diff 空）· 双侧 build 绿 |
-| 契约版本 | A **v1.0.5** · B **v1.2** · C · D **v1.0.1** · E **v1.3**（M4 全部修订已落笔并兑现，M4b 零新契约——纯消费 M4a F0 登记）；事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 五契约 + `docx_agenthub\CoAgentia-PRD.md` |
+| 契约版本 | A **v1.0.6** · B **v1.3** · C **v1.0**（连续零修订）· D **v1.0.2** · E **v1.4** · **E2 v1.0**（06-Codex适配器进程模型，M5 立项新建；帧名开工 H2 实测校准义务）——M5 修订已全部落笔（2026-07-11），contracts 包同步归 H0；事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` |
 | 建表批次 | 0001 M1（17 表）→ 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts（+ 活动行分区唯一索引）；**held_drafts 读写面已在 M4b 全 serve**（freshness 门 + 三键端点 + G4/G5） |
 | 实机证据 | [M4B-EVIDENCE.md](../verify/M4B-EVIDENCE.md)（探针 **38/38** + 3 截图 + console 0；held 场景放行 1 分钟交付 / discard / reevaluate 死循环破除 / G4 超时 / G5 升级 + code-review §5）；[M4A-EVIDENCE.md](../verify/M4A-EVIDENCE.md) 等此前各批同目录 |
 
@@ -40,9 +40,9 @@
 - **护栏与提醒**（M4a）：**D5 沉默提醒升级链**（tasks/silence.py 防自激 last_activity + hub 后台扫描：三态阈值提醒 Todo→创建者/InProg→owner/InReview→频道人类 → 升级主流消息 + activity silence_escalation → 升级后静默；task_events 纯推导无状态列）；**循环 Reminder**（create_reminder 内联 LoopContract 建即生效 + task_contracts 挂接行 + `interval.next_after` 塌缩式重排防重放风暴）；前端 P6 Reminders 页签 + Activity 置顶。
 - **freshness 护栏与 HeldDraft**（M4b）：**freshness 门**（guard/service.py 判定单源——scope=线程/主流未读、仅 Agent 主体过门、幂等 hit 优先于门；扣草稿建/刷新 held 单活动行 SAVEPOINT 兜并发再扣，202 不落库）；**三键人类干预**（release 原载荷落消息不依赖 daemon+跳过 freshness / discard 直投 guard_feedback 离线 503 回滚 / reevaluate 委托 hub 死锁规避+终态守卫；仅人类 403 G3、终态 409 HELD_DRAFT_RESOLVED）；**G4 超时自愈**（hub run_held_scan 在线先探再翻 reevaluating + 组合 wake+deliver 推进游标+inject，deliver 推进 read_position 是防复扣死循环关键）；**G5 升级喊人**（held_count 达阈值→escalated_at+scope 系统消息@人类+held_escalation activity+停自动重评估）；GC 豁免活动 held 附件；前端 HeldDraftCard（草稿折叠/未读跳转/本地读秒倒计时/三键/升级横条/终态回执/409 刷新/非-409 toast）。
 
-## 4. 接续 = M5+（M4 已收口，尚未立项）
+## 4. 接续 = M5（**已立项 2026-07-11**，任务书 [M5-HANDOFF.md](M5-HANDOFF.md)）
 
-**M1–M4 全部收口，无待完成里程碑。** 下一步 = PRD §8 M5+（cron cadence / Codex 适配 / 每频道通知设置 / fail_closed 落地批 / Orchestrator 升级接线 O2 等，均属 M4 非目标顺延）——尚未立项。新里程碑开工按 README 约定 3 建 `M5-HANDOFF.md` 任务书（体例同 [archive/M4-HANDOFF.md](archive/M4-HANDOFF.md)），并先行核对/落笔契约修订（纪律 1）。
+**范围四大件 + 两项收编**：Codex 适配器（契约 E2，一 Agent 一进程/CODEX_HOME 隔离/帧名 H2 实测校准）· 技能白名单 UI（后端 M1 已全通，候选池 = daemon 探测 `detected_runtimes[].skills`）· 每频道通知设置（mute 掐 mention activity 生成，DM 恒必达 NOTIF_IN_DM）· 模板（存为模板/工程三角 builtin/向导实例化 `tmpl:` 落地批/跨 runtime 互审 warning=UI 责任）· cron cadence（M4 顺延件收回）· P12 频道设置弹窗（阈值挂账 UI 一并收）。**两块竖切**：M5a 第二 runtime 与配置面（H0–H4+B-M5-1）→ M5b 模板与向导（H5–H7+B-M5-2，收口即 PRD M5 出口 =「从模板一键实例化，Claude 审 Codex 跑通一个交付」，owner 确认 Codex CLI 已装真机验收）。开工首会话建 `M5-DEV-PLAN.md`，第一步 = H0 ∥ H1 并行 + **H2 A 级实测校准优先**（06 文档五项开放问题 = 全里程碑唯一外部不确定性）。
 
 - **M4 收官锚点**：held 判定/值域单一事实源 = `guard/service.py`（`ACTIVE_STATUSES`/`TERMINAL_STATUSES`/`compute_unread`/`freshness_hold`）；三键端点 = `routes/held_drafts.py`；G4/G5/reevaluate 桥 = `hub.py`（`run_held_scan`/`reevaluate_held`/`_held_reevaluation_combo`）；死锁规避范式（路由只读+委托 hub 独立已提交 tx）与「在线先探再翻状态」是两处易踩的坑（见 M4B-EVIDENCE §5 #5/#6）。
 
