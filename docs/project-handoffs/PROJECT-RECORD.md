@@ -154,7 +154,8 @@
 
 ## 当前接续任务
 
-1. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。**M1–M5 全部收口，无待完成里程碑**；接续 = M6（拆解 proposals 落地 / 编排 Orchestrator / FR-7.5 评审结论枚举 schema 化 / 模板 DELETE·PATCH / fail-closed M6-replay 复核，PRD §8，尚未立项）。M5-HANDOFF 已移 archive/。
+1. **M6 已立项（2026-07-11）**：契约修订落笔先行（A v1.0.7 tasks 加列 project_id/writes_code + projects computer_id + review_verdict / B v1.4 §12 编排与交付规范条文 + 错误码 28 / D v1.0.3 check.run·check.finished 帧 + DiffPayload / C·E·E2 零修订核对——零新 WS 事件、零新 Agent 工具连续第四里程碑）+ [M6-HANDOFF.md](M6-HANDOFF.md) 任务书（两块竖切 **M6a Project 与交付链** → **M6b Orchestrator 拆解链**；owner 四拍板：交付链先行/worktree=消息注入/挂账三件全收/合并 --no-ff；16 裁决 + 22 条出口清单）。**待开工**：首会话建 M6-DEV-PLAN，J0∥J1 起步、J3 git 实测最优先。
+2. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。M5-HANDOFF 已移 archive/。
 2. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 3. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。
 4. 真实双 Agent OAuth 冷启动复验（M1 遗留）：M3b E6 用真 websockets daemon-sim 复证了网关侧 gating/force-start；真 OAuth refresh 竞争仍依赖既有确定性单测，未在干净环境重新消耗完整双 Agent 对话，结论沿用未变。
