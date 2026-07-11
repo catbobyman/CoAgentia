@@ -1,22 +1,23 @@
-# CoAgentia 当前交接（M4 里程碑收口态）
+# CoAgentia 当前交接（M5a 收口态 · M5b 待开工）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-11，**M5 立项**（契约修订六份落笔 + [M5-HANDOFF.md](M5-HANDOFF.md) 任务书建立）；M4 收口态详情已沉淀 [PROJECT-RECORD.md](PROJECT-RECORD.md) |
-| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；**M5 开工读 [M5-HANDOFF.md](M5-HANDOFF.md)**；历史背景读 PROJECT-RECORD；已收口任务书在 [archive/](archive/) |
-| 一句话状态 | **M1–M4 全部收口，M5「模板与第二 runtime」已立项未开工**——契约修订已先行落笔（A v1.0.6/B v1.3/D v1.0.2/E v1.4 + **E2 v1.0 新建**（06-Codex适配器）/C 零修订核对），owner 四项拍板（Codex 真机可用/FR-7.5 话术承载/cron 收进/技能池探测），任务书两块竖切（M5a 第二 runtime 与配置面 → M5b 模板与向导 = PRD M5 出口） |
+| 更新 | 2026-07-11，**块 M5a「第二 runtime 与配置面」收口**（H0–H4+B-M5-1 + 实机 verify + code-review 5 修复）；M4 及更早详情见 [PROJECT-RECORD.md](PROJECT-RECORD.md) |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；**M5b 开工读 [M5-HANDOFF.md](M5-HANDOFF.md) §4 H5–H7/§5 B-M5-2 + [M5-DEV-PLAN.md](M5-DEV-PLAN.md)**；历史背景读 PROJECT-RECORD |
+| 一句话状态 | **M1–M4 全收口；M5 块 a 收口、块 b（模板与向导）待开工**——M5a = Codex 第二 runtime（真机对话跑通 PONG+usage）+ 通知设置 mute 门 + cron cadence（手写 5 段无依赖）+ 技能白名单 UI（两 runtime 候选池）+ P12 阈值收编。实机 codex 0.144.0 真机对话 + REST 9/9 + code-review 5 CONFIRMED 全修（cron 500/DST/通知 TOCTOU/codex 凭证/probe symlink，每项 HTTP/单测实证）。**M5 出口（Claude 审 Codex 跑通交付）归块 M5b H7，未达成** |
+| 提交链（M5a） | `fba1855` 立项 → `7d06e8c` 波1(H0+H1+H2) → `38c4ea5` 波2(H3+H4+B-M5-1) → `da6833a` verify+code-review 修复 |
 
 ## 1. 当前状态
 
 | 项 | 状态 |
 | --- | --- |
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
-| 分支 / HEAD | `main` / `1052ee6 M4b complete: freshness & HeldDraft`（+ 本次 docs 收口提交）；工作树干净 |
-| 提交链（近） | `e177328` M4 立项 → `01ff2d1` M4a 收口 → `dc650f5` M4a docs → **`1052ee6` M4b 收口(F5–F7+B-M4-2+code-review)** |
-| 测试基线 | 后端 **572 passed / 3 skipped**（`uv run pytest -q`）· web vitest **106** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（两跑 diff 空）· 双侧 build 绿 |
-| 契约版本 | A **v1.0.6** · B **v1.3** · C **v1.0**（连续零修订）· D **v1.0.2** · E **v1.4** · **E2 v1.0**（06-Codex适配器进程模型，M5 立项新建；帧名开工 H2 实测校准义务）——M5 修订已全部落笔（2026-07-11），contracts 包同步归 H0；事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` |
-| 建表批次 | 0001 M1（17 表）→ 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts（+ 活动行分区唯一索引）；**held_drafts 读写面已在 M4b 全 serve**（freshness 门 + 三键端点 + G4/G5） |
-| 实机证据 | [M4B-EVIDENCE.md](../verify/M4B-EVIDENCE.md)（探针 **38/38** + 3 截图 + console 0；held 场景放行 1 分钟交付 / discard / reevaluate 死循环破除 / G4 超时 / G5 升级 + code-review §5）；[M4A-EVIDENCE.md](../verify/M4A-EVIDENCE.md) 等此前各批同目录 |
+| 分支 / HEAD | `main` / `da6833a M5a verify + code-review fixes`；工作树干净 |
+| 提交链（M5a） | `fba1855` M5 立项 → **`7d06e8c` 波1(H0契约+H1迁移+H2 Codex 适配器) → `38c4ea5` 波2(H3通知+H4 cron+B-M5-1前端) → `da6833a` verify+code-review 修复** |
+| 测试基线 | 后端 **672 passed / 4 skipped**（`uv run pytest -q`）· web vitest **142** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定 · 双侧 build 绿 |
+| 契约版本 | A **v1.0.6** · B **v1.3** · C **v1.0**（连续零修订）· D **v1.0.2** · E **v1.4** · **E2 v1.0.1**（06-Codex适配器，H2 以 codex 0.144.0 实测校准帧名并关闭开放问题）——M5 修订全部落笔且 contracts 包已同步（H0）；事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` |
+| 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → **0007 M5（templates + channel_notification_settings）**；templates 块 a 期间空置（M5b H5/H6 写入），channel_notification_settings 已全 serve |
+| 实机证据 | [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)（**重跑实测**：codex 真机 PONG+usage / REST 9/9 含 impossible-cron 422+双 PUT 幂等 / 2 截图核验 / console 0）；此前各批同目录 |
 
 ## 2. 里程碑总览（详情 = PROJECT-RECORD 对应节）
 
@@ -29,6 +30,7 @@
 | **M3b 画布与 gating** | **PRD M3 出口**：画布建图/成环拒/blocked 推导+投递 gating/force-start/React Flow/FTS trigram | **`080ed44`（§9）** |
 | **M4a 沉默提醒与循环 Reminder** | D5 沉默提醒升级链 + 循环 Reminder/LoopContract 解锁（实机 16/16） | **`01ff2d1`（§10）** |
 | **M4b freshness 与 HeldDraft** | **PRD M4 出口**：held 场景卡片可见+放行 1 分钟交付 / 三键 / G4 超时自愈 / G5 升级喊人（实机 38/38） | **`1052ee6`（§11）** |
+| **M5a 第二 runtime 与配置面** | Codex 适配器真机对话跑通 + 通知设置 mute 门 + cron cadence + 技能白名单 UI + P12 阈值（REST 9/9 + codex PONG） | **`da6833a`（本文）** |
 
 ## 3. 系统当前能力面（一览）
 
@@ -38,26 +40,29 @@
 - **编排画布**（M3b）：每频道画布页签（React Flow）——节点=任务（agent 节点=第三创建途径，建 L2+锚点消息）、边=依赖（写事务拓扑排序防环）、基线快照指纹推进；**blocked 实时推导**（`kernel/graph.py` 权威 + 前端 `lib/graph.ts` 镜像，`golden/graph.json` 双跑对照）；**投递层 gating**（blocked 任务线程消息不唤醒、不入投递批、read_position 水位不越过）；**force-start**（仅人类、双留痕、不改状态、本次放行）；看板 blocked 徽标。
 - **中文检索**（浮动件）：messages_fts trigram（≥3 字 MATCH + <3 字 LIKE 兜底，元字符转义）。
 - **护栏与提醒**（M4a）：**D5 沉默提醒升级链**（tasks/silence.py 防自激 last_activity + hub 后台扫描：三态阈值提醒 Todo→创建者/InProg→owner/InReview→频道人类 → 升级主流消息 + activity silence_escalation → 升级后静默；task_events 纯推导无状态列）；**循环 Reminder**（create_reminder 内联 LoopContract 建即生效 + task_contracts 挂接行 + `interval.next_after` 塌缩式重排防重放风暴）；前端 P6 Reminders 页签 + Activity 置顶。
-- **freshness 护栏与 HeldDraft**（M4b）：**freshness 门**（guard/service.py 判定单源——scope=线程/主流未读、仅 Agent 主体过门、幂等 hit 优先于门；扣草稿建/刷新 held 单活动行 SAVEPOINT 兜并发再扣，202 不落库）；**三键人类干预**（release 原载荷落消息不依赖 daemon+跳过 freshness / discard 直投 guard_feedback 离线 503 回滚 / reevaluate 委托 hub 死锁规避+终态守卫；仅人类 403 G3、终态 409 HELD_DRAFT_RESOLVED）；**G4 超时自愈**（hub run_held_scan 在线先探再翻 reevaluating + 组合 wake+deliver 推进游标+inject，deliver 推进 read_position 是防复扣死循环关键）；**G5 升级喊人**（held_count 达阈值→escalated_at+scope 系统消息@人类+held_escalation activity+停自动重评估）；GC 豁免活动 held 附件；前端 HeldDraftCard（草稿折叠/未读跳转/本地读秒倒计时/三键/升级横条/终态回执/409 刷新/非-409 toast）。
+- **freshness 护栏与 HeldDraft**（M4b）：**freshness 门**（guard/service.py 判定单源——scope=线程/主流未读、仅 Agent 主体过门、幂等 hit 优先于门；扣草稿建/刷新 held 单活动行 SAVEPOINT 兜并发再扣，202 不落库）；**三键人类干预** / **G4 超时自愈** / **G5 升级喊人** / GC 豁免活动 held 附件；前端 HeldDraftCard。
+- **第二 runtime 与配置面**（M5a）：**Codex 适配器**（`adapters/codex.py` CodexProcess 驱动 codex app-server 长驻 JSON-RPC；`claude_code.py::_new_process` 按 `boot.runtime` 分派、管理器 runtime 无关共用 on_exit 熔断；CODEX_HOME 隔离 + config.toml 注入 MCP + auth.json mtime 新鲜度物化；`probe_codex` 冷探 model/list+skills/list；护栏/任务/契约/usage 对 codex 全语义生效）；**每频道通知设置**（`GET/PUT /channels/{id}/notification-setting` 人类自治/Agent 403/dm 422/**原子 upsert**；mute 门单源 `activity/service.muted_members`，dm/held_escalation 不过门=必达；ChannelsSnapshot 扩字段）；**cron cadence**（`reminders/cron.py`+`cadence.py` 手写 5 段无依赖、Vixie 日∨周并集、validate 可满足性探测拒 impossible、next_after UTC 严格比较兜 DST fold、8 年上限 + 塌缩 next-fire）；**技能白名单 UI**（候选池 = `detected_runtimes[].skills`，claude 扫 `~/.claude/skills/`(跳 symlink)、codex 走 skills/list——两 runtime 均有池）；**频道设置弹窗四组**（P12 阈值收编）+ cron 人读预览 + 通知徽标。
 
-## 4. 接续 = M5（**已立项 2026-07-11**，任务书 [M5-HANDOFF.md](M5-HANDOFF.md)）
+## 4. 接续 = M5b「模板与向导」（= PRD M5 出口，**未开工**）
 
-**范围四大件 + 两项收编**：Codex 适配器（契约 E2，一 Agent 一进程/CODEX_HOME 隔离/帧名 H2 实测校准）· 技能白名单 UI（后端 M1 已全通，候选池 = daemon 探测 `detected_runtimes[].skills`）· 每频道通知设置（mute 掐 mention activity 生成，DM 恒必达 NOTIF_IN_DM）· 模板（存为模板/工程三角 builtin/向导实例化 `tmpl:` 落地批/跨 runtime 互审 warning=UI 责任）· cron cadence（M4 顺延件收回）· P12 频道设置弹窗（阈值挂账 UI 一并收）。**两块竖切**：M5a 第二 runtime 与配置面（H0–H4+B-M5-1）→ M5b 模板与向导（H5–H7+B-M5-2，收口即 PRD M5 出口 =「从模板一键实例化，Claude 审 Codex 跑通一个交付」，owner 确认 Codex CLI 已装真机验收）。开工首会话建 `M5-DEV-PLAN.md`，第一步 = H0 ∥ H1 并行 + **H2 A 级实测校准优先**（06 文档五项开放问题 = 全里程碑唯一外部不确定性）。
+**M5 里程碑尚未收口**——块 M5a 完成，块 **M5b（H5 模板域存为模板/工程三角 builtin·H6 实例化事务 tmpl 幂等·H7 实机=PRD M5 出口 Claude 审 Codex 跑通交付 + B-M5-2 存为模板弹窗/向导三步）** 待开工。开工读 [M5-HANDOFF.md](M5-HANDOFF.md) §4 H5–H7/§5 B-M5-2/§9b 出口清单；地基已就位（0007 templates 表 + TemplateBody 契约 + Codex agent 可创建可对话 + LandingBatchKind.TMPL 幂等键）。
 
-- **M4 收官锚点**：held 判定/值域单一事实源 = `guard/service.py`（`ACTIVE_STATUSES`/`TERMINAL_STATUSES`/`compute_unread`/`freshness_hold`）；三键端点 = `routes/held_drafts.py`；G4/G5/reevaluate 桥 = `hub.py`（`run_held_scan`/`reevaluate_held`/`_held_reevaluation_combo`）；死锁规避范式（路由只读+委托 hub 独立已提交 tx）与「在线先探再翻状态」是两处易踩的坑（见 M4B-EVIDENCE §5 #5/#6）。
+- **M5b 前置注意**（H0 review notes 警示）：`TemplateBody.nodes[].plan_skeleton = TaskPlanBody|None`——非空时受 TaskPlanBody 校验（goal + ≥1 AC）；若 builtin 工程三角节点需「无 AC 裸骨架」，需回升契约做 relaxed 变体。
+- **M5a 收官锚点**：codex 协议实测参考 = `scratchpad/CODEX-CALIBRATION.md`；runtime 分派单点 = `claude_code.py::_new_process`；mute 门单源 = `activity/service.muted_members`；cadence 值域/可满足性/塌缩单点 = `reminders/cadence.py`+`cron.py`。
 
-## 5. 挂账清单（非阻塞，勿当漏项重新发明）
+## 5. M5a 挂账（非阻塞，勿当漏项重新发明）
 
 | 项 | 说明 | 归属 |
 | --- | --- | --- |
-| ~~`_emit_activity` 迁 service 层 / `patch_task` 清 `silence_override_h`~~ | **已收（M4a F2）** | ✅ M4a |
-| **held 系统消息骨架 / human_members 跨模块重复**（评审 #8/#9） | `_post_system_message`（hub「三处共用」+ guard 第 4 份 + channels 瘦变体）、`_channel_human_members`（hub enum 版 + guard string 版）——确认 DRY 债**非 bug**；消除需抽中立共享模块并触及承重 reminder/silence 路径，收口期 ROI 低 | 顺手小批（新会话可做，tests 守回归） |
-| held 卡「重评估中…」显示边角 | 升级态 held 行 next_reeval_at 已过时倒计时组件显示「重评估中…」而 status 实为 held（正常场景 G4 会真翻转，此显示才准） | 观察项（评审 #2 观察） |
-| 性能小批 | hub `usage.batch` 逐事件 SELECT（可批内 IN 预查）；search 双 MATCH+LIKE 扫描 | 独立小批 |
-| `task #n` refs 无 UI 消费面 | refs 落库但引用消息不渲染任务 chip | 顺手评估 |
-| P11/P3 看板双实现抽 `<TaskBoard>` | blocked 徽标已同构两份，抽共享组件可收 | 顺手评估 |
-| messages_fts 键于 messages.rowid | VACUUM 会失同步（external-content 结构性约束） | 观察项 |
-| OAuth 冷启动复验 | M1 遗留；真双 Agent OAuth refresh 竞争仍依赖既有确定性单测 | 择机 |
+| 凭证物化目录权限 | codex CODEX_HOME 父目录未 chmod 0700（NFR5 单机单用户信任模型内，多用户非目标 PRD §9） | 已接受 |
+| cron 描述文案双处 | `daemon/mcp.py` 与 server 校验两处 cron 描述，未来语法扩展易漂移 | 顺手小批 |
+| ChannelsSnapshot 通知行无分页 | 本人非默认通知行全量返回（单人类频道数小） | 观察项 |
+| held 系统消息骨架 / human_members DRY | 承接 M4b #8/#9（非 bug） | 顺手小批 |
+| hub usage.batch N+1 / search 双扫 | 承接 M2 挂账（性能小批） | 独立小批 |
+| held 系统消息骨架 / human_members 跨模块重复（M4b 评审 #8/#9） | DRY 债非 bug，消除需抽中立共享模块触及承重 reminder/silence 路径 | 顺手小批 |
+| held 卡「重评估中…」显示边角 | 升级态 held 行倒计时显示（正常 G4 翻转才准） | 观察项 |
+| `task #n` refs 无 UI 消费面 / P11·P3 看板双实现抽 `<TaskBoard>` | M2 观察 | 顺手评估 |
+| messages_fts 键于 rowid（VACUUM 失同步）/ OAuth 冷启动复验 | M3/M1 结构性观察 | 观察项/择机 |
 
 ## 6. 启动方式
 

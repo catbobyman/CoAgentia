@@ -23,14 +23,14 @@
 
 | # | 模块 | 状态 | 提交 | 备注 |
 | --- | --- | --- | --- | --- |
-| H0 | 契约登记（ENDPOINTS_M5/TemplateBody/请求响应模型/NotificationSettingPut/ChannelsSnapshot 扩/DetectedRuntime.skills/错误码 25/cron 解析器/create_reminder 描述/mock/conformance） | ⏳ | — | 波 1 |
-| H1 | 0007 迁移 + models.py 双 ORM + M5_TABLES | ⏳ | — | 波 1 |
-| H2 | Codex 适配器（CodexProcess/_launch 分派/probe_codex+skills/CODEX_HOME 隔离/三档重置 resume）+ E2 文档回改 | ⏳ | — | 波 1；吃 CALIBRATION |
-| H3 | 通知端点 GET/PUT + mode 消费门（mute 掐 mention activity 生成）+ ChannelsSnapshot 扩字段 | ⏳ | — | 波 2 |
-| H4 | cron cadence 服务侧（next_after cron 分支 + POST/reminders + create_reminder 挂接） | ⏳ | — | 波 2 |
-| B-M5-1 | 技能编辑 + 频道设置弹窗（含 P12 阈值）+ cron 显示 | ⏳ | — | 波 2 |
-| — | 实机 verify（M5a 部分）→ docs/verify/M5A-EVIDENCE.md | ⏳ | — | 出口 |
-| — | /code-review high → 修复 | ⏳ | — | 收口 |
+| H0 | 契约登记（ENDPOINTS_M5/TemplateBody 下沉/请求响应模型/NotificationSettingPut/ChannelsSnapshot 扩/DetectedRuntime.skills/错误码 25/mock/conformance） | ✅ | `7d06e8c` | 波 1 |
+| H1 | 0007 迁移 + models.py 双 ORM + M5_TABLES | ✅ | `7d06e8c` | 波 1 |
+| H2 | Codex 适配器（CodexProcess/_launch 分派/probe_codex+skills/CODEX_HOME 隔离/三档重置 resume）+ E2 v1.0.1 实测校准 | ✅ | `7d06e8c` | 波 1 |
+| H3 | 通知端点 GET/PUT + mode 消费门（mute 掐 mention activity 生成）+ ChannelsSnapshot 扩字段 | ✅ | `38c4ea5` | 波 2 |
+| H4 | cron cadence 服务侧（手写 5 段 cron.py+cadence.py 单点 + 塌缩重排 + 三处同门） | ✅ | `38c4ea5` | 波 2 |
+| B-M5-1 | 技能编辑 + 频道设置弹窗（含 P12 阈值收编）+ cron 显示 + 通知徽标 | ✅ | `38c4ea5` | 波 2 |
+| — | 实机 verify → [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)（codex 真机 PONG+usage / REST 9/9 / 2 截图 / console 0） | ✅ | `da6833a` | 重跑实测 |
+| — | /code-review high（8 维度→5 CONFIRMED 全修：cron 500/DST、通知 TOCTOU、codex 凭证、probe symlink） | ✅ | `da6833a` | 每项 HTTP/单测实证 |
 
 ## 2. 守门命令（波间与收口）
 
