@@ -69,9 +69,13 @@ export function buildRolePlaceholders(
 export type RoleKind = 'implement' | 'review' | 'other';
 
 export function classifyRole(role: TemplateRole): RoleKind {
-  const s = `${role.placeholder} ${role.description ?? ''}`.toLowerCase();
-  if (/评审|验收|审查|复核|checker|review/.test(s)) return 'review';
-  if (/实现|落地|开发|编码|doer|impl/.test(s)) return 'implement';
+  // 仅按占位名判定：占位名是角色身份的权威信号。description 常提及下游步骤(如"实现工程师"的
+  // description 含"交独立验收")，若并入判定会把 doer 误归 review——进而使 FR-7.3 同 runtime
+  // 互审警示对 builtin 工程三角(其唯一用武之地)失效。用户模板占位=成员名(无关键字)→ 'other'，
+  // 警示自然不触发（用户未声明 checker/doer 语义角色）。
+  const p = role.placeholder.toLowerCase();
+  if (/评审|验收|审查|复核|checker|review/.test(p)) return 'review';
+  if (/实现|落地|开发|编码|doer|impl/.test(p)) return 'implement';
   return 'other';
 }
 

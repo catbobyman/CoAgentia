@@ -708,6 +708,23 @@ def test_instantiate_builtin_triangle(
         assert canvas_service.is_task_blocked(conn, gate.id) is True
 
 
+def test_instantiate_layout_spreads_nodes(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """实例化节点按最长路径分层排布，不全堆叠原点（线性 DAG → 6 个不同 x 层）。"""
+    tri = next(t for t in server_client.get("/api/templates").json() if t["builtin"])
+    research = _research_channel(server_client)
+    owner = _member(server_client, "Memcyo")
+    roles = [ro["placeholder"] for ro in tri["body"]["roles"]]
+    mapping = {ro: owner["id"] for ro in roles}
+    r = _instantiate(server_client, tri["id"], research["id"], mapping)
+    assert r.status_code == 201, r.text
+    nodes = _canvas_detail(server_client, research["id"])["nodes"]
+    xs = {n["pos_x"] for n in nodes}
+    assert len(xs) == 6, f"线性 DAG 应 6 个不同 x 层，实际 {sorted(xs)}"
+    assert not all(n["pos_x"] == 0 and n["pos_y"] == 0 for n in nodes)
+
+
 def test_instantiate_unknown_member_422(
     server_client: TestClient, seeded_engine: Engine
 ) -> None:

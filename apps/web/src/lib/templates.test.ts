@@ -101,6 +101,16 @@ describe('classifyRole', () => {
   it('其它 → other', () => {
     expect(classifyRole(role('产品经理', '框定需求'))).toBe('other');
   });
+  it('占位名优先于 description：doer 的 description 含"验收"仍归 implement（builtin 工程三角真值）', () => {
+    // 回归 FR-7.3 实机 bug：description 提及下游步骤会把 doer 误判 review，警示失效。
+    expect(
+      classifyRole(role('实现工程师', '落地实现（doer）：先立实现契约，再 TDD 实现，交独立验收。')),
+    ).toBe('implement');
+    // 产品负责人 description 含"交评审门把关"，不得误归 review（否则触发虚假同 runtime 警示）。
+    expect(
+      classifyRole(role('产品负责人', '把用户诉求框定为可验收的目标与范围；输出需求框定，交评审门把关。')),
+    ).toBe('other');
+  });
 });
 
 describe('hasSameRuntimeReview (FR-7.3)', () => {

@@ -345,6 +345,42 @@ def _dedup(items: list[str]) -> list[str]:
     return out
 
 
+def _layout_positions(body: TemplateBody) -> dict[str, tuple[int, int]]:
+    """按最长路径分层为模板节点算画布坐标（左→右分层，同层纵向排开）。
+
+    否则实例化的节点全落原点 (0,0) 相互堆叠、画布只见一个节点。镜像向导 DAG 缩略图的 Kahn
+    分层（lib/templates.TemplateDagThumb）；body 已由 validate_template_body 保证无环。
+    """
+    keys = [n.key for n in body.nodes]
+    adj: dict[str, list[str]] = {k: [] for k in keys}
+    indeg: dict[str, int] = {k: 0 for k in keys}
+    for e in body.edges:
+        if e.from_key in adj and e.to_key in indeg:
+            adj[e.from_key].append(e.to_key)
+            indeg[e.to_key] += 1
+    depth = {k: 0 for k in keys}
+    ind = dict(indeg)
+    queue = [k for k in keys if ind[k] == 0]
+    i = 0
+    while i < len(queue):
+        k = queue[i]
+        i += 1
+        for m in adj[k]:
+            depth[m] = max(depth[m], depth[k] + 1)
+            ind[m] -= 1
+            if ind[m] == 0:
+                queue.append(m)
+    dx, dy = 260, 140
+    row_count: dict[int, int] = {}
+    pos: dict[str, tuple[int, int]] = {}
+    for k in keys:  # 保 body.nodes 顺序 → 同层稳定纵向排开
+        d = depth[k]
+        r = row_count.get(d, 0)
+        row_count[d] = r + 1
+        pos[k] = (d * dx, r * dy)
+    return pos
+
+
 def _instantiate_node(
     tx: Any,
     *,
@@ -357,6 +393,8 @@ def _instantiate_node(
     node_hash: str,
     batch_id: str,
     owner_id: str,
+    pos_x: int = 0,
+    pos_y: int = 0,
 ) -> tuple[str, dict[str, Any]]:
     """新建单节点的 create_node 全链（照 canvas.py:create_node）→ 返回 (node_id, task_row)。
 
@@ -412,8 +450,8 @@ def _instantiate_node(
         system_action=None,
         command=None,
         system_status=None,
-        pos_x=0,
-        pos_y=0,
+        pos_x=pos_x,
+        pos_y=pos_y,
         created_at=ts,
     )
     # 按序广播：message → task →(contract)→ node_added（baseline 批末统一 bump，见 caller）。
@@ -535,6 +573,7 @@ def instantiate_template(
     prefix = OPID_TMPL_PREFIX.format(batch_id=batch_id)
     key_to_node_id: dict[str, str] = {}
     task_rows: list[dict[str, Any]] = []
+    positions = _layout_positions(body)  # 分层坐标，防节点堆叠原点
 
     # (c) 逐 TemplateNode：三态幂等（hit 跳过复用既有 node/task；new 建 create_node 全链）。
     for node in body.nodes:
@@ -557,6 +596,7 @@ def instantiate_template(
                 rule="A§4.7",
             )
         created_by = role_mapping.get(node.role) or owner_id
+        px, py = positions.get(node.key, (0, 0))
         node_id, task_row = _instantiate_node(
             tx,
             node=node,
@@ -568,6 +608,8 @@ def instantiate_template(
             node_hash=node_hash,
             batch_id=batch_id,
             owner_id=owner_id,
+            pos_x=px,
+            pos_y=py,
         )
         key_to_node_id[node.key] = node_id
         task_rows.append(task_row)
