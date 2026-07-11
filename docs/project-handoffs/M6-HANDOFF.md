@@ -5,7 +5,7 @@
 | 建立 | 2026-07-11，M5 收口（`bef88eb`→docs `2daf596`）后立项；契约修订核对与落笔已随本次立项**先行完成**（§1）；owner 四项方向裁决已拍板（§7 #1–#4） |
 | 用途 | **M6 里程碑的唯一任务书入口**：把交付链（Project 绑定/worktree 分级派生/Diff 卡/系统节点/自动合并与冲突派回，FR-10/W8）与 Orchestrator 拆解链（提案/校验/修复循环/草稿确认/落地/delta，FR-9）装进系统。前置任务书 [M5-HANDOFF.md](archive/M5-HANDOFF.md) 已完成归档 |
 | 上游事实源 | [engineering_docs/](../../../engineering_docs/README.md) 六契约（**A v1.0.7 / B v1.4 / C v1.0 零修订核对 / D v1.0.3 / E v1.4 零修订核对 / E2 v1.0.1 零修订核对**，M6 修订已全部落笔，见 §1）· **[Orchestrator任务拆解设计.md](../../../orchestrator_docs/Orchestrator任务拆解设计.md)（拆解全生命周期的实现级权威：状态机/schema/V1–V14/修复循环/落地幂等/delta/Prompt/失败全表/验收 A1–A8）** · [03-接入架构建议.md](../../../orchestrator_docs/03-接入架构建议.md)（三层形态定论：角色模板数据 / 服务端领域模块 / 同构零依赖内核）· [CoAgentia-PRD.md](../../../docx_agenthub/CoAgentia-PRD.md) FR-9/FR-10/§4.8/§4.9/O1–O10/W1–W9 · [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md)（M5 收口态） |
-| 执行计划 | 待建：开工首会话按本任务书建 `M6-DEV-PLAN.md`（体例同 [M5-DEV-PLAN.md](M5-DEV-PLAN.md)） |
+| 执行计划 | **已建**：[M6-DEV-PLAN.md](M6-DEV-PLAN.md)（波次编排 + 进度表 + 防返工锚点；随模块完成更新）；接手者上下文 = [CODEX-CONTEXT.md](CODEX-CONTEXT.md) + 仓库根 `AGENTS.md` |
 | 出口标准 | **PRD M6 出口**三场景：① 一句话需求 → 拆解落地 → 两个并行任务在各自 worktree 交付 → 合并系统节点成功；② 制造一次冲突 → 冲突任务派回并解决；③ 制造一次校验失败的提案 → 自动修复重提通过（§9 逐条清单；拆解设计 §16 A1–A8 全覆盖） |
 
 ---

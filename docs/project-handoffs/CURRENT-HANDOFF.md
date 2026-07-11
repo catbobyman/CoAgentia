@@ -47,7 +47,7 @@
 
 ## 4. 接续 = M6（**已立项 2026-07-11，待开工**）
 
-**任务书 = [M6-HANDOFF.md](M6-HANDOFF.md)**（唯一入口：范围两块竖切 M6a「Project 与交付链」→ M6b「Orchestrator 拆解链」、契约修订摘要、资产盘点、J0–J12 + B-M6-1/2 分解、16 项裁决、22 条出口清单）。开工首会话：按任务书建 `M6-DEV-PLAN.md`，从 **J0 ∥ J1 并行**起步，**J3 git 实操 A 级实测最优先**（win32 worktree 行为是最大不确定性）。拆解流程的实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`（状态机/V1–V14/修复循环/幂等落地/delta/A1–A8 验收）。M5b 关键锚点：模板序列化/校验单点 = `templates/service.py`；实例化事务/幂等 = `routes/templates.py` + `instantiate_template`（**J9 落地事务器的参考实现**）；角色类别判定单点 = `lib/templates.classifyRole`（占位名权威，勿并入 description）。
+**任务书 = [M6-HANDOFF.md](M6-HANDOFF.md)**（唯一入口：范围两块竖切 M6a「Project 与交付链」→ M6b「Orchestrator 拆解链」、契约修订摘要、资产盘点、J0–J12 + B-M6-1/2 分解、16 项裁决、22 条出口清单）。**执行计划已建 = [M6-DEV-PLAN.md](M6-DEV-PLAN.md)**（块内波次编排/进度表/防返工锚点）：块 a 波 1 = **J3-cal git 实测校准（最优先）∥ J0 ∥ J1**。**接手者上下文已建**：[CODEX-CONTEXT.md](CODEX-CONTEXT.md)（零上下文自足版：术语解码/架构/纪律/坑清单）+ 仓库根 `AGENTS.md`（Codex CLI 自动加载的精炼规程）。拆解流程的实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`（状态机/V1–V14/修复循环/幂等落地/delta/A1–A8 验收）。M5b 关键锚点：模板序列化/校验单点 = `templates/service.py`；实例化事务/幂等 = `routes/templates.py` + `instantiate_template`（**J9 落地事务器的参考实现**）；角色类别判定单点 = `lib/templates.classifyRole`（占位名权威，勿并入 description）。
 
 ## 5. M5 挂账（非阻塞，勿当漏项重新发明）
 

@@ -5,12 +5,14 @@
 | 文档 | 定位 | 维护规则 |
 |---|---|---|
 | [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) | 当前唯一有效的交接入口 | 每次阶段收口时更新 |
-| [M5-HANDOFF.md](M5-HANDOFF.md) | **M5 模板与第二 runtime 任务书（进行中，2026-07-11 立项）** | 收口后移入 archive/ |
-| [M2-DEV-PLAN.md](M2-DEV-PLAN.md) / [M3-DEV-PLAN.md](M3-DEV-PLAN.md) / [M4-DEV-PLAN.md](M4-DEV-PLAN.md) | 各里程碑逐模块执行计划与进度表（均收口） | 阶段记录，收口后保留只读 |
+| [M6-HANDOFF.md](M6-HANDOFF.md) | **M6 Orchestrator 与 Project 任务书（进行中，2026-07-11 立项）** | 收口后移入 archive/ |
+| [M6-DEV-PLAN.md](M6-DEV-PLAN.md) | M6 逐模块执行计划与进度表（**进行中，随模块完成更新**） | 收口后保留只读 |
+| [CODEX-CONTEXT.md](CODEX-CONTEXT.md) | **接手任务的 AI 工程师（Codex）完整项目上下文**（自足：术语解码/架构/纪律/坑清单）；仓库根 `AGENTS.md` 为其精炼版工作规程（Codex CLI 自动加载） | 大版本状态变化时更新时点注记 |
+| [M2-DEV-PLAN.md](M2-DEV-PLAN.md) / [M3-DEV-PLAN.md](M3-DEV-PLAN.md) / [M4-DEV-PLAN.md](M4-DEV-PLAN.md) / [M5-DEV-PLAN.md](M5-DEV-PLAN.md) | 各里程碑逐模块执行计划与进度表（均收口） | 阶段记录，收口后保留只读 |
 | [PROJECT-RECORD.md](PROJECT-RECORD.md) | 历史阶段、关键结果与过时结论汇总 | 阶段完成后追加，不覆盖历史 |
-| [archive/](archive/) | 原始任务书快照（M1/M2/M3/M4 任务书收口后均移入） | 只读归档，不再维护状态 |
+| [archive/](archive/) | 原始任务书快照（M1–M5 任务书收口后均移入） | 只读归档，不再维护状态 |
 
-> **M1/M2/M3/M4 里程碑任务书均已收口并移入 `archive/`**。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。接续 = **M5（已立项，任务书见上）**。
+> **M1–M5 里程碑任务书均已收口并移入 `archive/`**。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。接续 = **M6（已立项，任务书见上；开工从 M6-DEV-PLAN §0 波次表起步）**。
 
 ## 原文件迁移表
 
@@ -23,6 +25,8 @@
 | `docs/m1-review-fixes-20260709/HANDOFF.md` | [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) | 当前有效 |
 | `M2-HANDOFF.md` | [archive/M2-HANDOFF.md](archive/M2-HANDOFF.md) | 已完成，M2 任务与看板任务书 |
 | `M3-HANDOFF.md` | [archive/M3-HANDOFF.md](archive/M3-HANDOFF.md) | 已完成，M3 契约与画布任务书（§9a+§9b 全绿 = PRD M3 出口） |
+| `M4-HANDOFF.md` | [archive/M4-HANDOFF.md](archive/M4-HANDOFF.md) | 已完成，M4 护栏与提醒任务书（= PRD M4 出口） |
+| `M5-HANDOFF.md` | [archive/M5-HANDOFF.md](archive/M5-HANDOFF.md) | 已完成，M5 模板与第二 runtime 任务书（= PRD M5 出口） |
 
 ## 维护约定
 
