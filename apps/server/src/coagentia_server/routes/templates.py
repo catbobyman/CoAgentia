@@ -1,8 +1,8 @@
-"""模板 REST 端点（契约 B §4.12/§11.1；M5b H5）：GET 列表 + POST 存为模板。
+"""模板 REST 端点（契约 B §4.12/§11.1/§11.2；M5b H5+H6）：GET 列表 + POST 存为模板 + 实例化。
 
-instantiate（POST /templates/{id}/instantiate）归 H6，本模块只承载保存与列表两端点。序列化 / 校验 /
-409 约束集中在 templates/service.py + contracts.kernel（纪律 7 单一事实源）。模板本体 CRUD **零新增
-WS 事件**（B §11.2 #4 裁决——列表走 REST 拉取，PUT 后前端本地更新，契约 C 保持 v1.0）。
+序列化 / 校验 / 409 约束 / 实例化事务编排集中在 templates/service.py + contracts.kernel（纪律 7
+单一事实源）。模板本体 CRUD **零新增 WS 事件**（B §11.2 #4 裁决——列表走 REST 拉取，PUT 后前端
+本地更新）；instantiate 复用 message/task/canvas 既有事件（契约 C v1.0 冻结）。
 """
 
 from __future__ import annotations
@@ -10,13 +10,18 @@ from __future__ import annotations
 from typing import Any
 
 from coagentia_contracts import entities, rest
-from fastapi import APIRouter, Depends, Request
+from coagentia_contracts.constants import OPID_REST_IDEMPOTENCY
+from coagentia_contracts.entities import TemplateBody
+from coagentia_contracts.kernel.fingerprint import fingerprint
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy import select
 
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, require_workspace
-from coagentia_server.routes.serialize import template_public
+from coagentia_server.ledger import service
+from coagentia_server.routes.serialize import task_public, template_public
+from coagentia_server.tasks import service as tasks_service
 from coagentia_server.templates import service as templates_service
 
 router = APIRouter(prefix="/api", tags=["templates"])
@@ -87,3 +92,102 @@ def create_template(body: rest.TemplateCreate, request: Request, tx: Tx = Depend
         builtin_flag=False,
     )
     return template_public(row)
+
+
+# ---------------------------------------------------------------- 实例化（H6；B §11.2）
+
+
+def _instantiate_result(tx: Tx, batch: Any, task_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """InstantiateResult 组装：LandingBatchPublic(≡Row) + TaskPublic 列表（形状零偏差）。"""
+    return {
+        "batch": batch.model_dump(mode="json"),
+        "tasks": [task_public(t) for t in task_rows],
+    }
+
+
+def _reconstruct_from_ledger(tx: Tx, payload: dict[str, Any]) -> dict[str, Any]:
+    """幂等命中 → 凭账本 payload 重建原 InstantiateResult（batch_id + task_ids 回查落库行）。"""
+    batch = service._fetch_batch(tx.conn, payload["batch_id"])
+    assert batch is not None
+    task_rows = [tasks_service.fetch_task(tx.conn, tid) for tid in payload["task_ids"]]
+    return _instantiate_result(tx, batch, task_rows)
+
+
+@router.post(
+    "/templates/{template_id}/instantiate",
+    response_model=rest.InstantiateResult,
+    status_code=201,
+)
+def instantiate_template(
+    template_id: str,
+    body: rest.TemplateInstantiate,
+    request: Request,
+    tx: Tx = Depends(get_tx),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    """实例化模板到目标频道画布（B §11.2）：单事务落地批 → 逐节点 create_node 全链 → 连边 →
+    briefing @角色 → mark_done。
+
+    role_mapping 须覆盖 body.roles 全部占位（缺失 → 422 VALIDATION_FAILED，details.missing）；值
+    null = 该角色节点无 owner「待认领」。Idempotency-Key（照 messages.py OPID_REST_IDEMPOTENCY
+    先例，lookup/record 双段式）：同键同体重放回同一批（不重复建节点），同键异体 → 409。零新增
+    WS 事件（复用 message/task/canvas 事件）。
+    """
+    me = acting_member(request, tx.conn)
+    template = templates_service.fetch_template(tx.conn, template_id)
+    if template is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "模板不存在")
+
+    tbody = TemplateBody.model_validate(template["body"])
+    missing = templates_service.missing_role_mappings(tbody, dict(body.role_mapping))
+    if missing:
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "role_mapping 未覆盖全部角色占位",
+            rule="B§11.2",
+            details={"missing": missing},
+        )
+
+    # 幂等命中前置（照 messages.py:404-448）：只读 lookup 探已登记首次结果，absent 才走落库路径。
+    op_id: str | None = None
+    req_hash: str | None = None
+    if idempotency_key is not None:
+        op_id = OPID_REST_IDEMPOTENCY.format(key=idempotency_key)
+        req_hash = fingerprint(body.model_dump(mode="json"))
+        look = service.lookup(tx.conn, op_id, req_hash)
+        if look["status"] == "hit":
+            return _reconstruct_from_ledger(tx, look["entry"].payload)
+        if look["status"] == "mismatch":
+            raise ApiError(
+                409, rest.ErrorCode.IDEMPOTENCY_MISMATCH, "同 Idempotency-Key 不同请求体"
+            )
+
+    batch_id = service.new_ulid()
+    batch, task_rows = templates_service.instantiate_template(
+        tx,
+        template_row=template,
+        channel_id=body.channel_id,
+        role_mapping=dict(body.role_mapping),
+        owner_id=me["id"],
+        batch_id=batch_id,
+    )
+
+    # 幂等登记（落库路径才写账本）：payload 携 batch_id + task_ids 供重放重建；record 兜并发抢先。
+    if idempotency_key is not None:
+        assert op_id is not None and req_hash is not None
+        res = service.record(
+            tx.conn,
+            op_id,
+            "rest_instantiate",
+            {"batch_id": batch_id, "task_ids": [t["id"] for t in task_rows]},
+            request_hash=req_hash,
+        )
+        if res["status"] == "hit":  # 并发对手已抢先落库同键 → 回其结果
+            return _reconstruct_from_ledger(tx, res["entry"].payload)
+        if res["status"] == "mismatch":
+            raise ApiError(
+                409, rest.ErrorCode.IDEMPOTENCY_MISMATCH, "同 Idempotency-Key 不同请求体"
+            )
+
+    return _instantiate_result(tx, batch, task_rows)

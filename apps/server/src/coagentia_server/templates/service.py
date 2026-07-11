@@ -14,29 +14,52 @@ from __future__ import annotations
 
 from typing import Any
 
+from coagentia_contracts.constants import OPID_TMPL_PREFIX
 from coagentia_contracts.entities import (
+    LandingBatchRow,
     TaskPlanBody,
     TemplateBody,
     TemplateEdge,
     TemplateNode,
     TemplateRole,
 )
-from coagentia_contracts.enums import CanvasNodeKind, ContractKind, MemberKind, MemberRole
+from coagentia_contracts.enums import (
+    CanvasNodeKind,
+    ContractKind,
+    LandingBatchKind,
+    MemberKind,
+    MemberRole,
+    MessageKind,
+    TaskLevel,
+)
+from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.kernel.graph import detect_cycle
+from coagentia_contracts.ws import EventType
 from sqlalchemy import insert, select, update
 from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import IntegrityError
 
 from coagentia_server.api import ApiError
 from coagentia_server.canvas import service as canvas_service
 from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
+from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger import service
+from coagentia_server.routes.serialize import (
+    canvas_edge_public,
+    canvas_node_public,
+    message_public,
+    task_contract_public,
+)
+from coagentia_server.tasks import service as tasks_service
 from coagentia_server.templates import builtin
 
 _TEMPLATE = models.tbl(models.Template)
 _TASK = models.tbl(models.Task)
 _MEMBER = models.tbl(models.Member)
 _WORKSPACE = models.tbl(models.Workspace)
+_MSG = models.tbl(models.Message)
+_EDGE = models.tbl(models.CanvasEdge)
 
 # 无 owner 节点的默认占位名（B §11.1 / A §4.10「无 owner 归待认领」）。
 UNCLAIMED_PLACEHOLDER = "待认领"
@@ -264,6 +287,296 @@ def insert_template(
     return dict(row)
 
 
+# ---------------------------------------------------------------- 实例化事务器（H6；B §11.2）
+
+
+def fetch_template(conn: Connection, template_id: str) -> dict[str, Any] | None:
+    """单模板行（404 兜底在 route）；body 为 JSON 列（dict），caller 按需 TemplateBody 解析。"""
+    row = (
+        conn.execute(select(_TEMPLATE).where(_TEMPLATE.c.id == template_id)).mappings().first()
+    )
+    return dict(row) if row is not None else None
+
+
+def missing_role_mappings(body: TemplateBody, role_mapping: dict[str, Any]) -> list[str]:
+    """role_mapping 全覆盖校验（B §11.2 #1）：body.roles 每个 placeholder 须在 role_mapping。
+
+    返回缺失占位名（保 roles 顺序）；route 据此 422 VALIDATION_FAILED，details.missing 列之。
+    值可为 None（该角色节点落地为无 owner「待认领」），仅键缺失才算未覆盖。
+    """
+    return [r.placeholder for r in body.roles if r.placeholder not in role_mapping]
+
+
+def _dedup(items: list[str]) -> list[str]:
+    """保序去重（briefing @mention 目标可能多角色映射到同一 Agent）。"""
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def _instantiate_node(
+    tx: Any,
+    *,
+    node: TemplateNode,
+    canvas: dict[str, Any],
+    workspace_id: str,
+    channel_id: str,
+    created_by: str,
+    op_id: str,
+    node_hash: str,
+    batch_id: str,
+    owner_id: str,
+) -> tuple[str, dict[str, Any]]:
+    """新建单节点的 create_node 全链（照 canvas.py:create_node）→ 返回 (node_id, task_row)。
+
+    ① 锚点系统消息（author=None/kind=SYSTEM）→ ② create_task(L2) → ③ 可选 TaskPlan 契约 →
+    ④ 插 agent 节点 → ⑤ 按序广播 message→task→(contract)→node_added → ⑥ 账本登记（M6 replay
+    复用：payload 携 node_id/task_id/message_id，request_hash=节点定义指纹）。
+    """
+    conn = tx.conn
+    ts = service.now_iso()
+    anchor_id = service.new_ulid()
+    anchor_body = node.title.strip() or "模板 Agent 节点"
+    conn.execute(
+        insert(_MSG).values(
+            id=anchor_id,
+            workspace_id=workspace_id,
+            channel_id=channel_id,
+            thread_root_id=None,
+            author_member_id=None,
+            kind=MessageKind.SYSTEM,
+            card_kind=None,
+            card_ref=None,
+            body=anchor_body,
+            created_at=ts,
+        )
+    )
+    task_row = tasks_service.create_task(
+        tx,
+        workspace_id=workspace_id,
+        channel_id=channel_id,
+        root_message_id=anchor_id,
+        created_by=created_by,
+        title=node.title,
+        source_body=anchor_body,
+        level=TaskLevel.L2,
+    )
+    contract_pub: dict[str, Any] | None = None
+    if node.plan_skeleton is not None:
+        contract_row, _ = contracts_service.submit_contract(
+            tx,
+            task_id=task_row["id"],
+            workspace_id=workspace_id,
+            kind=ContractKind.TASK_PLAN,
+            body_dict=node.plan_skeleton.model_dump(mode="json"),
+            created_by=created_by,
+        )
+        contract_pub = task_contract_public(contract_row)
+    node_row = canvas_service.insert_node(
+        conn,
+        canvas_id=canvas["id"],
+        kind=CanvasNodeKind.AGENT,
+        task_id=task_row["id"],
+        is_summary=False,
+        system_action=None,
+        command=None,
+        system_status=None,
+        pos_x=0,
+        pos_y=0,
+        created_at=ts,
+    )
+    # 按序广播：message → task →(contract)→ node_added（baseline 批末统一 bump，见 caller）。
+    anchor_row = models.row_dict(
+        conn.execute(select(_MSG).where(_MSG.c.id == anchor_id)).mappings().first()
+    )
+    tx.emit(EventType.MESSAGE_CREATED, channel_id, {"message": message_public(anchor_row, [])})
+    tasks_service.emit_task_created(tx, task_row)
+    if contract_pub is not None:
+        tx.emit(EventType.TASK_CONTRACT_CREATED, channel_id, {"contract": contract_pub})
+    tx.emit(EventType.CANVAS_NODE_ADDED, channel_id, {"node": canvas_node_public(node_row)})
+    # 账本登记（幂等键 tmpl:<batch_id>:<node_key>；M6 replay 引擎据此跳过已落地节点）。
+    service.record(
+        conn,
+        op_id,
+        "create_node",
+        {
+            "node_key": node.key,
+            "node_id": node_row["id"],
+            "task_id": task_row["id"],
+            "message_id": anchor_id,
+        },
+        request_hash=node_hash,
+        batch_id=batch_id,
+        actor=owner_id,
+    )
+    return node_row["id"], task_row
+
+
+def _land_edges(
+    tx: Any, canvas: dict[str, Any], body: TemplateBody, key_to_node_id: dict[str, str]
+) -> None:
+    """逐 TemplateEdge → canvas_edge（照 canvas.py:create_edge：无环兜底 + triplet 唯一幂等）。
+
+    模板保存时已校验无环，故此处 detect_cycle 是落地兜底（成环 → 422 GRAPH_CYCLE）；每边
+    SAVEPOINT 插入撞 triplet 唯一（replay/重复）→ 视同幂等，不重复 emit。
+    """
+    from coagentia_contracts import rest
+
+    conn = tx.conn
+    canvas_id = canvas["id"]
+    channel_id = canvas["channel_id"]
+    new_pairs = [(key_to_node_id[e.from_key], key_to_node_id[e.to_key]) for e in body.edges]
+    if not new_pairs:
+        return
+    all_ids = canvas_service.node_ids(conn, canvas_id)
+    existing_pairs = canvas_service.edge_pairs(conn, canvas_id)
+    cycle = detect_cycle(all_ids, [*existing_pairs, *new_pairs])
+    if cycle is not None:
+        raise ApiError(
+            422,
+            rest.ErrorCode.GRAPH_CYCLE,
+            "模板实例化连边会形成环",
+            rule="V9",
+            details={"cycle": cycle},
+        )
+    for from_id, to_id in new_pairs:
+        edge_id = service.new_ulid()
+        try:
+            with conn.begin_nested():  # SAVEPOINT：triplet 唯一并发/replay 兜底
+                conn.execute(
+                    insert(_EDGE).values(
+                        id=edge_id,
+                        canvas_id=canvas_id,
+                        from_node_id=from_id,
+                        to_node_id=to_id,
+                    )
+                )
+        except IntegrityError:
+            continue  # 同 (canvas, from, to) 已存在 → 幂等跳过，不重复 emit
+        edge_row = models.row_dict(
+            conn.execute(select(_EDGE).where(_EDGE.c.id == edge_id)).mappings().first()
+        )
+        tx.emit(EventType.CANVAS_EDGE_ADDED, channel_id, {"edge": canvas_edge_public(edge_row)})
+
+
+def instantiate_template(
+    tx: Any,
+    *,
+    template_row: dict[str, Any],
+    channel_id: str,
+    role_mapping: dict[str, str | None],
+    owner_id: str,
+    batch_id: str,
+) -> tuple[LandingBatchRow, list[dict[str, Any]]]:
+    """模板实例化单事务编排（B §11.2；全仓首个 landing batch 消费者）。
+
+    落地批 create_batch → 逐 TemplateNode 走 create_node 全链（幂等键 tmpl:<batch_id>:<node_key>
+    三态：hit 复用不重建、new 建链）→ 逐 TemplateEdge 连边 → briefing 系统消息 @映射角色（唤醒
+    信号）→ baseline 批末统一 bump → mark_done。role_mapping[node.role] 为 None → 该任务
+    created_by 退回 owner（节点无 owner「待认领」，create_task 起始 owner 恒 None）。返回
+    (done 态批行, 任务行表)。
+    """
+    conn = tx.conn
+    body = TemplateBody.model_validate(template_row["body"])
+    canvas = canvas_service.fetch_canvas_by_channel(conn, channel_id)
+    if canvas is None:
+        from coagentia_contracts import rest
+
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "目标频道无画布，无法实例化")
+    workspace_id = canvas["workspace_id"]
+
+    # (a) 落地批（幂等键命名空间锚；content_hash = 模板 body 指纹，source_ref = 模板 id）。
+    content_hash = fingerprint(template_row["body"])
+    service.create_batch(
+        conn,
+        workspace_id=workspace_id,
+        channel_id=channel_id,
+        kind=LandingBatchKind.TMPL,
+        content_hash=content_hash,
+        source_ref=template_row["id"],
+        confirmed_by=owner_id,
+        batch_id=batch_id,
+    )
+
+    prefix = OPID_TMPL_PREFIX.format(batch_id=batch_id)
+    key_to_node_id: dict[str, str] = {}
+    task_rows: list[dict[str, Any]] = []
+
+    # (c) 逐 TemplateNode：三态幂等（hit 跳过复用既有 node/task；new 建 create_node 全链）。
+    for node in body.nodes:
+        op_id = prefix + node.key
+        node_hash = fingerprint(node.model_dump(mode="json"))
+        look = service.lookup(conn, op_id, node_hash)
+        if look["status"] == "hit":  # replay 前段命中：复用账本记录的 node/task，不重建
+            payload = look["entry"].payload
+            key_to_node_id[node.key] = payload["node_id"]
+            task_rows.append(tasks_service.fetch_task(conn, payload["task_id"]))
+            continue
+        if look["status"] == "mismatch":  # 同键异指纹（模板漂移）→ fail-closed 停批
+            service.mark_fail_closed(conn, batch_id, reason="template node fingerprint mismatch")
+            from coagentia_contracts import rest
+
+            raise ApiError(
+                409,
+                rest.ErrorCode.IDEMPOTENCY_MISMATCH,
+                "模板节点指纹与账本记录不一致，已 fail-closed",
+                rule="A§4.7",
+            )
+        created_by = role_mapping.get(node.role) or owner_id
+        node_id, task_row = _instantiate_node(
+            tx,
+            node=node,
+            canvas=canvas,
+            workspace_id=workspace_id,
+            channel_id=channel_id,
+            created_by=created_by,
+            op_id=op_id,
+            node_hash=node_hash,
+            batch_id=batch_id,
+            owner_id=owner_id,
+        )
+        key_to_node_id[node.key] = node_id
+        task_rows.append(task_row)
+
+    # (d) 逐 TemplateEdge → canvas_edge（key → node_id 映射，无环兜底 + triplet 幂等）。
+    _land_edges(tx, canvas, body, key_to_node_id)
+
+    # (e) briefing 系统消息 @角色：mention = 映射出的非 null member_id 去重（= 唤醒目标 Agent，
+    #     hub 读 message_mentions → WakeReason.MENTION 即开工信号）。复用 guard._post_system_
+    #     message（durable 系统消息 + message_mentions 行 by member_id + emit message.created）。
+    mention_ids = _dedup([mid for mid in role_mapping.values() if mid is not None])
+    guard_service._post_system_message(
+        tx,
+        workspace_id=workspace_id,
+        channel_id=channel_id,
+        body=body.briefing,
+        thread_root_id=None,
+        mention_member_ids=mention_ids,
+        created_at=service.now_iso(),
+    )
+
+    # (f) baseline 批末统一 bump（避免逐节点 version 抖动）+ mark_done（批 :done 事实源 S4）。
+    version, hash_, changed = canvas_service.advance_baseline(tx, canvas["id"])
+    if changed:
+        tx.emit(
+            EventType.CANVAS_BASELINE_ADVANCED,
+            channel_id,
+            {
+                "canvas_id": canvas["id"],
+                "baseline_version": version,
+                "baseline_hash": hash_,
+            },
+        )
+    service.mark_done(conn, batch_id)
+    batch = service._fetch_batch(conn, batch_id)
+    assert batch is not None
+    return batch, task_rows
+
+
 # ---------------------------------------------------------------- builtin 启动 upsert
 
 
@@ -329,9 +642,12 @@ def upsert_builtin_templates(engine: Engine) -> None:
 
 __all__ = [
     "UNCLAIMED_PLACEHOLDER",
+    "fetch_template",
     "fetch_templates",
     "has_draft_layer",
     "insert_template",
+    "instantiate_template",
+    "missing_role_mappings",
     "serialize_canvas_to_body",
     "upsert_builtin_templates",
     "validate_template_body",

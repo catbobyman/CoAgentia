@@ -18,7 +18,9 @@ from coagentia_contracts.entities import (
     TemplateNode,
     TemplateRole,
 )
+from coagentia_contracts.enums import LandingBatchStatus
 from coagentia_server.api import ApiError
+from coagentia_server.canvas import service as canvas_service
 from coagentia_server.db import models
 from coagentia_server.ledger import service
 from coagentia_server.templates import builtin
@@ -30,6 +32,10 @@ from sqlalchemy.engine import Engine
 _TASK = models.tbl(models.Task)
 _MEMBER = models.tbl(models.Member)
 _TEMPLATE = models.tbl(models.Template)
+_MSG = models.tbl(models.Message)
+_MENTION = models.tbl(models.MessageMention)
+_BATCH = models.tbl(models.LandingBatch)
+_LEDGER = models.tbl(models.LedgerEntry)
 
 _TASK_PLAN = {
     "goal": "让用户能登录",
@@ -409,3 +415,294 @@ def test_created_template_persisted(server_client: TestClient) -> None:
     created = _post_template(server_client, build["id"]).json()
     listed = server_client.get("/api/templates").json()
     assert any(t["id"] == created["id"] for t in listed)
+
+
+# ---------------------------------------------------------------- H6 实例化（B §11.2）
+
+
+def _research_channel(client: TestClient) -> dict[str, Any]:
+    return next(
+        c for c in client.get("/api/channels").json()["items"] if c["name"] == "research"
+    )
+
+
+def _canvas_detail(client: TestClient, channel_id: str) -> dict[str, Any]:
+    return client.get(f"/api/channels/{channel_id}/canvas").json()
+
+
+def _two_node_template(
+    client: TestClient, engine: Engine, *, with_plan: bool = True
+) -> dict[str, Any]:
+    """在 build 频道建「上游→下游」两 agent 节点 + 一边，owner 分派 Pat/Hank、占位改名
+    producer/consumer，存为模板并回模板 JSON。上游可带 plan_skeleton（实例化作 TaskPlan 初稿）。"""
+    build = _build_channel(client)
+    canvas_id = _canvas_id(client, build)
+    pat = _member(client, "Pat")
+    hank = _member(client, "Hank")
+    up = _agent_node(client, canvas_id, "上游任务", task_plan=_TASK_PLAN if with_plan else None)
+    down = _agent_node(client, canvas_id, "下游任务")
+    _set_owner(engine, up["task_id"], pat["id"])
+    _set_owner(engine, down["task_id"], hank["id"])
+    _edge(client, canvas_id, up["id"], down["id"])
+    r = _post_template(
+        client, build["id"], role_placeholders={pat["id"]: "producer", hank["id"]: "consumer"}
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def _instantiate(
+    client: TestClient,
+    template_id: str,
+    channel_id: str,
+    role_mapping: dict[str, str | None],
+    *,
+    idempotency_key: str | None = None,
+):
+    headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
+    return client.post(
+        f"/api/templates/{template_id}/instantiate",
+        json={"channel_id": channel_id, "role_mapping": role_mapping},
+        headers=headers,
+    )
+
+
+def test_instantiate_end_to_end(server_client: TestClient, seeded_engine: Engine) -> None:
+    """全覆盖实例化：节点/边/任务/TaskPlan 初稿/锚点消息齐全，落地批 done。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+
+    r = _instantiate(
+        server_client, tpl["id"], research["id"], {"producer": rin["id"], "consumer": None}
+    )
+    assert r.status_code == 201, r.text
+    result = rest.InstantiateResult.model_validate(r.json())
+
+    # 落地批 done + done_at 写入（mark_done，S4）。
+    assert result.batch.status is LandingBatchStatus.DONE
+    assert result.batch.done_at is not None
+    assert result.batch.source_ref == tpl["id"]
+
+    # 两任务（L2）落地，标题带走。
+    assert len(result.tasks) == 2
+    titles = {t.title for t in result.tasks}
+    assert titles == {"上游任务", "下游任务"}
+    assert all(t.status is entities.TaskStatus.TODO for t in result.tasks)
+
+    # 画布落 2 节点 1 边（gating 天然参与）。
+    detail = _canvas_detail(server_client, research["id"])
+    assert len(detail["nodes"]) == 2
+    assert len(detail["edges"]) == 1
+
+    # 上游任务带 TaskPlan 初稿（plan_skeleton 落地为契约）。
+    up = next(t for t in result.tasks if t.title == "上游任务")
+    contracts = server_client.get(f"/api/tasks/{up.id}/contracts").json()
+    assert any(c["kind"] == "task_plan" for c in contracts)
+
+    # 锚点消息齐全：每任务 root_message_id 指向本频道 system 消息。
+    with seeded_engine.connect() as conn:
+        for t in result.tasks:
+            row = conn.execute(
+                select(_MSG.c.kind, _MSG.c.channel_id).where(
+                    _MSG.c.id == t.root_message_id
+                )
+            ).first()
+            assert row is not None and row[0] == "system" and row[1] == research["id"]
+
+
+def test_instantiate_missing_role_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """role_mapping 缺占位 → 422 VALIDATION_FAILED，details.missing 列缺失占位名。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    r = _instantiate(server_client, tpl["id"], research["id"], {"producer": rin["id"]})
+    assert r.status_code == 422, r.text
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
+    assert err.error.details == {"missing": ["consumer"]}
+
+
+def test_instantiate_null_role_unclaimed(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """role_mapping 值 null → 该角色节点任务无 owner（待认领）。"""
+    tpl = _two_node_template(server_client, seeded_engine, with_plan=False)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    r = _instantiate(
+        server_client, tpl["id"], research["id"], {"producer": rin["id"], "consumer": None}
+    )
+    assert r.status_code == 201, r.text
+    result = rest.InstantiateResult.model_validate(r.json())
+    consumer = next(t for t in result.tasks if t.title == "下游任务")
+    assert consumer.owner_member_id is None  # null 映射 = 待认领
+
+
+def test_instantiate_idempotent_same_key(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """同 Idempotency-Key 重试 → 恰一批、不重复建节点（回同一 batch/tasks）。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    mapping: dict[str, str | None] = {"producer": rin["id"], "consumer": None}
+
+    r1 = _instantiate(server_client, tpl["id"], research["id"], mapping, idempotency_key="k1")
+    r2 = _instantiate(server_client, tpl["id"], research["id"], mapping, idempotency_key="k1")
+    assert r1.status_code == 201 and r2.status_code == 201, (r1.text, r2.text)
+    res1 = rest.InstantiateResult.model_validate(r1.json())
+    res2 = rest.InstantiateResult.model_validate(r2.json())
+    assert res1.batch.id == res2.batch.id
+    assert {t.id for t in res1.tasks} == {t.id for t in res2.tasks}
+
+    # 画布只落一批（2 节点），重放未重复建节点。
+    detail = _canvas_detail(server_client, research["id"])
+    assert len(detail["nodes"]) == 2
+    assert len(detail["edges"]) == 1
+    # 落地批恰一行。
+    with seeded_engine.connect() as conn:
+        batches = list(
+            conn.execute(
+                select(_BATCH.c.id).where(_BATCH.c.channel_id == research["id"])
+            ).scalars()
+        )
+    assert len(batches) == 1
+
+
+def test_instantiate_idempotency_mismatch_409(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """同 Idempotency-Key 不同请求体 → 409 IDEMPOTENCY_MISMATCH。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    r1 = _instantiate(
+        server_client, tpl["id"], research["id"],
+        {"producer": rin["id"], "consumer": None}, idempotency_key="k2",
+    )
+    assert r1.status_code == 201, r1.text
+    r2 = _instantiate(
+        server_client, tpl["id"], research["id"],
+        {"producer": None, "consumer": None}, idempotency_key="k2",
+    )
+    assert r2.status_code == 409, r2.text
+    assert (
+        rest.ErrorResponse.model_validate(r2.json()).error.code
+        is rest.ErrorCode.IDEMPOTENCY_MISMATCH
+    )
+
+
+def test_instantiate_briefing_mentions_mapped_agents(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """briefing 系统消息 @映射角色：mention 行按 member_id 存在（= 唤醒目标 Agent）。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    r = _instantiate(
+        server_client, tpl["id"], research["id"], {"producer": rin["id"], "consumer": None}
+    )
+    assert r.status_code == 201, r.text
+    with seeded_engine.connect() as conn:
+        msg_ids = list(
+            conn.execute(
+                select(_MSG.c.id).where(
+                    _MSG.c.channel_id == research["id"], _MSG.c.kind == "system"
+                )
+            ).scalars()
+        )
+        mentions = set(
+            conn.execute(
+                select(_MENTION.c.member_id).where(_MENTION.c.message_id.in_(msg_ids))
+            ).scalars()
+        )
+    # producer→Rin 被 @；consumer→null 无 @（唯一 mention 目标 = Rin）。
+    assert mentions == {rin["id"]}
+
+
+def test_instantiate_downstream_blocked(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """实例化落的 edges 天然参与 derive_blocked：下游因上游未 done 而 blocked、上游不 blocked。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    r = _instantiate(
+        server_client, tpl["id"], research["id"], {"producer": rin["id"], "consumer": None}
+    )
+    assert r.status_code == 201, r.text
+    result = rest.InstantiateResult.model_validate(r.json())
+    up = next(t for t in result.tasks if t.title == "上游任务")
+    down = next(t for t in result.tasks if t.title == "下游任务")
+    with seeded_engine.connect() as conn:
+        assert canvas_service.is_task_blocked(conn, down.id) is True
+        assert canvas_service.is_task_blocked(conn, up.id) is False
+
+
+def test_instantiate_ledger_marks_done_and_records_nodes(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """落地批 mark_done + 逐节点账本行（幂等键 tmpl:<batch_id>:<node_key>）齐全。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    r = _instantiate(
+        server_client, tpl["id"], research["id"], {"producer": rin["id"], "consumer": None}
+    )
+    assert r.status_code == 201, r.text
+    batch_id = rest.InstantiateResult.model_validate(r.json()).batch.id
+    with seeded_engine.connect() as conn:
+        batch = conn.execute(
+            select(_BATCH.c.status, _BATCH.c.done_at).where(_BATCH.c.id == batch_id)
+        ).first()
+        assert batch is not None and batch[0] == LandingBatchStatus.DONE.value
+        assert batch[1] is not None
+        node_ops = list(
+            conn.execute(
+                select(_LEDGER.c.op_id).where(
+                    _LEDGER.c.batch_id == batch_id, _LEDGER.c.kind == "create_node"
+                )
+            ).scalars()
+        )
+    assert len(node_ops) == 2
+    assert all(op.startswith(f"tmpl:{batch_id}:") for op in node_ops)
+
+
+def test_instantiate_template_not_found_404(server_client: TestClient) -> None:
+    """未知 template_id → 404 NOT_FOUND。"""
+    research = _research_channel(server_client)
+    r = _instantiate(server_client, "01K0NOPE000000000000000000", research["id"], {})
+    assert r.status_code == 404, r.text
+    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
+
+
+def test_instantiate_builtin_triangle(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """builtin 工程三角实例化：6 节点线性 DAG + 4 角色全映射 → 6 任务 + 5 边 + 真 briefing。"""
+    tri = next(t for t in server_client.get("/api/templates").json() if t["builtin"])
+    research = _research_channel(server_client)
+    owner = _member(server_client, "Memcyo")
+    pat = _member(server_client, "Pat")
+    hank = _member(server_client, "Hank")
+    rin = _member(server_client, "Rin")
+    agents = [pat["id"], hank["id"], rin["id"], owner["id"]]
+    roles = [ro["placeholder"] for ro in tri["body"]["roles"]]
+    mapping = {ro: agents[i] for i, ro in enumerate(roles)}
+
+    r = _instantiate(server_client, tri["id"], research["id"], mapping)
+    assert r.status_code == 201, r.text
+    result = rest.InstantiateResult.model_validate(r.json())
+    assert len(result.tasks) == 6
+    detail = _canvas_detail(server_client, research["id"])
+    assert len(detail["nodes"]) == 6
+    assert len(detail["edges"]) == 5
+    # 首节点（需求框定）为根不 blocked；下游节点 blocked。
+    first = next(t for t in result.tasks if t.title == "需求框定")
+    gate = next(t for t in result.tasks if t.title == "评审门")
+    with seeded_engine.connect() as conn:
+        assert canvas_service.is_task_blocked(conn, first.id) is False
+        assert canvas_service.is_task_blocked(conn, gate.id) is True

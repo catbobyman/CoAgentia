@@ -410,13 +410,18 @@ def test_channels_snapshot_notification_settings_field(dual: DualClient) -> None
     assert snap.notification_settings == []
 
 
-# ---------------------------------------------------------------- M5b 模板（H5 存/列双跑）
+# -------------------------------------------------------- M5b 模板（H5 存/列 + H6 实例化双跑）
 #
 # GET /templates 双跑（mock 形状源 + 真 server lifespan upsert builtin）读形状零偏差；POST 存为模板
 # 全业务（画布快照序列化 / 占位去重 / 409 约束）是真 server 独有逻辑（纪律 4），不在此双跑——见
-# test_templates.py。instantiate 归 H6，本块不 serve（H5 只登记 GET/POST /templates 实 serve）。
+# test_templates.py。instantiate（H6）此处只双跑响应形状（InstantiateResult 零偏差）；单事务编排 /
+# 幂等 / briefing / blocked 是真 server 独有逻辑，见 test_templates.py。
 
-_TEMPLATES_H5 = [("GET", "/templates"), ("POST", "/templates")]
+_TEMPLATES_H6 = [
+    ("GET", "/templates"),
+    ("POST", "/templates"),
+    ("POST", "/templates/{template_id}/instantiate"),
+]
 
 
 def test_templates_list_shape(dual: DualClient) -> None:
@@ -432,16 +437,30 @@ def test_templates_list_shape(dual: DualClient) -> None:
     assert items[0].body.nodes, "body 全量携带（向导预览 DAG 缩略图用）"
 
 
-def test_templates_h5_endpoints_served(server_client: TestClient) -> None:
-    """H5 真 server serve GET/POST /templates（存/列）；instantiate 归 H6 本模块不 serve（目录 ↔
-    实 serve 对账，M2/M3/M4 先例）。"""
+def test_templates_h6_endpoints_served(server_client: TestClient) -> None:
+    """H5+H6 真 server serve GET/POST /templates + POST instantiate（目录 ↔ 实 serve 对账，
+    M2/M3/M4 先例）。"""
     served = _served(server_client)
-    missing = [(m, p) for m, p in _TEMPLATES_H5 if (m, _norm(p)) not in served]
-    assert not missing, f"H5 模板端点未 serve: {missing}"
-    assert (
-        "POST",
-        _norm("/templates/{template_id}/instantiate"),
-    ) not in served, "instantiate 属 H6，本里程碑块不应 serve"
+    missing = [(m, p) for m, p in _TEMPLATES_H6 if (m, _norm(p)) not in served]
+    assert not missing, f"H6 模板端点未 serve: {missing}"
+
+
+def test_instantiate_result_shape(dual: DualClient) -> None:
+    """POST /templates/{id}/instantiate（B §11.2）：builtin 工程三角全角色映射 → InstantiateResult
+    形状零偏差（mock 回落地批 + 空任务形状；真 server 单事务落地批 + 逐节点任务）。"""
+    _, client = dual
+    build = _build_channel(client)
+    tri = next(t for t in client.get("/api/templates").json() if t["builtin"])
+    owner = _member(client, "Memcyo")  # 全角色映射到 Owner（真 server FK 需真成员，mock 忽略）
+    mapping = {ro["placeholder"]: owner["id"] for ro in tri["body"]["roles"]}
+    r = client.post(
+        f"/api/templates/{tri['id']}/instantiate",
+        json={"channel_id": build["id"], "role_mapping": mapping},
+    )
+    assert r.status_code == 201, r.text
+    result = rest.InstantiateResult.model_validate(r.json())
+    assert result.batch.channel_id == build["id"]
+    assert result.batch.kind is entities.LandingBatchKind.TMPL
 
 
 # ---------------------------------------------------------------- WS 信封与广播（A4 双跑）
