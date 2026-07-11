@@ -23,6 +23,14 @@ import './templates.css';
 const RUNTIME_WORD: Record<string, string> = { claude_code: 'Claude Code', codex: 'Codex' };
 const UNASSIGNED = '__unassigned__';
 
+// 幂等键生成：crypto.randomUUID 仅 secure context（https/localhost）可用，本地优先应用可能经局域网
+// http 访问（非 secure context）→ randomUUID undefined 会抛错。此处兜底一枚够用的随机键。
+function newIdempotencyKey(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  return `idk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 // ---- DAG 缩略图(纯展示)：按最长路径分层左→右排布，小矩形节点 + 连线。有环兜底 depth 0。
 export function TemplateDagThumb({ body }: { body: TemplateBody }) {
   const nodes = body.nodes ?? [];
@@ -132,8 +140,12 @@ export function TemplateWizard({ channelId, members, onClose, onInstantiated }: 
   const missing = missingRoleMappings(roles, mapping);
   const sameRuntimeWarn = hasSameRuntimeReview(roles, mapping, (id) => runtimeOf[id]);
 
-  const pickTemplate = (id: string) => { setSelectedId(id); setMapping({}); };
+  // 提交体变化即作废旧幂等键（选模板 / 改映射）：否则丢响应重试用陈旧键，撞 409 IDEMPOTENCY_
+  // MISMATCH（改了映射）或回放错模板（换了模板但体相同）。幂等键仅在「同一次提交的网络重试」内稳定。
+  const resetIdempotencyKey = () => { idempotencyKeyRef.current = null; };
+  const pickTemplate = (id: string) => { setSelectedId(id); setMapping({}); resetIdempotencyKey(); };
   const onRoleChange = (ph: string, v: string) => {
+    resetIdempotencyKey();
     if (v === '') {
       setMapping((prev) => { const n = { ...prev }; delete n[ph]; return n; });
       return;
@@ -143,7 +155,7 @@ export function TemplateWizard({ channelId, members, onClose, onInstantiated }: 
 
   const instantiate = () => {
     if (!selectedId || missing.length > 0) return;
-    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = newIdempotencyKey();
     instantiateM.mutate(
       {
         templateId: selectedId,

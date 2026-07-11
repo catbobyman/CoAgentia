@@ -89,12 +89,16 @@ def batch_node_task_ids(conn: Connection, batch_id: str) -> list[str]:
 
     模板实例化幂等重放重建 InstantiateResult 用（reserve-before 语义下 REST op_id 只记 batch_id，
     task_ids 从已落库的逐节点账本行派生——见 routes/templates._reconstruct_from_ledger）。
+
+    按 `seq`（自增 PK = 落库顺序）排序 → 与首次 201 的 body.nodes 落地顺序一致；勿按
+    (created_at, op_id)：同毫秒时 op_id=tmpl:<batch>:<node_key> 的字典序会打乱顺序（n10<n2、
+    语义键乱序），令同键重放与首次响应的 tasks 顺序相异，违「同键同响应」。
     """
     rows = (
         conn.execute(
             select(_LEDGER.c.payload)
             .where(_LEDGER.c.batch_id == batch_id, _LEDGER.c.kind == "create_node")
-            .order_by(_LEDGER.c.created_at, _LEDGER.c.op_id)
+            .order_by(_LEDGER.c.seq)
         )
         .scalars()
         .all()

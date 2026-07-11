@@ -748,15 +748,58 @@ def test_instantiate_unknown_member_422(
 def test_instantiate_failed_precheck_leaves_no_op_id(
     server_client: TestClient, seeded_engine: Engine
 ) -> None:
-    """可失败校验全部前置于幂等 reserve 之前（ApiError 不回滚事务）：同键先打无画布频道 404，op_id
-    不残留；再打有效频道同键（异体）不因残留 op_id 误判 409 mismatch，而是照常 201。"""
+    """可失败校验全部前置于幂等 reserve 之前：同键先打无画布频道 404（reserve 前即拒，不登记
+    op_id）；再打有效频道同键（异体）不因残留 op_id 误判 409 mismatch，而是照常 201。"""
     tpl = _two_node_template(server_client, seeded_engine, with_plan=False)
     research = _research_channel(server_client)
     rin = _member(server_client, "Rin")
     mapping: dict[str, str | None] = {"producer": rin["id"], "consumer": None}
-    ghost_channel = "01K0CHAN000000000000000099"  # 无此频道 → instantiate 内 404 无画布
+    ghost_channel = "01K0CHAN000000000000000099"  # 无此频道 → reserve 前 404 无画布
     r1 = _instantiate(server_client, tpl["id"], ghost_channel, mapping, idempotency_key="rk1")
     assert r1.status_code == 404, r1.text
     r2 = _instantiate(server_client, tpl["id"], research["id"], mapping, idempotency_key="rk1")
-    assert r2.status_code == 201, r2.text  # op_id 随失败事务回滚 → 非 409
+    assert r2.status_code == 201, r2.text  # 404 发生于 reserve 前 → 无残留 op_id → 非 409
     assert len(_canvas_detail(server_client, research["id"])["nodes"]) == 2
+
+
+def test_instantiate_replay_preserves_task_order(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """幂等重放的 tasks 顺序 == 首次 201（batch_node_task_ids 按 seq 保序，非 op_id 字典序）。
+
+    builtin 工程三角语义键落库序（req_framing…human_final）≠ 字典序（acceptance…），同毫秒时旧
+    (created_at,op_id) 排序会打乱重放顺序——此测锁死 seq 保序修复。
+    """
+    tri = next(t for t in server_client.get("/api/templates").json() if t["builtin"])
+    research = _research_channel(server_client)
+    owner = _member(server_client, "Memcyo")
+    roles = [ro["placeholder"] for ro in tri["body"]["roles"]]
+    mapping = {ro: owner["id"] for ro in roles}
+    r1 = _instantiate(server_client, tri["id"], research["id"], mapping, idempotency_key="ord1")
+    r2 = _instantiate(server_client, tri["id"], research["id"], mapping, idempotency_key="ord1")
+    assert r1.status_code == 201 and r2.status_code == 201, (r1.text, r2.text)
+    ids1 = [t["id"] for t in r1.json()["tasks"]]
+    ids2 = [t["id"] for t in r2.json()["tasks"]]
+    assert ids1 == ids2, (ids1, ids2)  # 同键同序
+    assert r1.json()["tasks"][0]["title"] == "需求框定"  # 落库序头 = body.nodes 头
+
+
+def test_instantiate_idempotency_key_scoped_to_template(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """同 Idempotency-Key + 同 {channel,role_mapping} 跨两个模板 → 409（template_id 折入 req_hash，
+    不误判 hit 回放错模板）。"""
+    t1 = _two_node_template(server_client, seeded_engine, with_plan=False)
+    t2 = _two_node_template(server_client, seeded_engine, with_plan=False)
+    assert t1["id"] != t2["id"]
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    mapping: dict[str, str | None] = {"producer": rin["id"], "consumer": None}
+    r1 = _instantiate(server_client, t1["id"], research["id"], mapping, idempotency_key="tk1")
+    assert r1.status_code == 201, r1.text
+    r2 = _instantiate(server_client, t2["id"], research["id"], mapping, idempotency_key="tk1")
+    assert r2.status_code == 409, r2.text
+    assert (
+        rest.ErrorResponse.model_validate(r2.json()).error.code
+        is rest.ErrorCode.IDEMPOTENCY_MISMATCH
+    )

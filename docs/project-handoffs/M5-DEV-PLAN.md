@@ -31,6 +31,13 @@
 | B-M5-1 | 技能编辑 + 频道设置弹窗（含 P12 阈值收编）+ cron 显示 + 通知徽标 | ✅ | `38c4ea5` | 波 2 |
 | — | 实机 verify → [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)（codex 真机 PONG+usage / REST 9/9 / 2 截图 / console 0） | ✅ | `da6833a` | 重跑实测 |
 | — | /code-review high（8 维度→5 CONFIRMED 全修：cron 500/DST、通知 TOCTOU、codex 凭证、probe symlink） | ✅ | `da6833a` | 每项 HTTP/单测实证 |
+| H5 | 模板域（存为模板/列表/工程三角 builtin·序列化·validate 单点·启动 upsert） | ✅ | `b4203c4` | 块 M5b 波 1 |
+| B-M5-2 | 存为模板弹窗 + 向导三步（DAG 缩略图/同 runtime warning/预览/实例化跳转）+ SetupChecklist 003 接真 | ✅ | `b4203c4` | 块 M5b 波 1 |
+| H6 | 实例化事务器（落地批/逐节点 create_node 全链/连边/briefing @角色/幂等/blocked-gating） | ✅ | `12aaac6` | 块 M5b 波 2 |
+| — | 并行审计（4 agent）→ 1 blocking(幂等 reserve-before)+1 major(向导死控件)+minor 全修 + 覆盖补齐 | ✅ | `42b7b64` | 前置于实机 |
+| H7 | 实机 verify → [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md)（codex PONG / e2e 12/12 全管道到人类终审 done / 5 截图 / console 0） | ✅ | `bb760f0` | = PRD M5 出口 |
+| — | verify-surfaced 修复（FR-7.3 classifyRole warning / 实例化节点分层布局） | ✅ | `bb760f0` | 单测漏网实机现形 |
+| — | /code-review high（8 维度 workflow → 见 [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md) §收口） | ⏳ | — | 块 M5b 收口中 |
 
 ## 2. 守门命令（波间与收口）
 

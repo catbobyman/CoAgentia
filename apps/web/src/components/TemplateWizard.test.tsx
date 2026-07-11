@@ -175,4 +175,26 @@ describe('TemplateWizard', () => {
     ));
     await waitFor(() => expect(onInstantiated).toHaveBeenCalledWith('ch'));
   });
+
+  it('改映射后作废旧幂等键(FIX A:丢响应重试不撞 409/不回放错模板)', async () => {
+    vi.mocked(api.instantiateTemplate).mockRejectedValue(new Error('network'));
+    renderWizard([member('a', 'Alice'), member('b', 'Bob')]);
+    await gotoStep2();
+    fireEvent.change(screen.getByLabelText('映射 实现工程师'), { target: { value: 'a' } });
+    fireEvent.change(screen.getByLabelText('映射 评审工程师'), { target: { value: 'b' } });
+    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
+    await screen.findByTestId('wizard-step-3');
+    fireEvent.click(screen.getByTestId('instantiate-submit'));
+    await waitFor(() => expect(api.instantiateTemplate).toHaveBeenCalledTimes(1));
+    const key1 = vi.mocked(api.instantiateTemplate).mock.calls[0][2];
+    // 回步② 改映射（作废幂等键）→ 再提交应用新键
+    fireEvent.click(screen.getByRole('button', { name: /上一步/ }));
+    fireEvent.change(screen.getByLabelText('映射 评审工程师'), { target: { value: '__unassigned__' } });
+    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
+    await screen.findByTestId('wizard-step-3');
+    fireEvent.click(screen.getByTestId('instantiate-submit'));
+    await waitFor(() => expect(api.instantiateTemplate).toHaveBeenCalledTimes(2));
+    const key2 = vi.mocked(api.instantiateTemplate).mock.calls[1][2];
+    expect(key2).not.toBe(key1);
+  });
 });

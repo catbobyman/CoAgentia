@@ -97,7 +97,7 @@ def create_template(body: rest.TemplateCreate, request: Request, tx: Tx = Depend
 # ---------------------------------------------------------------- 实例化（H6；B §11.2）
 
 
-def _instantiate_result(tx: Tx, batch: Any, task_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _instantiate_result(batch: Any, task_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """InstantiateResult 组装：LandingBatchPublic(≡Row) + TaskPublic 列表（形状零偏差）。"""
     return {
         "batch": batch.model_dump(mode="json"),
@@ -109,14 +109,15 @@ def _reconstruct_from_ledger(tx: Tx, payload: dict[str, Any]) -> dict[str, Any]:
     """幂等命中 → 凭账本重建原 InstantiateResult。
 
     REST op_id 采 reserve-before 语义（建任何节点前登记，见 instantiate_template），故其 payload
-    只携 batch_id；task_rows 从该批已落库的逐节点 `create_node` 账本行派生（batch_node_task_ids），
-    而非一份只有落库后才算得出的 task_ids 列表。
+    只携 batch_id；task_rows 从该批已落库的逐节点 `create_node` 账本行按落库顺序派生
+    （batch_node_task_ids 按 seq 排序 → 与首次 201 的 tasks 顺序一致），而非一份只有落库后才算
+    得出的 task_ids 列表。
     """
     batch = service._fetch_batch(tx.conn, payload["batch_id"])
     assert batch is not None
     task_ids = service.batch_node_task_ids(tx.conn, payload["batch_id"])
     task_rows = [tasks_service.fetch_task(tx.conn, tid) for tid in task_ids]
-    return _instantiate_result(tx, batch, task_rows)
+    return _instantiate_result(batch, task_rows)
 
 
 @router.post(
@@ -166,21 +167,25 @@ def instantiate_template(
             rule="B§11.2",
             details={"unknown": unknown},
         )
-    # 无画布 404 前移到 reserve 之前：ApiError 有处理器 → 事务不回滚（fail-closed 标记赖此），故
-    # reserve 之后不得再抛可失败错误，否则残留 op_id 指向未建落地批（重放 reconstruct 落空）。
+    # 无画布 404 前移到 reserve 之前（见下 reserve 说明）。
     if not templates_service.channel_has_canvas(tx.conn, body.channel_id):
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "目标频道无画布，无法实例化")
 
     batch_id = service.new_ulid()
 
     # 幂等 reserve-before（照 messages.py:430-448：record 先于副作用）：并发对手先落库同键时，本
-    # 请求在建任何节点前即 409/回其结果，绝不产生重复落地批。所有可失败校验（404/422）已全部前置
-    # 于 reserve 之上，故 reserve 后 instantiate 不再抛错（模板已校验无环、实例化子图与既有画布不
-    # 相交故不成环）——因 ApiError 不回滚事务，op_id 不会残留指向未建的批。op_id payload 只记
-    # batch_id，task_ids 由逐节点 create_node 账本行派生（_reconstruct_from_ledger）。
+    # 请求在建任何节点前即 409/回其结果，绝不产生重复落地批。关键不变式：**所有可失败校验（模板
+    # 404 / 角色 422 / 未知成员 422 / 无画布 404）全部前置于 reserve 之上**，故 reserve 后
+    # instantiate 不再抛可失败错误（模板存前已校验无环、实例化子图与既有画布节点不相交故连边不
+    # 成环）——这样无论事务回滚语义如何，都不会残留悬挂 op_id 指向未建的批（reserve 的 record 走
+    # SAVEPOINT，其写入未必随外层回滚而撤销，故此不变式是安全性所系，而非依赖回滚行为）。
+    # req_hash 折入 template_id：否则同键 + 同 {channel,role_mapping} 跨两个模板会误判 hit、回放错
+    # 模板。op_id payload 只记 batch_id，task_ids 由逐节点 create_node 账本行派生（按 seq 保序）。
     if idempotency_key is not None:
         op_id = OPID_REST_IDEMPOTENCY.format(key=idempotency_key)
-        req_hash = fingerprint(body.model_dump(mode="json"))
+        req_hash = fingerprint(
+            {"template_id": template_id, "body": body.model_dump(mode="json")}
+        )
         res = service.record(
             tx.conn, op_id, "rest_instantiate", {"batch_id": batch_id}, request_hash=req_hash
         )
@@ -200,4 +205,4 @@ def instantiate_template(
         owner_id=me["id"],
         batch_id=batch_id,
     )
-    return _instantiate_result(tx, batch, task_rows)
+    return _instantiate_result(batch, task_rows)

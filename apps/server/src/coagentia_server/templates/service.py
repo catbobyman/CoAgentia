@@ -310,8 +310,8 @@ def missing_role_mappings(body: TemplateBody, role_mapping: dict[str, Any]) -> l
 def channel_has_canvas(conn: Connection, channel_id: str) -> bool:
     """目标频道是否有画布（实例化前置校验用；无 → route 于 reserve 前 404）。
 
-    ApiError 有异常处理器 → 事务不回滚（fail-closed 标记赖此持久），故幂等 reserve 之后不得再抛
-    可失败错误；把「无画布 404」前移到 reserve 前，失败即不残留 op_id、原键可重试。
+    幂等 reserve（record 走 SAVEPOINT，写入未必随外层回滚撤销）之后不得再抛可失败错误，否则残留
+    悬挂 op_id 指向未建的批；故把「无画布 404」前移到 reserve 前，失败即不留 op_id、原键可重试。
     """
     return canvas_service.fetch_canvas_by_channel(conn, channel_id) is not None
 
