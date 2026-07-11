@@ -474,6 +474,7 @@ export type ErrorCode =
   | 'CHANNEL_NOT_EMPTY'
   | 'CHANNEL_ARCHIVED'
   | 'COMPUTER_HAS_AGENTS'
+  | 'COMPUTER_HAS_PROJECTS'
   | 'WORKSPACE_EXISTS'
   | 'DEPLOY_IN_PROGRESS'
   | 'DAEMON_OFFLINE'
@@ -1024,8 +1025,10 @@ export type FromKey = string;
 export type ToKey = string;
 export type Edges1 = TemplateEdge[];
 export type Key3 = string;
+export type ProjectId11 = string | null;
 export type Role = string;
 export type Title8 = string;
+export type WritesCode3 = boolean;
 export type Nodes1 = TemplateNode[];
 export type Description8 = string;
 export type Placeholder = string;
@@ -1125,12 +1128,12 @@ export type Slug3 = string;
 export type UiTheme2 = 'dark' | 'light' | 'system';
 export type TaskId22 = string;
 export type Branch4 = string;
-export type ProjectId11 = string;
+export type ProjectId12 = string;
 export type RepoPath7 = string;
 export type TaskId23 = string;
 export type Branch5 = string;
 export type Message2 = string;
-export type ProjectId12 = string;
+export type ProjectId13 = string;
 export type RepoPath8 = string;
 export type TaskId24 = string;
 export type Branch6 = string;
@@ -1140,7 +1143,7 @@ export type Id47 = string;
 export type MergeCommit1 = string | null;
 export type MergedAt1 = string | null;
 export type Path5 = string;
-export type ProjectId13 = string;
+export type ProjectId14 = string;
 export type TaskId25 = string;
 export type WorkspaceId42 = string;
 export type Branch7 = string;
@@ -2989,11 +2992,12 @@ export interface TaskUpdatedData {
   task: TaskPublic;
 }
 /**
- * templates.body（A v1.0.6 §4.10 M5 收紧）：DAG 结构 + 角色占位表 + 简报话术（C7）。
+ * templates.body（A v1.0.9 §4.10）：DAG 结构 + 角色占位表 + 简报话术（C7）。
  *
  * 保存序列化（B §11.1）：从画布快照仅取 task 节点、pos 不入；占位按节点 owner 去重、无 owner
- * 归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）。校验：model_validate +
- * edges 无环（复用 kernel/graph）+ nodes.role/edges 引用一致性（server 侧执法）。
+ * 归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）；writes_code/project_id
+ * 从任务行原样带走。校验：model_validate + edges 无环（复用 kernel/graph）+ nodes.role/edges 引用
+ * 一致性（server 侧执法）。
  */
 export interface TemplateBody {
   briefing?: Briefing;
@@ -3010,13 +3014,15 @@ export interface TemplateEdge {
   to_key: ToKey;
 }
 /**
- * TemplateBody.nodes 元素（A v1.0.6 §4.10）：模板内一个 task 节点。
+ * TemplateBody.nodes 元素（A v1.0.9 §4.10）：模板内一个 task 节点。
  */
 export interface TemplateNode {
   key: Key3;
   plan_skeleton?: TaskPlanBody | null;
+  project_id?: ProjectId11;
   role: Role;
   title: Title8;
+  writes_code?: WritesCode3;
 }
 /**
  * TemplateBody.roles 元素（P13 保存模板弹窗提取表）：角色占位。
@@ -3195,14 +3201,14 @@ export interface WorktreeCleanupData {
 }
 export interface WorktreeEnsureData {
   branch: Branch4;
-  project_id: ProjectId11;
+  project_id: ProjectId12;
   repo_path: RepoPath7;
   task_id: TaskId23;
 }
 export interface WorktreeMergeData {
   branch: Branch5;
   message: Message2;
-  project_id: ProjectId12;
+  project_id: ProjectId13;
   repo_path: RepoPath8;
   task_id: TaskId24;
 }
@@ -3214,7 +3220,7 @@ export interface WorktreeRow {
   merge_commit?: MergeCommit1;
   merged_at?: MergedAt1;
   path: Path5;
-  project_id: ProjectId13;
+  project_id: ProjectId14;
   status: WorktreeStatus;
   task_id: TaskId25;
   workspace_id: WorkspaceId42;

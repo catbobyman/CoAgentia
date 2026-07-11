@@ -308,6 +308,16 @@ def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -
         )
     # 留痕 1：task_events(force_start)（from/to_status 留空——不改状态）。
     tasks_service.write_event(tx.conn, task_id, TaskEventKind.FORCE_START, actor=me["id"])
+    force_event_seq = tx.conn.execute(
+        select(_EVT.c.seq)
+        .where(
+            _EVT.c.task_id == task_id,
+            _EVT.c.kind == TaskEventKind.FORCE_START.value,
+            _EVT.c.actor_member_id == me["id"],
+        )
+        .order_by(_EVT.c.seq.desc())
+        .limit(1)
+    ).scalar_one()
     # 留痕 2：任务线程锚点系统消息（author=None、kind=system、thread=任务根消息）。
     anchor_id = tasks_service.service.new_ulid()
     tx.conn.execute(
@@ -334,7 +344,12 @@ def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -
     )
     # hub 桥「本次放行」（best-effort；owner 人类/空 或 daemon 离线 → 仅留痕，不报错）。
     # 不改状态：直接回既有 task 行（本请求未 UPDATE tasks）。
-    request.app.state.daemon_hub.force_start_wake(task["owner_member_id"], task["channel_id"])
+    request.app.state.daemon_hub.force_start_wake(
+        task["owner_member_id"],
+        task["channel_id"],
+        task_id=task_id,
+        force_event_seq=force_event_seq,
+    )
     return task_public(task)
 
 

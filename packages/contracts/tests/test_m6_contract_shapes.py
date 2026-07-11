@@ -1,7 +1,7 @@
 """M6 契约登记的聚焦形状测试。"""
 
 import pytest
-from coagentia_contracts import daemon, rest
+from coagentia_contracts import daemon, entities, rest
 from coagentia_contracts.enums import ReviewVerdict
 from pydantic import ValidationError
 
@@ -41,6 +41,25 @@ def test_task_delivery_extensions_are_backward_compatible() -> None:
         "title": "implement", "kind": "agent", "writes_code": True, "project_id": U3,
     })
     assert node.writes_code is True and node.project_id == U3
+
+
+def test_template_node_code_task_requires_project_and_old_json_defaults() -> None:
+    old = entities.TemplateNode.model_validate({
+        "key": "read", "title": "inspect", "role": "reviewer",
+    })
+    assert old.writes_code is False and old.project_id is None
+
+    code = entities.TemplateNode.model_validate({
+        "key": "impl", "title": "implement", "role": "developer",
+        "writes_code": True, "project_id": U3,
+    })
+    assert code.writes_code is True and code.project_id == U3
+
+    with pytest.raises(ValidationError, match="project_id is required"):
+        entities.TemplateNode.model_validate({
+            "key": "impl", "title": "implement", "role": "developer",
+            "writes_code": True,
+        })
 
 
 def test_daemon_m6_frames_and_diff_payload() -> None:

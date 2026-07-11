@@ -3,12 +3,13 @@
 from coagentia_contracts import constants, daemon, rest, ws
 from coagentia_contracts.enums import TaskStatus
 
-# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.4 起 28 个）
+# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.4.2 起 29 个）
 ERROR_CODES = {
     "VALIDATION_FAILED", "TASK_IN_DM", "NOT_TOP_LEVEL_MESSAGE", "CLAIM_RACE",
     "HANDOFF_INCOMPLETE", "TASK_TRANSITION_INVALID", "GRAPH_CYCLE", "STALE_CONFIRM",
     "DELTA_BASE_MISMATCH", "NODE_ACTIVE", "NO_ORCHESTRATOR", "IDEMPOTENCY_MISMATCH",
     "NAME_TAKEN", "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS",
+    "COMPUTER_HAS_PROJECTS",
     "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE",
     "HELD_DRAFT_RESOLVED", "NOTIF_IN_DM", "TEMPLATE_CANVAS_NOT_READY",
     "SYSTEM_NODE_NOT_RETRYABLE", "TEMPLATE_BUILTIN_IMMUTABLE", "PROJECT_IN_USE",
@@ -64,7 +65,7 @@ REPORT_TYPES = {
 
 def test_error_codes_exact() -> None:
     assert {c.value for c in rest.ErrorCode} == ERROR_CODES
-    assert len(ERROR_CODES) == 28
+    assert len(ERROR_CODES) == 29
 
 
 def test_ws_event_catalog_exact() -> None:

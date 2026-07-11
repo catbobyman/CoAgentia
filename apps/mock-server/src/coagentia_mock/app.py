@@ -633,9 +633,10 @@ def _builtin_triangle_template() -> dict[str, Any]:
         "builtin": True, "created_by_member_id": store.members[0]["id"], "created_at": now_ts(),
         "body": {
             "nodes": [
-                {"key": "impl", "title": "实现", "role": "实现工程师", "plan_skeleton": None},
+                {"key": "impl", "title": "实现", "role": "实现工程师", "plan_skeleton": None,
+                 "writes_code": False, "project_id": None},
                 {"key": "review", "title": "独立验收", "role": "评审工程师",
-                 "plan_skeleton": None},
+                 "plan_skeleton": None, "writes_code": False, "project_id": None},
             ],
             "edges": [{"from_key": "impl", "to_key": "review"}],
             "roles": [

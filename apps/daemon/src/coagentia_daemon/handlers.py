@@ -1,8 +1,8 @@
 """指令处理器注册表（契约 D §5；每条按自然键幂等 → ack done/noop/failed）。
 
 处理器委托 RuntimeAdapter（A7 前用 FakeAdapter）：适配器返回"状态是否变更"的 bool，
-处理器据此回 done / noop。M6/M7 指令（worktree/preview/deploy）在 M1 仅登记目录 → 回
-failed(UNSUPPORTED_IN_M1)，不发明实现。frame_id 短窗去重是加速器；正确性押在自然键幂等。
+处理器据此回 done / noop。M6 worktree 指令委托 GitWorktreeManager；M7 preview/deploy
+仍回 failed。frame_id 短窗去重是加速器；正确性押在自然键幂等。
 """
 
 from __future__ import annotations
@@ -19,6 +19,9 @@ from coagentia_contracts.daemon import (
     InstrType,
     MessageDeliverData,
     MessageInjectData,
+    WorktreeCleanupData,
+    WorktreeEnsureData,
+    WorktreeMergeData,
 )
 
 if TYPE_CHECKING:
@@ -99,10 +102,31 @@ async def _runtime_rescan(client: DaemonClient, data: dict[str, Any]) -> Handler
     return (AckResult.DONE, _OK)
 
 
+async def _worktree_ensure(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
+    operation = await client.git.ensure(WorktreeEnsureData.model_validate(data))
+    if operation.status is not None:
+        await client.report_worktree_status(operation.status)
+    return (AckResult.DONE if operation.changed else AckResult.NOOP, _OK)
+
+
+async def _worktree_cleanup(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
+    operation = await client.git.cleanup(WorktreeCleanupData.model_validate(data))
+    if operation.status is not None:
+        await client.report_worktree_status(operation.status)
+    return (AckResult.DONE if operation.changed else AckResult.NOOP, _OK)
+
+
+async def _worktree_merge(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
+    operation = await client.git.merge(WorktreeMergeData.model_validate(data))
+    if operation.status is not None:
+        await client.report_worktree_status(operation.status)
+    return (AckResult.DONE if operation.changed else AckResult.NOOP, _OK)
+
+
 async def _unsupported(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
     return (
         AckResult.FAILED,
-        FrameError(code="UNSUPPORTED_IN_M1", message="交付类指令归 M6/M7（契约 D §5.3 登记目录）"),
+        FrameError(code="UNSUPPORTED_IN_M1", message="该交付类指令尚未进入当前实现波次"),
     )
 
 
@@ -117,10 +141,10 @@ HANDLERS: dict[InstrType, Handler] = {
     InstrType.MESSAGE_DELIVER: _message_deliver,
     InstrType.MESSAGE_INJECT: _message_inject,
     InstrType.RUNTIME_RESCAN: _runtime_rescan,
-    # M6/M7 登记目录（M1 未实现）：
-    InstrType.WORKTREE_ENSURE: _unsupported,
-    InstrType.WORKTREE_MERGE: _unsupported,
-    InstrType.WORKTREE_CLEANUP: _unsupported,
+    InstrType.WORKTREE_ENSURE: _worktree_ensure,
+    InstrType.WORKTREE_MERGE: _worktree_merge,
+    InstrType.WORKTREE_CLEANUP: _worktree_cleanup,
+    # 后续波次 / M7：
     InstrType.PREVIEW_START: _unsupported,
     InstrType.PREVIEW_STOP: _unsupported,
     InstrType.DEPLOY_RUN: _unsupported,

@@ -109,6 +109,8 @@ def create_task(
     title: str | None = None,
     source_body: str = "",
     level: TaskLevel = TaskLevel.L1,
+    project_id: str | None = None,
+    writes_code: bool = False,
 ) -> dict[str, Any]:
     """convert / as_task / 画布 agent 节点共用的建任务（B §9.3）；status 起始 todo。
 
@@ -131,6 +133,8 @@ def create_task(
             owner_member_id=None,
             level=level,
             created_by_member_id=created_by,
+            project_id=project_id,
+            writes_code=writes_code,
             silence_override_h=None,
             status_changed_at=ts,
             created_at=ts,

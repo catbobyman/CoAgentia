@@ -134,17 +134,17 @@ async def test_runtime_rescan_reports_detected(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_unsupported_m6_instr_fails(tmp_path: Path) -> None:
+async def test_unsupported_m7_instr_fails(tmp_path: Path) -> None:
     tr = RecordingTransport()
     client, _adapter, _ = make_client(tmp_path, transport=tr)
     await client.handle_instr(
         instr(
-            "worktree.ensure",
+            "preview.start",
             {
+                "preview_session_id": "01K5PREV00000000000000000A",
                 "task_id": "01K5TASK00000000000000000A",
-                "project_id": "01K5PROJ00000000000000000A",
-                "repo_path": "/r",
-                "branch": "b",
+                "worktree_path": "/r",
+                "dev_command": "run",
             },
         )
     )

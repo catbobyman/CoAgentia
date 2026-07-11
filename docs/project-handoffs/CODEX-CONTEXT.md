@@ -118,9 +118,9 @@ D:\Project4work\Agenthub_7_8\
 
 ## 5. 当前状态（2026-07-11）
 
-- **M1–M5 全收口** = PRD M5 出口达成；**M6a 已开工**（J3-cal/J0 完成，J1 接续）。契约现版：A v1.0.8 / B v1.4.1 / D v1.0.3；C/E/E2 零修订。v1.0.8/v1.4.1 是开工审计补遗（merge_commit 持久落点 + Project 形状精确化），非行为变更。
-- git：`main` @ `562af66`，工作树干净，**无 remote**。
-- 测试基线（守门起点，**只增不减**）：后端 `uv run pytest -q` = **712 passed / 4 skipped**；前端 vitest = **175**；pyright **0 错**（并入 `pnpm typecheck`）；ruff 干净；`pnpm gen` 后 diff 为空；双侧 build 绿。
+- **M1–M5 全收口** = PRD M5 出口达成；**M6a 波 1 已提交，波 2 J2/J3 与模板补遗守门全绿、待单提交**。契约现版：A v1.0.9 / B v1.4.3 / D v1.0.3；C/E/E2 零修订。A/B 三次连带补遗均已由 owner 批准并同步 header/变更记录。
+- git：`main` @ `d564ebf`，波 2 工作树待提交，**无 remote**。
+- 最新守门基线（**只增不减**）：后端 `uv run pytest -q` = **772 passed / 4 skipped**；前端 vitest = **175**；pyright **0 错**（并入 `pnpm typecheck`）；ruff 干净；`pnpm gen` 双跑确定；web build 绿。
 - owner 已拍板的 M6 方向（**已拍板勿再问**）：①交付链先行（M6a=FR-10 → M6b=FR-9）②worktree 工作目录=消息注入（适配器零修订）③挂账三件全收（评审结论枚举/模板 PATCH·DELETE/fail-closed 复核）④合并=`--no-ff`。
 
 ## 6. 工程纪律（历次里程碑沉淀，违反=返工）

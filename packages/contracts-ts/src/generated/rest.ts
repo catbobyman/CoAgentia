@@ -2433,11 +2433,12 @@ export interface components {
         };
         /**
          * TemplateBody
-         * @description templates.body（A v1.0.6 §4.10 M5 收紧）：DAG 结构 + 角色占位表 + 简报话术（C7）。
+         * @description templates.body（A v1.0.9 §4.10）：DAG 结构 + 角色占位表 + 简报话术（C7）。
          *
          *     保存序列化（B §11.1）：从画布快照仅取 task 节点、pos 不入；占位按节点 owner 去重、无 owner
-         *     归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）。校验：model_validate +
-         *     edges 无环（复用 kernel/graph）+ nodes.role/edges 引用一致性（server 侧执法）。
+         *     归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）；writes_code/project_id
+         *     从任务行原样带走。校验：model_validate + edges 无环（复用 kernel/graph）+ nodes.role/edges 引用
+         *     一致性（server 侧执法）。
          */
         TemplateBody: {
             /**
@@ -2507,16 +2508,23 @@ export interface components {
         };
         /**
          * TemplateNode
-         * @description TemplateBody.nodes 元素（A v1.0.6 §4.10）：模板内一个 task 节点。
+         * @description TemplateBody.nodes 元素（A v1.0.9 §4.10）：模板内一个 task 节点。
          */
         TemplateNode: {
             /** Key */
             key: string;
             plan_skeleton?: components["schemas"]["TaskPlanBody"] | null;
+            /** Project Id */
+            project_id?: string | null;
             /** Role */
             role: string;
             /** Title */
             title: string;
+            /**
+             * Writes Code
+             * @default false
+             */
+            writes_code: boolean;
         };
         /**
          * TemplatePatch

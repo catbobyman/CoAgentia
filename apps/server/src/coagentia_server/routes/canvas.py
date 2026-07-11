@@ -51,6 +51,8 @@ _NODE = models.tbl(models.CanvasNode)
 _MSG = models.tbl(models.Message)
 _CHANNEL = models.tbl(models.Channel)
 _TASK = models.tbl(models.Task)
+_PROJECT = models.tbl(models.Project)
+_CHANNEL_PROJECT = models.tbl(models.ChannelProject)
 
 
 # ---------------------------------------------------------------- 共用门
@@ -127,6 +129,37 @@ def create_node(
     ts = service.now_iso()
 
     if body.kind == CanvasNodeKind.AGENT:
+        if body.writes_code and body.project_id is None:
+            raise ApiError(
+                422,
+                rest.ErrorCode.VALIDATION_FAILED,
+                "writes_code 任务必须选择已绑定 Project",
+                rule="W2",
+                details={"field": "project_id"},
+            )
+        if body.project_id is not None:
+            bound = tx.conn.execute(
+                select(_PROJECT.c.id)
+                .select_from(
+                    _PROJECT.join(
+                        _CHANNEL_PROJECT,
+                        _CHANNEL_PROJECT.c.project_id == _PROJECT.c.id,
+                    )
+                )
+                .where(
+                    _PROJECT.c.id == body.project_id,
+                    _PROJECT.c.workspace_id == canvas["workspace_id"],
+                    _CHANNEL_PROJECT.c.channel_id == canvas["channel_id"],
+                )
+            ).first()
+            if bound is None:
+                raise ApiError(
+                    422,
+                    rest.ErrorCode.VALIDATION_FAILED,
+                    "Project 未绑定当前频道",
+                    rule="W2",
+                    details={"field": "project_id"},
+                )
         # 1) 锚点系统消息（create_task 要求 root_message_id UNIQUE NOT NULL）。
         anchor_id = service.new_ulid()
         anchor_body = body.title.strip() or "画布 Agent 节点"
@@ -154,6 +187,8 @@ def create_node(
             title=body.title,
             source_body=anchor_body,
             level=TaskLevel.L2,
+            project_id=body.project_id,
+            writes_code=body.writes_code,
         )
         # 3) 可选 TaskPlan 契约（body 已由 rest.NodeCreate.task_plan 过 TaskPlanBody 校验）。
         contract_pub: dict[str, Any] | None = None
@@ -194,6 +229,14 @@ def create_node(
                 EventType.TASK_CONTRACT_CREATED, canvas["channel_id"], {"contract": contract_pub}
             )
     else:  # kind='system'
+        if body.writes_code or body.project_id is not None:
+            raise ApiError(
+                422,
+                rest.ErrorCode.VALIDATION_FAILED,
+                "系统节点不可携带任务交付字段",
+                rule="W2",
+                details={"fields": ["writes_code", "project_id"]},
+            )
         if body.system_action is None:
             raise ApiError(
                 422,

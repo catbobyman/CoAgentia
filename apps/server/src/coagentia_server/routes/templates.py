@@ -171,6 +171,22 @@ def instantiate_template(
     if not templates_service.channel_has_canvas(tx.conn, body.channel_id):
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "目标频道无画布，无法实例化")
 
+    unavailable_projects = templates_service.unavailable_code_projects(
+        tx.conn, tbody, body.channel_id
+    )
+    if unavailable_projects:
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "代码任务引用的 Project 不存在或未绑定目标频道",
+            rule="B§12.6",
+            details={
+                "project_id": unavailable_projects[0],
+                "channel_id": body.channel_id,
+                "hint": "先绑定或改画布手建",
+            },
+        )
+
     batch_id = service.new_ulid()
 
     # 幂等 reserve-before（照 messages.py:430-448：record 先于副作用）：并发对手先落库同键时，本

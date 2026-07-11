@@ -368,8 +368,7 @@ def test_non_owner_agent_also_gated_on_blocked_thread(ctx: tuple[TestClient, Env
 
 
 def test_blocked_thread_message_not_leaked_in_backlog(ctx: tuple[TestClient, Env, Any]) -> None:
-    """gating 作用于投递批（非仅唤醒触发）：无关非 gated 消息触发投递时，投递批**不含** blocked
-    任务线程消息，且不消费其 read_position——解锁后仍能补投（code-review #1 回归）。"""
+    """gating 只投 held 前连续前缀；later 不越过最大 id，解锁后整段按序补投。"""
     client, env, _hub = ctx
     ch, bee, ta, rb = _blocked_setup(env)
     # 先在 B（blocked）线程发 @Bee → gated（held），read_position 不推进，消息留积压。
@@ -383,23 +382,12 @@ def test_blocked_thread_message_not_leaked_in_backlog(ctx: tuple[TestClient, Env
         d.hello([(bee, "idle")])
         d.recv_hello_ack()
         d.sync()  # 握手对账：积压里 blocked 线程消息不构成触发，无残留 wake/deliver
-        # 无关顶级 @Bee（非任务线程 → 非 gated）→ 触发 mention 唤醒 + 投递积压。
+        # 无关顶级 @Bee 虽非 gated，但位于 held 之后；不可越过它先投（daemon 以 max id 去重）。
         good_id = client.post(
             f"/api/channels/{ch}/messages",
             json={"body": "@Bee 顺便看下别的", "file_ids": []},
         ).json()["message"]["id"]
-        wake = d.recv_instr()
-        assert wake["type"] == "agent.wake"
-        d.ack(wake, "done")
-        deliver = d.recv_instr()
-        assert deliver["type"] == "message.deliver"
-        delivered_ids = {m["id"] for m in deliver["data"]["messages"]}
-        # 关键断言：投递批含无关非 gated 消息，但排除 blocked 线程 gated 消息（B 锚点 + gated_id）。
-        assert good_id in delivered_ids
-        assert gated_id not in delivered_ids
-        assert rb not in delivered_ids
-        d.ack(deliver, "done")
-        d.sync()
+        d.sync()  # 连续前缀在 held 处截断：零 wake/零 deliver，游标不越过
 
     # 上游 A done → B 解锁 → 之前被 gate 的消息不再 gated，且未被消费 → 重连补投时可被投递。
     _set_status(env, ta, "done")
@@ -414,5 +402,6 @@ def test_blocked_thread_message_not_leaked_in_backlog(ctx: tuple[TestClient, Env
         assert deliver["type"] == "message.deliver"
         redelivered = {m["id"] for m in deliver["data"]["messages"]}
         assert gated_id in redelivered  # 之前被 gate 的消息解锁后补投，未丢
+        assert good_id in redelivered  # held 后的消息也从未提前喂给 daemon，按序同批补投
         d2.ack(deliver, "done")
         d2.sync()

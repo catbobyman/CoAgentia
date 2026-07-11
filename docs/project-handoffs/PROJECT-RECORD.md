@@ -154,10 +154,11 @@
 
 ## 当前接续任务
 
-1. **M6 已立项并完成 M6a 波 1 守门（2026-07-11）**：立项契约 A v1.0.7/B v1.4/D v1.0.3 后，开工审计发现 B §12.8/D §7 要求持久 merge_commit 而 A 无落点；owner 授权补遗 A **v1.0.8**（worktrees.merge_commit + ProjectPublic.channel_ids）/ B **v1.4.1**（Project 请求/响应精确形状），header 与变更记录同步。J3-cal scratch git 10/10；J0 contracts/mock/conformance focused 135 绿、gen 二次确定；J1 0008 三表+tasks 两列从零/历史 M5 schema 切片增量双路绿。波 1 全守门 = 后端 **724/4 skipped**、web **175**、typecheck/ruff/gen/build 全绿；C·E·E2 继续零修订/零新工具。
-2. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。M5-HANDOFF 已移 archive/。
-2. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
-3. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。
-4. 真实双 Agent OAuth 冷启动复验（M1 遗留）：M3b E6 用真 websockets daemon-sim 复证了网关侧 gating/force-start；真 OAuth refresh 竞争仍依赖既有确定性单测，未在干净环境重新消耗完整双 Agent 对话，结论沿用未变。
-5. ~~FTS trigram / keyset 分页 / pyright 清零~~ 均已收（FTS 随 M3b、keyset 批2、pyright 批3）。
-6. ~~`task #n` refs UI 消费面 / P11·P3 看板抽 `<TaskBoard>`~~ 顺手评估未做——refs→迷你 chip 与 TaskBoard 抽取属独立小重构，M4 或后续顺手件（非阻塞）。
+1. **M6a 波 2 J2/J3 已完成并通过守门（2026-07-11，待波 2 单提交）**：Project CRUD/频道绑定、Computer→Project 引用门、worktree ensure/cleanup/状态回流/对账 #5/keep_days/绝对路径注入均接真。owner 授权补遗 B **v1.4.2**（COMPUTER_HAS_PROJECTS，错误码 29）与 A **v1.0.9**/B **v1.4.3**（TemplateNode 保存/实例化贯通 writes_code/project_id）已同步外部契约 header/变更记录、contracts/mock/生成物与真 server；独立审计无 High/Medium。波 2 全守门 = 后端 **772/4 skipped**、web **175**、typecheck/ruff/gen/build 全绿。
+2. **M6 已立项并完成 M6a 波 1 守门（2026-07-11，`d564ebf`）**：立项契约 A v1.0.7/B v1.4/D v1.0.3 后，开工审计发现 B §12.8/D §7 要求持久 merge_commit 而 A 无落点；owner 授权补遗 A **v1.0.8**（worktrees.merge_commit + ProjectPublic.channel_ids）/ B **v1.4.1**（Project 请求/响应精确形状），header 与变更记录同步。J3-cal scratch git 10/10；J0 contracts/mock/conformance focused 135 绿、gen 二次确定；J1 0008 三表+tasks 两列从零/历史 M5 schema 切片增量双路绿。波 1 全守门 = 后端 **724/4 skipped**、web **175**、typecheck/ruff/gen/build 全绿；C·E·E2 继续零修订/零新工具。
+3. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。M5-HANDOFF 已移 archive/。
+4. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
+5. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。
+6. 真实双 Agent OAuth 冷启动复验（M1 遗留）：M3b E6 用真 websockets daemon-sim 复证了网关侧 gating/force-start；真 OAuth refresh 竞争仍依赖既有确定性单测，未在干净环境重新消耗完整双 Agent 对话，结论沿用未变。
+7. ~~FTS trigram / keyset 分页 / pyright 清零~~ 均已收（FTS 随 M3b、keyset 批2、pyright 批3）。
+8. ~~`task #n` refs UI 消费面 / P11·P3 看板抽 `<TaskBoard>`~~ 顺手评估未做——refs→迷你 chip 与 TaskBoard 抽取属独立小重构，M4 或后续顺手件（非阻塞）。

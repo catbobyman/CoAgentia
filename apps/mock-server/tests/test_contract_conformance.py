@@ -83,6 +83,15 @@ def test_held_drafts_list_shape(client: TestClient) -> None:
     assert page.items == []
 
 
+def test_template_nodes_expose_m6a_delivery_shape(client: TestClient) -> None:
+    """mock 全量模板读面显式携带 TemplateNode 的 M6a 两字段。"""
+    template = client.get("/api/templates").json()[0]
+    node = template["body"]["nodes"][0]
+    assert node["writes_code"] is False
+    assert node["project_id"] is None
+    entities.TemplatePublic.model_validate(template)
+
+
 def test_agent_detail_shapes(client: TestClient) -> None:
     members = client.get("/api/members").json()
     pat = next(m for m in members if m["name"] == "Pat")

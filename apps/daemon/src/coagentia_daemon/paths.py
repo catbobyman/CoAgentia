@@ -1,4 +1,4 @@
-"""数据目录布局（契约 D §9.1/§9.3）：~/.coagentia/ 下 daemon/ 与 agents/ 子树。
+"""数据目录布局（契约 D §9.1/§9.3）：~/.coagentia/ 下 daemon/、agents/ 与 worktrees/。
 
 - 支持测试注入临时根目录（root 参数）；
 - daemon/buffer/（离线遥测缓冲）、daemon/state/<member_id>.json（会话簿记位，A7 用）、
@@ -37,12 +37,26 @@ class DataPaths:
         return self.root / "agents"
 
     @property
+    def worktrees_dir(self) -> Path:
+        return self.root / "worktrees"
+
+    @property
     def log_path(self) -> Path:
         return self.daemon_dir / "daemon.log"
 
     def ensure_dirs(self) -> None:
-        for d in (self.daemon_dir, self.buffer_dir, self.state_dir, self.agents_dir):
+        for d in (
+            self.daemon_dir,
+            self.buffer_dir,
+            self.state_dir,
+            self.agents_dir,
+            self.worktrees_dir,
+        ):
             d.mkdir(parents=True, exist_ok=True)
+
+    # ---- Project worktree（契约 D §9.1：project_id/task_id 固定短组件）----
+    def worktree_path(self, project_id: str, task_id: str) -> Path:
+        return self.worktrees_dir / project_id / task_id
 
     # ---- Agent Home（契约 D §9.3：member_id 命名，非名字）----
     def agent_home(self, member_id: str) -> Path:

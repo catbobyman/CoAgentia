@@ -53,6 +53,9 @@ from coagentia_contracts.daemon import (
     RuntimesDetectedData,
     UsageBatchData,
     WakeRefs,
+    WorktreeCleanupData,
+    WorktreeEnsureData,
+    WorktreeStatusData,
 )
 from coagentia_contracts.enums import (
     ActivityKind,
@@ -90,8 +93,10 @@ from coagentia_server.routes.serialize import (
     held_draft_public,
     message_public,
     reminder_public,
+    worktree_public,
 )
 from coagentia_server.tasks import silence as silence_logic
+from coagentia_server.worktrees import service as worktree_service
 
 _COMPUTER = models.tbl(models.Computer)
 _AGENT = models.tbl(models.Agent)
@@ -106,8 +111,10 @@ _DIAG = models.tbl(models.DiagnosticEvent)
 _USAGE = models.tbl(models.TokenUsageEvent)
 _TASK = models.tbl(models.Task)
 _TASK_EVENT = models.tbl(models.TaskEvent)
+_CANVAS_NODE = models.tbl(models.CanvasNode)
 _REMINDER = models.tbl(models.Reminder)
 _HELD = models.tbl(models.HeldDraft)
+_WORKTREE = models.tbl(models.Worktree)
 
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
 _RESUMABLE = {AgentStatus.STARTING.value, AgentStatus.IDLE.value, AgentStatus.BUSY.value}
@@ -191,6 +198,7 @@ class DaemonHub:
         self._sub_token: int | None = None
         self._bg: list[asyncio.Task] = []
         self._activity_last: dict[str, float] = {}
+        self._worktree_locks: dict[str, asyncio.Lock] = {}
 
     # ---------------------------------------------------------------- lifespan 装配
 
@@ -216,17 +224,47 @@ class DaemonHub:
         self._bg = []
 
     def _on_bus_event(self, event: Any) -> None:
-        """bus 订阅回调（可能在线程池线程）：message.created → 投递引擎（§8）。"""
-        if event.type != EventType.MESSAGE_CREATED:
-            return
+        """提交后事件 → 消息投递或低延迟 worktree 激活扫描。"""
         loop = self._loop
         if loop is None:
             return
-        message = event.data.get("message") or {}
-        mid = message.get("id")
-        cid = message.get("channel_id")
-        if mid and cid:
-            loop.call_soon_threadsafe(self._spawn, self._deliver_message(mid, cid))
+        if event.type == EventType.MESSAGE_CREATED:
+            message = event.data.get("message") or {}
+            mid = message.get("id")
+            cid = message.get("channel_id")
+            if mid and cid:
+                loop.call_soon_threadsafe(self._spawn, self._deliver_message(mid, cid))
+            return
+        if event.type in {EventType.TASK_CREATED, EventType.TASK_UPDATED}:
+            task = event.data.get("task") or {}
+            change = event.data.get("change") or {}
+            # 快速/as_task 的普通任务占绝大多数；只在自身写代码或 done 可能解锁下游时扫。
+            needs_scan = bool(task.get("writes_code")) or change.get("to_status") == "done"
+            channel_id = event.channel_id
+            if channel_id and needs_scan:
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_worktrees(channel_id)
+                )
+            if event.type == EventType.TASK_UPDATED and task.get("writes_code"):
+                if task.get("id") and change.get("kind") in {
+                    TaskEventKind.CLAIM.value,
+                    TaskEventKind.ASSIGN.value,
+                }:
+                    loop.call_soon_threadsafe(
+                        self._spawn, self._notify_active_task_owner(task["id"])
+                    )
+            return
+        if event.type in {
+            EventType.CANVAS_NODE_ADDED,
+            EventType.CANVAS_NODE_UPDATED,
+            EventType.CANVAS_EDGE_ADDED,
+            EventType.CANVAS_EDGE_REMOVED,
+        }:
+            channel_id = event.channel_id
+            if channel_id:
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_worktrees(channel_id)
+                )
 
     def _spawn(self, coro: Any) -> None:
         task = self._loop.create_task(coro)  # type: ignore[union-attr]
@@ -409,7 +447,47 @@ class DaemonHub:
         elif rtype == ReportType.USAGE_BATCH:
             self._report_usage(conn, UsageBatchData.model_validate(data))
             await self._ack(conn, frame_id, AckResult.DONE)
+        elif rtype == ReportType.WORKTREE_STATUS:
+            self._report_worktree_status(conn, WorktreeStatusData.model_validate(data))
         # hello（重复）/ M6/M7 上报：M1 忽略
+
+    def _report_worktree_status(
+        self, conn: DaemonConnection, data: WorktreeStatusData
+    ) -> None:
+        """worktree.status：按 task_id 持久状态、广播；首次 active 落 durable 目录消息。"""
+        with gateway_tx(self._engine, self._bus) as tx:
+            result = worktree_service.apply_status(
+                tx.conn, computer_id=conn.computer_id, data=data
+            )
+            if result is None:
+                return  # 非本机 Project/非画布任务的越界上报不污染事实源
+            tx.emit(
+                EventType.WORKTREE_UPDATED,
+                result.channel_id,
+                {"worktree": worktree_public(result.row)},
+            )
+            if not result.became_active or result.task_status in {
+                TaskStatus.DONE.value,
+                TaskStatus.CLOSED.value,
+            }:
+                return
+            mention_ids: tuple[str, ...] = ()
+            if result.owner_member_id is not None:
+                is_agent = tx.conn.execute(
+                    select(_AGENT.c.member_id).where(
+                        _AGENT.c.member_id == result.owner_member_id
+                    )
+                ).first()
+                if is_agent is not None:
+                    mention_ids = (result.owner_member_id,)
+            self._post_system_message(
+                tx,
+                workspace_id=result.workspace_id,
+                channel_id=result.channel_id,
+                thread_root_id=result.root_message_id,
+                mention_member_ids=mention_ids,
+                body=worktree_service.directory_message(result.row["path"]),
+            )
 
     def _report_status_changed(self, conn: DaemonConnection, d: AgentStatusChangedData) -> None:
         """agents.status 的唯一写入方（契约 D §7）+ 广播 presence.changed。"""
@@ -669,6 +747,9 @@ class DaemonHub:
 
     async def _deliver_message(self, message_id: str, channel_id: str) -> None:
         """新消息投递（bus 驱动）：决定给谁/何时/是否唤醒（契约 D §8.1/§8.2）。"""
+        # 画布锚点/briefing 本身就是开工信号：在线时先 ensure 并消费 active 绝对路径，再构造
+        # wake/deliver，禁止 Agent 先醒却拿不到工作目录。
+        await self._scan_channel_worktrees(channel_id)
         with self._engine.connect() as c:
             msg = c.execute(select(_MSG).where(_MSG.c.id == message_id)).mappings().first()
             channel = (
@@ -692,10 +773,23 @@ class DaemonHub:
             if status not in _DELIVERABLE:
                 continue  # offline/starting/error → 不投不唤醒（§8.2）
             with self._engine.connect() as c:
+                if worktree_service.delivery_waits_for_directory(
+                    c, agent_member_id=agent_id, message=msg
+                ):
+                    continue
+                prefix, _ = self._filter_agent_delivery(
+                    c, self._backlog(c, agent_id, channel_id), agent_id
+                )
+                if message_id not in {item["id"] for item in prefix}:
+                    continue
                 reason = self._compute_trigger(c, msg, channel, agent_id)
             if status == AgentStatus.BUSY.value:
                 await self._deliver_backlog(conn, agent_id, channel_id)  # 直投（§8.2）
             elif reason is not None:  # idle + 触发命中 → wake + deliver
+                with self._engine.connect() as c:
+                    refs = self._wake_refs(
+                        c, reason=reason, agent_id=agent_id, messages=[msg]
+                    )
                 await self.send_instr(
                     conn,
                     agent_id,
@@ -703,7 +797,7 @@ class DaemonHub:
                     AgentWakeData(
                         agent_member_id=agent_id,
                         reason=reason,
-                        refs=WakeRefs(message_ids=[message_id]),
+                        refs=refs,
                     ),
                 )
                 await self._deliver_backlog(conn, agent_id, channel_id)
@@ -715,20 +809,43 @@ class DaemonHub:
         """投递 gating 作用于**投递批**（裁决 2，非仅唤醒触发）：从积压里剔除 blocked 任务线程消息。
 
         返回 (可投消息, read_position 水位)：gated 消息不投；水位**只推进到首个 gated 之前**——
-        gated 消息及其后留积压、解除阻塞后重评（首条即 gated → 水位 None＝本次不推进）。gated 之后
-        的非 gated 消息仍投（不饿死无关工作），其重叠重投由 daemon 频道去重覆盖（at-least-once）。
-        无 blocked 任务时（绝大多数）message_delivery_gated 恒 False → 全投、水位=末条，行为不变。
+        gated 消息及其后留积压、解除阻塞后重评（首条即 gated → 水位 None＝本次不推进）。必须只投
+        连续前缀：daemon 按频道最大 message_id 去重，若越过 held 先投 later，解锁后的早消息会被
+        noop 永久漏投。无 blocked 任务时（绝大多数）仍全投、水位=末条。
         """
         deliver: list[dict[str, Any]] = []
         watermark: str | None = None
         hit_gated = False
         for m in raw:
+            if hit_gated:
+                continue
             if canvas_service.message_delivery_gated(c, m):
                 hit_gated = True
                 continue
             deliver.append(m)
-            if not hit_gated:
-                watermark = m["id"]
+            watermark = m["id"]
+        return deliver, watermark
+
+    def _filter_agent_delivery(
+        self, c: Connection, raw: list[dict[str, Any]], agent_id: str
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """叠加 worktree path fail-closed；被扣消息与其后消息都不得推进水位。"""
+        deliver: list[dict[str, Any]] = []
+        watermark: str | None = None
+        hit_held = False
+        for message in raw:
+            if hit_held:
+                continue
+            held = canvas_service.message_delivery_gated(
+                c, message
+            ) or worktree_service.delivery_waits_for_directory(
+                c, agent_member_id=agent_id, message=message
+            )
+            if held:
+                hit_held = True
+                continue
+            deliver.append(message)
+            watermark = message["id"]
         return deliver, watermark
 
     async def _deliver_backlog(
@@ -742,8 +859,11 @@ class DaemonHub:
         """
         def _prepare() -> tuple[MessageDeliverData, DeliverMeta | None] | None:
             with self._engine.connect() as c:
-                deliver, watermark = self._filter_gated(
-                    c, self._backlog(c, agent_id, channel_id)
+                deliver, watermark = self._filter_agent_delivery(
+                    c, self._backlog(c, agent_id, channel_id), agent_id
+                )
+                deliver = worktree_service.inject_directory_context(
+                    c, agent_member_id=agent_id, messages=deliver
                 )
             if not deliver:
                 return None
@@ -784,6 +904,10 @@ class DaemonHub:
                 _MENTION.c.message_id == msg["id"], _MENTION.c.member_id == agent_id
             )
         ).first() is not None
+        if worktree_service.activation_context(
+            c, agent_member_id=agent_id, message=msg
+        ) is not None:
+            return WakeReason.CANVAS_ACTIVATION
         if msg.get("kind") == MessageKind.SYSTEM.value and mentioned:
             return WakeReason.REMINDER  # reminder 锚点系统消息视同 @mention（§4.4 #8）
         if channel.get("kind") == ChannelKind.DM.value:
@@ -791,6 +915,25 @@ class DaemonHub:
         if mentioned:
             return WakeReason.MENTION
         return None
+
+    def _wake_refs(
+        self,
+        c: Connection,
+        *,
+        reason: WakeReason,
+        agent_id: str,
+        messages: list[dict[str, Any]],
+    ) -> WakeRefs:
+        node_id: str | None = None
+        if reason == WakeReason.CANVAS_ACTIVATION:
+            for message in messages:
+                context = worktree_service.activation_context(
+                    c, agent_member_id=agent_id, message=message
+                )
+                if context is not None:
+                    node_id = context.node_id
+                    break
+        return WakeRefs(message_ids=[message["id"] for message in messages], node_id=node_id)
 
     def _channel_agent_recipients(
         self, c: Connection, channel_id: str
@@ -824,6 +967,199 @@ class DaemonHub:
         rows = c.execute(stmt.order_by(_MSG.c.created_at, _MSG.c.id)).mappings()
         return [dict(r) for r in rows]
 
+    # ---------------------------------------------------------------- worktree 生命周期（M6a J3）
+
+    def _worktree_lock(self, task_id: str) -> asyncio.Lock:
+        lock = self._worktree_locks.get(task_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._worktree_locks[task_id] = lock
+        return lock
+
+    async def _scan_channel_worktrees(self, channel_id: str) -> None:
+        """画布/任务提交后低延迟扫描；上游 done 解锁无需等 60s 周期。"""
+        with self._engine.connect() as c:
+            plans = worktree_service.ensure_plans(c, channel_id=channel_id)
+        for plan in plans:
+            await self._ensure_worktree(plan.task_id)
+
+    async def _ensure_worktree(self, task_id: str, *, allow_blocked: bool = False) -> bool:
+        """task 自然键串行重查后 ensure；返回绝对 path 是否已持久。"""
+        async with self._worktree_lock(task_id):
+            with self._engine.connect() as c:
+                existing = c.execute(
+                    select(_WORKTREE.c.path, _WORKTREE.c.status).where(
+                        _WORKTREE.c.task_id == task_id
+                    )
+                ).first()
+                if existing is not None:
+                    return bool(existing[0]) and existing[1] in {"active", "conflicted"}
+                plans = worktree_service.ensure_plans(
+                    c, task_id=task_id, allow_blocked=allow_blocked
+                )
+            if not plans:
+                return False
+            plan = plans[0]
+            conn = self._conns.get(plan.computer_id)
+            if conn is None:
+                return False
+            ack = await self.send_instr(
+                conn,
+                f"worktree:{task_id}",
+                InstrType.WORKTREE_ENSURE,
+                WorktreeEnsureData(
+                    task_id=plan.task_id,
+                    project_id=plan.project_id,
+                    repo_path=plan.repo_path,
+                    branch=plan.branch,
+                ),
+            )
+            if ack is None:
+                return False
+            if ack.result == AckResult.FAILED:
+                self._record_worktree_failure(conn, task_id, InstrType.WORKTREE_ENSURE, ack)
+                return False
+            # daemon 约定 status→ack；仍以 DB 事实复核，不以 ack 自称完成替代绝对路径落库。
+            with self._engine.connect() as c:
+                row = c.execute(
+                    select(_WORKTREE.c.path).where(_WORKTREE.c.task_id == task_id)
+                ).first()
+            return row is not None and bool(row[0])
+
+    async def _cleanup_worktree(self, task_id: str, computer_id: str) -> bool:
+        async with self._worktree_lock(task_id):
+            with self._engine.connect() as c:
+                due = any(
+                    item.task_id == task_id
+                    for item in worktree_service.cleanup_plans(c, computer_id=computer_id)
+                )
+            if not due:
+                return False
+            conn = self._conns.get(computer_id)
+            if conn is None:
+                return False
+            ack = await self.send_instr(
+                conn,
+                f"worktree:{task_id}",
+                InstrType.WORKTREE_CLEANUP,
+                WorktreeCleanupData(task_id=task_id),
+            )
+            if ack is None:
+                return False
+            if ack.result == AckResult.FAILED:
+                self._record_worktree_failure(conn, task_id, InstrType.WORKTREE_CLEANUP, ack)
+                return False
+            # daemon 重启后登记/目录都已不存在时 cleanup 合法 NOOP 且无法回报 status；server 以
+            # 已有 worktrees(branch/path) 收敛 cleaned，避免 DB 永远卡在 active/merged。
+            self._converge_worktree_cleaned(task_id, computer_id)
+            return True
+
+    def _record_worktree_failure(
+        self,
+        conn: DaemonConnection,
+        task_id: str,
+        instruction: InstrType,
+        ack: AckFrame,
+    ) -> None:
+        """instr failed 按契约 D §3 写既有 agent.command 诊断；不发明事件/错误码。"""
+        error = ack.error.model_dump(mode="json") if ack.error is not None else None
+        with gateway_tx(self._engine, self._bus) as tx:
+            tx.conn.execute(
+                insert(_DIAG).values(
+                    workspace_id=conn.workspace_id,
+                    agent_member_id=None,
+                    type="agent.command",
+                    channel_id=None,
+                    task_id=task_id,
+                    batch_id=None,
+                    payload={
+                        "instruction": instruction.value,
+                        "result": AckResult.FAILED.value,
+                        "error": error,
+                    },
+                    created_at=now_iso(),
+                )
+            )
+
+    def _converge_worktree_cleaned(self, task_id: str, computer_id: str) -> None:
+        with gateway_tx(self._engine, self._bus) as tx:
+            prior = (
+                tx.conn.execute(
+                    select(_WORKTREE).where(_WORKTREE.c.task_id == task_id)
+                )
+                .mappings()
+                .first()
+            )
+            if prior is None or prior["status"] == "cleaned":
+                return
+            result = worktree_service.apply_status(
+                tx.conn,
+                computer_id=computer_id,
+                data=WorktreeStatusData(
+                    task_id=task_id,
+                    status="cleaned",
+                    branch=prior["branch"],
+                    path=prior["path"],
+                ),
+            )
+            if result is not None:
+                tx.emit(
+                    EventType.WORKTREE_UPDATED,
+                    result.channel_id,
+                    {"worktree": worktree_public(result.row)},
+                )
+
+    async def _notify_active_task_owner(self, task_id: str) -> None:
+        """树先于 owner 就绪时，assign/claim 后补一条且只补一条 durable 目录消息。"""
+        with gateway_tx(self._engine, self._bus) as tx:
+            row = (
+                tx.conn.execute(
+                    select(
+                        _TASK.c.workspace_id,
+                        _TASK.c.channel_id,
+                        _TASK.c.root_message_id,
+                        _TASK.c.owner_member_id,
+                        _WORKTREE.c.path,
+                    )
+                    .select_from(_TASK.join(_WORKTREE, _WORKTREE.c.task_id == _TASK.c.id))
+                    .where(
+                        _TASK.c.id == task_id,
+                        _TASK.c.owner_member_id.is_not(None),
+                        _WORKTREE.c.status.in_(("active", "conflicted")),
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                return
+            owner = row["owner_member_id"]
+            if tx.conn.execute(
+                select(_AGENT.c.member_id).where(_AGENT.c.member_id == owner)
+            ).first() is None:
+                return
+            body = worktree_service.directory_message(row["path"])
+            already = tx.conn.execute(
+                select(_MSG.c.id)
+                .select_from(_MSG.join(_MENTION, _MENTION.c.message_id == _MSG.c.id))
+                .where(
+                    _MSG.c.thread_root_id == row["root_message_id"],
+                    _MSG.c.kind == MessageKind.SYSTEM.value,
+                    _MSG.c.body == body,
+                    _MENTION.c.member_id == owner,
+                )
+            ).first()
+            if already is not None:
+                return
+            self._post_system_message(
+                tx,
+                workspace_id=row["workspace_id"],
+                channel_id=row["channel_id"],
+                thread_root_id=row["root_message_id"],
+                mention_member_ids=(owner,),
+                body=body,
+            )
+
     # ---------------------------------------------------------------- 对账器（契约 D §4.4）
 
     async def reconcile(self, conn: DaemonConnection) -> None:
@@ -833,10 +1169,24 @@ class DaemonHub:
         """
         present = dict(conn.present)
         resume_boots: list[AgentBoot] = []
+        ensure_task_ids: list[str] = []
+        cleanup_task_ids: list[str] = []
         deliver_plans: list[
             tuple[str, str, list[dict[str, Any]], str | None, WakeReason | None]
         ] = []
         with gateway_tx(self._engine, self._bus) as tx:
+            ensure_task_ids = [
+                plan.task_id
+                for plan in worktree_service.ensure_plans(
+                    tx.conn, computer_id=conn.computer_id
+                )
+            ]
+            cleanup_task_ids = [
+                plan.task_id
+                for plan in worktree_service.cleanup_plans(
+                    tx.conn, computer_id=conn.computer_id
+                )
+            ]
             agents = self._agents_on_computer(tx.conn, conn.computer_id)
             status_by_id = {a["member_id"]: a["status"] for a in agents}
             # #1 presence 纠偏：以 daemon 进程表为准写 agents.status + 广播。
@@ -870,13 +1220,13 @@ class DaemonHub:
                     if not raw:
                         continue
                     # 投递批剔除 blocked 任务线程消息（裁决 2），水位截到首个 gated 之前。
-                    deliver, watermark = self._filter_gated(tx.conn, raw)
+                    deliver, watermark = self._filter_agent_delivery(tx.conn, raw, aid)
                     if not deliver:
                         continue  # 全 gated → 无可投
                     if status == AgentStatus.BUSY.value:
                         deliver_plans.append((aid, ch["id"], deliver, watermark, None))
                     else:  # idle：积压中命中任一**非 gated** 触发 → wake+deliver；否则静默积压
-                        reason = self._backlog_trigger(tx.conn, raw, ch, aid)
+                        reason = self._backlog_trigger(tx.conn, deliver, ch, aid)
                         if reason is not None:
                             deliver_plans.append((aid, ch["id"], deliver, watermark, reason))
         # 事务外下发指令（DB 已提交，避免持锁跨 await）。
@@ -884,7 +1234,28 @@ class DaemonHub:
             await self.send_instr(
                 conn, boot.agent_member_id, InstrType.AGENT_START, AgentStartData(agent=boot)
             )
+        # #5 必须先于 wake/deliver：active status 持久绝对 path 后，投递副本才能注入目录。
+        for task_id in ensure_task_ids:
+            await self._ensure_worktree(task_id)
+        for task_id in cleanup_task_ids:
+            await self._cleanup_worktree(task_id, conn.computer_id)
         for aid, channel_id, deliver, watermark, reason in deliver_plans:
+            with self._engine.connect() as c:
+                channel_row = c.execute(
+                    select(_CHANNEL).where(_CHANNEL.c.id == channel_id)
+                ).mappings().one()
+                if reason is not None:
+                    reason = self._backlog_trigger(c, deliver, dict(channel_row), aid)
+                    if reason is None:
+                        continue
+                refs = (
+                    self._wake_refs(c, reason=reason, agent_id=aid, messages=deliver)
+                    if reason is not None
+                    else None
+                )
+                deliver = worktree_service.inject_directory_context(
+                    c, agent_member_id=aid, messages=deliver
+                )
             if reason is not None:
                 await self.send_instr(
                     conn,
@@ -893,7 +1264,7 @@ class DaemonHub:
                     AgentWakeData(
                         agent_member_id=aid,
                         reason=reason,
-                        refs=WakeRefs(message_ids=[m["id"] for m in deliver]),
+                        refs=refs or WakeRefs(message_ids=[m["id"] for m in deliver]),
                     ),
                 )
             # deliver 帧是未附着面（契约 A v1.0.4：files=None），直接 model 化免 dict 中转
@@ -923,7 +1294,11 @@ class DaemonHub:
         for m in backlog:
             # 投递 gating（裁决 2）：积压里属 blocked 任务线程的消息不构成唤醒触发。
             if canvas_service.message_delivery_gated(c, m):
-                continue
+                break
+            if worktree_service.delivery_waits_for_directory(
+                c, agent_member_id=agent_id, message=m
+            ):
+                break
             reason = self._compute_trigger(c, m, channel, agent_id)
             if reason is not None:
                 return reason
@@ -1113,7 +1488,14 @@ class DaemonHub:
         # 提交后再做 daemon I/O（无未提交 REST 写锁 → deliver 写 read_position 安全）。
         self._run_sync(self._held_reevaluation_combo(conn, agent_id, channel_id, held_id))
 
-    def force_start_wake(self, owner_member_id: str | None, channel_id: str) -> None:
+    def force_start_wake(
+        self,
+        owner_member_id: str | None,
+        channel_id: str,
+        *,
+        task_id: str,
+        force_event_seq: int,
+    ) -> None:
         """force-start override（裁决 3）：对任务 owner agent 绕过 blocked 门直投一次 wake+deliver。
 
         best-effort：owner 为人类/空 或 daemon 离线 → 仅留痕（route 已写 task_events + 系统消息），
@@ -1130,11 +1512,67 @@ class DaemonHub:
         conn = self._conns.get(row[0])
         if conn is None:
             return  # daemon 离线
+        with self._engine.connect() as c:
+            writes_code = bool(
+                c.execute(select(_TASK.c.writes_code).where(_TASK.c.id == task_id)).scalar_one()
+            )
+        if writes_code:
+            # route 当前仍持写事务；延后到精确 force_start seq 可见后再 ensure，避免 status 上报
+            # 与未提交事务争 SQLite 写锁。ensure/status/path 完成后才允许 canvas_activation wake。
+            loop = self._loop
+            if loop is not None:
+                loop.call_soon_threadsafe(
+                    self._spawn,
+                    self._force_start_after_commit(
+                        conn,
+                        owner_member_id,
+                        channel_id,
+                        task_id,
+                        force_event_seq,
+                    ),
+                )
+            return
         with contextlib.suppress(DaemonOffline):
-            self._run_sync(self._force_start_deliver(conn, owner_member_id, channel_id))
+            self._run_sync(
+                self._force_start_deliver(
+                    conn, owner_member_id, channel_id, task_id=task_id
+                )
+            )
+
+    async def _force_start_after_commit(
+        self,
+        conn: DaemonConnection,
+        agent_id: str,
+        channel_id: str,
+        task_id: str,
+        force_event_seq: int,
+    ) -> None:
+        for _ in range(250):
+            with self._engine.connect() as c:
+                committed = c.execute(
+                    select(_TASK_EVENT.c.seq).where(_TASK_EVENT.c.seq == force_event_seq)
+                ).first()
+            if committed is not None:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            return
+        try:
+            if not await self._ensure_worktree(task_id, allow_blocked=True):
+                return
+            await self._force_start_deliver(
+                conn, agent_id, channel_id, task_id=task_id
+            )
+        except DaemonOffline:
+            return
 
     async def _force_start_deliver(
-        self, conn: DaemonConnection, agent_id: str, channel_id: str
+        self,
+        conn: DaemonConnection,
+        agent_id: str,
+        channel_id: str,
+        *,
+        task_id: str,
     ) -> None:
         """force-start 直投（绕过 blocked 门，即「本次」放行）：wake + deliver 一次。
 
@@ -1146,6 +1584,12 @@ class DaemonHub:
         """
         with self._engine.connect() as c:
             backlog = self._backlog(c, agent_id, channel_id)
+            backlog = worktree_service.inject_directory_context(
+                c, agent_member_id=agent_id, messages=backlog
+            )
+            node_id = c.execute(
+                select(_CANVAS_NODE.c.id).where(_CANVAS_NODE.c.task_id == task_id)
+            ).scalar_one_or_none()
         await self.send_instr(
             conn,
             agent_id,
@@ -1153,7 +1597,9 @@ class DaemonHub:
             AgentWakeData(
                 agent_member_id=agent_id,
                 reason=WakeReason.CANVAS_ACTIVATION,
-                refs=WakeRefs(message_ids=[m["id"] for m in backlog]),
+                refs=WakeRefs(
+                    message_ids=[m["id"] for m in backlog], node_id=node_id
+                ),
             ),
         )
         if backlog:

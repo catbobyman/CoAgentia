@@ -12,7 +12,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from coagentia_contracts.enums import (
     ActivityKind,
@@ -763,12 +763,20 @@ class DeploymentPublic(ContractModel):
 
 
 class TemplateNode(ContractModel):
-    """TemplateBody.nodes 元素（A v1.0.6 §4.10）：模板内一个 task 节点。"""
+    """TemplateBody.nodes 元素（A v1.0.9 §4.10）：模板内一个 task 节点。"""
 
     key: str  # 模板内唯一节点键（实例化映射/连边引用）
     title: str  # 任务标题
     role: str  # 角色占位名（引用 TemplateBody.roles[].placeholder）
     plan_skeleton: TaskPlanBody | None = None  # TaskPlan 骨架预填（实例化作 L2 初稿；无则 null）
+    writes_code: bool = False  # 保存时从 tasks.writes_code 原样带走；旧模板缺字段按 false 只读
+    project_id: Ulid | None = None  # 保存时从 tasks.project_id 原样带走；旧模板缺字段按 null 只读
+
+    @model_validator(mode="after")
+    def code_task_requires_project(self) -> "TemplateNode":
+        if self.writes_code and self.project_id is None:
+            raise ValueError("project_id is required when writes_code is true")
+        return self
 
 
 class TemplateEdge(ContractModel):
@@ -787,11 +795,12 @@ class TemplateRole(ContractModel):
 
 
 class TemplateBody(ContractModel):
-    """templates.body（A v1.0.6 §4.10 M5 收紧）：DAG 结构 + 角色占位表 + 简报话术（C7）。
+    """templates.body（A v1.0.9 §4.10）：DAG 结构 + 角色占位表 + 简报话术（C7）。
 
     保存序列化（B §11.1）：从画布快照仅取 task 节点、pos 不入；占位按节点 owner 去重、无 owner
-    归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）。校验：model_validate +
-    edges 无环（复用 kernel/graph）+ nodes.role/edges 引用一致性（server 侧执法）。
+    归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）；writes_code/project_id
+    从任务行原样带走。校验：model_validate + edges 无环（复用 kernel/graph）+ nodes.role/edges 引用
+    一致性（server 侧执法）。
     """
 
     nodes: list[TemplateNode] = Field(default_factory=list)

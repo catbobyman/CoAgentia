@@ -60,6 +60,8 @@ _MEMBER = models.tbl(models.Member)
 _WORKSPACE = models.tbl(models.Workspace)
 _MSG = models.tbl(models.Message)
 _EDGE = models.tbl(models.CanvasEdge)
+_PROJECT = models.tbl(models.Project)
+_CHANNEL_PROJECT = models.tbl(models.ChannelProject)
 
 # 无 owner 节点的默认占位名（B §11.1 / A §4.10「无 owner 归待认领」）。
 UNCLAIMED_PLACEHOLDER = "待认领"
@@ -143,6 +145,8 @@ def serialize_canvas_to_body(
                 title=task.get("title", ""),
                 role=placeholder,
                 plan_skeleton=_plan_skeleton(conn, n["task_id"]),
+                writes_code=bool(task.get("writes_code", False)),
+                project_id=task.get("project_id"),
             )
         )
 
@@ -334,6 +338,32 @@ def unknown_role_members(conn: Connection, role_mapping: dict[str, Any]) -> list
     return [mid for mid in wanted if mid not in live]
 
 
+def unavailable_code_projects(
+    conn: Connection, body: TemplateBody, channel_id: str
+) -> list[str]:
+    """返回代码节点中不存在或未绑定目标频道的 Project id（保节点顺序去重）。
+
+    实例化不做 project 重映射；每个 `writes_code` 节点沿用模板中的 project_id。一次批查
+    Project 与 channel_projects 关系，在幂等 reserve 和任何落地副作用之前完成全量复核。
+    """
+    project_ids = _dedup(
+        [node.project_id for node in body.nodes if node.writes_code and node.project_id is not None]
+    )
+    if not project_ids:
+        return []
+    available = set(
+        conn.execute(
+            select(_PROJECT.c.id)
+            .join(_CHANNEL_PROJECT, _CHANNEL_PROJECT.c.project_id == _PROJECT.c.id)
+            .where(
+                _PROJECT.c.id.in_(project_ids),
+                _CHANNEL_PROJECT.c.channel_id == channel_id,
+            )
+        ).scalars()
+    )
+    return [project_id for project_id in project_ids if project_id not in available]
+
+
 def _dedup(items: list[str]) -> list[str]:
     """保序去重（briefing @mention 目标可能多角色映射到同一 Agent）。"""
     seen: set[str] = set()
@@ -429,6 +459,8 @@ def _instantiate_node(
         title=node.title,
         source_body=anchor_body,
         level=TaskLevel.L2,
+        project_id=node.project_id,
+        writes_code=node.writes_code,
     )
     contract_pub: dict[str, Any] | None = None
     if node.plan_skeleton is not None:
@@ -726,6 +758,7 @@ __all__ = [
     "missing_role_mappings",
     "serialize_canvas_to_body",
     "unknown_role_members",
+    "unavailable_code_projects",
     "upsert_builtin_templates",
     "validate_template_body",
 ]

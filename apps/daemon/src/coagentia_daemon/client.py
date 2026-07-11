@@ -37,6 +37,7 @@ from coagentia_contracts.daemon import (
     ReportType,
     RuntimesDetectedData,
     TokenUsageEventIn,
+    WorktreeStatusData,
 )
 from coagentia_contracts.entities import DetectedRuntime
 from coagentia_contracts.enums import AgentStatus
@@ -44,6 +45,7 @@ from coagentia_contracts.enums import AgentStatus
 from coagentia_daemon import __version__
 from coagentia_daemon.adapter import RuntimeAdapter
 from coagentia_daemon.buffer import TelemetryBuffer
+from coagentia_daemon.git import GitWorktreeManager
 from coagentia_daemon.handlers import HANDLERS
 from coagentia_daemon.paths import DataPaths
 from coagentia_daemon.probe import CommandRunner, probe_runtimes
@@ -57,6 +59,13 @@ _USAGE_BATCH = 500
 _HOME_FILE_MAX = 1024 * 1024  # 契约 D §6：home.file 文本上限 1MB
 _ACTIVITY_PRETHROTTLE = 0.25  # 契约 D §7：daemon 可 ≥250ms 预节流省带宽
 _FRAME_DEDUP_WINDOW = 2048
+_STATUS_REPLAY_INSTRS = frozenset(
+    {
+        InstrType.WORKTREE_ENSURE,
+        InstrType.WORKTREE_MERGE,
+        InstrType.WORKTREE_CLEANUP,
+    }
+)
 
 ConnectFn = Callable[[str, str], "Any"]  # (server_url, api_key) -> Awaitable[Transport]
 
@@ -103,6 +112,7 @@ class DaemonClient:
         self._backoff_cap = backoff_cap
 
         self.adapter.bind(self)  # AdapterSink = self
+        self.git = GitWorktreeManager(paths)
 
         self._transport: Transport | None = None
         self._send_lock = asyncio.Lock()
@@ -233,11 +243,11 @@ class DaemonClient:
 
     async def handle_instr(self, frame: dict[str, Any]) -> None:
         frame_id = frame["frame_id"]
-        if frame_id in self._recent_frame_set:
+        itype = InstrType(frame["type"])
+        if frame_id in self._recent_frame_set and itype not in _STATUS_REPLAY_INSTRS:
             # frame_id 短窗去重加速器：原帧重发 → 直接 noop（自然键幂等已保证无副作用）。
             await self._send_ack(frame_id, AckResult.NOOP, None)
             return
-        itype = InstrType(frame["type"])
         handler = HANDLERS.get(itype)
         if handler is None:
             await self._send_ack(frame_id, AckResult.FAILED, None)
@@ -249,8 +259,10 @@ class DaemonClient:
             from coagentia_contracts.daemon import FrameError
 
             result, error = AckResult.FAILED, FrameError(code="HANDLER_ERROR", message=str(exc))
-        self._remember_frame(frame_id)
         await self._send_ack(frame_id, result, error)
+        # 只有 ack 成功写入传输后才做短窗记忆；否则重连重发必须重新走自然键处理器，
+        # 让 worktree 等带状态指令能补报终态，而不是只回一个失真的 noop。
+        self._remember_frame(frame_id)
 
     def _remember_frame(self, frame_id: str) -> None:
         if len(self._recent_frames) == self._recent_frames.maxlen:
@@ -370,6 +382,10 @@ class DaemonClient:
         await self._report_best_effort(
             ReportType.RUNTIMES_DETECTED, RuntimesDetectedData(runtimes=self._detected_runtimes)
         )
+
+    async def report_worktree_status(self, data: WorktreeStatusData) -> None:
+        """worktree 指令先上报现状，再由 handle_instr 发 ack（同 WS 内有序）。"""
+        await self._report_best_effort(ReportType.WORKTREE_STATUS, data)
 
     async def _report_best_effort(self, rtype: ReportType, data: Any) -> None:
         """载状态类上报（无 ack）：连接可用即发，断连忽略（重连 hello 全量重报兜底）。"""

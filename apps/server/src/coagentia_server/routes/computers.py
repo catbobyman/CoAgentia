@@ -9,7 +9,7 @@ from coagentia_contracts import entities, rest
 from coagentia_contracts.enums import ComputerStatus
 from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends, Request, Response
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
@@ -21,6 +21,9 @@ router = APIRouter(prefix="/api", tags=["computers"])
 
 _COMPUTER = models.tbl(models.Computer)
 _AGENT = models.tbl(models.Agent)
+_PROJECT = models.tbl(models.Project)
+
+PROJECT_DETAILS_LIMIT = 50
 
 
 def _fetch_computer(tx: Tx, computer_id: str) -> dict[str, Any]:
@@ -100,6 +103,27 @@ def remove_computer(computer_id: str, request: Request, tx: Tx = Depends(get_tx)
             rest.ErrorCode.COMPUTER_HAS_AGENTS,
             "该机器上仍有 Agent，先删除全部 Agent",
             rule="FR-2.7",
+        )
+    project_count = tx.conn.execute(
+        select(func.count())
+        .select_from(_PROJECT)
+        .where(_PROJECT.c.computer_id == computer_id)
+    ).scalar_one()
+    if project_count:
+        project_ids = list(
+            tx.conn.execute(
+                select(_PROJECT.c.id)
+                .where(_PROJECT.c.computer_id == computer_id)
+                .order_by(_PROJECT.c.id)
+                .limit(PROJECT_DETAILS_LIMIT)
+            ).scalars()
+        )
+        raise ApiError(
+            409,
+            rest.ErrorCode.COMPUTER_HAS_PROJECTS,
+            "该机器仍被 Project 使用，请先迁移或删除 Project",
+            rule="B§12.12",
+            details={"count": project_count, "project_ids": project_ids},
         )
     tx.conn.execute(models.tbl(models.Computer).delete().where(_COMPUTER.c.id == computer_id))
     return Response(status_code=204)

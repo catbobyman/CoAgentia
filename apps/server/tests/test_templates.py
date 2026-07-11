@@ -26,7 +26,7 @@ from coagentia_server.ledger import service
 from coagentia_server.templates import builtin
 from coagentia_server.templates import service as templates_service
 from fastapi.testclient import TestClient
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Engine
 
 _TASK = models.tbl(models.Task)
@@ -36,6 +36,10 @@ _MSG = models.tbl(models.Message)
 _MENTION = models.tbl(models.MessageMention)
 _BATCH = models.tbl(models.LandingBatch)
 _LEDGER = models.tbl(models.LedgerEntry)
+_PROJECT = models.tbl(models.Project)
+_CHANNEL_PROJECT = models.tbl(models.ChannelProject)
+_CHANNEL = models.tbl(models.Channel)
+_COMPUTER = models.tbl(models.Computer)
 
 _TASK_PLAN = {
     "goal": "让用户能登录",
@@ -117,6 +121,55 @@ def _member(client: TestClient, name: str) -> dict[str, Any]:
     return next(m for m in client.get("/api/members").json() if m["name"] == name)
 
 
+def _insert_project(engine: Engine, channel_id: str, *, bind: bool = True) -> str:
+    """测试内直落一个 Project；repo_path 无须触发 J2 的 REST git 校验。"""
+    project_id = service.new_ulid()
+    with engine.begin() as conn:
+        workspace_id = conn.execute(
+            select(_CHANNEL.c.workspace_id).where(_CHANNEL.c.id == channel_id)
+        ).scalar_one()
+        computer_id = conn.execute(
+            select(_COMPUTER.c.id).where(_COMPUTER.c.workspace_id == workspace_id).limit(1)
+        ).scalar_one()
+        conn.execute(
+            insert(_PROJECT).values(
+                id=project_id,
+                workspace_id=workspace_id,
+                computer_id=computer_id,
+                name=f"模板项目-{project_id[-4:]}",
+                repo_path="C:/tmp/template-project",
+                dev_command=None,
+                deploy_command=None,
+                preview_idle_min=30,
+                worktree_keep_days=7,
+                created_at=service.now_iso(),
+            )
+        )
+        if bind:
+            conn.execute(
+                insert(_CHANNEL_PROJECT).values(
+                    channel_id=channel_id, project_id=project_id
+                )
+            )
+    return project_id
+
+
+def _bind_project(engine: Engine, channel_id: str, project_id: str) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(_CHANNEL_PROJECT).values(channel_id=channel_id, project_id=project_id)
+        )
+
+
+def _mark_code_task(engine: Engine, task_id: str, project_id: str) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            update(_TASK)
+            .where(_TASK.c.id == task_id)
+            .values(writes_code=True, project_id=project_id)
+        )
+
+
 def _post_template(client: TestClient, channel_id: str, **extra: Any):
     payload = {"channel_id": channel_id, "name": "存的模板", **extra}
     return client.post("/api/templates", json=payload)
@@ -154,7 +207,14 @@ def test_serialize_pos_not_included(server_client: TestClient) -> None:
     r = _post_template(server_client, build["id"])
     assert r.status_code == 201, r.text
     node_json = r.json()["body"]["nodes"][0]
-    assert set(node_json.keys()) == {"key", "title", "role", "plan_skeleton"}
+    assert set(node_json) == {
+        "key",
+        "title",
+        "role",
+        "plan_skeleton",
+        "writes_code",
+        "project_id",
+    }
     assert "pos_x" not in node_json and "pos_y" not in node_json
 
 
@@ -381,6 +441,8 @@ def test_builtin_upsert_idempotent(seeded_engine: Engine) -> None:
     assert len(rows) == 1
     tpl = entities.TemplatePublic.model_validate(dict(rows[0]))
     assert tpl.builtin is True and len(tpl.body.nodes) == 6
+    assert all(node.writes_code is False for node in tpl.body.nodes)
+    assert all(node.project_id is None for node in tpl.body.nodes)
 
 
 def test_builtin_upsert_skips_empty_db(migrated_engine: Engine) -> None:
@@ -803,3 +865,201 @@ def test_instantiate_idempotency_key_scoped_to_template(
         rest.ErrorResponse.model_validate(r2.json()).error.code
         is rest.ErrorCode.IDEMPOTENCY_MISMATCH
     )
+
+
+def test_code_task_round_trips_through_template(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """保存只读任务行的代码归属；实例化经 create_node 全链原样写回新任务。"""
+    build = _build_channel(server_client)
+    research = _research_channel(server_client)
+    node = _agent_node(server_client, _canvas_id(server_client, build), "实现代码")
+    project_id = _insert_project(seeded_engine, build["id"])
+    _mark_code_task(seeded_engine, node["task_id"], project_id)
+
+    created = _post_template(server_client, build["id"])
+    assert created.status_code == 201, created.text
+    template = entities.TemplatePublic.model_validate(created.json())
+    assert len(template.body.nodes) == 1
+    assert template.body.nodes[0].writes_code is True
+    assert template.body.nodes[0].project_id == project_id
+
+    _bind_project(seeded_engine, research["id"], project_id)
+    landed = _instantiate(
+        server_client,
+        template.id,
+        research["id"],
+        {templates_service.UNCLAIMED_PLACEHOLDER: None},
+    )
+    assert landed.status_code == 201, landed.text
+    task = rest.InstantiateResult.model_validate(landed.json()).tasks[0]
+    assert task.writes_code is True
+    assert task.project_id == project_id
+    with seeded_engine.connect() as conn:
+        stored = conn.execute(
+            select(_TASK.c.writes_code, _TASK.c.project_id).where(_TASK.c.id == task.id)
+        ).one()
+    assert stored == (True, project_id)
+
+
+def test_instantiate_code_project_missing_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """模板引用已不存在的 Project 时，实例化在任何落地前以既有错误家族拒绝。"""
+    research = _research_channel(server_client)
+    owner = _member(server_client, "Memcyo")
+    missing_project_id = service.new_ulid()
+    body = TemplateBody(
+        nodes=[
+            TemplateNode(
+                key="code",
+                title="代码任务",
+                role="实现者",
+                writes_code=True,
+                project_id=missing_project_id,
+            )
+        ],
+        roles=[TemplateRole(placeholder="实现者")],
+    )
+    with seeded_engine.begin() as conn:
+        row = templates_service.insert_template(
+            conn,
+            workspace_id=owner["workspace_id"],
+            name="缺 Project 模板",
+            description="",
+            body=body,
+            created_by=owner["id"],
+        )
+
+    missing_mapping: dict[str, str | None] = {"实现者": None}
+    response = _instantiate(server_client, row["id"], research["id"], missing_mapping)
+    assert response.status_code == 422, response.text
+    error = rest.ErrorResponse.model_validate(response.json()).error
+    assert error.code is rest.ErrorCode.VALIDATION_FAILED
+    assert error.details == {
+        "project_id": missing_project_id,
+        "channel_id": research["id"],
+        "hint": "先绑定或改画布手建",
+    }
+    assert len(_canvas_detail(server_client, research["id"])["nodes"]) == 0
+
+
+def test_instantiate_unbound_project_precheck_has_zero_side_effects(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """Project 未绑目标频道时 reserve 前 422；绑定后复用同幂等键可正常落地。"""
+    build = _build_channel(server_client)
+    research = _research_channel(server_client)
+    node = _agent_node(server_client, _canvas_id(server_client, build), "待迁移代码")
+    project_id = _insert_project(seeded_engine, build["id"])
+    _mark_code_task(seeded_engine, node["task_id"], project_id)
+    created = _post_template(server_client, build["id"])
+    assert created.status_code == 201, created.text
+    template_id = created.json()["id"]
+    mapping: dict[str, str | None] = {templates_service.UNCLAIMED_PLACEHOLDER: None}
+
+    with seeded_engine.connect() as conn:
+        before = {
+            "tasks": conn.execute(
+                select(func.count()).select_from(_TASK).where(_TASK.c.channel_id == research["id"])
+            ).scalar_one(),
+            "messages": conn.execute(
+                select(func.count()).select_from(_MSG).where(_MSG.c.channel_id == research["id"])
+            ).scalar_one(),
+            "batches": conn.execute(
+                select(func.count())
+                .select_from(_BATCH)
+                .where(_BATCH.c.channel_id == research["id"])
+            ).scalar_one(),
+            "ledger": conn.execute(select(func.count()).select_from(_LEDGER)).scalar_one(),
+        }
+
+    rejected = _instantiate(
+        server_client,
+        template_id,
+        research["id"],
+        mapping,
+        idempotency_key="unbound-project",
+    )
+    assert rejected.status_code == 422, rejected.text
+    error = rest.ErrorResponse.model_validate(rejected.json()).error
+    assert error.code is rest.ErrorCode.VALIDATION_FAILED
+    assert error.details == {
+        "project_id": project_id,
+        "channel_id": research["id"],
+        "hint": "先绑定或改画布手建",
+    }
+    with seeded_engine.connect() as conn:
+        after = {
+            "tasks": conn.execute(
+                select(func.count()).select_from(_TASK).where(_TASK.c.channel_id == research["id"])
+            ).scalar_one(),
+            "messages": conn.execute(
+                select(func.count()).select_from(_MSG).where(_MSG.c.channel_id == research["id"])
+            ).scalar_one(),
+            "batches": conn.execute(
+                select(func.count())
+                .select_from(_BATCH)
+                .where(_BATCH.c.channel_id == research["id"])
+            ).scalar_one(),
+            "ledger": conn.execute(select(func.count()).select_from(_LEDGER)).scalar_one(),
+        }
+    assert after == before
+    assert len(_canvas_detail(server_client, research["id"])["nodes"]) == 0
+
+    _bind_project(seeded_engine, research["id"], project_id)
+    retried = _instantiate(
+        server_client,
+        template_id,
+        research["id"],
+        mapping,
+        idempotency_key="unbound-project",
+    )
+    assert retried.status_code == 201, retried.text
+
+
+def test_legacy_template_json_defaults_and_instantiates(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """旧 body JSON 无代码字段仍按 false/null 只读，并可照旧实例化。"""
+    research = _research_channel(server_client)
+    owner = _member(server_client, "Memcyo")
+    template_id = service.new_ulid()
+    legacy_body = {
+        "nodes": [
+            {
+                "key": "legacy",
+                "title": "旧模板任务",
+                "role": "旧角色",
+                "plan_skeleton": None,
+            }
+        ],
+        "edges": [],
+        "roles": [{"placeholder": "旧角色", "description": ""}],
+        "briefing": "",
+    }
+    with seeded_engine.begin() as conn:
+        conn.execute(
+            insert(_TEMPLATE).values(
+                id=template_id,
+                workspace_id=owner["workspace_id"],
+                name="旧 JSON 模板",
+                description="",
+                body=legacy_body,
+                builtin=0,
+                created_by_member_id=owner["id"],
+                created_at=service.now_iso(),
+            )
+        )
+
+    listed = next(
+        item for item in server_client.get("/api/templates").json() if item["id"] == template_id
+    )
+    legacy_node = listed["body"]["nodes"][0]
+    assert legacy_node["writes_code"] is False
+    assert legacy_node["project_id"] is None
+    landed = _instantiate(server_client, template_id, research["id"], {"旧角色": None})
+    assert landed.status_code == 201, landed.text
+    task = rest.InstantiateResult.model_validate(landed.json()).tasks[0]
+    assert task.writes_code is False
+    assert task.project_id is None

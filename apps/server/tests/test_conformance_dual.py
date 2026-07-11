@@ -471,6 +471,77 @@ def test_mock_project_diff_proposal_shapes() -> None:
     assert entities.ProposalPublic.model_validate(rejected.json()).status.value == "rejected"
 
 
+_PROJECTS_J2 = [
+    ("GET", "/projects"),
+    ("POST", "/projects"),
+    ("PATCH", "/projects/{project_id}"),
+    ("DELETE", "/projects/{project_id}"),
+    ("POST", "/channels/{channel_id}/projects"),
+    ("DELETE", "/channels/{channel_id}/projects/{project_id}"),
+]
+
+
+def test_projects_j2_endpoints_served(server_client: TestClient) -> None:
+    """J2 真 server serve Project CRUD 与频道绑定六端点（Diff 归 J4）。"""
+    served = _served(server_client)
+    missing = [
+        (method, path)
+        for method, path in _PROJECTS_J2
+        if (method, _norm(path)) not in served
+    ]
+    assert not missing, f"J2 Project 端点未 serve: {missing}"
+
+
+def test_project_crud_and_binding_shapes(dual: DualClient, tmp_path: Path) -> None:
+    """Project 六端点对 mock/真 server 双跑同一组契约形状。"""
+    import subprocess
+
+    label, client = dual
+    repo = tmp_path / f"project-shape-{label}"
+    repo.mkdir(exist_ok=True)
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    listed = TypeAdapter(list[entities.ProjectPublic]).validate_python(
+        client.get("/api/projects").json()
+    )
+    assert all(isinstance(project.channel_ids, list) for project in listed)
+
+    computer = client.get("/api/computers").json()[0]
+    created_response = client.post(
+        "/api/projects",
+        json={"name": "Shape Project", "repo_path": str(repo), "computer_id": computer["id"]},
+    )
+    assert created_response.status_code == 201, created_response.text
+    created = entities.ProjectPublic.model_validate(created_response.json())
+
+    patched_response = client.patch(
+        f"/api/projects/{created.id}", json={"name": "Patched", "worktree_keep_days": 5}
+    )
+    assert patched_response.status_code == 200, patched_response.text
+    assert entities.ProjectPublic.model_validate(patched_response.json()).name == "Patched"
+
+    build = _build_channel(client)
+    bind_response = client.post(
+        f"/api/channels/{build['id']}/projects", json={"project_id": created.id}
+    )
+    assert bind_response.status_code == 201, bind_response.text
+    binding = entities.ChannelProjectPublic.model_validate(bind_response.json())
+    assert binding.channel_id == build["id"] and binding.project_id == created.id
+
+    assert client.delete(
+        f"/api/channels/{build['id']}/projects/{created.id}"
+    ).status_code == 204
+    assert client.delete(f"/api/projects/{created.id}").status_code == 204
+
+
 # -------------------------------------------------------- M5b 模板（H5 存/列 + H6 实例化双跑）
 #
 # GET /templates 双跑（mock 形状源 + 真 server lifespan upsert builtin）读形状零偏差；POST 存为模板

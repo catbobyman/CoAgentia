@@ -108,3 +108,16 @@ def template_public(row: dict[str, Any]) -> dict[str, Any]:
     """M5 模板（工程三角/存为模板）。body JSON 列 → TemplateBody 嵌套模型、builtin INTEGER 0/1 →
     bool，均由 TemplatePublic 校验自然互转（ContractModel lax 模式）。"""
     return _dump(entities.TemplatePublic, row)
+
+
+def project_public(row: dict[str, Any], *, channel_ids: list[str]) -> dict[str, Any]:
+    """Project 的 channel_ids 来自 channel_projects 联查，不落 projects 表。"""
+    return _dump(entities.ProjectPublic, {**row, "channel_ids": channel_ids})
+
+
+def channel_project_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.ChannelProjectPublic, row)
+
+
+def worktree_public(row: dict[str, Any]) -> dict[str, Any]:
+    return _dump(entities.WorktreePublic, row)

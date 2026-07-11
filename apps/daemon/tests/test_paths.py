@@ -14,6 +14,7 @@ def test_ensure_dirs_creates_subtree(tmp_path: Path) -> None:
     assert p.buffer_dir.is_dir()
     assert p.state_dir.is_dir()
     assert p.agents_dir.is_dir()
+    assert p.worktrees_dir.is_dir()
 
 
 def test_agent_home_uses_member_id(tmp_path: Path) -> None:
@@ -21,6 +22,13 @@ def test_agent_home_uses_member_id(tmp_path: Path) -> None:
     home = p.ensure_agent_home("01K5AGENT0000000000000000A")
     assert home.is_dir()
     assert home.name == "01K5AGENT0000000000000000A"
+
+
+def test_worktree_path_uses_project_and_task_ids(tmp_path: Path) -> None:
+    p = DataPaths(tmp_path / "root")
+    assert p.worktree_path("project-id", "task-id") == (
+        tmp_path / "root" / "worktrees" / "project-id" / "task-id"
+    )
 
 
 def test_clear_agent_home_keeps_dir_removes_contents(tmp_path: Path) -> None:
