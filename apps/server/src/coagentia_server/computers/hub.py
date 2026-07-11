@@ -83,7 +83,7 @@ from coagentia_server.db import models
 from coagentia_server.events import EventBus
 from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger.service import new_ulid, now_iso
-from coagentia_server.reminders import interval as reminder_interval
+from coagentia_server.reminders import cadence as reminder_cadence
 from coagentia_server.routes.serialize import (
     computer_public,
     diagnostic_public,
@@ -1263,10 +1263,11 @@ class DaemonHub:
         锚点消息经 bus MESSAGE_CREATED 驱动投递引擎：daemon 在线即 wake+deliver，离线则消息照发、
         调度照推进，补唤醒由重连对账 #3 覆盖（离线安全）。
 
-        触发后调度（B §10.6）：`once` → status=done（一次性）；`recurring` → next_fire_at 塌缩到
-        **严格晚于 now 的下一个 cadence 网格点**（next_after，O(1)）**保持 active**——停机漏掉多个
-        周期时一次追平，不逐格重触发洪泛（code-review 修）。每条触发只发一次锚点系统消息 + mention
-        + REMINDER_UPDATED（载荷由内存行拼出，免回读）。
+        触发后调度（B §10.6 / §11.5）：`once` → status=done（一次性）；`recurring` → next_fire_at
+        经 cadence 单点塌缩到 **严格晚于 now 的下一个命中点**（interval 保锚点相位 / cron 搜绝对
+        壁钟，rearm_fire，O(命中距离)）**保持 active**——停机漏掉多个周期时一次追平，不逐格重触发
+        洪泛（code-review 修）。每条触发只发一次锚点系统消息 + mention + REMINDER_UPDATED（载荷由
+        内存行拼出，免回读）。
         """
         now = now_iso()
         fired = 0
@@ -1279,7 +1280,8 @@ class DaemonHub:
             for r in due:
                 reminder = dict(r)
                 if reminder["kind"] == ReminderKind.RECURRING.value:
-                    next_at = reminder_interval.next_after(
+                    # 按 cadence 类型塌缩重排（interval 保锚点相位 / cron 搜绝对壁钟）——走单点分派。
+                    next_at = reminder_cadence.rearm_fire(
                         reminder["next_fire_at"], reminder["cadence"], now
                     )
                     tx.conn.execute(

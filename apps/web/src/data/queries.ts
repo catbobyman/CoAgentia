@@ -3,11 +3,14 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import type {
+  ChannelNotificationSettingPublic,
+  ChannelPatch,
   ChannelPublic,
   ChannelsSnapshot,
   HeldDraftPublic,
   MemberPublic,
   MessagePublic,
+  NotificationMode,
   PresenceEntry,
   ReadPositionPublic,
   TaskPublic,
@@ -88,6 +91,59 @@ export const useCancelReminder = (memberId: string) => {
   return useMutation({
     mutationFn: (reminderId: string) => api.cancelReminder(reminderId),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentReminders(memberId) }),
+  });
+};
+
+// M5(B §11.3):技能白名单全量替换(PUT)。成功后失效该 agent 的 skills 让列表收敛
+// (WS AGENT_UPDATED 只反流 agent 主体，skills 明细无专属事件——invalidate 是单一收敛路径)。
+export const usePutAgentSkills = (memberId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (skills: string[]) => api.putAgentSkills(memberId, skills),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentSkills(memberId) }),
+  });
+};
+
+// M5(B-M5-1)频道阈值/描述/公开私有 PATCH。server 另发 CHANNEL_UPDATED，但 wsBridge 无该 case
+// （契约 C 零修订，裁决 #7）——故成功后 invalidate channels 收敛（REST 是事实源，铁律 1）。
+export const usePatchChannel = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ channelId, patch }: { channelId: string; patch: ChannelPatch }) =>
+      api.patchChannel(channelId, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.channels() }),
+  });
+};
+
+/** 通知设置 PUT 后本地更新 ChannelsSnapshot.notification_settings（裁决 #7 零新增 WS 事件，PUT 后
+ *  操作方本地更新）：非默认 mode → upsert 该频道行；mode=all（默认）→ 从「非默认行」列表剔除。 */
+function patchNotificationSetting(
+  qc: QueryClient,
+  channelId: string,
+  memberId: string,
+  mode: NotificationMode,
+) {
+  qc.setQueryData<ChannelsSnapshot>(qk.channels(), (prev) => {
+    if (!prev) return prev;
+    const rows = (prev.notification_settings as ChannelNotificationSettingPublic[] | undefined) ?? [];
+    const rest = rows.filter((r) => r.channel_id !== channelId);
+    const next = mode === 'all' ? rest : [...rest, { channel_id: channelId, member_id: memberId, mode }];
+    return { ...prev, notification_settings: next };
+  });
+}
+
+// 通知设置：人类本人自治。成功后按响应体 mode 本地更新快照（乐观地免整表 refetch）。
+export const usePutNotificationSetting = (meId: string | undefined) => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: ({ channelId, mode }: { channelId: string; mode: NotificationMode }) =>
+      api.putNotificationSetting(channelId, mode),
+    onSuccess: (res) => {
+      if (meId) patchNotificationSetting(qc, res.channel_id, res.member_id ?? meId, res.mode ?? 'all');
+    },
+    onError: (e: unknown) =>
+      toast.push(e instanceof ApiError ? e.message : '更新通知设置失败', { tone: 'error' }),
   });
 };
 

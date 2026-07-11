@@ -1,10 +1,11 @@
 // 频道侧栏(240px):频道分组(含 ops-private🔒 复发点 4)+ DM 分组 + 已归档折叠分组 + 新建频道。
 // 复发点 4:频道列表须含 ops-private(锁标)与「已归档」折叠分组。
-import { Archive, ChevronRight, Lock, Plus } from 'lucide-react';
+import { Archive, BellOff, ChevronRight, Lock, Plus } from 'lucide-react';
 
-import type { ChannelPublic, MemberPublic, PresenceEntry } from '@coagentia/contracts-ts';
+import type { ChannelPublic, MemberPublic, NotificationMode, PresenceEntry } from '@coagentia/contracts-ts';
 
 import { Avatar } from './Avatar';
+import { badgeStyle } from '../lib/notify';
 
 export interface ChannelListProps {
   channels: ChannelPublic[];
@@ -13,6 +14,9 @@ export interface ChannelListProps {
   presenceOf: (memberId: string) => PresenceEntry | undefined;
   dmPeer: (ch: ChannelPublic) => MemberPublic | undefined;
   onSelectChannel: (ch: ChannelPublic) => void;
+  // M5(B §11.4):每频道通知 mode + 未读窗口是否 @我——决定徽标点亮/弱化(裁决 #6:只作用通知面)。
+  notifyMode?: (ch: ChannelPublic) => NotificationMode;
+  hasUnreadMention?: (ch: ChannelPublic) => boolean;
   onPlayTimeline?: () => void;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -29,10 +33,14 @@ export function ChannelList(props: ChannelListProps) {
       {roomChannels.map((ch) => {
         const n = unreadCount(ch);
         const active = ch.id === activeChannelId;
+        const mode = props.notifyMode?.(ch) ?? 'all';
+        const style = badgeStyle(mode, props.hasUnreadMention?.(ch) ?? false);
+        // 点亮 = 有未读 且 非当前 且 mode 未弱化(mute / mentions 无@)；mute 频道名恒弱化。
+        const lit = n > 0 && !active && style !== 'muted';
         return (
           <div
             key={ch.id}
-            className={`ch${active ? ' active' : ''}${n && !active ? ' unread' : ''}`}
+            className={`ch${active ? ' active' : ''}${lit ? ' unread' : ''}${mode === 'mute' ? ' muted' : ''}`}
             onClick={() => {
               onSelectChannel(ch);
               props.onMobileClose?.();
@@ -42,7 +50,8 @@ export function ChannelList(props: ChannelListProps) {
               ? <span className="lock"><Lock /></span>
               : <span className="hash">#</span>}
             <span className="nm">{ch.name}</span>
-            {n > 0 && !active && <span className="cnt">{n}</span>}
+            {mode === 'mute' && <span className="chmute" aria-label="已静音"><BellOff /></span>}
+            {lit && <span className={`cnt${style === 'mention' ? ' mention' : ''}`}>{n}</span>}
           </div>
         );
       })}

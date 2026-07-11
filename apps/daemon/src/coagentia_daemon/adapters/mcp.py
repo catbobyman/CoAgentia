@@ -114,7 +114,8 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "create_reminder",
         "description": "创建提醒（recurring 缺 loop_contract → 422 原样透传）。"
-        "cadence：once = ISO 时刻；recurring = interval（ISO-8601 duration，如 PT1H；非 cron）。"
+        "cadence：once = ISO 时刻；recurring = interval（ISO-8601 duration，如 PT1H）"
+        "或 cron 五段式（分 时 日 月 周，服务器本地时区）。"
         "recurring 须内联 loop_contract 且其 cadence 与本 cadence 一致。",
         "inputSchema": {
             "type": "object",
@@ -129,7 +130,7 @@ TOOLS: list[dict[str, Any]] = [
                     "description": "recurring 必填 LoopContract（PRD §4.3；随建即生效）。",
                     "properties": {
                         "version": {"type": "string"},
-                        # cadence 须与 reminder cadence 一致（interval，如 PT1H）
+                        # cadence 须与 reminder cadence 一致（interval 如 PT1H，或 cron 五段式）
                         "cadence": {"type": "string"},
                         "verification": {"type": "array", "items": {"type": "string"}},
                         "budget": {"type": "object"},

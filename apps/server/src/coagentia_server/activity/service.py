@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from coagentia_contracts.enums import NotificationMode
 from coagentia_contracts.ws import EventType
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.engine import Connection
 
 from coagentia_server.db import models
@@ -22,6 +23,27 @@ from coagentia_server.ledger import service
 from coagentia_server.routes.serialize import activity_item_public
 
 _ACTIVITY = models.tbl(models.ActivityItem)
+_NOTIF = models.tbl(models.ChannelNotificationSetting)
+
+
+def muted_members(conn: Connection, *, channel_id: str, member_ids: list[str]) -> set[str]:
+    """该频道通知 mode=mute 的接收者子集（契约 B §11.4 #3 唯一消费点）。
+
+    mute → 该接收者的 mention activity **不生成**；无行=默认 all=不静音。判定语义单源本层，
+    messages._generate_activity 在 emit_activity 之前调用以过滤 mention 接收者——**只作用人类
+    通知面，不作用 Agent 投递层**（投递 gating 归画布、freshness 归发送侧，第三作用层）；dm 分支
+    恒生成不过此门（DM 必达）。未读**事实**不受影响（§9.7 #5 解耦）。批取单查避免逐接收者 N+1。
+    """
+    if not member_ids:
+        return set()
+    rows = conn.execute(
+        select(_NOTIF.c.member_id).where(
+            _NOTIF.c.channel_id == channel_id,
+            _NOTIF.c.member_id.in_(member_ids),
+            _NOTIF.c.mode == NotificationMode.MUTE,
+        )
+    ).scalars()
+    return set(rows)
 
 
 class EmitTx(Protocol):
@@ -69,4 +91,4 @@ def emit_activity(
     return pub
 
 
-__all__ = ["EmitTx", "emit_activity"]
+__all__ = ["EmitTx", "emit_activity", "muted_members"]

@@ -83,6 +83,19 @@ describe('RemindersTab 展示', () => {
     renderTab([]);
     expect(screen.getByText('尚无 reminder。')).toBeInTheDocument();
   });
+
+  it('cron cadence:原样 mono + 人读预览角标(M5 B §11.5)', () => {
+    renderTab([reminder('rem_cron', { cadence: '0 9 * * 5' })]);
+    expect(screen.getByText('0 9 * * 5')).toBeInTheDocument();
+    expect(screen.getByText('每周五 09:00')).toBeInTheDocument();
+  });
+
+  it('非 cron cadence:仅原串,无预览角标', () => {
+    renderTab([reminder('rem_daily', { cadence: 'daily 09:00' })]);
+    expect(screen.getByText('daily 09:00')).toBeInTheDocument();
+    // 无 cron 预览:'每' 开头的角标不出现
+    expect(screen.queryByText(/^每/)).not.toBeInTheDocument();
+  });
 });
 
 describe('RemindersTab 取消交互', () => {

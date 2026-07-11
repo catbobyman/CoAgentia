@@ -23,6 +23,8 @@ import { Tabs } from '../components/Tabs';
 import { Topbar } from '../components/Topbar';
 import { ThreadPanel } from './ThreadPanel';
 import { HeldDraftList } from './HeldDraftCard';
+import { ChannelSettingsModal } from '../components/ChannelSettingsModal';
+import { notifyModeOf } from '../lib/notify';
 import { api } from '../api';
 
 export function ChannelChatScreen({ search, setSearch }: {
@@ -33,6 +35,8 @@ export function ChannelChatScreen({ search, setSearch }: {
   const navigate = useNavigate();
   // 「定位到消息」目标(P4 → 会话流):瞬态视图状态,不进深链。
   const [locateId, setLocateId] = useState<string | undefined>();
+  // 频道设置弹窗(B-M5-1):⋯ 菜单入口,瞬态视图状态。
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const channelsQ = useChannelsSnapshot();
   const membersQ = useMembers();
@@ -110,7 +114,7 @@ export function ChannelChatScreen({ search, setSearch }: {
   return (
     <div className="chatwrap">
       <main className="main">
-        <Topbar channel={channel} stackNames={stackNames} />
+        <Topbar channel={channel} stackNames={stackNames} onOpenSettings={() => setSettingsOpen(true)} />
         <Tabs
           active={search.tab}
           canvasCount={canvasCount}
@@ -173,6 +177,15 @@ export function ChannelChatScreen({ search, setSearch }: {
 
         <Composer channelName={channel.name ?? ''} onSend={send} />
       </main>
+
+      {settingsOpen && (
+        <ChannelSettingsModal
+          channel={channel}
+          meId={me?.id}
+          currentMode={notifyModeOf(snap, channel.id)}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
 
       {threadRootId && (
         <ThreadPanel

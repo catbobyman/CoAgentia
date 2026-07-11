@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from coagentia_contracts import entities, rest
-from coagentia_contracts.enums import ChannelKind, MessageKind
+from coagentia_contracts.enums import ChannelKind, MemberKind, MessageKind, NotificationMode
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends, Request, Response
@@ -36,8 +36,14 @@ _READ = models.tbl(models.ReadPosition)
 _MSG = models.tbl(models.Message)
 _CANVAS = models.tbl(models.Canvas)
 _MEMBER = models.tbl(models.Member)
+_NOTIF = models.tbl(models.ChannelNotificationSetting)
 
 EMPTY_CANVAS_HASH = fingerprint({"edges": [], "nodes": []})
+
+
+def _notif_setting_public(row: dict[str, Any]) -> dict[str, Any]:
+    """通知设置行 → ChannelNotificationSettingPublic（形状校验；无行由调用点合成默认 all）。"""
+    return entities.ChannelNotificationSettingPublic.model_validate(row).model_dump()
 
 
 def _fetch_channel(tx: Tx, channel_id: str) -> dict[str, Any]:
@@ -78,9 +84,17 @@ def list_channels(tx: Tx = Depends(get_tx)) -> Any:
     positions = tx.conn.execute(
         select(_READ).where(_READ.c.member_id == me["id"])
     ).mappings()
+    # §11.4 #5：扩 notification_settings = 本人全部**非默认**行（mode≠all），前端一次拉齐渲染
+    # 徽标；全默认/冷态 → []。PUT 后前端本地更新，零新增 WS 事件（同 §11.2 #4 裁决）。
+    settings = tx.conn.execute(
+        select(_NOTIF).where(
+            _NOTIF.c.member_id == me["id"], _NOTIF.c.mode != NotificationMode.ALL
+        )
+    ).mappings()
     return {
         "items": [channel_public(dict(c)) for c in channels],
         "read_positions": [read_position_public(dict(p)) for p in positions],
+        "notification_settings": [_notif_setting_public(dict(s)) for s in settings],
     }
 
 
@@ -278,3 +292,90 @@ def open_dm(body: rest.DmCreate, tx: Tx = Depends(get_tx)) -> Any:
     pub = channel_public(_fetch_channel(tx, channel_id))
     tx.emit(EventType.CHANNEL_CREATED, channel_id, {"channel": pub})
     return pub
+
+
+# ---------------------------------------------------------------- 每频道通知设置（M5 §4.5/§11.4）
+
+
+def _notif_subject(
+    request: Request, tx: Tx, channel_id: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """GET/PUT notification-setting 共用门（契约 B §4.5/§11.4）：解析主体 + 频道约束。
+
+    通知是**人类面**：用 acting_member 解析主体（浏览器=Owner 人类，成员自治**无 admin 门**）；
+    Agent 主体 → 403 PERMISSION_DENIED（Agent 无人类通知面）。kind=dm → 422 NOTIF_IN_DM
+    （DM 必达，无设置面——dm activity 恒生成不受任何 mode 影响）。返回 (channel, me)。
+    """
+    channel = _fetch_channel(tx, channel_id)
+    me = acting_member(request, tx.conn)
+    if me["kind"] != MemberKind.HUMAN:
+        raise ApiError(
+            403,
+            rest.ErrorCode.PERMISSION_DENIED,
+            "通知设置是人类面，Agent 无设置权",
+            rule="B§11.4",
+        )
+    if channel["kind"] == ChannelKind.DM:
+        raise ApiError(422, rest.ErrorCode.NOTIF_IN_DM, "DM 必达，无通知设置面", rule="B§11.4")
+    return channel, me
+
+
+@router.get(
+    "/channels/{channel_id}/notification-setting",
+    response_model=entities.ChannelNotificationSettingPublic,
+)
+def get_notification_setting(channel_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
+    _, me = _notif_subject(request, tx, channel_id)
+    row = (
+        tx.conn.execute(
+            select(_NOTIF).where(
+                _NOTIF.c.channel_id == channel_id, _NOTIF.c.member_id == me["id"]
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:  # 懒建：无行回默认 all（仅 PUT 落行，GET 不写库）
+        return _notif_setting_public(
+            {"channel_id": channel_id, "member_id": me["id"], "mode": NotificationMode.ALL}
+        )
+    return _notif_setting_public(dict(row))
+
+
+@router.put(
+    "/channels/{channel_id}/notification-setting",
+    response_model=entities.ChannelNotificationSettingPublic,
+)
+def put_notification_setting(
+    channel_id: str,
+    body: rest.NotificationSettingPut,
+    request: Request,
+    tx: Tx = Depends(get_tx),
+) -> Any:
+    _, me = _notif_subject(request, tx, channel_id)
+    # upsert 懒建（复合 PK channel_id+member_id）：无行 insert、有行 update mode。零新增 WS 事件。
+    existing = tx.conn.execute(
+        select(_NOTIF.c.channel_id).where(
+            _NOTIF.c.channel_id == channel_id, _NOTIF.c.member_id == me["id"]
+        )
+    ).first()
+    if existing is None:
+        tx.conn.execute(
+            insert(_NOTIF).values(channel_id=channel_id, member_id=me["id"], mode=body.mode)
+        )
+    else:
+        tx.conn.execute(
+            update(_NOTIF)
+            .where(_NOTIF.c.channel_id == channel_id, _NOTIF.c.member_id == me["id"])
+            .values(mode=body.mode)
+        )
+    row = models.row_dict(
+        tx.conn.execute(
+            select(_NOTIF).where(
+                _NOTIF.c.channel_id == channel_id, _NOTIF.c.member_id == me["id"]
+            )
+        )
+        .mappings()
+        .first()
+    )
+    return _notif_setting_public(row)

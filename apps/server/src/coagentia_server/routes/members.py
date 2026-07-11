@@ -30,7 +30,7 @@ from coagentia_server.deps import (
     require_workspace,
 )
 from coagentia_server.ledger.service import new_ulid, now_iso
-from coagentia_server.reminders import interval
+from coagentia_server.reminders import cadence as cadence_svc
 from coagentia_server.routes.serialize import (
     agent_public,
     agent_skill_public,
@@ -407,11 +407,12 @@ def create_reminder(body: rest.ReminderCreate, request: Request, tx: Tx = Depend
             "once reminder 不接受 loop_contract",
             details={"unexpected": ["loop_contract"]},
         )
-    # recurring：cadence 须为合法 interval（B §10.6 MVP 仅 interval）且与契约 cadence 一致。
+    # recurring：cadence 须为合法值域（interval 或 cron 五段式，B §11.5）且与契约 cadence 一致。
+    # 值域判定走 cadence 单点（纪律 7），端点仅负责把 ValueError 转 422。
     if is_recurring:
         assert body.loop_contract is not None  # 上门已保证
         try:
-            interval.parse_interval(body.cadence)
+            cadence_svc.validate(body.cadence)
         except ValueError as exc:
             raise ApiError(
                 422, rest.ErrorCode.VALIDATION_FAILED, str(exc), details={"field": "cadence"}
@@ -471,10 +472,11 @@ def create_reminder(body: rest.ReminderCreate, request: Request, tx: Tx = Depend
             anchor_message_id=body.anchor_message_id,
             anchor_task_id=body.anchor_task_id,
             loop_contract_id=contract_id,
-            # once：A3 落锚点即 now（首扫即触发）；recurring：建后**一个 interval** 才首次触发
-            # （避免建即触发的意外——code-review 修），之后 run_reminder_scan 按 cadence 塌缩重排。
+            # once：A3 落锚点即 now（首扫即触发）；recurring：cadence 单点算首触发锚点
+            # （interval=建后一个周期、cron=创建时刻后首个命中；避免建即触发的意外——code-review
+            # 修），之后 run_reminder_scan 按 cadence 类型塌缩重排。
             next_fire_at=(
-                interval.add_interval(ts, body.cadence) if is_recurring else ts
+                cadence_svc.initial_fire(ts, body.cadence) if is_recurring else ts
             ),
             status=ReminderStatus.ACTIVE,
             cancelled_by_member_id=None,

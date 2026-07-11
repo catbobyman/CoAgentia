@@ -1,14 +1,17 @@
-// 频道顶栏(44px):#频道名 + 描述 + 成员堆叠 + 菜单。B2 各屏顶栏复用。
+// 频道顶栏(44px):#频道名 + 描述 + 成员堆叠 + ⋯ 菜单(频道设置入口,B-M5-1)。B2 各屏顶栏复用。
+import { useState } from 'react';
 import { Ellipsis } from 'lucide-react';
 
 import type { ChannelPublic } from '@coagentia/contracts-ts';
 
 import { avatarCfg } from '../lib/uiMaps';
 
-export function Topbar({ channel, stackNames }: {
+export function Topbar({ channel, stackNames, onOpenSettings }: {
   channel: ChannelPublic;
   stackNames: string[];
+  onOpenSettings?: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="topbar">
       <span className="cname"><span className="hash">#</span>{channel.name}</span>
@@ -29,7 +32,24 @@ export function Topbar({ channel, stackNames }: {
         })}
         <span className="n">{stackNames.length}</span>
       </div>
-      <div className="icobtn" aria-label="频道菜单"><Ellipsis /></div>
+      <div className="dropwrap">
+        <div
+          className="icobtn"
+          role="button"
+          aria-label="频道菜单"
+          aria-haspopup="menu"
+          onClick={() => setMenuOpen((v) => !v)}
+        ><Ellipsis /></div>
+        {menuOpen && (
+          <div className="drop" role="menu">
+            <div
+              className="it"
+              role="menuitem"
+              onClick={() => { setMenuOpen(false); onOpenSettings?.(); }}
+            >频道设置</div>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

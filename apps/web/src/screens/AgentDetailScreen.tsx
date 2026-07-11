@@ -2,17 +2,21 @@
 // runtime/model 改标注「下次启动生效」(复发点 3);技能 tab 是白名单唯一入口。
 // 数据:GET /agents/{id}、/skills、/reminders、/diagnostics、home/tree(全部经 contracts-ts 生成类型)。
 import { useState } from 'react';
-import { ChevronDown, File as FileIcon, Folder, Monitor, Square } from 'lucide-react';
+import { Check, ChevronDown, File as FileIcon, Folder, Monitor, Plus, Square } from 'lucide-react';
+
+import type { AgentPublic, ComputerPublic } from '@coagentia/contracts-ts';
 
 import type { AgentTab } from '../routes/search';
 import {
   useAgent, useAgentDiagnostics, useAgentReminders, useAgentSkills,
   useCancelReminder, useComputers, useHomeTree, useMembers, usePresence,
+  usePutAgentSkills,
 } from '../data/queries';
 import { presenceMap, memberMap } from '../data/queries';
 import { ApiError } from '../api';
 import { useToast } from '../components/Toast';
 import { fmtDate, fmtTime, fmtTimeSec } from '../lib/time';
+import { cronPreview } from '../lib/cron';
 
 const TAB_DEFS: { key: AgentTab; label: string }[] = [
   { key: 'profile', label: 'Profile' },
@@ -48,6 +52,10 @@ export function AgentDetailScreen({ memberId, tab, setTab }: {
   const presence = presenceMap(presenceQ.data)[memberId];
   const computer = (computersQ.data ?? []).find((c) => c.id === agent?.computer_id);
   const creator = agent?.created_by_member_id ? byId[agent.created_by_member_id] : undefined;
+  // R3 权限位:创建者或 admin/owner 才见技能编辑态(与 server put_skills 的 R3 门同判)。
+  const me = members.find((m) => m.kind === 'human' && m.role === 'owner');
+  const canEditSkills =
+    !!me && (me.id === agent?.created_by_member_id || me.role === 'admin' || me.role === 'owner');
 
   if (!agent || !member) {
     return <main className="main"><div className="boot">loading agent…</div></main>;
@@ -136,7 +144,9 @@ export function AgentDetailScreen({ memberId, tab, setTab }: {
         )}
 
         {tab === 'home' && <HomeTab memberId={memberId} />}
-        {tab === 'skills' && <SkillsTab memberId={memberId} />}
+        {tab === 'skills' && (
+          <SkillsTab memberId={memberId} agent={agent} computer={computer} editable={canEditSkills} />
+        )}
         {tab === 'reminders' && <RemindersTab memberId={memberId} />}
         {tab === 'diagnostics' && <DiagnosticsTab memberId={memberId} />}
         {tab === 'cost' && (
@@ -168,19 +178,122 @@ function HomeTab({ memberId }: { memberId: string }) {
   );
 }
 
-function SkillsTab({ memberId }: { memberId: string }) {
+// 技能白名单编辑态(M5 B §11.3 / R6 全量替换)。候选池 = 所在机器该 runtime 探测上报的 skills;
+// 展示 = 候选池 ∪ 已授予(池外已授予仍显示可移除);自由输入允许任意串(后端 PUT 接受)。
+// 只读态(非创建者/admin)= 仅列已授予 + granted 徽标(旧行为)。
+export function SkillsTab({ memberId, agent, computer, editable }: {
+  memberId: string;
+  agent: AgentPublic;
+  computer: ComputerPublic | undefined;
+  editable: boolean;
+}) {
   const q = useAgentSkills(memberId);
-  const skills = q.data ?? [];
+  const putM = usePutAgentSkills(memberId);
+  const toast = useToast();
+  const [free, setFree] = useState('');
+
+  const granted = q.data ?? [];
+  const grantedSet = new Set(granted.map((s) => s.skill));
+  // 该 Agent 所在机器、该 runtime 的候选技能池(computer 探测数据;codex 恒 [] —— 裁决 #11)。
+  const pool = computer?.detected_runtimes?.find((rt) => rt.runtime === agent.runtime)?.skills ?? [];
+  // 展示序:候选池在前(保序去重),再补池外已授予项。
+  const union: string[] = [];
+  for (const s of [...pool, ...granted.map((g) => g.skill)]) {
+    if (!union.includes(s)) union.push(s);
+  }
+
+  // 全量替换：以当前授予集为基准，apply(next) 后 PUT。失败弹 toast(权限/网络)。
+  const commit = (next: string[]) =>
+    putM.mutate(Array.from(new Set(next)), {
+      onError: (e: unknown) =>
+        toast.push(e instanceof ApiError ? e.message : '更新技能失败', { tone: 'error' }),
+    });
+  const toggle = (skill: string) => {
+    const next = grantedSet.has(skill)
+      ? granted.map((g) => g.skill).filter((s) => s !== skill)
+      : [...granted.map((g) => g.skill), skill];
+    commit(next);
+  };
+  const addFree = () => {
+    const s = free.trim();
+    if (!s || grantedSet.has(s)) { setFree(''); return; }
+    commit([...granted.map((g) => g.skill), s]);
+    setFree('');
+  };
+
+  // codex 池空且无授予：引导文案而非空表(裁决 #11)。
+  const codexEmpty = agent.runtime === 'codex' && union.length === 0;
+
   return (
     <div className="card">
-      <div className="chd"><b>技能白名单</b><span className="m">授予后即生效 · 白名单唯一入口</span></div>
-      {skills.length === 0 && <div className="emptytab">未授予任何技能。此页是白名单的唯一配置入口。</div>}
-      {skills.map((s) => (
-        <div className="frow" key={s.skill}>
-          <span className="vl mono">{s.skill}</span>
-          <span className="rbadge">granted</span>
-        </div>
-      ))}
+      <div className="chd">
+        <b>技能白名单</b>
+        <span className="m">{editable ? '授予后即生效 · 白名单唯一入口' : '仅创建者/admin 可编辑'}</span>
+      </div>
+
+      {codexEmpty ? (
+        <div className="emptytab">Codex 该 runtime 暂无技能机制,候选池为空——无需在此授予。</div>
+      ) : !editable ? (
+        // 只读态：仅已授予 + granted 徽标。
+        <>
+          {granted.length === 0 && (
+            <div className="emptytab">未授予任何技能。此页是白名单的唯一配置入口。</div>
+          )}
+          {granted.map((s) => (
+            <div className="frow" key={s.skill}>
+              <span className="vl mono">{s.skill}</span>
+              <span className="rbadge">granted</span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
+          {union.length === 0 && (
+            <div className="emptytab">
+              该机器该 runtime 未探测到候选技能——可在下方自由输入手动授予。
+            </div>
+          )}
+          {union.map((skill) => {
+            const on = grantedSet.has(skill);
+            const external = on && !pool.includes(skill); // 池外已授予
+            return (
+              <label className="frow skillrow" key={skill} data-testid="skill-row">
+                <button
+                  type="button"
+                  className={`skchk${on ? ' on' : ''}`}
+                  role="checkbox"
+                  aria-checked={on}
+                  aria-label={skill}
+                  disabled={putM.isPending}
+                  onClick={() => toggle(skill)}
+                >
+                  {on && <Check />}
+                </button>
+                <span className="vl mono">{skill}</span>
+                {external && <span className="rbadge">池外</span>}
+              </label>
+            );
+          })}
+          <div className="frow skilladd">
+            <div className="inp">
+              <span className="pr">+</span>
+              <input
+                className="val mono"
+                value={free}
+                placeholder="自由输入技能名后回车授予"
+                onChange={(e) => setFree(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addFree(); }}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={putM.isPending || free.trim() === ''}
+              onClick={addFree}
+            ><Plus />授予</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -209,11 +322,14 @@ export function RemindersTab({ memberId }: { memberId: string }) {
         if (r.anchor_channel_id) anchors.push(`#${r.anchor_channel_id.slice(-6)}`);
         if (r.anchor_task_id) anchors.push(`task ${r.anchor_task_id.slice(-6)}`);
         if (r.anchor_message_id) anchors.push(`msg ${r.anchor_message_id.slice(-6)}`);
+        // 循环 cadence 若是五段式 cron → 原样 mono + 人读预览(M5 B §11.5;无法识别则仅原串)。
+        const preview = cronPreview(r.cadence);
         return (
           <div className="frow" key={r.id}>
             <span className="lb">{r.kind}</span>
             <span className="vl">
-              <span className="mono">{r.cadence}</span>
+              <span className="mono" title={preview ? `cron: ${r.cadence}` : undefined}>{r.cadence}</span>
+              {preview && <span className="rbadge cronprev">{preview}</span>}
               {r.next_fire_at && (
                 <span className="sub"> · 下次 {fmtDate(r.next_fire_at)} {fmtTime(r.next_fire_at)}</span>
               )}

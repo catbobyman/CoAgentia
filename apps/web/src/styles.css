@@ -27,6 +27,12 @@ body { background: var(--bg); font-family: var(--font-sans); color: var(--text);
 .ch.active .hash { color: var(--accent); }
 .ch.unread .nm { font-weight: 600; color: var(--text); }
 .ch .cnt, .tab .cnt { font-family: var(--font-mono); font-size: 11px; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 1px 6px; color: var(--text-secondary); }
+/* M5 通知 mode 徽标：@点亮(accent) / 静音(弱化 + 铃铛) */
+.ch .cnt.mention { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
+.ch.muted .nm { color: var(--text-muted); }
+.ch .chmute { color: var(--text-muted); display: inline-flex; flex: none; margin-left: auto; }
+.ch .chmute svg.lucide { width: 13px; height: 13px; }
+.ch .chmute + .cnt { margin-left: 6px; }
 .av16 { width: 16px; height: 16px; border-radius: var(--radius-s); color: var(--avatar-ink); font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; position: relative; flex: none; }
 .av16 .p { position: absolute; right: -2px; bottom: -2px; width: 6px; height: 6px; box-shadow: 0 0 0 2px var(--surface-1); }
 .playbtn { margin: 8px 12px; height: 28px; font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-s); color: var(--text-secondary); cursor: pointer; }
@@ -313,6 +319,18 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .selbtn svg.lucide { width: 14px; height: 14px; color: var(--text-muted); }
 .selbtn .rb { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
 .emptytab { padding: 16px 14px; font-size: 13px; color: var(--text-muted); }
+/* M5 技能编辑态：勾选行 + 自由输入行 */
+.skillrow { cursor: pointer; align-items: center; }
+.skchk { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: var(--radius-s); color: var(--on-accent, var(--bg)); cursor: pointer; }
+.skchk:hover:not(:disabled) { border-color: var(--accent); }
+.skchk:disabled { opacity: .5; cursor: default; }
+.skchk.on { background: var(--accent); border-color: var(--accent); }
+.skchk svg.lucide { width: 13px; height: 13px; }
+.skilladd { align-items: center; gap: 8px; }
+.skilladd .inp { flex: 1; height: 30px; }
+.skilladd .btn { flex: none; }
+/* M5 cron 人读预览角标 */
+.rbadge.cronprev { margin-left: 8px; background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
 .filerow .fileic { display: inline-flex; color: var(--text-secondary); }
 .filerow .fileic svg.lucide { width: 16px; height: 16px; }
 .filesize { flex: none; }

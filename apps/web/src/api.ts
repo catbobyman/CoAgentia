@@ -4,6 +4,9 @@ import type {
   AgentSkillPublic,
   CanvasDetail,
   CanvasMutation,
+  ChannelNotificationSettingPublic,
+  ChannelPatch,
+  ChannelPublic,
   ChannelsSnapshot,
   ComputerCreated,
   ComputerPublic,
@@ -19,6 +22,7 @@ import type {
   MessagePublic,
   NodeCreate,
   NodePatch,
+  NotificationMode,
   PresenceSnapshot,
   ReminderPublic,
   RestPaths,
@@ -256,6 +260,10 @@ export const api = {
   computers: () => get<ComputerPublic[]>('/api/computers'),
   agent: (memberId: string) => get<AgentPublic>(`/api/agents/${memberId}`),
   agentSkills: (memberId: string) => get<AgentSkillPublic[]>(`/api/agents/${memberId}/skills`),
+  // M5(B §11.3 / R6):技能白名单全量替换制(PUT 覆写),body = { skills: string[] };server 去重保序,
+  // R3 门(非创建者/admin → 403 PERMISSION_DENIED)。成功回最新授予列表;另发 AGENT_UPDATED 广播。
+  putAgentSkills: (memberId: string, skills: string[]) =>
+    writeJson<AgentSkillPublic[]>(`/api/agents/${memberId}/skills`, 'PUT', { skills }),
   agentReminders: (memberId: string) => get<ReminderPublic[]>(`/api/agents/${memberId}/reminders`),
   // P6 取消 reminder(DELETE /reminders/{id},204 无体)。服务端另发 WS reminder.updated 把
   // status 反流为 cancelled;权限不足(非 owner)→ 403,不存在 → 404,据 code 组 toast。
@@ -287,6 +295,19 @@ export const api = {
     if (!r.ok) throw new Error(`add computer -> ${r.status}`);
     return (await r.json()) as ComputerCreated;
   },
+
+  // ---- M5(B-M5-1)频道设置弹窗:阈值/描述/公开私有走既有 ChannelPatch(PATCH /channels/{id},
+  // require_admin);通知设置走 notification-setting 端点(人类本人自治)。均结构化错误上浮(writeJson)。
+  patchChannel: (channelId: string, patch: ChannelPatch) =>
+    writeJson<ChannelPublic>(`/api/channels/${channelId}`, 'PATCH', patch),
+  // 通知设置(B §4.5/§11.4):PUT upsert 懒建,回 ChannelNotificationSettingPublic;
+  // dm 频道 → 422 NOTIF_IN_DM(DM 必达,无设置面),Agent → 403(人类本人自治)。
+  putNotificationSetting: (channelId: string, mode: NotificationMode) =>
+    writeJson<ChannelNotificationSettingPublic>(
+      `/api/channels/${channelId}/notification-setting`,
+      'PUT',
+      { mode },
+    ),
 
   setReadPosition: (channelId: string, lastReadMessageId: string) =>
     fetch(`${API_BASE}/api/channels/${channelId}/read-position`, {

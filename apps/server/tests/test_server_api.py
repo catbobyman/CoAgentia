@@ -382,19 +382,19 @@ def test_recurring_reminder_cadence_mismatch_422(
     assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
 
 
-def test_recurring_reminder_invalid_interval_422(
+def test_recurring_reminder_invalid_cadence_422(
     server_client: TestClient, seeded_engine: Engine
 ) -> None:
-    """cadence 非合法 interval（cron 归 M5+）→ 422（一致但非 interval 也拒）。"""
+    """cadence 既非合法 interval 也非合法 cron（这里 4 段 cron）→ 422（B §11.5 值域单点）。"""
     pat = _member(server_client, PAT)
     build = _channel(server_client, BUILD_CHANNEL)
     r = server_client.post(
         "/api/reminders",
         json={
             "kind": "recurring",
-            "cadence": "0 9 * * *",  # cron 表达式
+            "cadence": "0 9 * *",  # 4 段：非 interval、非五段 cron
             "anchor_channel_id": build["id"],
-            "loop_contract": _loop_contract("0 9 * * *"),  # 一致但非 interval
+            "loop_contract": _loop_contract("0 9 * *"),  # 一致但值域非法
         },
         headers=_agent_headers(seeded_engine, pat["id"]),
     )
@@ -402,6 +402,33 @@ def test_recurring_reminder_invalid_interval_422(
     err = rest.ErrorResponse.model_validate(r.json())
     assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
     assert err.error.details == {"field": "cadence"}
+
+
+def test_recurring_reminder_accepts_cron_cadence(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """recurring 接受 cron 五段式（M5，B §11.5）：201 + next_fire_at 经 cadence 单点算出。"""
+    from coagentia_server.reminders import cadence as cadence_svc
+
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        "/api/reminders",
+        json={
+            "kind": "recurring",
+            "cadence": "0 9 * * *",  # 每日 09:00（本地时区）
+            "anchor_channel_id": build["id"],
+            "loop_contract": _loop_contract("0 9 * * *"),
+        },
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 201, r.text
+    rem = entities.ReminderPublic.model_validate(r.json())
+    assert rem.kind == "recurring" and rem.status == "active"
+    assert rem.loop_contract_id is not None
+    # 建即算 next_fire_at = 创建时刻之后首个命中；与单点重算逐字节一致（证明端点走单点）。
+    assert rem.next_fire_at > rem.created_at
+    assert rem.next_fire_at == cadence_svc.initial_fire(rem.created_at, "0 9 * * *")
 
 
 # ---------------------------------------------------------------- 文件 staging + GC

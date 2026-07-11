@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { resyncAll } from './queries';
 import { applyEnvelope } from './wsBridge';
+import { maybeDesktopNotify } from './desktopNotify';
 import { connectWs } from '../ws';
 import { useUiStore } from '../lib/store';
 
@@ -14,7 +15,8 @@ export function useWsSync() {
 
   useEffect(() => {
     const cleanup = connectWs({
-      onEvent: (env) => applyEnvelope(qc, env),
+      // 先 patch 缓存(事实源),再按频道 mode 决定是否弹桌面通知(纯展示增益,不改缓存)。
+      onEvent: (env) => { applyEnvelope(qc, env); maybeDesktopNotify(qc, env); },
       onStatus: (status, attempt) => setConnection({ status, attempt }),
       onResync: () => void resyncAll(qc),
     });

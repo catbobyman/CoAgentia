@@ -16,6 +16,7 @@ import {
 } from '../data/queries';
 import { Rail } from '../components/Rail';
 import { ChannelList } from '../components/ChannelList';
+import { hasUnreadMention, notifyModeOf } from '../lib/notify';
 import { ReconnectBar } from '../components/ReconnectBar';
 import { ToastProvider, Toaster } from '../components/Toast';
 import { SearchOverlay } from '../components/SearchOverlay';
@@ -112,6 +113,10 @@ export function RootLayout() {
           channels={channels}
           activeChannelId={activeChannelId ?? undefined}
           unreadCount={unreadCount}
+          notifyMode={(ch) => notifyModeOf(channelsQ.data, ch.id)}
+          hasUnreadMention={(ch) =>
+            hasUnreadMention(msgByChannel[ch.id] ?? [], readPositions[ch.id]?.last_read_message_id, me.name)
+          }
           presenceOf={(id) => presence[id]}
           dmPeer={dmPeer}
           onSelectChannel={(ch) => setActiveChannel(ch.id)}

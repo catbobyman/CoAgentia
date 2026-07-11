@@ -150,11 +150,17 @@ def _generate_activity(
     else:
         if not mentioned:  # 无 @ 的普通消息（绝大多数）：零额外查询
             return
-        recipients = [
+        human_recipients = [
             m["id"]
             for m in mentioned
             if m["kind"] == MemberKind.HUMAN and m["id"] != author_member_id
         ]
+        # §11.4 #3：mute 掐该接收者的 mention activity 生成（唯一消费点，emit 之前过滤；只作用
+        # 人类通知面，dm 分支恒生成不过此门）。未读事实不受影响（§9.7 #5 解耦）。
+        muted = activity_service.muted_members(
+            tx.conn, channel_id=channel_id, member_ids=human_recipients
+        )
+        recipients = [r for r in human_recipients if r not in muted]
         kind = ActivityKind.MENTION.value
 
     for recipient_id in dict.fromkeys(recipients):  # 去重（防成员多次命中）
