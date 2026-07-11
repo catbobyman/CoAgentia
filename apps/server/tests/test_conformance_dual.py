@@ -410,6 +410,40 @@ def test_channels_snapshot_notification_settings_field(dual: DualClient) -> None
     assert snap.notification_settings == []
 
 
+# ---------------------------------------------------------------- M5b 模板（H5 存/列双跑）
+#
+# GET /templates 双跑（mock 形状源 + 真 server lifespan upsert builtin）读形状零偏差；POST 存为模板
+# 全业务（画布快照序列化 / 占位去重 / 409 约束）是真 server 独有逻辑（纪律 4），不在此双跑——见
+# test_templates.py。instantiate 归 H6，本块不 serve（H5 只登记 GET/POST /templates 实 serve）。
+
+_TEMPLATES_H5 = [("GET", "/templates"), ("POST", "/templates")]
+
+
+def test_templates_list_shape(dual: DualClient) -> None:
+    """GET /templates（B §11.1）：builtin 工程三角置前、body 全量携带——mock 形状源与真 server
+    （lifespan upsert builtin）读形状零偏差。"""
+    _, client = dual
+    items = TypeAdapter(list[entities.TemplatePublic]).validate_python(
+        client.get("/api/templates").json()
+    )
+    assert items, "至少含 builtin 工程三角"
+    assert items[0].builtin is True
+    assert items[0].name == "工程三角"
+    assert items[0].body.nodes, "body 全量携带（向导预览 DAG 缩略图用）"
+
+
+def test_templates_h5_endpoints_served(server_client: TestClient) -> None:
+    """H5 真 server serve GET/POST /templates（存/列）；instantiate 归 H6 本模块不 serve（目录 ↔
+    实 serve 对账，M2/M3/M4 先例）。"""
+    served = _served(server_client)
+    missing = [(m, p) for m, p in _TEMPLATES_H5 if (m, _norm(p)) not in served]
+    assert not missing, f"H5 模板端点未 serve: {missing}"
+    assert (
+        "POST",
+        _norm("/templates/{template_id}/instantiate"),
+    ) not in served, "instantiate 属 H6，本里程碑块不应 serve"
+
+
 # ---------------------------------------------------------------- WS 信封与广播（A4 双跑）
 
 

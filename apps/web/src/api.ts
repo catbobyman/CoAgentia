@@ -16,6 +16,7 @@ import type {
   HeldDraftPublic,
   HeldDraftReleaseResponse,
   HeldDraftResponse,
+  InstantiateResult,
   LayoutPut,
   MemberPublic,
   MessageCreated,
@@ -31,6 +32,9 @@ import type {
   TaskPatch,
   TaskPublic,
   TaskStatus,
+  TemplateCreate,
+  TemplateInstantiate,
+  TemplatePublic,
   WorkspaceCreate,
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
@@ -308,6 +312,17 @@ export const api = {
       'PUT',
       { mode },
     ),
+
+  // ---- M5(B-M5-2)模板域(B §4.12/§11.1/§11.2)。列表 GET(builtin 置前，body 全量携带供向导预览)；
+  // 存为模板 POST(server 读频道画布快照序列化 TemplateBody，画布无正式节点/有草稿层 → 409
+  // TEMPLATE_CANVAS_NOT_READY，入口 disabled 是 UI 责任、API 兜底)；实例化 POST(单事务落地批
+  // tmpl:<batch_id>:<node_key> 幂等，role_mapping 缺占位 → 422 VALIDATION_FAILED details.missing)。
+  // 均走 writeJson 结构化错误上浮(据 code/details 组 toast)。
+  templates: () => get<TemplatePublic[]>('/api/templates'),
+  createTemplate: (body: TemplateCreate) =>
+    writeJson<TemplatePublic>('/api/templates', 'POST', body),
+  instantiateTemplate: (templateId: string, body: TemplateInstantiate) =>
+    writeJson<InstantiateResult>(`/api/templates/${templateId}/instantiate`, 'POST', body),
 
   setReadPosition: (channelId: string, lastReadMessageId: string) =>
     fetch(`${API_BASE}/api/channels/${channelId}/read-position`, {

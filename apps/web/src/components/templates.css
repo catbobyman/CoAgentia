@@ -1,0 +1,265 @@
+/* M5b 模板 UI(对照设计稿 P13a-modals-create-template：存为模板 + 模板向导)。token 零发明，
+   只用 afterglow 变量；复用 styles.css 的 .scrim/.modal/.mtitle/.field/.lb/.inp/.ops/.btn。 */
+
+/* ---- 画布工具栏「模板▾」下拉 ---- */
+.tmpl-menu { position: relative; display: inline-flex; }
+/* 点击外部关闭菜单的透明背板(桌面态) */
+.tmpl-backdrop { position: fixed; inset: 0; z-index: 39; background: transparent; border: 0; cursor: default; }
+.tmpl-menu .tmpl-pop {
+  position: absolute;
+  top: 34px;
+  left: 0;
+  z-index: 40;
+  min-width: 180px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-popover);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tmpl-menu .tmpl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-s);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.tmpl-menu .tmpl-item:hover:not(:disabled) { background: var(--surface-hover); }
+.tmpl-menu .tmpl-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.tmpl-menu .tmpl-item svg { width: 14px; height: 14px; flex: none; color: var(--text-muted); }
+.tmpl-menu .tmpl-item .sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* 禁用项 tooltip(hover 呈现) */
+.tipwrap { position: relative; display: block; }
+.tipwrap .tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 8px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-popover);
+  font-size: 12px;
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-fast);
+  z-index: 50;
+}
+.tipwrap:hover .tip { opacity: 1; }
+
+/* ---- 存为模板弹窗 ---- */
+.tmpl-modal { width: 480px; max-height: calc(100dvh - 64px); overflow-y: auto; }
+.tmpl-ta {
+  width: 100%;
+  resize: vertical;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  outline: none;
+}
+.tmpl-ta:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--focus-ring); }
+
+/* 角色占位提取表 */
+.roletable { border: 1px solid var(--border); border-radius: var(--radius-s); overflow: hidden; }
+.roletable .rr { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.roletable .rr + .rr { border-top: 1px solid var(--border); }
+.roletable .owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  flex: none;
+  width: 108px;
+  min-width: 0;
+}
+.roletable .owner .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roletable .ar { color: var(--text-muted); flex: none; }
+.roletable .ph-inp {
+  flex: 1;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 0 8px;
+}
+.roletable .ph-inp input { width: 100%; background: transparent; border: 0; color: var(--text); font-size: 13px; outline: none; }
+
+/* 包含节点勾选 */
+.tmpl-nodes { display: flex; flex-direction: column; gap: 2px; }
+.chkrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 2px;
+}
+.chkrow .box {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface-1);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chkrow .box.on { background: var(--accent); border-color: var(--accent); }
+.chkrow .box svg { width: 11px; height: 11px; color: var(--on-accent); }
+.chkrow .box:not(.on) svg { display: none; }
+
+.tmpl-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  line-height: 1.5;
+  display: flex;
+  gap: 8px;
+}
+.tmpl-note svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--text-muted); }
+
+/* ---- 模板向导 ---- */
+.twizard { width: 620px; max-height: calc(100dvh - 64px); overflow-y: auto; }
+.tw-steps { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.tw-steps .st {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.tw-steps .st .n {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-round);
+  border: 1px solid var(--border-strong);
+  font-size: 10px;
+}
+.tw-steps .st.active { color: var(--text); }
+.tw-steps .st.active .n { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tw-steps .st.done .n { border-color: var(--accent); color: var(--accent); }
+.tw-steps .sep { flex: 1; height: 1px; background: var(--border); }
+
+/* 步①模板卡片 */
+.tw-cards { display: flex; flex-direction: column; gap: 10px; }
+.tw-card {
+  display: flex;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+.tw-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.tw-card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tw-card .tc-body { flex: 1; min-width: 0; }
+.tw-card .tc-name { font-size: 14px; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.tw-card .tc-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.tw-card .tc-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+.builtinbadge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  padding: 0 5px;
+}
+
+/* DAG 缩略图 */
+.tdag { flex: none; }
+.tdag svg { display: block; }
+.tdag-empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+/* 步②角色映射 */
+.tw-roles { display: flex; flex-direction: column; gap: 10px; }
+.tw-role { display: flex; align-items: center; gap: 10px; }
+.tw-role .ph { flex: none; width: 130px; font-size: 13px; color: var(--text); }
+.tw-role .ph .kind { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); display: block; }
+.tw-role .rsel {
+  flex: 1;
+  height: 32px;
+  padding: 0 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  font-size: 13px;
+}
+.tw-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--warning);
+  background: var(--warning-bg, var(--surface-1));
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.tw-warn svg { width: 14px; height: 14px; flex: none; }
+
+/* 步③预览 */
+.tw-preview { display: flex; flex-direction: column; gap: 14px; }
+.tw-briefing {
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  line-height: 1.6;
+}
+.tw-summary { display: flex; flex-direction: column; gap: 6px; }
+.tw-summary .sr { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+.tw-summary .sr .ph { color: var(--text); }
+.tw-summary .sr .ar { color: var(--text-muted); }
+.tw-emptylist { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); padding: 12px 0; }

@@ -102,3 +102,9 @@ def canvas_node_public(row: dict[str, Any]) -> dict[str, Any]:
 
 def canvas_edge_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.CanvasEdgePublic, row)
+
+
+def template_public(row: dict[str, Any]) -> dict[str, Any]:
+    """M5 模板（工程三角/存为模板）。body JSON 列 → TemplateBody 嵌套模型、builtin INTEGER 0/1 →
+    bool，均由 TemplatePublic 校验自然互转（ContractModel lax 模式）。"""
+    return _dump(entities.TemplatePublic, row)

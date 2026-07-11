@@ -23,4 +23,6 @@ export const qk = {
   search: (q: string) => ['search', q] as const,
   // ---- M4b HeldDraft:按 channel 存被扣草稿列表;WS held_draft.* 事件载 draft.channel_id,桥接内按此键 patch。
   heldDrafts: (channelId: string) => ['heldDrafts', channelId] as const,
+  // ---- M5b 模板:工作区级列表(无频道维度);模板 CRUD 零 WS 事件(裁决 #7),写后 invalidate 收敛。
+  templates: () => ['templates'] as const,
 };

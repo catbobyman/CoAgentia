@@ -18,7 +18,9 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react';
-import { CircleAlert, GitMerge, Lock, Play, Plus, Terminal, Trash2 } from 'lucide-react';
+import {
+  ChevronDown, CircleAlert, GitMerge, LayoutTemplate, Lock, Play, Plus, Rocket, Save, Terminal, Trash2,
+} from 'lucide-react';
 
 import type {
   AcceptanceCriterion,
@@ -38,11 +40,15 @@ import type {
 import type { ChannelSearch } from '../routes/search';
 import { useCanvasSnapshot } from '../data/queries';
 import { deriveCanvasBlocked, wouldCreateCycle } from '../lib/graph';
+import { saveTemplateGate, formalTaskNodes } from '../lib/templates';
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
 import { api, ApiError } from '../api';
 import { Avatar } from './Avatar';
 import { ForceStartModal } from './ForceStartModal';
+import { SaveTemplateModal } from './SaveTemplateModal';
+import { TemplateWizard } from './TemplateWizard';
 import { useToast } from './Toast';
+import './templates.css';
 import '@xyflow/react/dist/style.css';
 import './canvas-tab.css';
 
@@ -374,6 +380,14 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
   }, [canvasId, nodes, onCanvasError]);
 
   const [newOpen, setNewOpen] = useState(false);
+  // 模板▾ 下拉 + 存为模板弹窗 + 向导(B-M5-2)。
+  const [tmplMenuOpen, setTmplMenuOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  // 存为模板入口 gating(§11.1 #2):≥1 正式(task)节点、无草稿层。MVP 草稿层不在快照面(proposals
+  // 单独存)——恒 false 兜底,判定单点走 lib/templates.saveTemplateGate。
+  const formalCount = formalTaskNodes(detail?.nodes ?? []).length;
+  const saveGate = saveTemplateGate(formalCount, false);
 
   // force-start:选中一个 blocked 的 agent 任务节点 → 顶栏「强制启动」点亮,点开二次确认弹层。
   // (节点卡本身是脱 RF context 的纯展示卡,故把动作收在顶栏针对「当前选中节点」,而非卡内按钮。)
@@ -410,6 +424,49 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
         >
           <Play /> 强制启动
         </button>
+        {/* 模板▾:存为模板(gating)/ 从模板新建(向导)。 */}
+        <div className="tmpl-menu">
+          <button
+            className="btn btn-ghost"
+            data-testid="tmpl-menu-btn"
+            aria-haspopup="menu"
+            aria-expanded={tmplMenuOpen}
+            onClick={() => setTmplMenuOpen((v) => !v)}
+          >
+            <LayoutTemplate /> 模板 <ChevronDown />
+          </button>
+          {tmplMenuOpen && (
+            <>
+              <button
+                className="tmpl-backdrop"
+                aria-label="关闭模板菜单"
+                onClick={() => setTmplMenuOpen(false)}
+              />
+              <div className="tmpl-pop" role="menu">
+                <span className="tipwrap">
+                  <button
+                    className="tmpl-item"
+                    role="menuitem"
+                    data-testid="save-template-item"
+                    disabled={!saveGate.enabled}
+                    onClick={() => { setTmplMenuOpen(false); setSaveOpen(true); }}
+                  >
+                    <Save /> 存为模板
+                  </button>
+                  {!saveGate.enabled && <span className="tip">{saveGate.hint}</span>}
+                </span>
+                <button
+                  className="tmpl-item"
+                  role="menuitem"
+                  data-testid="open-wizard-item"
+                  onClick={() => { setTmplMenuOpen(false); setWizardOpen(true); }}
+                >
+                  <Rocket /> 从模板新建…
+                </button>
+              </div>
+            </>
+          )}
+        </div>
         {cycleWarn && (
           <span className="cyclemsg" role="alert"><CircleAlert /> 连边会形成环</span>
         )}
@@ -446,6 +503,24 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
         <NewNodeModal canvasId={canvasId} onClose={() => setNewOpen(false)} onError={onCanvasError} />
       )}
       {forceTask && <ForceStartModal task={forceTask} onClose={() => setForceTask(null)} />}
+      {saveOpen && (
+        <SaveTemplateModal
+          channelId={channelId}
+          nodes={detail.nodes ?? []}
+          tasks={tasks}
+          members={members}
+          onClose={() => setSaveOpen(false)}
+        />
+      )}
+      {wizardOpen && (
+        <TemplateWizard
+          channelId={channelId}
+          members={members}
+          onClose={() => setWizardOpen(false)}
+          // 目标 = 当前频道画布(已在此)：落地广播 + invalidate 由 mutation 完成，关窗即可。
+          onInstantiated={() => setWizardOpen(false)}
+        />
+      )}
     </section>
   );
 }

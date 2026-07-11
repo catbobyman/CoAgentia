@@ -14,6 +14,8 @@ import type {
   PresenceEntry,
   ReadPositionPublic,
   TaskPublic,
+  TemplateCreate,
+  TemplateInstantiate,
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
@@ -144,6 +146,44 @@ export const usePutNotificationSetting = (meId: string | undefined) => {
     },
     onError: (e: unknown) =>
       toast.push(e instanceof ApiError ? e.message : '更新通知设置失败', { tone: 'error' }),
+  });
+};
+
+// ---- M5b 模板(B §11.1/§11.2)。列表工作区级(builtin 置前，body 全量供向导预览)；模板 CRUD 零 WS
+// 事件(裁决 #7)——存为模板成功后 invalidate 列表收敛；实例化成功后 invalidate 目标频道画布/任务/
+// 主流(WS task.created/canvas.*/message.created 亦反流，invalidate 是兜底，REST 是事实源铁律 1)。
+export const useTemplates = () =>
+  useQuery({ queryKey: qk.templates(), queryFn: () => api.templates() });
+
+export const useCreateTemplate = () => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (body: TemplateCreate) => api.createTemplate(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.templates() });
+      toast.push('已存为模板', { tone: 'success' });
+    },
+    onError: (e: unknown) =>
+      toast.push(e instanceof ApiError ? e.message : '存为模板失败', { tone: 'error' }),
+  });
+};
+
+export const useInstantiateTemplate = () => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: ({ templateId, body }: { templateId: string; body: TemplateInstantiate }) =>
+      api.instantiateTemplate(templateId, body),
+    onSuccess: (_res, { body }) => {
+      const ch = body.channel_id;
+      void qc.invalidateQueries({ queryKey: qk.canvas(ch) });
+      void qc.invalidateQueries({ queryKey: qk.tasks(ch) });
+      void qc.invalidateQueries({ queryKey: qk.messages(ch) });
+      toast.push('已从模板实例化到频道', { tone: 'success' });
+    },
+    onError: (e: unknown) =>
+      toast.push(e instanceof ApiError ? e.message : '实例化失败', { tone: 'error' }),
   });
 };
 

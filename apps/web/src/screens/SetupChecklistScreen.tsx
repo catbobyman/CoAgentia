@@ -1,10 +1,14 @@
 // P0c 起步清单(首跑态,独立于主壳):#all 空频道 + SETUP 终端卡三步依赖链。
 // 首跑态侧栏仅 #all(复发点 4 的例外);勾选态读 workspace.setup_state。
+import { useState } from 'react';
 import { Ellipsis, Lock, Plus } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 
-import { useWorkspace } from '../data/queries';
+import { channelsOf, useChannelsSnapshot, useMembers, useWorkspace } from '../data/queries';
+import { useUiStore } from '../lib/store';
 import { Rail } from '../components/Rail';
+import { TemplateWizard } from '../components/TemplateWizard';
+import { ToastProvider, Toaster } from '../components/Toast';
 
 interface StepDef {
   no: string; txt: string; action: string; key: 'add_computer' | 'create_agent' | 'first_task';
@@ -13,14 +17,24 @@ interface StepDef {
 
 export function SetupChecklistScreen() {
   const wsQ = useWorkspace();
+  const channelsQ = useChannelsSnapshot();
+  const membersQ = useMembers();
   const navigate = useNavigate();
+  const setActiveChannel = useUiStore((s) => s.setActiveChannel);
   const setup = (wsQ.data?.setup_state ?? {}) as Record<string, boolean>;
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  const channels = channelsOf(channelsQ.data);
+  const members = membersQ.data ?? [];
+  // 向导实例化目标 = #all(首跑态唯一频道)；缺则取首个频道。
+  const targetChannel = channels.find((c) => c.name === 'all') ?? channels[0];
 
   const steps: StepDef[] = [
     { no: '001', txt: '连接一台机器', action: 'Add Computer', key: 'add_computer',
       onAction: () => void navigate({ to: '/computers' }) },
     { no: '002', txt: '创建第一个 Agent', action: '创建 Agent', key: 'create_agent', dep: '001' },
-    { no: '003', txt: '发第一条消息或从模板开始', action: '打开模板向导', key: 'first_task', dep: '002' },
+    { no: '003', txt: '发第一条消息或从模板开始', action: '打开模板向导', key: 'first_task', dep: '002',
+      onAction: () => { if (targetChannel) setWizardOpen(true); } },
   ];
 
   const done = (k: StepDef['key']) => setup[k] === true;
@@ -97,6 +111,23 @@ export function SetupChecklistScreen() {
           </div>
         </footer>
       </main>
+
+      {/* 模板向导(首跑态在主壳之外，自带 ToastProvider——mutation 的 toast 依赖它)。 */}
+      {wizardOpen && targetChannel && (
+        <ToastProvider>
+          <TemplateWizard
+            channelId={targetChannel.id}
+            members={members}
+            onClose={() => setWizardOpen(false)}
+            onInstantiated={(channelId) => {
+              setWizardOpen(false);
+              setActiveChannel(channelId);
+              void navigate({ to: '/', search: { tab: 'canvas' } });
+            }}
+          />
+          <Toaster />
+        </ToastProvider>
+      )}
     </div>
   );
 }
