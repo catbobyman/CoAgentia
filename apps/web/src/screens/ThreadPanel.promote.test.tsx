@@ -49,6 +49,7 @@ function renderPanel(task: TaskPublic) {
         <ThreadPanel
           task={task}
           rootMessageId={task.root_message_id}
+          channelId={task.channel_id}
           memberById={MEMBER_BY_ID}
           memberNames={Object.values(MEMBER_BY_ID).map((m) => m.name)}
           meName={OWNER.name}

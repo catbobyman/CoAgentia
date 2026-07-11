@@ -58,6 +58,11 @@ def reminder_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.ReminderPublic, row)
 
 
+def held_draft_public(row: dict[str, Any]) -> dict[str, Any]:
+    """M4 被扣草稿（护栏 G1–G6）。JSON 列 reasons/file_ids/as_task 直接透传，即 HeldDraftPublic。"""
+    return _dump(entities.HeldDraftPublic, row)
+
+
 def file_public(row: dict[str, Any]) -> dict[str, Any]:
     clean = {k: v for k, v in row.items() if k != "stored_path"}
     return _dump(entities.FilePublic, clean)

@@ -10,6 +10,9 @@ import type {
   ContractDraftRequest,
   DiagnosticEventPublic,
   EdgeCreate,
+  HeldDraftPublic,
+  HeldDraftReleaseResponse,
+  HeldDraftResponse,
   LayoutPut,
   MemberPublic,
   MessageCreated,
@@ -45,6 +48,8 @@ type FilesPage =
   RestPaths['/api/channels/{channel_id}/files']['get']['responses']['200']['content']['application/json'];
 type ActivityPage =
   RestPaths['/api/activity']['get']['responses']['200']['content']['application/json'];
+type HeldDraftsPage =
+  RestPaths['/api/held-drafts']['get']['responses']['200']['content']['application/json'];
 
 // 契约里 filter/kind 的值域派生自 REST 查询参数(零手写枚举字面量)。
 export type ActivityFilter =
@@ -216,6 +221,24 @@ export const api = {
   },
   activityDone: (activityId: string) =>
     writeJson<void>(`/api/activity/${activityId}/done`, 'POST'),
+
+  // ---- M4b HeldDraft(被扣草稿,B §4.14)。GET 列表(?channel_id 过滤,不带 status →
+  // server 默认只回活动态 held/reevaluating,§6 重同步清单成员;终态回执由三键响应 / WS 会话内
+  // 瞬态呈现,不在列表持久回灌——评审 #1)。release/discard/reevaluate
+  // 三键端点随 apps/server M4b 并行落地,尚未进 RestPaths → 按 packages/contracts 端点清单手写路径
+  // (端点上线后形状不变,同 forceStart/requestContractDraft 先例)。三键返回:release→{message,
+  // held_draft}、discard/reevaluate→{held_draft};409 HELD_DRAFT_RESOLVED(已被终解)由 UI 层
+  // 据 error.details.held_draft 静默收敛为终态回执(不弹错)。
+  heldDrafts: (channelId: string) =>
+    get<HeldDraftsPage>(`/api/held-drafts?channel_id=${encodeURIComponent(channelId)}`).then(
+      (p) => p.items as HeldDraftPublic[],
+    ),
+  releaseHeldDraft: (heldDraftId: string) =>
+    writeJson<HeldDraftReleaseResponse>(`/api/held-drafts/${heldDraftId}/release`, 'POST'),
+  discardHeldDraft: (heldDraftId: string) =>
+    writeJson<HeldDraftResponse>(`/api/held-drafts/${heldDraftId}/discard`, 'POST'),
+  reevaluateHeldDraft: (heldDraftId: string) =>
+    writeJson<HeldDraftResponse>(`/api/held-drafts/${heldDraftId}/reevaluate`, 'POST'),
 
   // 走统一写路径:发消息/As Task 失败时同样拿到结构化 ApiError(code/details),
   // 而非裸 `send -> 422`(M2 二轮 review:主写路径绕过了 writeJson 基础设施)。

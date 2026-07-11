@@ -120,6 +120,7 @@ function renderPanel(contracts: TaskContractPublic[]) {
         <ThreadPanel
           task={TASK}
           rootMessageId={TASK.root_message_id}
+          channelId={TASK.channel_id}
           memberById={MEMBER_BY_ID}
           memberNames={Object.values(MEMBER_BY_ID).map((m) => m.name)}
           meName={OWNER.name}

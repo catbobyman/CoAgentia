@@ -6,6 +6,7 @@ import { ArrowUp, ChevronDown, CircleAlert, Sparkles, X } from 'lucide-react';
 
 import type {
   ContractKind,
+  HeldDraftPublic,
   MemberPublic,
   PresenceEntry,
   TaskContractPublic,
@@ -24,6 +25,7 @@ import { useToast } from '../components/Toast';
 import { Avatar } from '../components/Avatar';
 import { MessageFlow } from '../components/MessageFlow';
 import { Composer } from '../components/Composer';
+import { HeldDraftList } from './HeldDraftCard';
 
 // 契约 kind → 中文短名(§4.6);loop_contract 归 Reminder 上岗流程,不在任务线程契约卡出现。
 const CONTRACT_KIND_LABEL: Record<ContractKind, string> = {
@@ -157,17 +159,22 @@ export function TaskHandoffCard({
 }
 
 export function ThreadPanel({
-  task, rootMessageId, memberById, memberNames, meName, meId, presenceOf, usage,
-  locateId, onLocateDone, onClose, onSend,
+  task, rootMessageId, channelId, memberById, memberNames, meName, meId, presenceOf, usage,
+  heldDrafts, canResolve, onLocateMessage, locateId, onLocateDone, onClose, onSend,
 }: {
   task?: TaskPublic;
   rootMessageId: string;
+  channelId: string;
   memberById: Record<string, MemberPublic>;
   memberNames: string[];
   meName: string;
   meId?: string;
   presenceOf: (memberId: string) => PresenceEntry | undefined;
   usage?: number;
+  // 被扣草稿(M4b):频道全量,HeldDraftList 内按 thread_root_id === rootMessageId 归位到本线程。
+  heldDrafts?: HeldDraftPublic[];
+  canResolve?: boolean;
+  onLocateMessage?: (messageId: string) => void;
   locateId?: string;
   onLocateDone?: () => void;
   onClose: () => void;
@@ -389,6 +396,16 @@ export function ThreadPanel({
         usageByTask={{}}
         locateId={locateId}
         onLocateDone={onLocateDone}
+      />
+
+      {/* [3b] 本线程内被扣草稿(thread_root_id === rootMessageId)——主流的由会话屏渲染。 */}
+      <HeldDraftList
+        drafts={heldDrafts ?? []}
+        channelId={channelId}
+        threadRootId={rootMessageId}
+        memberById={memberById}
+        canResolve={canResolve ?? false}
+        onLocateMessage={onLocateMessage}
       />
 
       {/* [4] 状态操作条:claim/unclaim 三态 + 合法目标态流转下拉 */}

@@ -350,6 +350,25 @@ def test_canvas_endpoints_served_except_retry(server_client: TestClient) -> None
     assert (_RETRY[0], _norm(_RETRY[1])) not in served, "retry 属 M6，本里程碑不应 serve"
 
 
+# ---- M4 护栏三键：目录（ENDPOINTS_M4）↔ 真 server 实 serve 对账（M2/M3 先例）
+
+
+def test_held_drafts_endpoints_served(server_client: TestClient) -> None:
+    """§4.14 护栏四端点（GET /held-drafts + release/discard/reevaluate）全被真 server serve。"""
+    served = _served(server_client)
+    missing = [(m, p) for m, p in rest.ENDPOINTS_M4 if (m, _norm(p)) not in served]
+    assert not missing, f"M4 护栏端点未 serve: {missing}"
+
+
+def test_held_drafts_list_shape(dual: DualClient) -> None:
+    """GET /held-drafts（B §4.14）：mock 恒空、真 server 冷库亦空——两实现读形状零偏差。"""
+    _, client = dual
+    page = rest.Page[entities.HeldDraftPublic].model_validate(
+        client.get("/api/held-drafts", params={"status": "held"}).json()
+    )
+    assert page.items == [] and page.next_cursor is None
+
+
 def test_canvas_node_added_broadcast(server_client: TestClient) -> None:
     """真 server：建 agent 节点 → message.created → task.created → canvas.node_added 到达且
     payload 逐帧过契约模型（信封 + seq 单调，复用 _envelope_of/_drain_until）。"""

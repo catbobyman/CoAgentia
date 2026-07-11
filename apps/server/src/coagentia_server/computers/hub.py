@@ -60,6 +60,7 @@ from coagentia_contracts.enums import (
     ChannelKind,
     ComputerStatus,
     ContractKind,
+    HeldDraftStatus,
     InjectKind,
     LifecycleAction,
     MemberKind,
@@ -80,11 +81,13 @@ from coagentia_server.canvas import service as canvas_service
 from coagentia_server.computers.gateway_tx import gateway_tx
 from coagentia_server.db import models
 from coagentia_server.events import EventBus
+from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger.service import new_ulid, now_iso
 from coagentia_server.reminders import interval as reminder_interval
 from coagentia_server.routes.serialize import (
     computer_public,
     diagnostic_public,
+    held_draft_public,
     message_public,
     reminder_public,
 )
@@ -104,6 +107,7 @@ _USAGE = models.tbl(models.TokenUsageEvent)
 _TASK = models.tbl(models.Task)
 _TASK_EVENT = models.tbl(models.TaskEvent)
 _REMINDER = models.tbl(models.Reminder)
+_HELD = models.tbl(models.HeldDraft)
 
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
 _RESUMABLE = {AgentStatus.STARTING.value, AgentStatus.IDLE.value, AgentStatus.BUSY.value}
@@ -115,6 +119,10 @@ _LAST_SEEN_THROTTLE_SEC = 60  # 契约 D §2：last_seen_at 写库节流
 
 class DaemonOffline(Exception):
     """无活跃 daemon 连接 / 指令 ack 或 query reply 超时（→ REST 503 DAEMON_OFFLINE）。"""
+
+
+class HeldDraftResolved(Exception):
+    """held 三键委托 hub 时行已被并发终解（TOCTOU）→ REST 409 HELD_DRAFT_RESOLVED（评审 #5）。"""
 
 
 @dataclass
@@ -165,6 +173,7 @@ class DaemonHub:
         reconcile_interval: float = RECONCILE_INTERVAL_SEC,
         reminder_interval: float = 5.0,
         silence_interval: float = 60.0,
+        held_interval: float = 5.0,
         heartbeat_timeout: float = 60.0,
     ) -> None:
         self._engine = engine
@@ -175,6 +184,7 @@ class DaemonHub:
         self.reconcile_interval = reconcile_interval
         self.reminder_interval = reminder_interval
         self.silence_interval = silence_interval
+        self.held_interval = held_interval
         self.heartbeat_timeout = heartbeat_timeout
         self._conns: dict[str, DaemonConnection] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -191,6 +201,7 @@ class DaemonHub:
             loop.create_task(self._reconcile_loop()),
             loop.create_task(self._reminder_loop()),
             loop.create_task(self._silence_loop()),
+            loop.create_task(self._held_loop()),
             loop.create_task(self._heartbeat_loop()),
         ]
 
@@ -997,6 +1008,111 @@ class DaemonHub:
         )
         return ack.result.value
 
+    def inject_guard_feedback(
+        self, agent_member_id: str, body: str, *, ref: str | None = None
+    ) -> str:
+        """护栏反馈定向直投（G3/G4；契约 D §5.2 InjectKind.GUARD_FEEDBACK）。
+
+        discard 告知「草稿已被丢弃」、reevaluate 告知「已触发重评估」共用。离线（无活跃 daemon
+        连接）→ DaemonOffline（REST 层收敛 503）；在线则 send_instr 同步等 ack，返回 ack.result。
+        inject 只发帧、不动 read_positions（S1 语义），故与未提交 REST 写事务无写锁死锁（裁决 9）。
+        """
+        conn, _agent = self._require_conn_for_agent(agent_member_id)
+        data = MessageInjectData(
+            agent_member_id=agent_member_id,
+            body=body,
+            source=InjectSource(kind=InjectKind.GUARD_FEEDBACK, ref=ref),
+            diagnostic_type="agent.tool_call",
+        )
+        ack = self._run_sync(
+            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
+        )
+        return ack.result.value
+
+    async def _held_reevaluation_combo(
+        self, conn: DaemonConnection, agent_id: str, channel_id: str, held_id: str
+    ) -> None:
+        """重评估组合（裁决 10；F6 run_held_scan 复用）：wake(channel_message) + deliver 积压
+        （经 _write_read_position 推进 read_position，防复扣死循环）+ inject guard_feedback。
+
+        独立可 await 的 async 方法：由 reevaluate_held 经 _run_sync 调用（此时无未提交 REST 写锁），
+        F6 后台扫描则直接 await。deliver 推进游标是关键——重评估后 Agent 的 read_position 前移，
+        再发同一草稿时未读集收敛（不再无限被扣）。
+        """
+        await self.send_instr(
+            conn,
+            agent_id,
+            InstrType.AGENT_WAKE,
+            AgentWakeData(
+                agent_member_id=agent_id,
+                reason=WakeReason.CHANNEL_MESSAGE,
+                refs=WakeRefs(message_ids=[]),
+            ),
+        )
+        await self._deliver_backlog(conn, agent_id, channel_id)  # ack 后推进 read_position
+        data = MessageInjectData(
+            agent_member_id=agent_id,
+            body=(
+                "[system → 仅你可见] 你此前被扣的草稿已由人类触发重评估：请复核频道最新未读消息后"
+                "再决定是否重发。"
+            ),
+            source=InjectSource(kind=InjectKind.GUARD_FEEDBACK, ref=held_id),
+            diagnostic_type="agent.tool_call",
+        )
+        await self.send_instr(conn, agent_id, InstrType.MESSAGE_INJECT, data)
+
+    def reevaluate_held(self, held_id: str, resolved_by: str) -> None:
+        """reevaluate 同步桥（裁决 10）：供 REST 端点委托，避 REST 写锁与 deliver 写游标死锁。
+
+        流程：_require_conn_for_agent（离线→DaemonOffline→路由 503）→ 自己的 gateway_tx 里置
+        reevaluating + guard.reevaluate_requested 诊断 + emit held_draft.updated 并提交 → 提交后
+        _run_sync(_held_reevaluation_combo)（wake+deliver 推进游标+inject，无未提交 REST 写锁）。
+        reevaluate 是进行中态：不写 resolved_*、resolution 仍空。
+        """
+        with self._engine.connect() as c:
+            held = c.execute(
+                select(_HELD).where(_HELD.c.id == held_id)
+            ).mappings().first()
+        if held is None:
+            raise DaemonOffline("被扣草稿不存在")  # 路由已校验存在；防御性收敛
+        held = dict(held)
+        agent_id = held["agent_member_id"]
+        channel_id = held["channel_id"]
+        # 离线先探（在改写状态前）→ DaemonOffline 冒泡到路由收 503，reevaluating 不落库。
+        conn, _agent = self._require_conn_for_agent(agent_id)
+        now = now_iso()
+        with gateway_tx(self._engine, self._bus) as tx:
+            # 终态守卫（评审 #5）：路由 _reject_terminal 与本 UPDATE 之间若并发 discard/release
+            # 提交了终态，无条件写会复活已终解草稿（status=reevaluating 却 resolution=discarded）。
+            # 故 UPDATE 限活动态；影响 0 行 = 已被并发终解 → 抛 HeldDraftResolved（路由收 409）。
+            res = tx.conn.execute(
+                update(_HELD)
+                .where(
+                    _HELD.c.id == held_id,
+                    _HELD.c.status.in_(guard_service.ACTIVE_STATUSES),
+                )
+                .values(status=HeldDraftStatus.REEVALUATING.value)
+            )
+            if res.rowcount == 0:
+                raise HeldDraftResolved(held_id)
+            guard_service.write_guard_diagnostic(
+                tx,
+                guard_service.GUARD_REEVALUATE_REQUESTED,
+                workspace_id=held["workspace_id"],
+                agent_member_id=agent_id,
+                channel_id=channel_id,
+                payload={"held_draft_id": held_id, "resolved_by": resolved_by},
+                created_at=now,
+            )
+            held_row = models.row_dict(
+                tx.conn.execute(select(_HELD).where(_HELD.c.id == held_id)).mappings().first()
+            )
+            tx.emit(
+                EventType.HELD_DRAFT_UPDATED, channel_id, {"draft": held_draft_public(held_row)}
+            )
+        # 提交后再做 daemon I/O（无未提交 REST 写锁 → deliver 写 read_position 安全）。
+        self._run_sync(self._held_reevaluation_combo(conn, agent_id, channel_id, held_id))
+
     def force_start_wake(self, owner_member_id: str | None, channel_id: str) -> None:
         """force-start override（裁决 3）：对任务 owner agent 绕过 blocked 门直投一次 wake+deliver。
 
@@ -1194,6 +1310,73 @@ class DaemonHub:
                 )
                 fired += 1
         return fired
+
+    # ---------------------------------------------- G4 定时自动重评估（B §10 / D §9.2）
+
+    async def run_held_scan(self) -> int:
+        """G4 自动重评估：held 到点行置 reevaluating + guard.reevaluate_requested + emit（提交后
+        对在线 Agent await 重评估组合）。返回本轮进入重评估的行数。
+
+        扫描 status='held' AND next_reeval_at<=now AND escalated_at IS NULL——已升级（escalated_at
+        非空）的行**停自动重评估**（裁决 6：交人类，不再自动喊）。与 reminder/silence 同节奏，在
+        gateway_tx 里翻状态并提交，提交后对在线 Agent 复用 F5 的 `_held_reevaluation_combo`
+        （wake + deliver 推进 read_position + inject）——deliver 推进游标是防复扣死循环关键（裁 4）。
+
+        **在线先探再翻状态（评审 #6）**：Agent 离线的行**不翻 reevaluating**、留 held——否则翻了状态
+        后扫描（只选 status='held'）再不选它、对账无 held 感知，行会永卡 reevaluating（Agent 从不被
+        重评估提示、附件永久 GC 豁免）。留 held 则下轮 Agent 在线时正常重评估（对齐 reevaluate_held
+        的「离线先探」范式）。
+        """
+        now = now_iso()
+        combos: list[tuple[str, str, str]] = []  # (agent_id, channel_id, held_id)——提交后触发
+        with gateway_tx(self._engine, self._bus) as tx:
+            due = tx.conn.execute(
+                select(_HELD).where(
+                    _HELD.c.status == HeldDraftStatus.HELD.value,
+                    _HELD.c.next_reeval_at <= now,
+                    _HELD.c.escalated_at.is_(None),  # 升级后停自动（裁决 6）
+                )
+            ).mappings().all()
+            for h in due:
+                held = dict(h)
+                try:  # 离线先探：不翻状态、留 held 下轮重试（评审 #6）
+                    self._require_conn_for_agent(held["agent_member_id"])
+                except DaemonOffline:
+                    continue
+                tx.conn.execute(
+                    update(_HELD)
+                    .where(_HELD.c.id == held["id"])
+                    .values(status=HeldDraftStatus.REEVALUATING.value)
+                )
+                guard_service.write_guard_diagnostic(
+                    tx,
+                    guard_service.GUARD_REEVALUATE_REQUESTED,
+                    workspace_id=held["workspace_id"],
+                    agent_member_id=held["agent_member_id"],
+                    channel_id=held["channel_id"],
+                    payload={"held_draft_id": held["id"], "resolved_by": None},  # 自动触发无人类
+                    created_at=now,
+                )
+                held_row = models.row_dict(
+                    tx.conn.execute(
+                        select(_HELD).where(_HELD.c.id == held["id"])
+                    ).mappings().first()
+                )
+                tx.emit(
+                    EventType.HELD_DRAFT_UPDATED,
+                    held["channel_id"],
+                    {"draft": held_draft_public(held_row)},
+                )
+                combos.append((held["agent_member_id"], held["channel_id"], held["id"]))
+        # 提交后对（已确认在线的）Agent 触发组合（含 deliver 推进游标）。
+        for agent_id, channel_id, held_id in combos:
+            try:
+                conn, _agent = self._require_conn_for_agent(agent_id)
+            except DaemonOffline:
+                continue  # 探后到组合前刚断连（罕见）→ 留 reevaluating，下次人工/对账处理
+            with contextlib.suppress(Exception):  # 单行 daemon I/O 失败不拖垮整轮扫描
+                await self._held_reevaluation_combo(conn, agent_id, channel_id, held_id)
+        return len(combos)
 
     # ---------------------------------------------------------------- D5 沉默提醒（契约 B §10.5）
 
@@ -1440,6 +1623,12 @@ class DaemonHub:
             await asyncio.sleep(self.silence_interval)
             with contextlib.suppress(Exception):
                 await self.run_silence_scan()
+
+    async def _held_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.held_interval)
+            with contextlib.suppress(Exception):
+                await self.run_held_scan()
 
     async def _heartbeat_loop(self) -> None:
         while True:

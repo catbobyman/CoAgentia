@@ -1,0 +1,55 @@
+/* M4b 被扣草稿卡(HeldDraftCard)。token 零发明:复用 afterglow 变量与既有卡片/徽标观感
+   (契约卡 .contract、.rbadge、.hmiss 同源色板)。 */
+.helddraft-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 16px 0; }
+
+.helddraft {
+  background: var(--surface-2);
+  border: 1px solid var(--warning);
+  border-left-width: 3px;
+  border-radius: var(--radius-0);
+  max-width: 560px;
+}
+.helddraft[data-status="released"],
+.helddraft[data-status="discarded"],
+.helddraft[data-status="resolved"] { border-color: var(--border); border-left-color: var(--border-strong); }
+
+.hd-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.hd-kind { font-size: 12px; font-weight: 500; color: var(--warning); }
+.hd-by { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.hd-chip { font-family: var(--font-mono); font-size: 11px; background: var(--warning-bg); border: 1px solid var(--warning); border-radius: var(--radius-s); padding: 1px 6px; color: var(--warning); flex: none; }
+.hd-m { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); flex: 1; text-align: right; }
+
+.hd-escalate {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; font-size: 12px; line-height: 1.4;
+  color: var(--danger); background: var(--danger-bg); border-bottom: 1px solid var(--border);
+}
+.hd-escalate svg.lucide { width: 13px; height: 13px; flex: none; }
+
+.hd-body { padding: 10px 12px 2px; font-size: 13px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.hd-fold { display: block; margin: 0 12px 6px; padding: 0; border: 0; background: transparent; font-family: var(--font-mono); font-size: 12px; color: var(--accent); cursor: pointer; }
+.hd-fold:hover { text-decoration: underline; }
+
+.hd-reasons { padding: 6px 12px 8px; border-top: 1px solid var(--border); }
+.hd-rlb { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 6px; }
+.hd-unread { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hd-uchip { font-family: var(--font-mono); font-size: 11px; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 2px 8px; color: var(--text-secondary); cursor: pointer; }
+.hd-uchip:hover { color: var(--accent); border-color: var(--accent); }
+.hd-more { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+.hd-foot { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.hd-count { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); flex: 1; }
+.hd-keys { display: flex; gap: 6px; flex: none; }
+.hd-key { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-s); font-family: var(--font-sans); font-size: 12px; font-weight: 500; color: var(--text-secondary); background: transparent; cursor: pointer; }
+.hd-key:hover { background: var(--surface-hover); color: var(--text); }
+.hd-key svg.lucide { width: 13px; height: 13px; }
+.hd-key.release { color: var(--accent); border-color: var(--accent); }
+.hd-key.release:hover { background: var(--accent-subtle); }
+.hd-key.discard:hover { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
+.hd-key:disabled { opacity: .45; cursor: not-allowed; }
+
+.hd-receipt { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); }
+.hd-receipt .hd-sub { color: var(--text-muted); }
+
+.hd-astask { display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border); }
+.hd-astask svg.lucide { width: 12px; height: 12px; color: var(--accent); }

@@ -11,6 +11,7 @@ from coagentia_contracts.enums import ActivityKind, ChannelKind, MemberKind, Mes
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends, Header, Request, Response, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy import insert, select, update
 
 from coagentia_server.activity import service as activity_service
@@ -18,6 +19,7 @@ from coagentia_server.api import ApiError
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, require_workspace
 from coagentia_server.files.store import StagedMeta, sha256_hex
+from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger import service
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
@@ -235,6 +237,110 @@ def get_thread(message_id: str, tx: Tx = Depends(get_tx), after: str | None = No
 # ---------------------------------------------------------------- 发消息
 
 
+def persist_message(
+    tx: Tx,
+    *,
+    workspace_id: str,
+    channel: dict[str, Any],
+    msg_id: str,
+    author_member_id: str,
+    body_text: str,
+    thread_root_id: str | None,
+    file_ids: list[str],
+    as_task_title: str | None,
+    create_as_task: bool,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """消息落库核心（B §4.6 + §9.2/§9.4）：insert 消息 + mentions + task_refs + activity +
+    文件绑定 + as_task，并按提交序广播 message.created(+task.created)。返回 (MessagePublic,
+    TaskPublic|None)。post_message 常规发送与 held release「原样发送」（G3）共用同一核心——保「放行
+    消息与直接发送零行为差」不变量（附件绑定/建任务/@解析/activity 一致）。"""
+    ts = service.now_iso()
+    tx.conn.execute(
+        insert(_MSG).values(
+            id=msg_id,
+            workspace_id=workspace_id,
+            channel_id=channel["id"],
+            thread_root_id=thread_root_id,
+            author_member_id=author_member_id,
+            kind=MessageKind.USER,
+            card_kind=None,
+            card_ref=None,
+            body=body_text,
+            created_at=ts,
+        )
+    )
+    mentioned = _resolve_mentions(tx, workspace_id, msg_id, body_text)
+    # C3a：解析 body 里的 task #n → message_task_refs（当前频道编号，未命中不报错）。
+    _resolve_task_refs(tx, channel["id"], msg_id, body_text)
+    # C3b：由 mentions/DM 对端生成人类 Activity（Agent 接收者永不生成），广播 activity.created。
+    _generate_activity(tx, workspace_id, channel, msg_id, author_member_id, ts, mentioned)
+
+    # 文件绑定（契约 D §9.2）：同事务落 files 行并把正文移入 files/<id>。
+    for upload_id in dict.fromkeys(file_ids):
+        meta = tx.file_store.read_staged_meta(upload_id)
+        if meta is None or not tx.file_store.is_staged(upload_id):
+            raise ApiError(404, rest.ErrorCode.NOT_FOUND, f"文件未预上传或已绑定: {upload_id}")
+        stored_path = tx.bind_file(upload_id)
+        tx.conn.execute(
+            insert(_FILE).values(
+                id=upload_id,
+                workspace_id=workspace_id,
+                message_id=msg_id,
+                channel_id=channel["id"],
+                name=meta.name,
+                mime=meta.mime,
+                size_bytes=meta.size_bytes,
+                sha256=meta.sha256,
+                stored_path=stored_path,
+                created_at=ts,
+            )
+        )
+
+    msg = models.row_dict(
+        tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
+    )
+    # 响应与 message.created 广播自带刚绑定的附件——前端附件卡即时渲染，不再等
+    # channelFiles 失效重拉（v1.0.4）。
+    pub = message_public(msg, files_by_message(tx, [msg_id]).get(msg_id, []))
+
+    # as_task（B §9.4）：同事务建任务；顶级/非 DM 已在上方校验通过。message.created 先、
+    # task.created 后严格提交序广播；任一半失败整事务回滚，双双不落库不广播（原子）。
+    task_pub = None
+    if create_as_task:
+        task_row = tasks_service.create_task(
+            tx,
+            workspace_id=workspace_id,
+            channel_id=channel["id"],
+            root_message_id=msg_id,
+            created_by=author_member_id,
+            title=as_task_title,
+            source_body=body_text,
+        )
+        task_pub = task_public(task_row)
+
+    tx.emit(EventType.MESSAGE_CREATED, channel["id"], {"message": pub})
+    if task_pub is not None:
+        tx.emit(EventType.TASK_CREATED, channel["id"], {"task": task_pub})
+    return pub, task_pub
+
+
+def _idempotent_hit_response(tx: Tx, prior_id: str) -> dict[str, Any]:
+    """幂等命中 → 回原消息（+as_task 幂等凭 root_message_id UNIQUE 回查既有任务，B §9.4）。"""
+    prior = tx.conn.execute(select(_MSG).where(_MSG.c.id == prior_id)).mappings().first()
+    if prior is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "幂等命中但原消息缺失")
+    prior_task = (
+        tx.conn.execute(select(_TASK).where(_TASK.c.root_message_id == prior_id))
+        .mappings()
+        .first()
+    )
+    prior_files = files_by_message(tx, [prior_id]).get(prior_id, [])
+    return {
+        "message": message_public(dict(prior), prior_files),
+        "task": task_public(dict(prior_task)) if prior_task is not None else None,
+    }
+
+
 @router.post("/channels/{channel_id}/messages", response_model=rest.MessageCreated, status_code=201)
 def post_message(
     channel_id: str,
@@ -282,12 +388,44 @@ def post_message(
     # 主体身份（契约 B §2）：浏览器=Owner；daemon 代理 Agent 发消息附 X-Acting-Member。
     # 必须用 acting_member 而非 owner_member——否则 Agent 发言全被记成 Owner（A8 实测暴露）。
     me = acting_member(request, tx.conn)
-    msg_id = service.new_ulid()
 
-    # 幂等（契约 B §1）：同键同 body → 返回首次结果；同键异 body → 409。
+    # 幂等命中前置（契约 B §1；评审 #4）：已登记的首次结果**必须先于 freshness 门返回**——
+    # 否则 Agent 重放遇期间新增未读会被误扣成 held、人类放行再产生重复消息（违 §1）。record()
+    # 会写账本，故此处只用只读 lookup 探 hit/mismatch；absent 时留到落库路径再 record()，避免
+    # held（不落库）时留下悬挂账本行指向未落库消息。
+    op_id: str | None = None
+    req_hash: str | None = None
     if idempotency_key is not None:
         op_id = OPID_REST_IDEMPOTENCY.format(key=idempotency_key)
         req_hash = fingerprint(body.model_dump())
+        look = service.lookup(tx.conn, op_id, req_hash)
+        if look["status"] == "hit":
+            return _idempotent_hit_response(tx, look["entry"].payload["message_id"])
+        if look["status"] == "mismatch":
+            raise ApiError(
+                409, rest.ErrorCode.IDEMPOTENCY_MISMATCH, "同 Idempotency-Key 不同请求体"
+            )
+
+    # F5 freshness 门（契约 B §4.6 / G1；裁决 1–6）：仅 Agent 主体过门（人类/系统消息永不 held），
+    # 位次在全部既有校验与幂等 hit 之后、record/落库之前。scope 内有该 Agent 未读他人消息 → 扣草稿
+    # 建/刷新 held 行、直接 202 MessageHeld，不写消息、不记幂等。未读集空 → 放行走正常发送。
+    if me["kind"] == MemberKind.AGENT:
+        held_pub = guard_service.freshness_hold(
+            tx, workspace=ws, channel=channel, agent=me, body=body
+        )
+        if held_pub is not None:
+            return JSONResponse(
+                status_code=202,
+                content=rest.MessageHeld.model_validate({"held_draft": held_pub}).model_dump(
+                    mode="json"
+                ),
+            )
+
+    msg_id = service.new_ulid()
+
+    # 幂等登记（落库路径才写账本；absent 已在门前确认，此处 record 只兜并发抢先落库的竞态）。
+    if idempotency_key is not None:
+        assert op_id is not None and req_hash is not None
         res = service.record(
             tx.conn,
             op_id,
@@ -295,95 +433,26 @@ def post_message(
             {"message_id": msg_id, "channel_id": channel_id},
             request_hash=req_hash,
         )
-        if res["status"] == "hit":
-            prior_id = res["entry"].payload["message_id"]
-            prior = tx.conn.execute(select(_MSG).where(_MSG.c.id == prior_id)).mappings().first()
-            if prior is None:
-                raise ApiError(404, rest.ErrorCode.NOT_FOUND, "幂等命中但原消息缺失")
-            # as_task 幂等：凭 root_message_id UNIQUE 回查既有任务（B §9.4）。
-            prior_task = (
-                tx.conn.execute(select(_TASK).where(_TASK.c.root_message_id == prior_id))
-                .mappings()
-                .first()
-            )
-            prior_files = files_by_message(tx, [prior_id]).get(prior_id, [])
-            return {
-                "message": message_public(dict(prior), prior_files),
-                "task": task_public(dict(prior_task)) if prior_task is not None else None,
-            }
+        if res["status"] == "hit":  # 并发对手已抢先落库
+            return _idempotent_hit_response(tx, res["entry"].payload["message_id"])
         if res["status"] == "mismatch":
             raise ApiError(
                 409, rest.ErrorCode.IDEMPOTENCY_MISMATCH, "同 Idempotency-Key 不同请求体"
             )
         msg_id = res["entry"].payload["message_id"]  # new：复用账本内记录的 id
 
-    ts = service.now_iso()
-    tx.conn.execute(
-        insert(_MSG).values(
-            id=msg_id,
-            workspace_id=ws["id"],
-            channel_id=channel_id,
-            thread_root_id=body.thread_root_id,
-            author_member_id=me["id"],
-            kind=MessageKind.USER,
-            card_kind=None,
-            card_ref=None,
-            body=body.body,
-            created_at=ts,
-        )
+    pub, task_pub = persist_message(
+        tx,
+        workspace_id=ws["id"],
+        channel=channel,
+        msg_id=msg_id,
+        author_member_id=me["id"],
+        body_text=body.body,
+        thread_root_id=body.thread_root_id,
+        file_ids=list(body.file_ids),
+        as_task_title=body.as_task.title if body.as_task is not None else None,
+        create_as_task=body.as_task is not None,
     )
-    mentioned = _resolve_mentions(tx, ws["id"], msg_id, body.body)
-    # C3a：解析 body 里的 task #n → message_task_refs（当前频道编号，未命中不报错）。
-    _resolve_task_refs(tx, channel_id, msg_id, body.body)
-    # C3b：由 mentions/DM 对端生成人类 Activity（Agent 接收者永不生成），广播 activity.created。
-    _generate_activity(tx, ws["id"], channel, msg_id, me["id"], ts, mentioned)
-
-    # 文件绑定（契约 D §9.2）：同事务落 files 行并把正文移入 files/<id>。
-    for upload_id in dict.fromkeys(body.file_ids):
-        meta = tx.file_store.read_staged_meta(upload_id)
-        if meta is None or not tx.file_store.is_staged(upload_id):
-            raise ApiError(404, rest.ErrorCode.NOT_FOUND, f"文件未预上传或已绑定: {upload_id}")
-        stored_path = tx.bind_file(upload_id)
-        tx.conn.execute(
-            insert(_FILE).values(
-                id=upload_id,
-                workspace_id=ws["id"],
-                message_id=msg_id,
-                channel_id=channel_id,
-                name=meta.name,
-                mime=meta.mime,
-                size_bytes=meta.size_bytes,
-                sha256=meta.sha256,
-                stored_path=stored_path,
-                created_at=ts,
-            )
-        )
-
-    msg = models.row_dict(
-        tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
-    )
-    # 响应与 message.created 广播自带刚绑定的附件——前端附件卡即时渲染，不再等
-    # channelFiles 失效重拉（v1.0.4）。
-    pub = message_public(msg, files_by_message(tx, [msg_id]).get(msg_id, []))
-
-    # as_task（B §9.4）：同事务建任务；顶级/非 DM 已在上方校验通过。message.created 先、
-    # task.created 后严格提交序广播；任一半失败整事务回滚，双双不落库不广播（原子）。
-    task_pub = None
-    if body.as_task is not None:
-        task_row = tasks_service.create_task(
-            tx,
-            workspace_id=ws["id"],
-            channel_id=channel_id,
-            root_message_id=msg_id,
-            created_by=me["id"],
-            title=body.as_task.title,
-            source_body=body.body,
-        )
-        task_pub = task_public(task_row)
-
-    tx.emit(EventType.MESSAGE_CREATED, channel_id, {"message": pub})
-    if task_pub is not None:
-        tx.emit(EventType.TASK_CREATED, channel_id, {"task": task_pub})
     return {"message": pub, "task": task_pub}
 
 

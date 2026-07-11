@@ -21,4 +21,6 @@ export const qk = {
   canvas: (channelId: string) => ['canvas', channelId] as const,
   activity: (filter: string) => ['activity', filter] as const,
   search: (q: string) => ['search', q] as const,
+  // ---- M4b HeldDraft:按 channel 存被扣草稿列表;WS held_draft.* 事件载 draft.channel_id,桥接内按此键 patch。
+  heldDrafts: (channelId: string) => ['heldDrafts', channelId] as const,
 };

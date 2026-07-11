@@ -9,6 +9,7 @@ import type {
   CanvasNodePublic,
   ChannelsSnapshot,
   Envelope,
+  HeldDraftPublic,
   MemberPublic,
   MessagePublic,
   PresenceEntry,
@@ -270,6 +271,26 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
         if (i < 0) return [...list, reminder]; // created:去重后追加
         const next = list.slice();
         next[i] = reminder; // updated / 幂等重放:按 id 替换
+        return next;
+      });
+      break;
+    }
+
+    // ---- M4b HeldDraft(被扣草稿,契约 C held_draft.*）。data 载 { draft: HeldDraftPublic }
+    // (hub 实体键 = "draft")。按 draft.channel_id patch qk.heldDrafts 缓存:created=去重 append、
+    // updated(含 released/discarded/resolved 终态反流)=按 id 替换。该频道的 heldDrafts 未加载
+    // (getQueryData===undefined)则放行不建——卡片渲染位挂载时再拉全(同 reminder 范式)。
+    case 'held_draft.created':
+    case 'held_draft.updated': {
+      const { draft } = data as { draft: HeldDraftPublic };
+      const key = qk.heldDrafts(draft.channel_id);
+      if (qc.getQueryData<HeldDraftPublic[]>(key) === undefined) break;
+      qc.setQueryData<HeldDraftPublic[]>(key, (prev) => {
+        const list = prev ?? [];
+        const i = list.findIndex((d) => d.id === draft.id);
+        if (i < 0) return [...list, draft]; // created:去重后追加
+        const next = list.slice();
+        next[i] = draft; // updated / 幂等重放 / 终态反流:按 id 替换
         return next;
       });
       break;

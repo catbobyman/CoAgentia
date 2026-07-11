@@ -8,6 +8,7 @@ from coagentia_server.routes import (
     channels,
     computers,
     files,
+    held_drafts,
     members,
     messages,
     search,
@@ -28,5 +29,6 @@ def install_routes(app: FastAPI) -> None:
         search,
         activity,
         canvas,
+        held_drafts,
     ):
         app.include_router(module.router)

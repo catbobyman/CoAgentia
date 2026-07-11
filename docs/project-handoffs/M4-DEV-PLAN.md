@@ -56,3 +56,37 @@
 ## 5. 验收映射（M4-HANDOFF §9a 出口清单）
 
 §9a 1–7 全绿：契约登记 / 0006 建表双路 / 挂账双修零回归 / D5 全路径（三态 + 自激防护 + 升级后静默 + 重置）/ 循环 Reminder（门 + 挂接 + interval 重排）/ B-M4-1 页签+wsBridge+置顶 / 守门全绿 + 文档同步。**块 M4a 收口**；接续 = 块 M4b（freshness 门 + HeldDraft 三键 + G4/G5，另开会话，见 M4-HANDOFF §9b）。
+
+---
+
+## 6. 块 M4b「freshness 与 HeldDraft」执行结果（2026-07-10，收口 = PRD M4 出口）
+
+| 项 | 内容 |
+| --- | --- |
+| 编排 | Workflow 多 agent 并行：**后端 F5→F6 串行**（同改 server 文件保语义连贯）**与前端 B-M4-2 并行**两条流，各自测；集成守门（主循环）→ 实机 verify → `/code-review high`（8 角度 × ≤6 → 对抗性 verify → 17 CONFIRMED）→ 修复复跑 |
+
+### 6.1 模块交付（DoD 全达成）
+
+| # | 模块 | 交付 | 落点 |
+| --- | --- | --- | --- |
+| **F5** | freshness 门 + 三键端点 + G5 rehold 升级 | `guard/service.py`（compute_unread/hold_or_update SAVEPOINT 兜并发/_escalate/freshness_hold 总装/write_guard_diagnostic/ACTIVE·TERMINAL 单源）；messages.py 门（仅 agent、既有校验+幂等 hit 后、落库前）+ 抽 `persist_message` 落库核心（post/release 共用保零行为差）；routes/held_drafts.py 四端点（GET 默认活动态 / release 原载荷不依赖 daemon / discard 直投 503 回滚 / reevaluate 委托 hub 死锁规避）；hub `inject_guard_feedback`/`_held_reevaluation_combo`/`reevaluate_held` | guard/ + routes/ + hub.py |
+| **F6** | G4 定时 + GC 豁免 | hub `run_held_scan`+`_held_loop`（held_interval，在线先探再翻 reevaluating，提交后组合含 deliver 推进游标防复扣）；gc.py 活动 held file_ids 豁免 | hub.py + files/gc.py |
+| **F7** | 端到端实机 verify | 隔离 uvicorn 8801 + 真 websockets daemon-sim + 浏览器 WS；探针 **38/38** + playwright 3 截图（[M4B-EVIDENCE.md](../verify/M4B-EVIDENCE.md)） | docs/verify |
+| **B-M4-2** | HeldDraft 卡 + wsBridge | HeldDraftCard（草稿折叠/未读跳转/本地读秒倒计时/三键/升级横条/终态回执/409 刷新/非-409 toast）+ HeldDraftList 归位 + ChannelChatScreen/ThreadPanel 挂载 + wsBridge held_draft.* + api/queries 三键 | apps/web |
+
+### 6.2 `/code-review high` 结论与修复（明细见 [M4B-EVIDENCE.md §5](../verify/M4B-EVIDENCE.md)）
+
+**5 正确性/健壮性修复 + 1 簇清理 + 2 DRY 债挂账**：#4 幂等前置（ledger.lookup，防重放误扣 → 重复消息）/ #5 reevaluate 终态守卫（防并发复活丢弃草稿）/ #6 G4 离线先探（防永卡 reevaluating）/ #1 清单默认活动态（防活动 held 被终态挤到后页）/ #3 三键 503 toast / #7·#10 诊断走 helper；#2 由 #6 覆盖；#8·#9 系统消息骨架 / human_members 跨模块 DRY 债挂账（M4-HANDOFF §8）。
+
+### 6.3 进度表（M4b）
+
+| 模块 | 状态 | 守门 |
+| --- | --- | --- |
+| F5 门+三键端点 | ✅ | test_held_drafts freshness/三键/G5 全覆盖 |
+| F6 G4+GC | ✅ | G4 在线/离线/排除升级 + 死循环反例 + GC 豁免/回收 |
+| B-M4-2 前端 | ✅ | vitest HeldDraftCard 11 + wsBridge.heldDraft 6 |
+| 实机 verify | ✅ | 探针 38/38 + 3 截图 + console 0 |
+| code-review | ✅ | 17 CONFIRMED → 5 修 + 1 簇清理 + 2 挂账，复跑绿 |
+| 集成守门 | ✅ | 后端 **572 passed/3 skipped** · vitest **106** · pyright 0 · ruff · gen 确定 · 双 build |
+
+**块 M4b 收口 = M4 里程碑完成**（§9b 出口清单 8–14 全绿）。

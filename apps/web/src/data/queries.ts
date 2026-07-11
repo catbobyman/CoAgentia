@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type {
   ChannelPublic,
   ChannelsSnapshot,
+  HeldDraftPublic,
   MemberPublic,
   MessagePublic,
   PresenceEntry,
@@ -13,7 +14,8 @@ import type {
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
-import { api } from '../api';
+import { api, ApiError } from '../api';
+import { useToast } from '../components/Toast';
 import { qk } from '../lib/queryKeys';
 
 // ---- 单实体/列表查询
@@ -125,6 +127,70 @@ export const useCanvasSnapshot = (channelId: string | undefined) =>
     queryFn: () => api.canvasSnapshot(channelId!),
     enabled: !!channelId,
   });
+
+// ---- M4b HeldDraft(被扣草稿,B §4.14)。列表 GET 现行被扣(默认活动态 held/reevaluating);三键写路径不做乐观更新,
+// 靠成功响应体 held_draft(或 409 HELD_DRAFT_RESOLVED 的 error.details.held_draft)按 id 就地替换缓存,
+// WS held_draft.updated 亦会反流终态(wsBridge)——二者收敛到同一条 id 替换,重复应用无害。
+export const useHeldDrafts = (channelId: string | undefined) =>
+  useQuery({
+    queryKey: qk.heldDrafts(channelId ?? '_'),
+    queryFn: () => api.heldDrafts(channelId!),
+    enabled: !!channelId,
+  });
+
+/** 按 id 就地替换该频道 heldDrafts 缓存(缺则不建——列表未加载时无锚点,放行)。 */
+function patchHeldDraft(qc: QueryClient, channelId: string, draft: HeldDraftPublic) {
+  qc.setQueryData<HeldDraftPublic[]>(qk.heldDrafts(channelId), (prev) => {
+    if (!prev) return prev;
+    const i = prev.findIndex((d) => d.id === draft.id);
+    if (i < 0) return [...prev, draft];
+    const next = prev.slice();
+    next[i] = draft;
+    return next;
+  });
+}
+
+/** 409 HELD_DRAFT_RESOLVED 的 error.details 里窄化提取最新 held_draft(形状异常则 undefined)。 */
+export function heldDraftFromResolvedError(e: unknown): HeldDraftPublic | undefined {
+  if (!(e instanceof ApiError) || e.code !== 'HELD_DRAFT_RESOLVED') return undefined;
+  const d = e.details as { held_draft?: unknown } | undefined;
+  const hd = d?.held_draft;
+  if (hd && typeof hd === 'object' && 'id' in hd) return hd as HeldDraftPublic;
+  return undefined;
+}
+
+/** 三键共用工厂:成功以响应体 held_draft 替换缓存;409(已被终解)静默以 details.held_draft 收敛;
+ *  其余错误(如 503 daemon 离线,discard/reevaluate 依赖 daemon)弹 error toast——否则失败静默、
+ *  卡片停 held、按钮复用,与 ForceStart/流转等写路径的 toast 反馈不一致(评审 #3)。 */
+function useHeldDraftAction<R extends { held_draft: HeldDraftPublic }>(
+  channelId: string,
+  call: (id: string) => Promise<R>,
+) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (id: string) => call(id),
+    onSuccess: (res) => patchHeldDraft(qc, channelId, res.held_draft),
+    onError: (e: unknown) => {
+      const hd = heldDraftFromResolvedError(e); // 409:以最新态刷新卡片(不弹错)
+      if (hd) {
+        patchHeldDraft(qc, channelId, hd);
+        return;
+      }
+      const msg = e instanceof ApiError && e.code === 'DAEMON_OFFLINE'
+        ? 'Agent daemon 离线,无法完成该操作'
+        : e instanceof Error ? e.message : '操作失败';
+      toast.push(msg, { tone: 'error' });
+    },
+  });
+}
+
+export const useReleaseHeldDraft = (channelId: string) =>
+  useHeldDraftAction(channelId, (id) => api.releaseHeldDraft(id));
+export const useDiscardHeldDraft = (channelId: string) =>
+  useHeldDraftAction(channelId, (id) => api.discardHeldDraft(id));
+export const useReevaluateHeldDraft = (channelId: string) =>
+  useHeldDraftAction(channelId, (id) => api.reevaluateHeldDraft(id));
 
 // 'all' 单拉,tab 过滤归客户端(挂账批2 简化:原三档缓存 = 双请求 + wsBridge 逐档 patch)。
 export const useActivity = () =>

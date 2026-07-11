@@ -134,6 +134,21 @@ def record(
     return {"status": "new", "entry": entry}
 
 
+def lookup(conn: Connection, op_id: str, request_hash: str) -> dict[str, Any]:
+    """只读探账本，返回 {status: hit|mismatch|absent, entry?}——**不写入**。
+
+    供「先返回已登记首次结果、再走可能不落库的后续校验」的端点（如 freshness 门可能 202 扣草稿
+    不落库）：若在 record() 前用它探得 hit，则重放能拿回原结果而不被后续门误伤；absent 时后续
+    才在落库路径调 record() 真正登记（避免留悬挂账本行指向未落库消息）。竞态由 record() 兜底。
+    """
+    existing = _fetch_entry(conn, op_id)
+    if existing is None:
+        return {"status": "absent"}
+    if existing.request_hash == request_hash:
+        return {"status": "hit", "entry": existing}
+    return {"status": "mismatch", "entry": existing}
+
+
 def _classify(
     conn: Connection,
     existing: LedgerEntryRow,

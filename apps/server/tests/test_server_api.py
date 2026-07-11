@@ -20,7 +20,7 @@ from coagentia_server.files import FileStore
 from coagentia_server.files.gc import run_gc
 from coagentia_server.routes.workspace import EMPTY_CANVAS_HASH
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Engine
 
 BUILD_CHANNEL = "build"
@@ -530,6 +530,80 @@ def test_gc_keeps_fresh_staging(
     store = FileStore(tmp_path / "data")
     assert run_gc(seeded_engine, store) == 0
     assert store.is_staged(fid)
+
+
+def _insert_held(engine: Engine, *, upload_id: str, status: str) -> str:
+    """插一行引用 `upload_id` 的 held 草稿（GC 豁免测试用）；FK 取 seed 已有的 ws/agent/channel。"""
+    from coagentia_server.ledger.service import new_ulid, now_iso
+
+    _HELD = models.HeldDraft.__table__
+    with engine.begin() as c:
+        ws_id = c.execute(select(models.Workspace.__table__.c.id)).scalar_one()
+        agent_id = c.execute(select(models.Agent.__table__.c.member_id)).scalars().first()
+        channel_id = c.execute(select(models.Channel.__table__.c.id)).scalars().first()
+        held_id = new_ulid()
+        c.execute(
+            insert(_HELD).values(
+                id=held_id,
+                workspace_id=ws_id,
+                agent_member_id=agent_id,
+                channel_id=channel_id,
+                thread_root_id=None,
+                draft_body="草稿",
+                file_ids=[upload_id],
+                as_task=None,
+                reasons={"unread_message_ids": [], "total_unread": 0},
+                status=status,
+                held_count=1,
+                next_reeval_at=now_iso(),
+                escalated_at=None,
+                created_at=now_iso(),
+            )
+        )
+    return held_id
+
+
+def _stale_stage(server_client: TestClient, store: FileStore, name: str = "held.md") -> str:
+    """上传一个 staging 文件并把 mtime 回拨到 25h 前（超 24h GC 门限）。返回 upload_id。"""
+    fid = server_client.post(
+        "/api/files", files={"file": (name, b"held-body", "text/markdown")}
+    ).json()["id"]
+    stale = time.time() - 25 * 3600
+    os.utime(store.staging_dir / fid, (stale, stale))
+    return fid
+
+
+def test_gc_exempts_active_held_referenced_staging(
+    server_client: TestClient, seeded_engine: Engine, tmp_path: Path
+) -> None:
+    """契约 D §9.2 v1.0.1：活动 held 行（held/reevaluating）引用的超 24h staging 文件豁免删除。"""
+    store = FileStore(tmp_path / "data")
+    _HELD = models.HeldDraft.__table__
+    for status in ("held", "reevaluating"):
+        fid = _stale_stage(server_client, store, name=f"{status}.md")
+        held_id = _insert_held(seeded_engine, upload_id=fid, status=status)
+        assert run_gc(seeded_engine, store) == 0  # 被活动 held 引用 → 不删
+        assert store.is_staged(fid)
+        # 清掉活动行（避下轮 uq_held_drafts_active 冲突）+ 其 staging 文件（避成下轮真孤儿）。
+        with seeded_engine.begin() as c:
+            c.execute(_HELD.delete().where(_HELD.c.id == held_id))
+        store.delete_staged(fid)
+
+
+def test_gc_reclaims_after_held_terminal(
+    server_client: TestClient, seeded_engine: Engine, tmp_path: Path
+) -> None:
+    """held 进终态（discarded）后不再豁免 → 下轮 GC 回收其引用的 staging 文件。"""
+    store = FileStore(tmp_path / "data")
+    fid = _stale_stage(server_client, store)
+    held_id = _insert_held(seeded_engine, upload_id=fid, status="held")
+    assert run_gc(seeded_engine, store) == 0 and store.is_staged(fid)  # 活动期豁免
+
+    _HELD = models.HeldDraft.__table__
+    with seeded_engine.begin() as c:
+        c.execute(update(_HELD).where(_HELD.c.id == held_id).values(status="discarded"))
+    assert run_gc(seeded_engine, store) == 1  # 终态后回收
+    assert not store.is_staged(fid)
 
 
 # ---------------------------------------------------------------- 路由回归（code-review #4/#8/#10）

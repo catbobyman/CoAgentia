@@ -10,8 +10,8 @@ import { UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 import type { ChannelSearch, Tab } from '../routes/search';
 import {
   memberMap, presenceMap, readPositionsMap,
-  useCanvasSnapshot, useChannelFiles, useChannelsSnapshot, useMembers, useMessages, usePresence,
-  useTasks, useUsageByTask,
+  useCanvasSnapshot, useChannelFiles, useChannelsSnapshot, useHeldDrafts, useMembers, useMessages,
+  usePresence, useTasks, useUsageByTask,
 } from '../data/queries';
 import { useUiStore } from '../lib/store';
 import { Composer } from '../components/Composer';
@@ -22,6 +22,7 @@ import { FilesTab } from '../components/FilesTab';
 import { Tabs } from '../components/Tabs';
 import { Topbar } from '../components/Topbar';
 import { ThreadPanel } from './ThreadPanel';
+import { HeldDraftList } from './HeldDraftCard';
 import { api } from '../api';
 
 export function ChannelChatScreen({ search, setSearch }: {
@@ -41,6 +42,7 @@ export function ChannelChatScreen({ search, setSearch }: {
   const usageQ = useUsageByTask();
   const filesQ = useChannelFiles(activeChannelId ?? undefined);
   const canvasQ = useCanvasSnapshot(activeChannelId ?? undefined);
+  const heldDraftsQ = useHeldDrafts(activeChannelId ?? undefined);
 
   const snap = channelsQ.data;
   const channel = snap?.items?.find((c) => c.id === activeChannelId);
@@ -59,6 +61,9 @@ export function ChannelChatScreen({ search, setSearch }: {
 
   // 附件卡数据源已改消息读面派生 files(契约 A v1.0.4);channelFiles 只服务文件页签计数与列表。
   const files = filesQ.data ?? [];
+  // 被扣草稿(M4b):主流渲染 thread_root_id 为空者;线程内渲染匹配线程根者(HeldDraftList 内按此归位)。
+  const heldDrafts = heldDraftsQ.data ?? [];
+  const canResolve = me?.kind === 'human'; // 三键仅人类可见(web = 人类 owner 视图)
 
   const taskByRoot = Object.fromEntries(tasks.map((t) => [t.root_message_id, t]));
   // 「完结态」消费生成常量(纪律 7 单一事实源;当前值域 = {done, closed})。
@@ -90,6 +95,12 @@ export function ChannelChatScreen({ search, setSearch }: {
   };
   const openAgent = (memberId: string) =>
     void navigate({ to: '/agents/$memberId', params: { memberId }, search: { tab: 'profile' } });
+  // 跳转定位到某条消息(未读清单点选 / 文件页签共用):切到 chat + 展开所在线程 + 闪烁高亮。
+  const locateMessage = (messageId: string) => {
+    const target = messages.find((m) => m.id === messageId);
+    setSearch({ tab: 'chat', thread: target?.thread_root_id ?? undefined });
+    setLocateId(messageId);
+  };
 
   // 线程面板数据:?thread= 命中的 root 消息对应任务。
   const threadRootId = search.thread;
@@ -109,21 +120,31 @@ export function ChannelChatScreen({ search, setSearch }: {
         />
 
         {search.tab === 'chat' ? (
-          <MessageFlow
-            messages={messages}
-            memberById={byId}
-            memberNames={memberNames}
-            meName={me?.name ?? ''}
-            presenceOf={(id) => presence[id]}
-            taskByRoot={taskByRoot}
-            usageByTask={usageByTask}
-            lastReadId={lastReadId}
-            selectedTaskId={search.task}
-            locateId={locateId}
-            onLocateDone={() => setLocateId(undefined)}
-            onSelectTask={selectTask}
-            onOpenAgent={openAgent}
-          />
+          <>
+            <MessageFlow
+              messages={messages}
+              memberById={byId}
+              memberNames={memberNames}
+              meName={me?.name ?? ''}
+              presenceOf={(id) => presence[id]}
+              taskByRoot={taskByRoot}
+              usageByTask={usageByTask}
+              lastReadId={lastReadId}
+              selectedTaskId={search.task}
+              locateId={locateId}
+              onLocateDone={() => setLocateId(undefined)}
+              onSelectTask={selectTask}
+              onOpenAgent={openAgent}
+            />
+            {/* 主流被扣草稿(thread_root_id 为空)——线程内的由 ThreadPanel 渲染。 */}
+            <HeldDraftList
+              drafts={heldDrafts}
+              channelId={channel.id}
+              memberById={byId}
+              canResolve={canResolve}
+              onLocateMessage={locateMessage}
+            />
+          </>
         ) : search.tab === 'canvas' ? (
           <CanvasTab
             channelId={channel.id}
@@ -142,15 +163,8 @@ export function ChannelChatScreen({ search, setSearch }: {
             onSelectTask={selectTask}
           />
         ) : search.tab === 'files' ? (
-          <FilesTab
-            channelId={channel.id}
-            onLocate={(messageId) => {
-              // 附件绑定在线程回复上时,消息不在主流——切页签之外还要展开所在线程。
-              const target = messages.find((m) => m.id === messageId);
-              setSearch({ tab: 'chat', thread: target?.thread_root_id ?? undefined });
-              setLocateId(messageId);
-            }}
-          />
+          // 附件绑定在线程回复上时消息不在主流——locateMessage 切页签之外还会展开所在线程。
+          <FilesTab channelId={channel.id} onLocate={locateMessage} />
         ) : (
           <section className="flow">
             <div className="boot">「{search.tab}」屏 B2 搭建中 —— 路由/深链已就绪。</div>
@@ -165,12 +179,16 @@ export function ChannelChatScreen({ search, setSearch }: {
           key={threadRootId}
           task={threadTask}
           rootMessageId={threadRootId}
+          channelId={channel.id}
           memberById={byId}
           memberNames={memberNames}
           meName={me?.name ?? ''}
           meId={me?.id}
           presenceOf={(id) => presence[id]}
           usage={threadUsage}
+          heldDrafts={heldDrafts}
+          canResolve={canResolve}
+          onLocateMessage={locateMessage}
           locateId={locateId}
           onLocateDone={() => setLocateId(undefined)}
           onClose={() => setSearch({ thread: undefined, task: undefined })}
