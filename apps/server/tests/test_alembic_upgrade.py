@@ -7,8 +7,8 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from coagentia_server.db.engine import make_engine
-from coagentia_server.db.models import IMMUTABLE_TABLES
-from sqlalchemy import inspect
+from coagentia_server.db.models import IMMUTABLE_TABLES, M6A_TABLES
+from sqlalchemy import Column, MetaData, String, Table, inspect, select
 
 # 契约 A §5 M1 首行清单（17 张）。
 M1_EXPECTED_TABLES = {
@@ -25,6 +25,8 @@ M3_EXPECTED_TABLES = {"task_contracts", "canvas_nodes", "canvas_edges"}
 M4_EXPECTED_TABLES = {"held_drafts"}
 # 契约 A §5 M5 批次（2 张：templates + channel_notification_settings，0007）。
 M5_EXPECTED_TABLES = {"templates", "channel_notification_settings"}
+# 契约 A v1.0.8 §5 M6a 批次（0008；proposals 明确留给 0009）。
+M6A_EXPECTED_TABLES = {"projects", "channel_projects", "worktrees"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -80,12 +82,13 @@ def test_incremental_upgrade_from_0001_to_head(db_url: str, alembic_cfg: Config)
     assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M3 表（坑1 回归守门）
     assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M4 表（坑1 回归守门）
     assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M5 表（坑1 回归守门）
+    assert M6A_EXPECTED_TABLES.isdisjoint(mid)  # 0001 不得泄漏建出 M6a 表
     assert "messages_fts" not in mid
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert (
         M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES
-        | M4_EXPECTED_TABLES | M5_EXPECTED_TABLES
+        | M4_EXPECTED_TABLES | M5_EXPECTED_TABLES | M6A_EXPECTED_TABLES
     ) <= final
     assert "messages_fts" in final
 
@@ -110,6 +113,84 @@ def test_upgrade_head_creates_m5_tables(db_url: str, alembic_cfg: Config) -> Non
     names = _table_names(db_url)
     assert M5_EXPECTED_TABLES <= names
     assert len(M5_EXPECTED_TABLES) == 2
+
+
+def test_upgrade_head_creates_m6a_tables_and_task_columns(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    assert set(M6A_TABLES) == M6A_EXPECTED_TABLES
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        insp = inspect(engine)
+        project_cols = {c["name"] for c in insp.get_columns("projects")}
+        binding_pk = insp.get_pk_constraint("channel_projects")["constrained_columns"]
+        worktree_cols = {c["name"] for c in insp.get_columns("worktrees")}
+        task_cols = {c["name"]: c for c in insp.get_columns("tasks")}
+        worktree_unique = {
+            tuple(item["column_names"]) for item in insp.get_unique_constraints("worktrees")
+        }
+    finally:
+        engine.dispose()
+
+    assert M6A_EXPECTED_TABLES <= _table_names(db_url)
+    assert project_cols == {
+        "id", "workspace_id", "computer_id", "name", "repo_path", "dev_command",
+        "deploy_command", "preview_idle_min", "worktree_keep_days", "created_at",
+    }
+    assert binding_pk == ["channel_id", "project_id"]
+    assert worktree_cols == {
+        "id", "workspace_id", "project_id", "task_id", "branch", "path", "status",
+        "merge_commit", "created_at", "merged_at", "cleaned_at",
+    }
+    assert ("task_id",) in worktree_unique
+    assert {"project_id", "writes_code"} <= set(task_cols)
+    assert task_cols["project_id"]["nullable"] is True
+    assert task_cols["writes_code"]["nullable"] is False
+    assert str(task_cols["writes_code"]["default"]) == "0"
+
+
+def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """历史 M5 schema 切片：revision=0007，tasks 无 M6 两列；0008 原位补列并保行。"""
+    metadata = MetaData()
+    workspaces = Table("workspaces", metadata, Column("id", String(26), primary_key=True))
+    computers = Table("computers", metadata, Column("id", String(26), primary_key=True))
+    channels = Table("channels", metadata, Column("id", String(26), primary_key=True))
+    tasks = Table("tasks", metadata, Column("id", String(26), primary_key=True))
+    alembic_version = Table(
+        "alembic_version", metadata, Column("version_num", String(32), primary_key=True)
+    )
+    engine = make_engine(url=db_url)
+    try:
+        metadata.create_all(engine)
+        with engine.begin() as conn:
+            conn.execute(workspaces.insert().values(id="ws"))
+            conn.execute(computers.insert().values(id="computer"))
+            conn.execute(channels.insert().values(id="channel"))
+            conn.execute(tasks.insert().values(id="existing-task"))
+            conn.execute(alembic_version.insert().values(version_num="0007_m5"))
+    finally:
+        engine.dispose()
+
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        columns = {c["name"] for c in inspect(engine).get_columns("tasks")}
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(tasks.c.id).where(tasks.c.id == "existing-task")
+            ).one()
+            values = conn.exec_driver_sql(
+                "SELECT project_id, writes_code FROM tasks WHERE id='existing-task'"
+            ).one()
+    finally:
+        engine.dispose()
+    assert {"project_id", "writes_code"} <= columns
+    assert row.id == "existing-task"
+    assert values == (None, 0)
+    assert M6A_EXPECTED_TABLES <= _table_names(db_url)
 
 
 def test_upgrade_head_creates_held_drafts_active_index(db_url: str, alembic_cfg: Config) -> None:
@@ -219,11 +300,12 @@ def test_incremental_from_0002_to_head(db_url: str, alembic_cfg: Config) -> None
     assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M3 表（坑1 回归守门）
     assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M4 表（坑1 回归守门）
     assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M5 表（坑1 回归守门）
+    assert M6A_EXPECTED_TABLES.isdisjoint(mid)  # 0002 不得泄漏建出 M6a 表
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert (
         M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES
-        | M4_EXPECTED_TABLES | M5_EXPECTED_TABLES
+        | M4_EXPECTED_TABLES | M5_EXPECTED_TABLES | M6A_EXPECTED_TABLES
     ) <= final
 
 
@@ -234,6 +316,7 @@ def test_incremental_from_0005_to_head(db_url: str, alembic_cfg: Config) -> None
     assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES) <= mid
     assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0005 不得泄漏建出 M4 表（坑1 回归守门）
     assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0005 不得泄漏建出 M5 表（坑1 回归守门）
+    assert M6A_EXPECTED_TABLES.isdisjoint(mid)  # 0005 不得泄漏建出 M6a 表
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert M4_EXPECTED_TABLES <= final          # 0006 增量建出 held_drafts
@@ -247,9 +330,11 @@ def test_incremental_from_0006_to_head(db_url: str, alembic_cfg: Config) -> None
         M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES | M4_EXPECTED_TABLES
     ) <= mid
     assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0006 不得泄漏建出 M5 表（坑1 回归守门）
+    assert M6A_EXPECTED_TABLES.isdisjoint(mid)  # 0006 不得泄漏建出 M6a 表
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert M5_EXPECTED_TABLES <= final          # 0007 增量建出 templates + notification_settings
+    assert M6A_EXPECTED_TABLES <= final         # 0008 增量建出 Project/Worktree 三表
 
 
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
@@ -261,4 +346,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     assert M3_EXPECTED_TABLES.isdisjoint(names)
     assert M4_EXPECTED_TABLES.isdisjoint(names)
     assert M5_EXPECTED_TABLES.isdisjoint(names)
+    assert M6A_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

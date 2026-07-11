@@ -355,6 +355,8 @@ class TaskRow(ContractModel):
     owner_member_id: Ulid | None = None  # 同刻唯一 owner；claim = 条件更新（T2）
     level: TaskLevel = TaskLevel.L1
     created_by_member_id: Ulid
+    project_id: Ulid | None = None
+    writes_code: bool = False
     silence_override_h: int | None = None  # D5 任务级覆盖
     status_changed_at: TimestampZ
     created_at: TimestampZ
@@ -663,6 +665,7 @@ class ProposalPublic(ProposalRow):
 class ProjectRow(ContractModel):
     id: Ulid
     workspace_id: Ulid
+    computer_id: Ulid
     name: str
     repo_path: str  # 非 git 仓库时就地报错（P12）
     dev_command: str | None = None
@@ -673,7 +676,9 @@ class ProjectRow(ContractModel):
 
 
 class ProjectPublic(ProjectRow):
-    pass
+    """频道绑定读面由 channel_projects 联查得出，不落 projects 表。"""
+
+    channel_ids: list[Ulid]
 
 
 class ChannelProjectRow(ContractModel):
@@ -693,6 +698,7 @@ class WorktreeRow(ContractModel):
     branch: str
     path: str
     status: WorktreeStatus
+    merge_commit: str | None = None
     created_at: TimestampZ
     merged_at: TimestampZ | None = None
     cleaned_at: TimestampZ | None = None

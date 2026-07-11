@@ -41,9 +41,9 @@
 
 | # | 模块 | 状态 | 提交 | 备注 |
 | --- | --- | --- | --- | --- |
-| J3-cal | git 实操 A 级实测校准 → `scratchpad/GIT-CALIBRATION.md`（win32 worktree/merge/diff/冲突行为与坑清单） | ⬜ | — | 块 a 波 1，**最优先** |
-| J0 | 契约登记（ENDPOINTS_M6/Project·Worktree·Diff·Proposal 模型/Task 系扩字段/ReviewVerdict/错误码 28/ws 预留族核对/D 新帧/mock/conformance） | ⬜ | — | 块 a 波 1 |
-| J1 | 0008 迁移（projects+channel_projects+worktrees 三表 + tasks 两列）+ models ORM + M6A_TABLES | ⬜ | — | 块 a 波 1 |
+| J3-cal | git 实操 A 级实测校准 → `scratchpad/GIT-CALIBRATION.md`（win32 worktree/merge/diff/冲突行为与坑清单） | ✅ | 波 1 待提交 | 10/10 探针绿；见 §3 校准结论 |
+| J0 | 契约登记（ENDPOINTS_M6/Project·Worktree·Diff·Proposal 模型/Task 系扩字段/ReviewVerdict/错误码 28/ws 预留族核对/D 新帧/mock/conformance） | ✅ | 波 1 待提交 | A v1.0.8/B v1.4.1 补遗同步；focused 135 绿；gen 二次确定 |
+| J1 | 0008 迁移（projects+channel_projects+worktrees 三表 + tasks 两列）+ models ORM + M6A_TABLES | ✅ | 波 1 待提交 | 含 merge_commit；从零+历史 M5 schema 切片增量双路绿 |
 | J2 | Project 域（CRUD/admin 门/repo_path 校验/PROJECT_IN_USE/频道绑定/channel_ids 派生） | ⬜ | — | 块 a 波 2 |
 | J3 | worktree 生命周期（daemon git.py+ensure/cleanup 处理器+status 上报；server 激活联动+对账 #5+keep_days 清理调度+工作目录消息注入） | ⬜ | — | 块 a 波 2 |
 | J4 | Diff 链路（daemon git.diff 查询帧 DiffPayload + GET /tasks/{id}/diff 代理 + TaskDetail.worktree 派生） | ⬜ | — | 块 a 波 3 |
@@ -83,4 +83,4 @@ pnpm -F @coagentia/web build
 - **daemon 骨架复用**：查询帧照 home.tree/home.file 体例（git.diff）；缓冲重传照 usage.batch 体例（check.finished）；win32 子进程坑 = M5 先例（taskkill /F /T 杀进程树、stdout 必须 utf-8 decode——git 输出同样适用）。
 - **幂等身份纪律**（M5b #B 教训）：落地批 req_hash 必须折入 source 身份（decomp=proposal id+landed_hash / delta=delta_landed_hash），防跨提案同键错批重放。
 - **重放保序**（M5b #C 教训）：批内节点顺序以 ledger `seq` 为准，勿按 (created_at, op_id) 字典序。
-- **win32 git 待校准**（J3-cal 产出，此处开工后回填）：`scratchpad/GIT-CALIBRATION.md`。
+- **win32 git 已校准**（J3-cal，2026-07-11）：权威记录 = [`scratchpad/GIT-CALIBRATION.md`](../../scratchpad/GIT-CALIBRATION.md)，复现脚本 = `scratchpad/run-git-calibration.ps1`，最终 10/10 探针绿。关键边界：① 正/反斜杠与中文路径均可，但 `worktree list --porcelain` 统一正斜杠；② 本机 worktree 根 193 字符成功、214 字符起即使 `core.longpaths=true` 仍报 `'$GIT_DIR' too big`，契约 ULID 路径必须保持短组件且不硬编码本机阈值；③ 显式 lock/index.lock 分别令 remove/add 退出 128，不盲目删锁；④ 文件句柄占用时 remove 退出 255，**Git 登记已消失但物理目录残留**，cleanup 必须登记+目录+prune 三面幂等；⑤ 冲突文件必须在 `merge --abort` 前用 `--diff-filter=U` 采集；⑥ Diff 元数据使用 `--name-status -z`/`--numstat -z`，二进制 `-/-` 映射 0/0+空 patch；⑦ git stdout/stderr 显式 UTF-8，默认 GB2312 会乱码；PowerShell 5.1 的 UTF-8 脚本需 BOM。

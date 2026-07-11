@@ -53,6 +53,7 @@ class InstrType(StrEnum):
     WORKTREE_ENSURE = "worktree.ensure"  # M6
     WORKTREE_MERGE = "worktree.merge"  # M6
     WORKTREE_CLEANUP = "worktree.cleanup"  # M6
+    CHECK_RUN = "check.run"  # M6
     PREVIEW_START = "preview.start"  # M7
     PREVIEW_STOP = "preview.stop"  # M7
     DEPLOY_RUN = "deploy.run"  # M7
@@ -80,6 +81,7 @@ class ReportType(StrEnum):
     DEPLOY_FINISHED = "deploy.finished"  # M7
     PREVIEW_STATUS = "preview.status"  # M7
     WORKTREE_STATUS = "worktree.status"  # M6
+    CHECK_FINISHED = "check.finished"  # M6
 
 
 class AckResult(StrEnum):
@@ -207,11 +209,22 @@ class WorktreeEnsureData(ContractModel):
 
 class WorktreeMergeData(ContractModel):
     task_id: Ulid
-    merge_plan_ref: str | None = None
+    project_id: Ulid
+    repo_path: str
+    branch: str
+    message: str
 
 
 class WorktreeCleanupData(ContractModel):
     task_id: Ulid
+
+
+class CheckRunData(ContractModel):
+    run_id: Ulid
+    node_id: Ulid
+    project_id: Ulid
+    repo_path: str
+    command: str
 
 
 class PreviewStartData(ContractModel):
@@ -280,7 +293,25 @@ class GitDiffQuery(ContractModel):
     base: str | None = None
 
 
-# DiffPayload：M6 随 W3 定稿，contracts 预留名（JsonValue 占位）
+class DiffFile(ContractModel):
+    path: str
+    status: Literal["added", "modified", "deleted", "renamed"]
+    old_path: str | None = None
+    additions: int
+    deletions: int
+    patch: str
+    patch_truncated: bool
+
+
+class DiffPayload(ContractModel):
+    """git.diff 查询响应（契约 D §6）；REST Diff 卡直接复用此形状。"""
+
+    base_ref: str
+    head_ref: str
+    files: list[DiffFile]
+    total_additions: int
+    total_deletions: int
+    files_truncated: bool
 
 
 # ------------------------------------------------------------ 上报 data（契约 D §7）
@@ -395,3 +426,13 @@ class WorktreeStatusData(ContractModel):
     status: Literal["active", "merged", "conflicted", "cleaned"]
     branch: str
     path: str
+    merge_commit: str | None = None
+    conflict_files: list[str] | None = None
+
+
+class CheckFinishedData(ContractModel):
+    run_id: Ulid
+    node_id: Ulid
+    status: Literal["success", "failed"]
+    exit_code: int
+    output_tail: str

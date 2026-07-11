@@ -61,7 +61,8 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
     # ---- 4.3 任务与契约
     "tasks": (entities.TaskRow, {
         "id", "workspace_id", "channel_id", "number", "root_message_id", "title", "status",
-        "owner_member_id", "level", "created_by_member_id", "silence_override_h",
+        "owner_member_id", "level", "created_by_member_id", "project_id", "writes_code",
+        "silence_override_h",
         "status_changed_at", "created_at",
     }),
     "task_events": (entities.TaskEventRow, {
@@ -119,13 +120,13 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
     }),
     # ---- 4.9 交付链路
     "projects": (entities.ProjectRow, {
-        "id", "workspace_id", "name", "repo_path", "dev_command", "deploy_command",
+        "id", "workspace_id", "computer_id", "name", "repo_path", "dev_command", "deploy_command",
         "preview_idle_min", "worktree_keep_days", "created_at",
     }),
     "channel_projects": (entities.ChannelProjectRow, {"channel_id", "project_id"}),
     "worktrees": (entities.WorktreeRow, {
         "id", "workspace_id", "project_id", "task_id", "branch", "path", "status",
-        "created_at", "merged_at", "cleaned_at",
+        "merge_commit", "created_at", "merged_at", "cleaned_at",
     }),
     "preview_sessions": (entities.PreviewSessionRow, {
         "id", "workspace_id", "task_id", "worktree_id", "port", "status", "started_at",
@@ -178,3 +179,4 @@ def test_defaults_match_contract() -> None:
     assert entities.CanvasRow.model_fields["baseline_version"].default == 0
     assert entities.HeldDraftRow.model_fields["held_count"].default == 1
     assert entities.ProposalRow.model_fields["repair_count"].default == 0
+    assert entities.TaskRow.model_fields["writes_code"].default is False

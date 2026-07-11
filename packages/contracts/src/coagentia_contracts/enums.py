@@ -123,6 +123,15 @@ class EvidenceType(StrEnum):
     LOG = "log"
 
 
+class ReviewVerdict(StrEnum):
+    """TaskHandoff 的结构化评审结论（契约 B §12.10）。"""
+
+    PASS = "pass"
+    DOWNGRADE = "downgrade"
+    SEND_BACK = "send_back"
+    NEEDS_HUMAN = "needs_human"
+
+
 class CanvasNodeKind(StrEnum):
     AGENT = "agent"
     SYSTEM = "system"

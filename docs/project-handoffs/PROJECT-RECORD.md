@@ -154,7 +154,7 @@
 
 ## 当前接续任务
 
-1. **M6 已立项（2026-07-11）**：契约修订落笔先行（A v1.0.7 tasks 加列 project_id/writes_code + projects computer_id + review_verdict / B v1.4 §12 编排与交付规范条文 + 错误码 28 / D v1.0.3 check.run·check.finished 帧 + DiffPayload / C·E·E2 零修订核对——零新 WS 事件、零新 Agent 工具连续第四里程碑）+ [M6-HANDOFF.md](M6-HANDOFF.md) 任务书（两块竖切 **M6a Project 与交付链** → **M6b Orchestrator 拆解链**；owner 四拍板：交付链先行/worktree=消息注入/挂账三件全收/合并 --no-ff；16 裁决 + 22 条出口清单）。**待开工**：首会话建 M6-DEV-PLAN，J0∥J1 起步、J3 git 实测最优先。
+1. **M6 已立项并完成 M6a 波 1 守门（2026-07-11）**：立项契约 A v1.0.7/B v1.4/D v1.0.3 后，开工审计发现 B §12.8/D §7 要求持久 merge_commit 而 A 无落点；owner 授权补遗 A **v1.0.8**（worktrees.merge_commit + ProjectPublic.channel_ids）/ B **v1.4.1**（Project 请求/响应精确形状），header 与变更记录同步。J3-cal scratch git 10/10；J0 contracts/mock/conformance focused 135 绿、gen 二次确定；J1 0008 三表+tasks 两列从零/历史 M5 schema 切片增量双路绿。波 1 全守门 = 后端 **724/4 skipped**、web **175**、typecheck/ruff/gen/build 全绿；C·E·E2 继续零修订/零新工具。
 2. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。M5-HANDOFF 已移 archive/。
 2. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 3. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。

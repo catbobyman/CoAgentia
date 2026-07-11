@@ -9,7 +9,7 @@ import hashlib
 from typing import Any
 
 import uvicorn
-from coagentia_contracts import entities, rest
+from coagentia_contracts import daemon, entities, rest
 from coagentia_contracts.enums import ActivityFilter, SearchKind
 from coagentia_contracts.ws import EventType
 from fastapi import FastAPI, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
@@ -515,7 +515,7 @@ async def get_task_detail(task_id: str) -> Any:
                       "cache_write_tokens"):
                 usage[k] += e.get(k, 0)
             usage["events"] += 1
-    return {"task": task, "contracts": [], "usage": usage}
+    return {"task": task, "contracts": [], "usage": usage, "worktree": None}
 
 
 @app.get("/api/tasks/{task_id}/contracts", response_model=list[entities.TaskContractPublic])
@@ -691,6 +691,180 @@ async def put_notification_setting(channel_id: str, body: rest.NotificationSetti
     """PUT upsert 懒建（B §4.5）：mock 回请求 mode 的形状（自治/dm 422 活真 server）。"""
     require_channel(channel_id)
     return {"channel_id": channel_id, "member_id": store.members[0]["id"], "mode": body.mode}
+
+
+# ---------------------------------------------------------------- M6 编排与交付链（纯形状）
+#
+# J0 只让 mock 为 OpenAPI/前端提供稳定形状。Project 权限与仓库校验、提案状态机、CAS、git
+# diff、系统节点 retry 约束都只活在真 server/daemon（纪律 4）。
+
+
+def _mock_project(project_id: str | None = None, **updates: Any) -> dict[str, Any]:
+    build = next(c for c in store.channels if c.get("name") == "build")
+    row = {
+        "id": project_id or new_id(),
+        "workspace_id": store.workspace["id"],
+        "computer_id": store.computers[0]["id"],
+        "name": "CoAgentia mock",
+        "repo_path": r"C:\coagentia\mock-project",
+        "dev_command": None,
+        "deploy_command": None,
+        "preview_idle_min": 30,
+        "worktree_keep_days": 7,
+        "created_at": now_ts(),
+        "channel_ids": [build["id"]],
+    }
+    row.update({key: value for key, value in updates.items() if value is not None})
+    return row
+
+
+def _mock_proposal(
+    proposal_id: str | None = None,
+    *,
+    channel_id: str | None = None,
+    status: str = "awaiting_confirm",
+) -> dict[str, Any]:
+    body = {"version": "coagentia.decomposition.v1", "nodes": [], "edges": []}
+    digest = hashlib.sha256(repr(body).encode("utf-8")).hexdigest()
+    return {
+        "id": proposal_id or new_id(),
+        "workspace_id": store.workspace["id"],
+        "channel_id": channel_id or store.tasks[0]["channel_id"],
+        "source_task_id": store.tasks[0]["id"],
+        "kind": "full",
+        "revision": 1,
+        "status": status,
+        "body": body,
+        "proposal_hash": digest,
+        "base_hash": None,
+        "landed_hash": digest if status == "landed" else None,
+        "adjustments": [],
+        "repair_count": 0,
+        "proposed_by_member_id": store.members[0]["id"],
+        "created_at": now_ts(),
+        "updated_at": now_ts(),
+    }
+
+
+@app.post("/api/channels/{channel_id}/decompose", response_model=entities.ProposalPublic,
+          status_code=202)
+async def decompose(channel_id: str, body: rest.DecomposeRequest) -> Any:
+    return _mock_proposal(channel_id=channel_id)
+
+
+@app.get("/api/proposals/{proposal_id}", response_model=entities.ProposalPublic)
+async def get_proposal(proposal_id: str) -> Any:
+    return _mock_proposal(proposal_id)
+
+
+@app.post("/api/proposals/{proposal_id}/confirm", response_model=rest.ProposalConfirmResult,
+          status_code=202)
+async def confirm_proposal(proposal_id: str, body: rest.ProposalConfirm) -> Any:
+    proposal = _mock_proposal(proposal_id, status="landed")
+    batch = {
+        "id": new_id(),
+        "workspace_id": store.workspace["id"],
+        "channel_id": proposal["channel_id"],
+        "kind": "decomp",
+        "content_hash": proposal["proposal_hash"],
+        "source_ref": proposal_id,
+        "confirmed_by": store.members[0]["id"],
+        "status": "done",
+        "created_at": now_ts(),
+        "done_at": now_ts(),
+    }
+    return {"batch": batch, "proposal": proposal}
+
+
+@app.post("/api/proposals/{proposal_id}/reject", response_model=entities.ProposalPublic)
+async def reject_proposal(proposal_id: str, body: rest.ProposalReject) -> Any:
+    return _mock_proposal(proposal_id, status="rejected")
+
+
+@app.get("/api/projects", response_model=list[entities.ProjectPublic])
+async def list_projects() -> Any:
+    return [_mock_project()]
+
+
+@app.post("/api/projects", response_model=entities.ProjectPublic, status_code=201)
+async def create_project(body: rest.ProjectCreate) -> Any:
+    return _mock_project(**body.model_dump(exclude_unset=True))
+
+
+@app.patch("/api/projects/{project_id}", response_model=entities.ProjectPublic)
+async def patch_project(project_id: str, body: rest.ProjectPatch) -> Any:
+    return _mock_project(project_id, **body.model_dump(exclude_unset=True))
+
+
+@app.delete("/api/projects/{project_id}", status_code=204)
+async def delete_project(project_id: str) -> Response:
+    return Response(status_code=204)
+
+
+@app.post("/api/channels/{channel_id}/projects",
+          response_model=entities.ChannelProjectPublic, status_code=201)
+async def bind_project(channel_id: str, body: rest.ProjectBind) -> Any:
+    return {"channel_id": channel_id, "project_id": body.project_id}
+
+
+@app.delete("/api/channels/{channel_id}/projects/{project_id}", status_code=204)
+async def unbind_project(channel_id: str, project_id: str) -> Response:
+    return Response(status_code=204)
+
+
+@app.get("/api/tasks/{task_id}/diff", response_model=daemon.DiffPayload)
+async def get_task_diff(task_id: str) -> Any:
+    return {
+        "base_ref": "main",
+        "head_ref": f"coagentia/task-{task_id}",
+        "files": [{
+            "path": "README.md",
+            "status": "modified",
+            "old_path": None,
+            "additions": 1,
+            "deletions": 0,
+            "patch": "@@ -1 +1,2 @@\n # CoAgentia\n+mock diff\n",
+            "patch_truncated": False,
+        }],
+        "total_additions": 1,
+        "total_deletions": 0,
+        "files_truncated": False,
+    }
+
+
+@app.post("/api/canvas-nodes/{node_id}/retry", response_model=entities.CanvasNodePublic,
+          status_code=202)
+async def retry_canvas_node(node_id: str) -> Any:
+    canvas = store.canvases[0]
+    return {
+        "id": node_id,
+        "canvas_id": canvas["id"],
+        "kind": "system",
+        "task_id": None,
+        "is_summary": False,
+        "system_action": "check",
+        "command": "pnpm test",
+        "system_status": "running",
+        "pos_x": 0,
+        "pos_y": 0,
+        "created_at": now_ts(),
+    }
+
+
+@app.patch("/api/templates/{template_id}", response_model=entities.TemplatePublic)
+async def patch_template(template_id: str, body: rest.TemplatePatch) -> Any:
+    row = _builtin_triangle_template()
+    row["id"] = template_id
+    row.update({
+        key: value for key, value in body.model_dump(exclude_unset=True).items()
+        if value is not None
+    })
+    return row
+
+
+@app.delete("/api/templates/{template_id}", status_code=204)
+async def delete_template(template_id: str) -> Response:
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------- WS 与 mock 控制面

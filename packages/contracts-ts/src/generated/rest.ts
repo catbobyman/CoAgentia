@@ -237,6 +237,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/canvas-nodes/{node_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Canvas Node */
+        post: operations["retry_canvas_node_api_canvas_nodes__node_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/channels": {
         parameters: {
             query?: never;
@@ -306,6 +323,23 @@ export interface paths {
         get: operations["get_canvas_api_channels__channel_id__canvas_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/channels/{channel_id}/decompose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decompose */
+        post: operations["decompose_api_channels__channel_id__decompose_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -400,6 +434,40 @@ export interface paths {
         put: operations["put_notification_setting_api_channels__channel_id__notification_setting_put"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/channels/{channel_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bind Project */
+        post: operations["bind_project_api_channels__channel_id__projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/channels/{channel_id}/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unbind Project */
+        delete: operations["unbind_project_api_channels__channel_id__projects__project_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -631,6 +699,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Projects */
+        get: operations["list_projects_api_projects_get"];
+        put?: never;
+        /** Create Project */
+        post: operations["create_project_api_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Project */
+        delete: operations["delete_project_api_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Project */
+        patch: operations["patch_project_api_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Proposal */
+        get: operations["get_proposal_api_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Proposal */
+        post: operations["confirm_proposal_api_proposals__proposal_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Proposal */
+        post: operations["reject_proposal_api_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reminders": {
         parameters: {
             query?: never;
@@ -771,6 +926,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{task_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task Diff */
+        get: operations["get_task_diff_api_tasks__task_id__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{task_id}/status": {
         parameters: {
             query?: never;
@@ -827,6 +999,24 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Template */
+        delete: operations["delete_template_api_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Template */
+        patch: operations["patch_template_api_templates__template_id__patch"];
         trace?: never;
     };
     "/api/templates/{template_id}/instantiate": {
@@ -1162,6 +1352,13 @@ export interface components {
             /** Remind Todo H */
             remind_todo_h?: number | null;
         };
+        /** ChannelProjectPublic */
+        ChannelProjectPublic: {
+            /** Channel Id */
+            channel_id: string;
+            /** Project Id */
+            project_id: string;
+        };
         /** ChannelPublic */
         ChannelPublic: {
             /** Archived At */
@@ -1327,6 +1524,13 @@ export interface components {
          * @enum {string}
          */
         DecompMode: "draft" | "direct";
+        /** DecomposeRequest */
+        DecomposeRequest: {
+            /** Task Id */
+            task_id?: string | null;
+            /** Text */
+            text?: string | null;
+        };
         /**
          * DetectedRuntime
          * @description computers.detected_runtimes 数组元素（FR-2.3）。
@@ -1359,6 +1563,44 @@ export interface components {
             type: string;
             /** Workspace Id */
             workspace_id: string;
+        };
+        /** DiffFile */
+        DiffFile: {
+            /** Additions */
+            additions: number;
+            /** Deletions */
+            deletions: number;
+            /** Old Path */
+            old_path?: string | null;
+            /** Patch */
+            patch: string;
+            /** Patch Truncated */
+            patch_truncated: boolean;
+            /** Path */
+            path: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "added" | "modified" | "deleted" | "renamed";
+        };
+        /**
+         * DiffPayload
+         * @description git.diff 查询响应（契约 D §6）；REST Diff 卡直接复用此形状。
+         */
+        DiffPayload: {
+            /** Base Ref */
+            base_ref: string;
+            /** Files */
+            files: components["schemas"]["DiffFile"][];
+            /** Files Truncated */
+            files_truncated: boolean;
+            /** Head Ref */
+            head_ref: string;
+            /** Total Additions */
+            total_additions: number;
+            /** Total Deletions */
+            total_deletions: number;
         };
         /** DmCreate */
         DmCreate: {
@@ -1720,6 +1962,162 @@ export interface components {
          * @enum {string}
          */
         PresenceStatus: "online" | "offline" | "starting" | "idle" | "busy" | "error";
+        /** ProjectBind */
+        ProjectBind: {
+            /** Project Id */
+            project_id: string;
+        };
+        /** ProjectCreate */
+        ProjectCreate: {
+            /** Computer Id */
+            computer_id: string;
+            /** Deploy Command */
+            deploy_command?: string | null;
+            /** Dev Command */
+            dev_command?: string | null;
+            /** Name */
+            name: string;
+            /** Preview Idle Min */
+            preview_idle_min?: number | null;
+            /** Repo Path */
+            repo_path: string;
+            /** Worktree Keep Days */
+            worktree_keep_days?: number | null;
+        };
+        /** ProjectPatch */
+        ProjectPatch: {
+            /** Computer Id */
+            computer_id?: string | null;
+            /** Deploy Command */
+            deploy_command?: string | null;
+            /** Dev Command */
+            dev_command?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Preview Idle Min */
+            preview_idle_min?: number | null;
+            /** Repo Path */
+            repo_path?: string | null;
+            /** Worktree Keep Days */
+            worktree_keep_days?: number | null;
+        };
+        /**
+         * ProjectPublic
+         * @description 频道绑定读面由 channel_projects 联查得出，不落 projects 表。
+         */
+        ProjectPublic: {
+            /** Channel Ids */
+            channel_ids: string[];
+            /** Computer Id */
+            computer_id: string;
+            /** Created At */
+            created_at: string;
+            /** Deploy Command */
+            deploy_command?: string | null;
+            /** Dev Command */
+            dev_command?: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Preview Idle Min
+             * @default 30
+             */
+            preview_idle_min: number;
+            /** Repo Path */
+            repo_path: string;
+            /** Workspace Id */
+            workspace_id: string;
+            /**
+             * Worktree Keep Days
+             * @default 7
+             */
+            worktree_keep_days: number;
+        };
+        /** ProposalConfirm */
+        ProposalConfirm: {
+            /**
+             * Adjustments
+             * @default []
+             */
+            adjustments: components["schemas"]["JsonValue"][];
+            expected: components["schemas"]["ProposalConfirmExpected"];
+            /**
+             * Removed Ops
+             * @default []
+             */
+            removed_ops: number[];
+        };
+        /** ProposalConfirmExpected */
+        ProposalConfirmExpected: {
+            /** Baseline Hash */
+            baseline_hash: string;
+            /** Baseline Version */
+            baseline_version: number;
+            /** Proposal Hash */
+            proposal_hash: string;
+        };
+        /** ProposalConfirmResult */
+        ProposalConfirmResult: {
+            batch: components["schemas"]["LandingBatchPublic"];
+            proposal: components["schemas"]["ProposalPublic"];
+        };
+        /**
+         * ProposalKind
+         * @enum {string}
+         */
+        ProposalKind: "full" | "delta";
+        /** ProposalPublic */
+        ProposalPublic: {
+            /** Adjustments */
+            adjustments?: components["schemas"]["JsonValue"][];
+            /** Base Hash */
+            base_hash?: string | null;
+            body: components["schemas"]["JsonValue"];
+            /** Channel Id */
+            channel_id: string;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** @default full */
+            kind: components["schemas"]["ProposalKind"];
+            /** Landed Hash */
+            landed_hash?: string | null;
+            /** Proposal Hash */
+            proposal_hash: string;
+            /** Proposed By Member Id */
+            proposed_by_member_id: string;
+            /**
+             * Repair Count
+             * @default 0
+             */
+            repair_count: number;
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            /** Source Task Id */
+            source_task_id: string;
+            /** @default drafting */
+            status: components["schemas"]["ProposalStatus"];
+            /** Updated At */
+            updated_at: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** ProposalReject */
+        ProposalReject: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ProposalStatus
+         * @enum {string}
+         */
+        ProposalStatus: "drafting" | "validating" | "repairing" | "awaiting_confirm" | "landing" | "landed" | "superseded" | "rejected" | "failed";
         /** ReadPositionPublic */
         ReadPositionPublic: {
             /** Channel Id */
@@ -1905,6 +2303,7 @@ export interface components {
             contracts: components["schemas"]["TaskContractPublic"][];
             task: components["schemas"]["TaskPublic"];
             usage: components["schemas"]["TaskUsage"];
+            worktree?: components["schemas"]["WorktreePublic"] | null;
         };
         /**
          * TaskLevel
@@ -1967,6 +2366,8 @@ export interface components {
             number: number;
             /** Owner Member Id */
             owner_member_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
             /** Root Message Id */
             root_message_id: string;
             /** Silence Override H */
@@ -1979,6 +2380,11 @@ export interface components {
             title: string;
             /** Workspace Id */
             workspace_id: string;
+            /**
+             * Writes Code
+             * @default false
+             */
+            writes_code: boolean;
         };
         /**
          * TaskStatus
@@ -2112,6 +2518,16 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * TemplatePatch
+         * @description PATCH /templates/{id}：仅模板元数据可改（B §4.12）。
+         */
+        TemplatePatch: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** TemplatePublic */
         TemplatePublic: {
             body: components["schemas"]["TemplateBody"];
@@ -2237,6 +2653,35 @@ export interface components {
             /** @default dark */
             ui_theme: components["schemas"]["UiTheme"];
         };
+        /** WorktreePublic */
+        WorktreePublic: {
+            /** Branch */
+            branch: string;
+            /** Cleaned At */
+            cleaned_at?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Merge Commit */
+            merge_commit?: string | null;
+            /** Merged At */
+            merged_at?: string | null;
+            /** Path */
+            path: string;
+            /** Project Id */
+            project_id: string;
+            status: components["schemas"]["WorktreeStatus"];
+            /** Task Id */
+            task_id: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * WorktreeStatus
+         * @enum {string}
+         */
+        WorktreeStatus: "active" | "merged" | "conflicted" | "cleaned";
     };
     responses: never;
     parameters: never;
@@ -2742,6 +3187,37 @@ export interface operations {
             };
         };
     };
+    retry_canvas_node_api_canvas_nodes__node_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasNodePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_channels_api_channels_get: {
         parameters: {
             query?: never;
@@ -2908,6 +3384,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CanvasDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decompose_api_channels__channel_id__decompose_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecomposeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalPublic"];
                 };
             };
             /** @description Validation Error */
@@ -3144,6 +3655,71 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChannelNotificationSettingPublic"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bind_project_api_channels__channel_id__projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectBind"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelProjectPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unbind_project_api_channels__channel_id__projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -3624,6 +4200,224 @@ export interface operations {
             };
         };
     };
+    list_projects_api_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPublic"][];
+                };
+            };
+        };
+    };
+    create_project_api_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_api_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_project_api_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_proposal_api_proposals__proposal_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalConfirmResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_proposal_api_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalReject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_reminder_api_reminders_post: {
         parameters: {
             query?: never;
@@ -3920,6 +4714,37 @@ export interface operations {
             };
         };
     };
+    get_task_diff_api_tasks__task_id__diff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiffPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_task_status_api_tasks__task_id__status_post: {
         parameters: {
             query?: never;
@@ -4021,6 +4846,70 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplatePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_template_api_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_template_api_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

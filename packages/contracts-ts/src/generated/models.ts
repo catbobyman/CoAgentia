@@ -244,6 +244,16 @@ export type LastReadAt = string;
 export type LastReadMessageId = string;
 export type MemberId12 = string;
 export type ReadPositions = ReadPositionPublic[];
+export type ExitCode = number;
+export type NodeId3 = string;
+export type OutputTail = string;
+export type RunId = string;
+export type Status = 'success' | 'failed';
+export type Command2 = string;
+export type NodeId4 = string;
+export type ProjectId2 = string;
+export type RepoPath = string;
+export type RunId1 = string;
 export type Name7 = string;
 export type ApiKey = string;
 export type CommandLine = string;
@@ -289,30 +299,32 @@ export type Arch2 = string;
 export type DaemonVersion2 = string;
 export type DetectedRuntimes2 = DetectedRuntime[];
 export type Os2 = string;
+export type TaskId4 = string | null;
+export type Text = string | null;
 /**
  * TaskHandoff.deliverables[].kind（PRD §4.3 v1）。
  */
 export type DeliverableKind = 'file' | 'dir' | 'url' | 'artifact';
 export type Path = string;
 export type DeploymentId = string;
-export type ExitCode = number;
-export type Status = 'success' | 'failed';
+export type ExitCode1 = number;
+export type Status1 = 'success' | 'failed';
 export type Url = string | null;
 export type ChunkSeq = number;
 export type DeploymentId1 = string;
 export type Lines = string[];
 export type Branch = string;
-export type Command2 = string;
+export type Command3 = string;
 export type CommitHash = string | null;
 export type DeploymentId2 = string;
-export type RepoPath = string;
+export type RepoPath1 = string;
 export type Branch1 = string;
-export type Command3 = string;
+export type Command4 = string;
 export type CommitHash1 = string | null;
-export type ExitCode1 = number | null;
+export type ExitCode2 = number | null;
 export type FinishedAt = string | null;
 export type Id15 = string;
-export type ProjectId2 = string;
+export type ProjectId3 = string;
 export type StartedAt = string | null;
 export type DeploymentStatus = 'queued' | 'running' | 'success' | 'failed';
 export type TriggeredByMemberId = string;
@@ -322,13 +334,13 @@ export type ChunkSeq1 = number;
 export type DeploymentId3 = string;
 export type Lines1 = string[];
 export type Branch2 = string;
-export type Command4 = string;
+export type Command5 = string;
 export type CommitHash2 = string | null;
-export type ExitCode2 = number | null;
+export type ExitCode3 = number | null;
 export type FinishedAt1 = string | null;
 export type Id16 = string;
 export type LogPath = string | null;
-export type ProjectId3 = string;
+export type ProjectId4 = string;
 export type StartedAt1 = string | null;
 export type TriggeredByMemberId1 = string;
 export type Url2 = string | null;
@@ -339,14 +351,14 @@ export type AgentMemberId10 = string | null;
 export type At = string;
 export type BatchId = string | null;
 export type ChannelId12 = string | null;
-export type TaskId4 = string | null;
+export type TaskId5 = string | null;
 export type Type = string;
 export type AgentMemberId11 = string | null;
 export type BatchId1 = string | null;
 export type ChannelId13 = string | null;
 export type CreatedAt8 = string;
 export type Seq = number;
-export type TaskId5 = string | null;
+export type TaskId6 = string | null;
 export type Type1 = string;
 export type WorkspaceId11 = string;
 export type AgentMemberId12 = string | null;
@@ -354,10 +366,23 @@ export type BatchId2 = string | null;
 export type ChannelId14 = string | null;
 export type CreatedAt9 = string;
 export type Seq1 = number;
-export type TaskId6 = string | null;
+export type TaskId7 = string | null;
 export type Type2 = string;
 export type WorkspaceId12 = string;
 export type Events1 = DiagnosticEventIn[];
+export type Additions = number;
+export type Deletions = number;
+export type OldPath = string | null;
+export type Patch = string;
+export type PatchTruncated = boolean;
+export type Path1 = string;
+export type Status2 = 'added' | 'modified' | 'deleted' | 'renamed';
+export type BaseRef = string;
+export type Files = DiffFile[];
+export type FilesTruncated = boolean;
+export type HeadRef = string;
+export type TotalAdditions = number;
+export type TotalDeletions = number;
 export type MemberId13 = string;
 export type Adjustments = JsonValue[];
 export type ProposalId = string;
@@ -456,6 +481,9 @@ export type ErrorCode =
   | 'HELD_DRAFT_RESOLVED'
   | 'NOTIF_IN_DM'
   | 'TEMPLATE_CANVAS_NOT_READY'
+  | 'SYSTEM_NODE_NOT_RETRYABLE'
+  | 'TEMPLATE_BUILTIN_IMMUTABLE'
+  | 'PROJECT_IN_USE'
   | 'PERMISSION_DENIED'
   | 'NOT_FOUND';
 export type Message1 = string;
@@ -486,9 +514,9 @@ export type SizeBytes1 = number;
 export type StoredPath = string;
 export type WorkspaceId15 = string;
 export type Base = string | null;
-export type ProjectId4 = string;
-export type RepoPath1 = string;
-export type TaskId7 = string;
+export type ProjectId5 = string;
+export type RepoPath2 = string;
+export type TaskId8 = string;
 export type Title2 = string | null;
 export type AgentMemberId13 = string;
 export type ChannelId18 = string;
@@ -516,7 +544,7 @@ export type CardKind = 'proposal' | 'held_draft' | 'deployment' | 'fail_closed' 
 export type CardRef = string | null;
 export type ChannelId19 = string;
 export type CreatedAt13 = string;
-export type Files = FilePublic[] | null;
+export type Files1 = FilePublic[] | null;
 export type Id20 = string;
 export type MessageKind = 'user' | 'system';
 export type ThreadRootId1 = string | null;
@@ -539,7 +567,7 @@ export type Kind1 = 'binary';
 export type Mime2 = string | null;
 export type SizeBytes2 = number;
 export type AgentMemberId15 = string;
-export type Path1 = string;
+export type Path2 = string;
 export type Content = string;
 export type Kind2 = 'text';
 export type Truncated = boolean;
@@ -548,7 +576,7 @@ export type Mtime = string;
 export type Name13 = string;
 export type SizeBytes3 = number;
 export type AgentMemberId16 = string;
-export type Path2 = string;
+export type Path3 = string;
 export type Entries = HomeTreeEntry[];
 /**
  * S1 直投的来源域（契约 D §5.2）。
@@ -572,12 +600,14 @@ export type Id23 = string;
 export type TaskLevel = 'l1' | 'l2';
 export type Number = number;
 export type OwnerMemberId = string | null;
+export type ProjectId6 = string | null;
 export type RootMessageId = string;
 export type SilenceOverrideH = number | null;
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt = string;
 export type Title3 = string;
 export type WorkspaceId20 = string;
+export type WritesCode = boolean;
 export type Tasks = TaskPublic[];
 export type At2 = string;
 export type FrameId = string;
@@ -598,6 +628,7 @@ export type InstrType =
   | 'worktree.ensure'
   | 'worktree.merge'
   | 'worktree.cleanup'
+  | 'check.run'
   | 'preview.start'
   | 'preview.stop'
   | 'deploy.run'
@@ -612,7 +643,7 @@ export type Id24 = string;
 export type SourceRef1 = string;
 export type LandingBatchStatus1 = 'running' | 'done' | 'fail_closed';
 export type WorkspaceId21 = string;
-export type NodeId3 = string;
+export type NodeId5 = string;
 export type X1 = number;
 export type Y1 = number;
 export type Positions1 = LayoutPositionIn[];
@@ -679,10 +710,11 @@ export type MessageKind1 = 'user' | 'system';
 export type ThreadRootId5 = string | null;
 export type WorkspaceId24 = string;
 export type MessageId6 = string;
-export type TaskId8 = string;
-export type MessageId7 = string;
 export type TaskId9 = string;
-export type Command5 = string | null;
+export type MessageId7 = string;
+export type TaskId10 = string;
+export type Command6 = string | null;
+export type ProjectId7 = string | null;
 /**
  * @minItems 1
  */
@@ -692,7 +724,8 @@ export type Goal = string;
 export type OutOfScope = string[];
 export type Version1 = 'coagentia.task-plan.v1';
 export type Title4 = string;
-export type Command6 = string | null;
+export type WritesCode1 = boolean;
+export type Command7 = string | null;
 export type Title5 = string | null;
 export type NotificationMode2 = 'all' | 'mentions' | 'mute';
 export type Items1 = unknown[];
@@ -712,7 +745,7 @@ export type Port = number | null;
 export type RecycledAt = string | null;
 export type StartedAt2 = string;
 export type PreviewStatus = 'starting' | 'running' | 'recycled' | 'failed';
-export type TaskId10 = string;
+export type TaskId11 = string;
 export type WorkspaceId25 = string;
 export type WorktreeId = string;
 export type Id29 = string;
@@ -720,43 +753,66 @@ export type LastActiveAt1 = string | null;
 export type Port1 = number | null;
 export type RecycledAt1 = string | null;
 export type StartedAt3 = string;
-export type TaskId11 = string;
+export type TaskId12 = string;
 export type WorkspaceId26 = string;
 export type WorktreeId1 = string;
 export type DevCommand = string;
 export type PreviewSessionId = string;
-export type TaskId12 = string;
+export type TaskId13 = string;
 export type WorktreePath = string;
 export type Port2 = number | null;
 export type PreviewSessionId1 = string;
-export type Status1 = 'starting' | 'running' | 'recycled' | 'failed';
+export type Status3 = 'starting' | 'running' | 'recycled' | 'failed';
 export type PreviewSessionId2 = string;
-export type CreatedAt23 = string;
+export type ProjectId8 = string;
+export type ComputerId4 = string;
 export type DeployCommand = string | null;
 export type DevCommand1 = string | null;
-export type Id30 = string;
 export type Name16 = string;
-export type PreviewIdleMin = number;
-export type RepoPath2 = string;
-export type WorkspaceId27 = string;
-export type WorktreeKeepDays = number;
-export type CreatedAt24 = string;
+export type PreviewIdleMin = number | null;
+export type RepoPath3 = string;
+export type WorktreeKeepDays = number | null;
+export type ComputerId5 = string | null;
 export type DeployCommand1 = string | null;
 export type DevCommand2 = string | null;
+export type Name17 = string | null;
+export type PreviewIdleMin1 = number | null;
+export type RepoPath4 = string | null;
+export type WorktreeKeepDays1 = number | null;
+export type ChannelIds = string[];
+export type ComputerId6 = string;
+export type CreatedAt23 = string;
+export type DeployCommand2 = string | null;
+export type DevCommand3 = string | null;
+export type Id30 = string;
+export type Name18 = string;
+export type PreviewIdleMin2 = number;
+export type RepoPath5 = string;
+export type WorkspaceId27 = string;
+export type WorktreeKeepDays2 = number;
+export type ComputerId7 = string;
+export type CreatedAt24 = string;
+export type DeployCommand3 = string | null;
+export type DevCommand4 = string | null;
 export type Id31 = string;
-export type Name17 = string;
-export type PreviewIdleMin1 = number;
-export type RepoPath3 = string;
+export type Name19 = string;
+export type PreviewIdleMin3 = number;
+export type RepoPath6 = string;
 export type WorkspaceId28 = string;
-export type WorktreeKeepDays1 = number;
+export type WorktreeKeepDays3 = number;
 export type Adjustments1 = JsonValue[];
+export type BaselineHash4 = string;
+export type BaselineVersion4 = number;
+export type ProposalHash = string;
+export type RemovedOps = number[];
+export type Adjustments2 = JsonValue[];
 export type BaseHash = string | null;
 export type ChannelId26 = string;
 export type CreatedAt25 = string;
 export type Id32 = string;
 export type ProposalKind = 'full' | 'delta';
 export type LandedHash = string | null;
-export type ProposalHash = string;
+export type ProposalHash1 = string;
 export type ProposedByMemberId = string;
 export type RepairCount = number;
 export type Revision = number;
@@ -774,14 +830,15 @@ export type ProposalStatus =
 export type UpdatedAt2 = string;
 export type WorkspaceId29 = string;
 export type ProposalId1 = string;
-export type Adjustments2 = JsonValue[];
+export type Reason = string | null;
+export type Adjustments3 = JsonValue[];
 export type BaseHash1 = string | null;
 export type ChannelId27 = string;
 export type CreatedAt26 = string;
 export type Id33 = string;
 export type ProposalKind1 = 'full' | 'delta';
 export type LandedHash1 = string | null;
-export type ProposalHash1 = string;
+export type ProposalHash2 = string;
 export type ProposedByMemberId1 = string;
 export type RepairCount1 = number;
 export type Revision1 = number;
@@ -863,7 +920,8 @@ export type ReportType =
   | 'deploy.log'
   | 'deploy.finished'
   | 'preview.status'
-  | 'worktree.status';
+  | 'worktree.status'
+  | 'check.finished';
 export type V5 = number;
 export type Runtimes = DetectedRuntime[];
 export type Channels = ChannelPublic[];
@@ -893,7 +951,7 @@ export type Id36 = string;
 export type ReminderId1 = string | null;
 export type Revision2 = number;
 export type SupersededAt = string | null;
-export type TaskId13 = string | null;
+export type TaskId14 = string | null;
 export type Version2 = string;
 export type WorkspaceId34 = string;
 export type CreatedAt30 = string;
@@ -902,7 +960,7 @@ export type Id37 = string;
 export type ReminderId2 = string | null;
 export type Revision3 = number;
 export type SupersededAt1 = string | null;
-export type TaskId14 = string | null;
+export type TaskId15 = string | null;
 export type Version3 = string;
 export type WorkspaceId35 = string;
 export type Contracts = TaskContractPublic[];
@@ -911,20 +969,35 @@ export type CacheWriteTokens = number;
 export type Events2 = number;
 export type InputTokens = number;
 export type OutputTokens = number;
-export type ActorMemberId4 = string | null;
+export type Branch3 = string;
+export type CleanedAt = string | null;
 export type CreatedAt31 = string;
+export type Id38 = string;
+export type MergeCommit = string | null;
+export type MergedAt = string | null;
+export type Path4 = string;
+export type ProjectId9 = string;
+export type WorktreeStatus = 'active' | 'merged' | 'conflicted' | 'cleaned';
+export type TaskId16 = string;
+export type WorkspaceId36 = string;
+export type ActorMemberId4 = string | null;
+export type CreatedAt32 = string;
 export type OwnerMemberId1 = string | null;
 export type Seq5 = number;
-export type TaskId15 = string;
+export type TaskId17 = string;
 export type ActorMemberId5 = string | null;
-export type CreatedAt32 = string;
+export type CreatedAt33 = string;
 export type OwnerMemberId2 = string | null;
 export type Seq6 = number;
-export type TaskId16 = string;
+export type TaskId18 = string;
 export type Deliverables = Deliverable[];
 export type Evidence1 = Evidence[];
 export type FromMember = string;
 export type OpenRisks = string[];
+/**
+ * TaskHandoff 的结构化评审结论（契约 B §12.10）。
+ */
+export type ReviewVerdict = 'pass' | 'downgrade' | 'send_back' | 'needs_human';
 export type ToMember = string;
 export type VerifyPlan = string;
 export type Version4 = 'coagentia.task-handoff.v1';
@@ -932,18 +1005,20 @@ export type TaskLevel1 = 'l1' | 'l2';
 export type SilenceOverrideH1 = number | null;
 export type Title6 = string | null;
 export type ChannelId30 = string;
-export type CreatedAt33 = string;
+export type CreatedAt34 = string;
 export type CreatedByMemberId5 = string;
-export type Id38 = string;
+export type Id39 = string;
 export type TaskLevel2 = 'l1' | 'l2';
 export type Number1 = number;
 export type OwnerMemberId3 = string | null;
+export type ProjectId10 = string | null;
 export type RootMessageId1 = string;
 export type SilenceOverrideH2 = number | null;
 export type TaskStatus2 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt1 = string;
 export type Title7 = string;
-export type WorkspaceId36 = string;
+export type WorkspaceId37 = string;
+export type WritesCode2 = boolean;
 export type Briefing = string;
 export type FromKey = string;
 export type ToKey = string;
@@ -958,25 +1033,27 @@ export type Roles = TemplateRole[];
 export type ChannelId31 = string;
 export type Description9 = string;
 export type IncludeNodeIds = string[] | null;
-export type Name18 = string;
+export type Name20 = string;
 export type RolePlaceholders = {
   [k: string]: string;
 } | null;
 export type ChannelId32 = string;
+export type Description10 = string | null;
+export type Name21 = string | null;
 export type Builtin2 = boolean;
-export type CreatedAt34 = string;
-export type CreatedByMemberId6 = string;
-export type Description10 = string;
-export type Id39 = string;
-export type Name19 = string;
-export type WorkspaceId37 = string;
-export type Builtin3 = boolean;
 export type CreatedAt35 = string;
-export type CreatedByMemberId7 = string;
+export type CreatedByMemberId6 = string;
 export type Description11 = string;
 export type Id40 = string;
-export type Name20 = string;
+export type Name22 = string;
 export type WorkspaceId38 = string;
+export type Builtin3 = boolean;
+export type CreatedAt36 = string;
+export type CreatedByMemberId7 = string;
+export type Description12 = string;
+export type Id41 = string;
+export type Name23 = string;
+export type WorkspaceId39 = string;
 export type CacheReadTokens1 = number;
 export type CacheWriteTokens1 = number;
 export type InputTokens1 = number;
@@ -985,7 +1062,7 @@ export type AgentMemberId22 = string;
 export type CacheReadTokens2 = number;
 export type CacheWriteTokens2 = number;
 export type ChannelId33 = string | null;
-export type Id41 = string;
+export type Id42 = string;
 export type InputTokens2 = number;
 export type OutputTokens2 = number;
 export type ReportedAt = string;
@@ -995,31 +1072,31 @@ export type AgentMemberId23 = string;
 export type CacheReadTokens3 = number;
 export type CacheWriteTokens3 = number;
 export type ChannelId34 = string | null;
-export type Id42 = string;
+export type Id43 = string;
 export type InputTokens3 = number;
 export type OutputTokens3 = number;
 export type ReportedAt1 = string;
 export type SourceSession2 = string | null;
-export type TaskId17 = string | null;
-export type WorkspaceId39 = string;
+export type TaskId19 = string | null;
+export type WorkspaceId40 = string;
 export type AgentMemberId24 = string;
 export type CacheReadTokens4 = number;
 export type CacheWriteTokens4 = number;
 export type ChannelId35 = string | null;
-export type Id43 = string;
+export type Id44 = string;
 export type InputTokens4 = number;
 export type OutputTokens4 = number;
 export type ReportedAt2 = string;
 export type SourceSession3 = string | null;
-export type TaskId18 = string | null;
-export type WorkspaceId40 = string;
+export type TaskId20 = string | null;
+export type WorkspaceId41 = string;
 export type AgentMemberId25 = string;
-export type TaskId19 = string | null;
+export type TaskId21 = string | null;
 export type Events3 = TokenUsageEventIn[];
-export type Name21 = string;
+export type Name24 = string;
 export type Slug = string;
 export type AttachmentMaxMb = number | null;
-export type Name22 = string | null;
+export type Name25 = string | null;
 export type NotifDesktop = boolean | null;
 export type NotifSound = boolean | null;
 export type OnboardingGreeting = boolean | null;
@@ -1029,53 +1106,49 @@ export type SetupState = {
 export type Slug1 = string | null;
 export type UiTheme = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb1 = number;
-export type CreatedAt36 = string;
-export type Id44 = string;
-export type Name23 = string;
+export type CreatedAt37 = string;
+export type Id45 = string;
+export type Name26 = string;
 export type NotifDesktop1 = boolean;
 export type NotifSound1 = boolean;
 export type OnboardingGreeting1 = boolean;
 export type Slug2 = string;
 export type UiTheme1 = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb2 = number;
-export type CreatedAt37 = string;
-export type Id45 = string;
-export type Name24 = string;
+export type CreatedAt38 = string;
+export type Id46 = string;
+export type Name27 = string;
 export type NotifDesktop2 = boolean;
 export type NotifSound2 = boolean;
 export type OnboardingGreeting2 = boolean;
 export type Slug3 = string;
 export type UiTheme2 = 'dark' | 'light' | 'system';
-export type TaskId20 = string;
-export type Branch3 = string;
-export type ProjectId5 = string;
-export type RepoPath4 = string;
-export type TaskId21 = string;
-export type MergePlanRef = string | null;
 export type TaskId22 = string;
 export type Branch4 = string;
-export type CleanedAt = string | null;
-export type CreatedAt38 = string;
-export type Id46 = string;
-export type MergedAt = string | null;
-export type Path3 = string;
-export type ProjectId6 = string;
-export type WorktreeStatus = 'active' | 'merged' | 'conflicted' | 'cleaned';
+export type ProjectId11 = string;
+export type RepoPath7 = string;
 export type TaskId23 = string;
-export type WorkspaceId41 = string;
 export type Branch5 = string;
+export type Message2 = string;
+export type ProjectId12 = string;
+export type RepoPath8 = string;
+export type TaskId24 = string;
+export type Branch6 = string;
 export type CleanedAt1 = string | null;
 export type CreatedAt39 = string;
 export type Id47 = string;
+export type MergeCommit1 = string | null;
 export type MergedAt1 = string | null;
-export type Path4 = string;
-export type ProjectId7 = string;
-export type TaskId24 = string;
-export type WorkspaceId42 = string;
-export type Branch6 = string;
 export type Path5 = string;
-export type Status2 = 'active' | 'merged' | 'conflicted' | 'cleaned';
+export type ProjectId13 = string;
 export type TaskId25 = string;
+export type WorkspaceId42 = string;
+export type Branch7 = string;
+export type ConflictFiles = string[] | null;
+export type MergeCommit2 = string | null;
+export type Path6 = string;
+export type Status4 = 'active' | 'merged' | 'conflicted' | 'cleaned';
+export type TaskId26 = string;
 
 export interface CoAgentiaContracts {
   AcceptanceCriterion?: AcceptanceCriterion;
@@ -1130,6 +1203,8 @@ export interface CoAgentiaContracts {
   ChannelPublic?: ChannelPublic;
   ChannelRow?: ChannelRow;
   ChannelsSnapshot?: ChannelsSnapshot;
+  CheckFinishedData?: CheckFinishedData;
+  CheckRunData?: CheckRunData;
   ComputerCreate?: ComputerCreate;
   ComputerCreated?: ComputerCreated;
   ComputerData?: ComputerData;
@@ -1143,6 +1218,7 @@ export interface CoAgentiaContracts {
   DaemonAgentState?: DaemonAgentState;
   DaemonHelloAckData?: DaemonHelloAckData;
   DaemonHelloData?: DaemonHelloData;
+  DecomposeRequest?: DecomposeRequest;
   Deliverable?: Deliverable;
   DeployFinishedData?: DeployFinishedData;
   DeployLogReportData?: DeployLogReportData;
@@ -1157,6 +1233,8 @@ export interface CoAgentiaContracts {
   DiagnosticEventPublic?: DiagnosticEventPublic;
   DiagnosticEventRow?: DiagnosticEventRow;
   DiagnosticsBatchData?: DiagnosticsBatchData;
+  DiffFile?: DiffFile;
+  DiffPayload?: DiffPayload;
   DmCreate?: DmCreate;
   DraftAdjustedData?: DraftAdjustedData;
   EdgeCreate?: EdgeCreate;
@@ -1225,11 +1303,18 @@ export interface CoAgentiaContracts {
   PreviewStatusData?: PreviewStatusData;
   PreviewStopData?: PreviewStopData;
   PreviewUpdatedData?: PreviewUpdatedData;
+  ProjectBind?: ProjectBind;
+  ProjectCreate?: ProjectCreate;
+  ProjectPatch?: ProjectPatch;
   ProjectPublic?: ProjectPublic;
   ProjectRow?: ProjectRow;
+  ProposalConfirm?: ProposalConfirm;
+  ProposalConfirmExpected?: ProposalConfirmExpected;
+  ProposalConfirmResult?: ProposalConfirmResult;
   ProposalData?: ProposalData;
   ProposalPublic?: ProposalPublic;
   ProposalRefData?: ProposalRefData;
+  ProposalReject?: ProposalReject;
   ProposalRow?: ProposalRow;
   QueryFrame?: QueryFrame;
   ReadPositionPublic?: ReadPositionPublic;
@@ -1273,6 +1358,7 @@ export interface CoAgentiaContracts {
   TemplateEdge?: TemplateEdge;
   TemplateInstantiate?: TemplateInstantiate;
   TemplateNode?: TemplateNode;
+  TemplatePatch?: TemplatePatch;
   TemplatePublic?: TemplatePublic;
   TemplateRole?: TemplateRole;
   TemplateRow?: TemplateRow;
@@ -1707,6 +1793,20 @@ export interface ReadPositionPublic {
   last_read_message_id: LastReadMessageId;
   member_id: MemberId12;
 }
+export interface CheckFinishedData {
+  exit_code: ExitCode;
+  node_id: NodeId3;
+  output_tail: OutputTail;
+  run_id: RunId;
+  status: Status;
+}
+export interface CheckRunData {
+  command: Command2;
+  node_id: NodeId4;
+  project_id: ProjectId2;
+  repo_path: RepoPath;
+  run_id: RunId1;
+}
 export interface ComputerCreate {
   name: Name7;
 }
@@ -1819,14 +1919,18 @@ export interface DaemonHelloData {
   detected_runtimes: DetectedRuntimes2;
   os: Os2;
 }
+export interface DecomposeRequest {
+  task_id?: TaskId4;
+  text?: Text;
+}
 export interface Deliverable {
   kind: DeliverableKind;
   path: Path;
 }
 export interface DeployFinishedData {
   deployment_id: DeploymentId;
-  exit_code: ExitCode;
-  status: Status;
+  exit_code: ExitCode1;
+  status: Status1;
   url?: Url;
 }
 export interface DeployLogReportData {
@@ -1836,10 +1940,10 @@ export interface DeployLogReportData {
 }
 export interface DeployRunData {
   branch: Branch;
-  command: Command2;
+  command: Command3;
   commit_hash?: CommitHash;
   deployment_id: DeploymentId2;
-  repo_path: RepoPath;
+  repo_path: RepoPath1;
 }
 export interface DeploymentData {
   deployment: DeploymentPublic;
@@ -1849,12 +1953,12 @@ export interface DeploymentData {
  */
 export interface DeploymentPublic {
   branch: Branch1;
-  command: Command3;
+  command: Command4;
   commit_hash?: CommitHash1;
-  exit_code?: ExitCode1;
+  exit_code?: ExitCode2;
   finished_at?: FinishedAt;
   id: Id15;
-  project_id: ProjectId2;
+  project_id: ProjectId3;
   started_at?: StartedAt;
   status: DeploymentStatus;
   token_summary?: unknown;
@@ -1869,13 +1973,13 @@ export interface DeploymentLogData {
 }
 export interface DeploymentRow {
   branch: Branch2;
-  command: Command4;
+  command: Command5;
   commit_hash?: CommitHash2;
-  exit_code?: ExitCode2;
+  exit_code?: ExitCode3;
   finished_at?: FinishedAt1;
   id: Id16;
   log_path?: LogPath;
-  project_id: ProjectId3;
+  project_id: ProjectId4;
   started_at?: StartedAt1;
   status: DeploymentStatus;
   token_summary?: unknown;
@@ -1899,7 +2003,7 @@ export interface DiagnosticEventIn {
   batch_id?: BatchId;
   channel_id?: ChannelId12;
   payload: JsonValue;
-  task_id?: TaskId4;
+  task_id?: TaskId5;
   type: Type;
 }
 export interface DiagnosticEventPublic {
@@ -1909,7 +2013,7 @@ export interface DiagnosticEventPublic {
   created_at: CreatedAt8;
   payload: JsonValue;
   seq: Seq;
-  task_id?: TaskId5;
+  task_id?: TaskId6;
   type: Type1;
   workspace_id: WorkspaceId11;
 }
@@ -1923,12 +2027,32 @@ export interface DiagnosticEventRow {
   created_at: CreatedAt9;
   payload: JsonValue;
   seq: Seq1;
-  task_id?: TaskId6;
+  task_id?: TaskId7;
   type: Type2;
   workspace_id: WorkspaceId12;
 }
 export interface DiagnosticsBatchData {
   events: Events1;
+}
+export interface DiffFile {
+  additions: Additions;
+  deletions: Deletions;
+  old_path?: OldPath;
+  patch: Patch;
+  patch_truncated: PatchTruncated;
+  path: Path1;
+  status: Status2;
+}
+/**
+ * git.diff 查询响应（契约 D §6）；REST Diff 卡直接复用此形状。
+ */
+export interface DiffPayload {
+  base_ref: BaseRef;
+  files: Files;
+  files_truncated: FilesTruncated;
+  head_ref: HeadRef;
+  total_additions: TotalAdditions;
+  total_deletions: TotalDeletions;
 }
 export interface DmCreate {
   member_id: MemberId13;
@@ -2006,9 +2130,9 @@ export interface FileRow {
 }
 export interface GitDiffQuery {
   base?: Base;
-  project_id: ProjectId4;
-  repo_path: RepoPath1;
-  task_id: TaskId7;
+  project_id: ProjectId5;
+  repo_path: RepoPath2;
+  task_id: TaskId8;
 }
 /**
  * 草稿携带的 as_task 意图（v1.0.5）——放行时随消息同一事务执行（语义同 B §9.4）。
@@ -2071,7 +2195,7 @@ export interface MessagePublic {
   card_ref?: CardRef;
   channel_id: ChannelId19;
   created_at: CreatedAt13;
-  files?: Files;
+  files?: Files1;
   id: Id20;
   kind?: MessageKind;
   thread_root_id?: ThreadRootId1;
@@ -2112,7 +2236,7 @@ export interface HomeFileBinaryReply {
 }
 export interface HomeFileQuery {
   agent_member_id: AgentMemberId15;
-  path: Path1;
+  path: Path2;
 }
 export interface HomeFileTextReply {
   content: Content;
@@ -2127,7 +2251,7 @@ export interface HomeTreeEntry {
 }
 export interface HomeTreeQuery {
   agent_member_id: AgentMemberId16;
-  path: Path2;
+  path: Path3;
 }
 export interface HomeTreeReply {
   entries: Entries;
@@ -2163,12 +2287,14 @@ export interface TaskPublic {
   level?: TaskLevel;
   number: Number;
   owner_member_id?: OwnerMemberId;
+  project_id?: ProjectId6;
   root_message_id: RootMessageId;
   silence_override_h?: SilenceOverrideH;
   status?: TaskStatus;
   status_changed_at: StatusChangedAt;
   title: Title3;
   workspace_id: WorkspaceId20;
+  writes_code?: WritesCode;
 }
 /**
  * at-least-once：ack 超时原帧原样重发（同 frame_id）；同 Agent 串行。
@@ -2203,7 +2329,7 @@ export interface LandingBatchRow {
  * 单节点坐标（pos_x/pos_y 不参与基线快照，契约 A §6）。
  */
 export interface LayoutPositionIn {
-  node_id: NodeId3;
+  node_id: NodeId5;
   x: X1;
   y: Y1;
 }
@@ -2346,14 +2472,14 @@ export interface MessageRow {
 }
 export interface MessageTaskRefPublic {
   message_id: MessageId6;
-  task_id: TaskId8;
+  task_id: TaskId9;
 }
 /**
  * M2：task #n 解析结果（派生持久化）。
  */
 export interface MessageTaskRefRow {
   message_id: MessageId7;
-  task_id: TaskId9;
+  task_id: TaskId10;
 }
 /**
  * POST /canvases/{id}/nodes：新增画布节点。
@@ -2362,11 +2488,13 @@ export interface MessageTaskRefRow {
  * system_action 必填、check 动作附 command。字段级 kind↔约束由 server 执法（V14/W8）。
  */
 export interface NodeCreate {
-  command?: Command5;
+  command?: Command6;
   kind: CanvasNodeKind;
+  project_id?: ProjectId7;
   system_action?: SystemAction | null;
   task_plan?: TaskPlanBody | null;
   title: Title4;
+  writes_code?: WritesCode1;
 }
 /**
  * L2 任务计划契约（进入画布/正式立项时必填——PRD §4.3 v1）。
@@ -2382,7 +2510,7 @@ export interface TaskPlanBody {
  * PATCH /canvases/{id}/nodes/{node_id}：改节点标题 / check 命令。
  */
 export interface NodePatch {
-  command?: Command6;
+  command?: Command7;
   title?: Title5;
 }
 /**
@@ -2427,7 +2555,7 @@ export interface PreviewSessionPublic {
   recycled_at?: RecycledAt;
   started_at: StartedAt2;
   status: PreviewStatus;
-  task_id: TaskId10;
+  task_id: TaskId11;
   workspace_id: WorkspaceId25;
   worktree_id: WorktreeId;
 }
@@ -2438,20 +2566,20 @@ export interface PreviewSessionRow {
   recycled_at?: RecycledAt1;
   started_at: StartedAt3;
   status: PreviewStatus;
-  task_id: TaskId11;
+  task_id: TaskId12;
   workspace_id: WorkspaceId26;
   worktree_id: WorktreeId1;
 }
 export interface PreviewStartData {
   dev_command: DevCommand;
   preview_session_id: PreviewSessionId;
-  task_id: TaskId12;
+  task_id: TaskId13;
   worktree_path: WorktreePath;
 }
 export interface PreviewStatusData {
   port?: Port2;
   preview_session_id: PreviewSessionId1;
-  status: Status1;
+  status: Status3;
 }
 export interface PreviewStopData {
   preview_session_id: PreviewSessionId2;
@@ -2459,33 +2587,71 @@ export interface PreviewStopData {
 export interface PreviewUpdatedData {
   preview: PreviewSessionPublic;
 }
-export interface ProjectPublic {
-  created_at: CreatedAt23;
+export interface ProjectBind {
+  project_id: ProjectId8;
+}
+export interface ProjectCreate {
+  computer_id: ComputerId4;
   deploy_command?: DeployCommand;
   dev_command?: DevCommand1;
-  id: Id30;
   name: Name16;
   preview_idle_min?: PreviewIdleMin;
-  repo_path: RepoPath2;
-  workspace_id: WorkspaceId27;
+  repo_path: RepoPath3;
   worktree_keep_days?: WorktreeKeepDays;
 }
-export interface ProjectRow {
-  created_at: CreatedAt24;
+export interface ProjectPatch {
+  computer_id?: ComputerId5;
   deploy_command?: DeployCommand1;
   dev_command?: DevCommand2;
-  id: Id31;
-  name: Name17;
+  name?: Name17;
   preview_idle_min?: PreviewIdleMin1;
-  repo_path: RepoPath3;
-  workspace_id: WorkspaceId28;
+  repo_path?: RepoPath4;
   worktree_keep_days?: WorktreeKeepDays1;
 }
-export interface ProposalData {
+/**
+ * 频道绑定读面由 channel_projects 联查得出，不落 projects 表。
+ */
+export interface ProjectPublic {
+  channel_ids: ChannelIds;
+  computer_id: ComputerId6;
+  created_at: CreatedAt23;
+  deploy_command?: DeployCommand2;
+  dev_command?: DevCommand3;
+  id: Id30;
+  name: Name18;
+  preview_idle_min?: PreviewIdleMin2;
+  repo_path: RepoPath5;
+  workspace_id: WorkspaceId27;
+  worktree_keep_days?: WorktreeKeepDays2;
+}
+export interface ProjectRow {
+  computer_id: ComputerId7;
+  created_at: CreatedAt24;
+  deploy_command?: DeployCommand3;
+  dev_command?: DevCommand4;
+  id: Id31;
+  name: Name19;
+  preview_idle_min?: PreviewIdleMin3;
+  repo_path: RepoPath6;
+  workspace_id: WorkspaceId28;
+  worktree_keep_days?: WorktreeKeepDays3;
+}
+export interface ProposalConfirm {
+  adjustments?: Adjustments1;
+  expected: ProposalConfirmExpected;
+  removed_ops?: RemovedOps;
+}
+export interface ProposalConfirmExpected {
+  baseline_hash: BaselineHash4;
+  baseline_version: BaselineVersion4;
+  proposal_hash: ProposalHash;
+}
+export interface ProposalConfirmResult {
+  batch: LandingBatchPublic;
   proposal: ProposalPublic;
 }
 export interface ProposalPublic {
-  adjustments?: Adjustments1;
+  adjustments?: Adjustments2;
   base_hash?: BaseHash;
   body: JsonValue;
   channel_id: ChannelId26;
@@ -2493,7 +2659,7 @@ export interface ProposalPublic {
   id: Id32;
   kind?: ProposalKind;
   landed_hash?: LandedHash;
-  proposal_hash: ProposalHash;
+  proposal_hash: ProposalHash1;
   proposed_by_member_id: ProposedByMemberId;
   repair_count?: RepairCount;
   revision?: Revision;
@@ -2502,11 +2668,17 @@ export interface ProposalPublic {
   updated_at: UpdatedAt2;
   workspace_id: WorkspaceId29;
 }
+export interface ProposalData {
+  proposal: ProposalPublic;
+}
 export interface ProposalRefData {
   proposal_id: ProposalId1;
 }
+export interface ProposalReject {
+  reason?: Reason;
+}
 export interface ProposalRow {
-  adjustments?: Adjustments2;
+  adjustments?: Adjustments3;
   base_hash?: BaseHash1;
   body: JsonValue;
   channel_id: ChannelId27;
@@ -2514,7 +2686,7 @@ export interface ProposalRow {
   id: Id33;
   kind?: ProposalKind1;
   landed_hash?: LandedHash1;
-  proposal_hash: ProposalHash1;
+  proposal_hash: ProposalHash2;
   proposed_by_member_id: ProposedByMemberId1;
   repair_count?: RepairCount1;
   revision?: Revision1;
@@ -2682,7 +2854,7 @@ export interface TaskContractPublic {
   reminder_id?: ReminderId1;
   revision?: Revision2;
   superseded_at?: SupersededAt;
-  task_id?: TaskId13;
+  task_id?: TaskId14;
   version: Version2;
   workspace_id: WorkspaceId34;
 }
@@ -2698,7 +2870,7 @@ export interface TaskContractRow {
   reminder_id?: ReminderId2;
   revision?: Revision3;
   superseded_at?: SupersededAt1;
-  task_id?: TaskId14;
+  task_id?: TaskId15;
   version: Version3;
   workspace_id: WorkspaceId35;
 }
@@ -2712,6 +2884,7 @@ export interface TaskDetail {
   contracts?: Contracts;
   task: TaskPublic;
   usage: TaskUsage;
+  worktree?: WorktreePublic | null;
 }
 /**
  * TaskDetail 的成本聚合（token_usage_events 按 task_id 汇总）。
@@ -2723,14 +2896,27 @@ export interface TaskUsage {
   input_tokens?: InputTokens;
   output_tokens?: OutputTokens;
 }
+export interface WorktreePublic {
+  branch: Branch3;
+  cleaned_at?: CleanedAt;
+  created_at: CreatedAt31;
+  id: Id38;
+  merge_commit?: MergeCommit;
+  merged_at?: MergedAt;
+  path: Path4;
+  project_id: ProjectId9;
+  status: WorktreeStatus;
+  task_id: TaskId16;
+  workspace_id: WorkspaceId36;
+}
 export interface TaskEventPublic {
   actor_member_id?: ActorMemberId4;
-  created_at: CreatedAt31;
+  created_at: CreatedAt32;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
   owner_member_id?: OwnerMemberId1;
   seq: Seq5;
-  task_id: TaskId15;
+  task_id: TaskId17;
   to_status?: TaskStatus1 | null;
 }
 /**
@@ -2738,12 +2924,12 @@ export interface TaskEventPublic {
  */
 export interface TaskEventRow {
   actor_member_id?: ActorMemberId5;
-  created_at: CreatedAt32;
+  created_at: CreatedAt33;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
   owner_member_id?: OwnerMemberId2;
   seq: Seq6;
-  task_id: TaskId16;
+  task_id: TaskId18;
   to_status?: TaskStatus1 | null;
 }
 /**
@@ -2754,6 +2940,7 @@ export interface TaskHandoffBody {
   evidence?: Evidence1;
   from_member: FromMember;
   open_risks?: OpenRisks;
+  review_verdict?: ReviewVerdict | null;
   to_member: ToMember;
   verify_plan: VerifyPlan;
   version?: Version4;
@@ -2774,18 +2961,20 @@ export interface TaskPatch {
  */
 export interface TaskRow {
   channel_id: ChannelId30;
-  created_at: CreatedAt33;
+  created_at: CreatedAt34;
   created_by_member_id: CreatedByMemberId5;
-  id: Id38;
+  id: Id39;
   level?: TaskLevel2;
   number: Number1;
   owner_member_id?: OwnerMemberId3;
+  project_id?: ProjectId10;
   root_message_id: RootMessageId1;
   silence_override_h?: SilenceOverrideH2;
   status?: TaskStatus2;
   status_changed_at: StatusChangedAt1;
   title: Title7;
-  workspace_id: WorkspaceId36;
+  workspace_id: WorkspaceId37;
+  writes_code?: WritesCode2;
 }
 /**
  * 状态写（B §9.1）——POST /tasks/{id}/status。
@@ -2847,7 +3036,7 @@ export interface TemplateCreate {
   channel_id: ChannelId31;
   description?: Description9;
   include_node_ids?: IncludeNodeIds;
-  name: Name18;
+  name: Name20;
   role_placeholders?: RolePlaceholders;
 }
 /**
@@ -2865,15 +3054,22 @@ export interface TemplateInstantiate {
 export interface RoleMapping {
   [k: string]: string | null;
 }
+/**
+ * PATCH /templates/{id}：仅模板元数据可改（B §4.12）。
+ */
+export interface TemplatePatch {
+  description?: Description10;
+  name?: Name21;
+}
 export interface TemplatePublic {
   body: TemplateBody;
   builtin?: Builtin2;
-  created_at: CreatedAt34;
+  created_at: CreatedAt35;
   created_by_member_id: CreatedByMemberId6;
-  description?: Description10;
-  id: Id39;
-  name: Name19;
-  workspace_id: WorkspaceId37;
+  description?: Description11;
+  id: Id40;
+  name: Name22;
+  workspace_id: WorkspaceId38;
 }
 /**
  * M5：DAG 结构 + 角色占位表 + 简报话术（C7）；实例化走落地事务器（tmpl:<batch_id>:…）。
@@ -2881,12 +3077,12 @@ export interface TemplatePublic {
 export interface TemplateRow {
   body: TemplateBody;
   builtin?: Builtin3;
-  created_at: CreatedAt35;
+  created_at: CreatedAt36;
   created_by_member_id: CreatedByMemberId7;
-  description?: Description11;
-  id: Id40;
-  name: Name20;
-  workspace_id: WorkspaceId38;
+  description?: Description12;
+  id: Id41;
+  name: Name23;
+  workspace_id: WorkspaceId39;
 }
 export interface TokenTotals {
   cache_read_tokens?: CacheReadTokens1;
@@ -2903,7 +3099,7 @@ export interface TokenUsageEventIn {
   cache_read_tokens?: CacheReadTokens2;
   cache_write_tokens?: CacheWriteTokens2;
   channel_id?: ChannelId33;
-  id: Id41;
+  id: Id42;
   input_tokens?: InputTokens2;
   output_tokens?: OutputTokens2;
   reported_at: ReportedAt;
@@ -2915,13 +3111,13 @@ export interface TokenUsageEventPublic {
   cache_read_tokens?: CacheReadTokens3;
   cache_write_tokens?: CacheWriteTokens3;
   channel_id?: ChannelId34;
-  id: Id42;
+  id: Id43;
   input_tokens?: InputTokens3;
   output_tokens?: OutputTokens3;
   reported_at: ReportedAt1;
   source_session?: SourceSession2;
-  task_id?: TaskId17;
-  workspace_id: WorkspaceId39;
+  task_id?: TaskId19;
+  workspace_id: WorkspaceId40;
 }
 /**
  * M1 建表：W7 成本口径原始层（仅 provider 上报，永不推导费用）。
@@ -2931,29 +3127,29 @@ export interface TokenUsageEventRow {
   cache_read_tokens?: CacheReadTokens4;
   cache_write_tokens?: CacheWriteTokens4;
   channel_id?: ChannelId35;
-  id: Id43;
+  id: Id44;
   input_tokens?: InputTokens4;
   output_tokens?: OutputTokens4;
   reported_at: ReportedAt2;
   source_session?: SourceSession3;
-  task_id?: TaskId18;
-  workspace_id: WorkspaceId40;
+  task_id?: TaskId20;
+  workspace_id: WorkspaceId41;
 }
 export interface TokenUsageReportedData {
   agent_member_id: AgentMemberId25;
-  task_id?: TaskId19;
+  task_id?: TaskId21;
   totals: TokenTotals;
 }
 export interface UsageBatchData {
   events: Events3;
 }
 export interface WorkspaceCreate {
-  name: Name21;
+  name: Name24;
   slug: Slug;
 }
 export interface WorkspacePatch {
   attachment_max_mb?: AttachmentMaxMb;
-  name?: Name22;
+  name?: Name25;
   notif_desktop?: NotifDesktop;
   notif_sound?: NotifSound;
   onboarding_greeting?: OnboardingGreeting;
@@ -2963,9 +3159,9 @@ export interface WorkspacePatch {
 }
 export interface WorkspacePublic {
   attachment_max_mb?: AttachmentMaxMb1;
-  created_at: CreatedAt36;
-  id: Id44;
-  name: Name23;
+  created_at: CreatedAt37;
+  id: Id45;
+  name: Name26;
   notif_desktop?: NotifDesktop1;
   notif_sound?: NotifSound1;
   onboarding_greeting?: OnboardingGreeting1;
@@ -2978,9 +3174,9 @@ export interface SetupState1 {
 }
 export interface WorkspaceRow {
   attachment_max_mb?: AttachmentMaxMb2;
-  created_at: CreatedAt37;
-  id: Id45;
-  name: Name24;
+  created_at: CreatedAt38;
+  id: Id46;
+  name: Name27;
   notif_desktop?: NotifDesktop2;
   notif_sound?: NotifSound2;
   onboarding_greeting?: OnboardingGreeting2;
@@ -2995,47 +3191,41 @@ export interface WorkspaceUpdatedData {
   workspace: WorkspacePublic;
 }
 export interface WorktreeCleanupData {
-  task_id: TaskId20;
-}
-export interface WorktreeEnsureData {
-  branch: Branch3;
-  project_id: ProjectId5;
-  repo_path: RepoPath4;
-  task_id: TaskId21;
-}
-export interface WorktreeMergeData {
-  merge_plan_ref?: MergePlanRef;
   task_id: TaskId22;
 }
-export interface WorktreePublic {
+export interface WorktreeEnsureData {
   branch: Branch4;
-  cleaned_at?: CleanedAt;
-  created_at: CreatedAt38;
-  id: Id46;
-  merged_at?: MergedAt;
-  path: Path3;
-  project_id: ProjectId6;
-  status: WorktreeStatus;
+  project_id: ProjectId11;
+  repo_path: RepoPath7;
   task_id: TaskId23;
-  workspace_id: WorkspaceId41;
+}
+export interface WorktreeMergeData {
+  branch: Branch5;
+  message: Message2;
+  project_id: ProjectId12;
+  repo_path: RepoPath8;
+  task_id: TaskId24;
 }
 export interface WorktreeRow {
-  branch: Branch5;
+  branch: Branch6;
   cleaned_at?: CleanedAt1;
   created_at: CreatedAt39;
   id: Id47;
+  merge_commit?: MergeCommit1;
   merged_at?: MergedAt1;
-  path: Path4;
-  project_id: ProjectId7;
+  path: Path5;
+  project_id: ProjectId13;
   status: WorktreeStatus;
-  task_id: TaskId24;
+  task_id: TaskId25;
   workspace_id: WorkspaceId42;
 }
 export interface WorktreeStatusData {
-  branch: Branch6;
-  path: Path5;
-  status: Status2;
-  task_id: TaskId25;
+  branch: Branch7;
+  conflict_files?: ConflictFiles;
+  merge_commit?: MergeCommit2;
+  path: Path6;
+  status: Status4;
+  task_id: TaskId26;
 }
 export interface WorktreeUpdatedData {
   worktree: WorktreePublic;

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from coagentia_contracts import entities, rest, ws
+from coagentia_contracts import daemon, entities, rest, ws
 from coagentia_server.app import create_app
 from coagentia_server.db.engine import make_engine, sqlite_url
 from coagentia_server.db.seed import seed_database
@@ -238,6 +238,9 @@ def test_task_detail_shape(dual: DualClient) -> None:
     )
     assert detail.contracts == []  # 新建任务尚无契约（真 server）/ mock 恒空
     assert detail.usage.events == 0  # 无 usage 富化 → 0（优雅缺席）
+    assert detail.task.project_id is None
+    assert detail.task.writes_code is False
+    assert detail.worktree is None
 
 
 def test_task_contracts_empty_shape(dual: DualClient) -> None:
@@ -408,6 +411,64 @@ def test_channels_snapshot_notification_settings_field(dual: DualClient) -> None
     _, client = dual
     snap = rest.ChannelsSnapshot.model_validate(client.get("/api/channels").json())
     assert snap.notification_settings == []
+
+
+# ---------------------------------------------------------------- M6 契约登记（J0）
+
+
+def test_mock_covers_m6_endpoints() -> None:
+    """mock 形状源 serve M6 编排/交付、retry 与模板治理的 14 个目录端点。"""
+    from coagentia_mock.app import app as mock_app
+
+    served = _served(TestClient(mock_app))
+    missing = [(m, p) for m, p in rest.ENDPOINTS_M6 if (m, _norm(p)) not in served]
+    assert not missing, f"mock 未 serve M6 端点: {missing}"
+
+
+def test_mock_project_diff_proposal_shapes() -> None:
+    """J0 只验 OpenAPI 形状；Project 校验、git diff 与提案状态机均不在 mock 实现。"""
+    from coagentia_mock.app import app as mock_app
+
+    client = TestClient(mock_app)
+    client.post("/__mock/reset")
+
+    projects = TypeAdapter(list[entities.ProjectPublic]).validate_python(
+        client.get("/api/projects").json()
+    )
+    assert projects and projects[0].channel_ids
+
+    task = client.get("/api/tasks").json()["items"][0]
+    diff = daemon.DiffPayload.model_validate(
+        client.get(f"/api/tasks/{task['id']}/diff").json()
+    )
+    assert diff.files and diff.files[0].path == "README.md"
+
+    decompose = client.post(
+        f"/api/channels/{task['channel_id']}/decompose", json={"task_id": task["id"]}
+    )
+    assert decompose.status_code == 202
+    proposal = entities.ProposalPublic.model_validate(decompose.json())
+    assert proposal.channel_id == task["channel_id"]
+
+    fetched = entities.ProposalPublic.model_validate(
+        client.get(f"/api/proposals/{proposal.id}").json()
+    )
+    confirm = client.post(
+        f"/api/proposals/{proposal.id}/confirm",
+        json={
+            "expected": {
+                "proposal_hash": fetched.proposal_hash,
+                "baseline_version": 1,
+                "baseline_hash": "0" * 64,
+            },
+            "adjustments": [],
+            "removed_ops": [],
+        },
+    )
+    assert confirm.status_code == 202
+    rest.ProposalConfirmResult.model_validate(confirm.json())
+    rejected = client.post(f"/api/proposals/{proposal.id}/reject", json={})
+    assert entities.ProposalPublic.model_validate(rejected.json()).status.value == "rejected"
 
 
 # -------------------------------------------------------- M5b 模板（H5 存/列 + H6 实例化双跑）

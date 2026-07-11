@@ -118,7 +118,7 @@ D:\Project4work\Agenthub_7_8\
 
 ## 5. 当前状态（2026-07-11）
 
-- **M1–M5 全收口** = PRD M5 出口达成；**M6 已立项待开工**（契约修订已落笔：A v1.0.7 / B v1.4 / D v1.0.3；C/E/E2 零修订）。
+- **M1–M5 全收口** = PRD M5 出口达成；**M6a 已开工**（J3-cal/J0 完成，J1 接续）。契约现版：A v1.0.8 / B v1.4.1 / D v1.0.3；C/E/E2 零修订。v1.0.8/v1.4.1 是开工审计补遗（merge_commit 持久落点 + Project 形状精确化），非行为变更。
 - git：`main` @ `562af66`，工作树干净，**无 remote**。
 - 测试基线（守门起点，**只增不减**）：后端 `uv run pytest -q` = **712 passed / 4 skipped**；前端 vitest = **175**；pyright **0 错**（并入 `pnpm typecheck`）；ruff 干净；`pnpm gen` 后 diff 为空；双侧 build 绿。
 - owner 已拍板的 M6 方向（**已拍板勿再问**）：①交付链先行（M6a=FR-10 → M6b=FR-9）②worktree 工作目录=消息注入（适配器零修订）③挂账三件全收（评审结论枚举/模板 PATCH·DELETE/fail-closed 复核）④合并=`--no-ff`。

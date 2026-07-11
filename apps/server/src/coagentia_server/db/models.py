@@ -40,6 +40,7 @@ from coagentia_contracts.enums import (
     TaskLevel,
     TaskStatus,
     UiTheme,
+    WorktreeStatus,
 )
 from sqlalchemy import (
     JSON,
@@ -85,6 +86,8 @@ M4_TABLES: tuple[str, ...] = ("held_drafts",)
 # 均**可变**（templates 无 UPDATE 面但 builtin 启动 upsert 会改；notification_settings mode 会
 # UPDATE）——不进 IMMUTABLE 集、无触发器。templates 块 a 期间空置（M3"迁移不拆两次"先例）。
 M5_TABLES: tuple[str, ...] = ("templates", "channel_notification_settings")
+# M6a（契约 A v1.0.8 §4.9）：三张交付表一次建齐；tasks 两列由 0008 增量补齐。
+M6A_TABLES: tuple[str, ...] = ("projects", "channel_projects", "worktrees")
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -458,6 +461,8 @@ class Task(Base):
     owner_member_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("members.id"))
     level: Mapped[str] = mapped_column(_enum(TaskLevel), server_default=text("'l1'"))
     created_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    project_id: Mapped[str | None] = mapped_column(_ULID, ForeignKey("projects.id"))
+    writes_code: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
     silence_override_h: Mapped[int | None] = mapped_column(Integer)  # D5，M4 才消费
     status_changed_at: Mapped[str] = mapped_column(Text)  # 沉默提醒计时锚
     created_at: Mapped[str] = mapped_column(Text)
@@ -680,3 +685,49 @@ class ChannelNotificationSetting(Base):
     mode: Mapped[str] = mapped_column(
         _enum(NotificationMode), server_default=text("'all'")
     )
+
+
+# ---------------------------------------------------------------- 4.9 Project 与交付链（M6a）
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    computer_id: Mapped[str] = mapped_column(_ULID, ForeignKey("computers.id"))
+    name: Mapped[str] = mapped_column(Text)
+    repo_path: Mapped[str] = mapped_column(Text)
+    dev_command: Mapped[str | None] = mapped_column(Text)
+    deploy_command: Mapped[str | None] = mapped_column(Text)
+    preview_idle_min: Mapped[int] = mapped_column(Integer, server_default=text("30"))
+    worktree_keep_days: Mapped[int] = mapped_column(Integer, server_default=text("7"))
+    created_at: Mapped[str] = mapped_column(Text)
+
+
+class ChannelProject(Base):
+    __tablename__ = "channel_projects"
+    __table_args__ = (PrimaryKeyConstraint("channel_id", "project_id"),)
+
+    channel_id: Mapped[str] = mapped_column(
+        _ULID, ForeignKey("channels.id", ondelete="CASCADE")
+    )
+    project_id: Mapped[str] = mapped_column(
+        _ULID, ForeignKey("projects.id", ondelete="CASCADE")
+    )
+
+
+class Worktree(Base):
+    __tablename__ = "worktrees"
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    project_id: Mapped[str] = mapped_column(_ULID, ForeignKey("projects.id"))
+    task_id: Mapped[str] = mapped_column(_ULID, ForeignKey("tasks.id"), unique=True)
+    branch: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(_enum(WorktreeStatus))
+    merge_commit: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text)
+    merged_at: Mapped[str | None] = mapped_column(Text)
+    cleaned_at: Mapped[str | None] = mapped_column(Text)

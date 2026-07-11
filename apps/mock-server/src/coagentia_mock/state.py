@@ -118,6 +118,7 @@ class Store:
             "id": new_id(), "workspace_id": self.workspace["id"], "channel_id": channel_id,
             "number": number, "root_message_id": root_message_id, "title": title,
             "status": "todo", "owner_member_id": None, "level": "l1",
+            "project_id": None, "writes_code": False,
             "created_by_member_id": creator_id, "silence_override_h": None,
             "status_changed_at": at, "created_at": at,
         }

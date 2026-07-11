@@ -3,8 +3,7 @@
 from coagentia_contracts import constants, daemon, rest, ws
 from coagentia_contracts.enums import TaskStatus
 
-# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.3 起 25 个，
-# M5 新增 NOTIF_IN_DM / TEMPLATE_CANVAS_NOT_READY）
+# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.4 起 28 个）
 ERROR_CODES = {
     "VALIDATION_FAILED", "TASK_IN_DM", "NOT_TOP_LEVEL_MESSAGE", "CLAIM_RACE",
     "HANDOFF_INCOMPLETE", "TASK_TRANSITION_INVALID", "GRAPH_CYCLE", "STALE_CONFIRM",
@@ -12,6 +11,7 @@ ERROR_CODES = {
     "NAME_TAKEN", "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS",
     "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE",
     "HELD_DRAFT_RESOLVED", "NOTIF_IN_DM", "TEMPLATE_CANVAS_NOT_READY",
+    "SYSTEM_NODE_NOT_RETRYABLE", "TEMPLATE_BUILTIN_IMMUTABLE", "PROJECT_IN_USE",
     "PERMISSION_DENIED", "NOT_FOUND",
 }
 
@@ -51,19 +51,20 @@ INSTR_TYPES = {
     "agent.start", "agent.stop", "agent.restart", "agent.reset_session", "agent.reset_full",
     "agent.wake", "agent.sleep", "message.deliver", "message.inject", "worktree.ensure",
     "worktree.merge", "worktree.cleanup", "preview.start", "preview.stop", "deploy.run",
-    "runtime.rescan",
+    "check.run", "runtime.rescan",
 }
 QUERY_TYPES = {"home.tree", "home.file", "git.diff"}
 REPORT_TYPES = {
     "hello", "agent.status_changed", "agent.activity", "runtimes.detected",
     "diagnostics.batch", "usage.batch", "deploy.log", "deploy.finished", "preview.status",
     "worktree.status",
+    "check.finished",
 }
 
 
 def test_error_codes_exact() -> None:
     assert {c.value for c in rest.ErrorCode} == ERROR_CODES
-    assert len(ERROR_CODES) == 25
+    assert len(ERROR_CODES) == 28
 
 
 def test_ws_event_catalog_exact() -> None:
@@ -159,9 +160,9 @@ def test_mcp_tool_catalog() -> None:
 
 
 def test_m3_endpoint_catalog_size() -> None:
-    """M3 端点清单：12 条（§4.7 契约/force-start + §4.9 画布组），与 M1/M2 不相交。"""
-    assert len(rest.ENDPOINTS_M3) == 12
-    assert len(set(rest.ENDPOINTS_M3)) == 12
+    """M3 端点清单：11 条；系统节点 retry 归 M6 执行面。"""
+    assert len(rest.ENDPOINTS_M3) == 11
+    assert len(set(rest.ENDPOINTS_M3)) == 11
     assert set(rest.ENDPOINTS_M1).isdisjoint(rest.ENDPOINTS_M3)
     assert set(rest.ENDPOINTS_M2).isdisjoint(rest.ENDPOINTS_M3)
 
@@ -199,6 +200,26 @@ def test_m5_adds_no_mcp_tools() -> None:
     """E 契约 v1.4 裁决（§7 #12）：M5 工具组为空——连续第三个里程碑零新增 Agent 工具（唯一变化 =
     create_reminder cadence 值域扩 cron，属描述文案非工具目录）。COAGENTIA_MCP_TOOLS 不增补。"""
     assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3/M4/M5 无增
+
+
+def test_m6_endpoint_catalog_size() -> None:
+    """M6 端点清单：编排 4 + Project 7 + retry 1 + 模板治理 2。"""
+    assert len(rest.ENDPOINTS_M6) == 14
+    assert len(set(rest.ENDPOINTS_M6)) == 14
+    prior = (
+        rest.ENDPOINTS_M1,
+        rest.ENDPOINTS_M2,
+        rest.ENDPOINTS_M3,
+        rest.ENDPOINTS_M4,
+        rest.ENDPOINTS_M5,
+    )
+    for endpoints in prior:
+        assert set(endpoints).isdisjoint(rest.ENDPOINTS_M6)
+
+
+def test_m6_adds_no_mcp_tools() -> None:
+    """M6 零新增 Agent 工具（契约裁决 #13）。"""
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 15
 
 
 def test_codex_disallowed_tools_placeholder() -> None:

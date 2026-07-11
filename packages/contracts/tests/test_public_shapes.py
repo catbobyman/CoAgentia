@@ -77,8 +77,13 @@ def test_message_public_adds_files() -> None:
     assert attached.files is not None and attached.files[0].name == "spec.md"
 
 
+def test_project_public_adds_channel_ids() -> None:
+    """ProjectPublic 增 channel_ids 联查读面，不污染 projects 行形状。"""
+    assert fields(entities.ProjectPublic) == fields(entities.ProjectRow) | {"channel_ids"}
+
+
 def test_all_other_publics_equal_rows() -> None:
-    """其余 Public = Row（子类零改动）；有意放宽的五个在上面单测。"""
+    """其余 Public = Row（子类零改动）；有意放宽的六个在上面单测。"""
     pairs = [
         (entities.WorkspaceRow, entities.WorkspacePublic),
         (entities.MemberRow, entities.MemberPublic),
@@ -99,7 +104,6 @@ def test_all_other_publics_equal_rows() -> None:
         (entities.LandingBatchRow, entities.LandingBatchPublic),
         (entities.LedgerEntryRow, entities.LedgerEntryPublic),
         (entities.ProposalRow, entities.ProposalPublic),
-        (entities.ProjectRow, entities.ProjectPublic),
         (entities.WorktreeRow, entities.WorktreePublic),
         (entities.PreviewSessionRow, entities.PreviewSessionPublic),
         (entities.DeploymentRow, entities.DeploymentPublic),
@@ -114,6 +118,7 @@ def test_all_other_publics_equal_rows() -> None:
             entities.DeploymentPublic,
             entities.ActivityItemPublic,
             entities.MessagePublic,
+            entities.ProjectPublic,
         ):
             continue
         assert fields(public) == fields(row), f"{public.__name__} != {row.__name__}"
