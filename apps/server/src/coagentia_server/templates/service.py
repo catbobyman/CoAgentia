@@ -307,6 +307,33 @@ def missing_role_mappings(body: TemplateBody, role_mapping: dict[str, Any]) -> l
     return [r.placeholder for r in body.roles if r.placeholder not in role_mapping]
 
 
+def channel_has_canvas(conn: Connection, channel_id: str) -> bool:
+    """目标频道是否有画布（实例化前置校验用；无 → route 于 reserve 前 404）。
+
+    ApiError 有异常处理器 → 事务不回滚（fail-closed 标记赖此持久），故幂等 reserve 之后不得再抛
+    可失败错误；把「无画布 404」前移到 reserve 前，失败即不残留 op_id、原键可重试。
+    """
+    return canvas_service.fetch_canvas_by_channel(conn, channel_id) is not None
+
+
+def unknown_role_members(conn: Connection, role_mapping: dict[str, Any]) -> list[str]:
+    """role_mapping 非空值中不在册活动成员的 member id（B §11.2；落库前 422 拒，防 FK 500）。
+
+    格式合法但不存在的 member id 会流入 create_task.created_by / mention_ids，触发未捕获的
+    FK IntegrityError（500 + 回滚）；此处一次批查活动成员（removed_at IS NULL），返回未解析的
+    id（保序去重），route 据此 422 VALIDATION_FAILED，details.unknown 列之。
+    """
+    wanted = _dedup([mid for mid in role_mapping.values() if mid is not None])
+    if not wanted:
+        return []
+    live = set(
+        conn.execute(
+            select(_MEMBER.c.id).where(_MEMBER.c.id.in_(wanted), _MEMBER.c.removed_at.is_(None))
+        ).scalars()
+    )
+    return [mid for mid in wanted if mid not in live]
+
+
 def _dedup(items: list[str]) -> list[str]:
     """保序去重（briefing @mention 目标可能多角色映射到同一 Agent）。"""
     seen: set[str] = set()
@@ -482,6 +509,9 @@ def instantiate_template(
     """
     conn = tx.conn
     body = TemplateBody.model_validate(template_row["body"])
+    # 引用一致性 + 无环兜底（纪律 7 唯一执法点也守实例化路径）：所有写入路径存前已校验，此处是
+    # 防御——悬挂 edge key 否则会在 _land_edges 的 key_to_node_id[...] 抛 KeyError（500）而非 422。
+    validate_template_body(body)
     canvas = canvas_service.fetch_canvas_by_channel(conn, channel_id)
     if canvas is None:
         from coagentia_contracts import rest
@@ -549,15 +579,18 @@ def instantiate_template(
     #     hub 读 message_mentions → WakeReason.MENTION 即开工信号）。复用 guard._post_system_
     #     message（durable 系统消息 + message_mentions 行 by member_id + emit message.created）。
     mention_ids = _dedup([mid for mid in role_mapping.values() if mid is not None])
-    guard_service._post_system_message(
-        tx,
-        workspace_id=workspace_id,
-        channel_id=channel_id,
-        body=body.briefing,
-        thread_root_id=None,
-        mention_member_ids=mention_ids,
-        created_at=service.now_iso(),
-    )
+    # briefing 既空又无唤醒目标（用户存的模板 briefing 恒空 + 全 null 映射）→ 跳过发消息，免落
+    # 一条空正文零 mention 的系统噪声消息；有话术或有 @角色 才发（后者为唤醒载体）。
+    if body.briefing.strip() or mention_ids:
+        guard_service._post_system_message(
+            tx,
+            workspace_id=workspace_id,
+            channel_id=channel_id,
+            body=body.briefing,
+            thread_root_id=None,
+            mention_member_ids=mention_ids,
+            created_at=service.now_iso(),
+        )
 
     # (f) baseline 批末统一 bump（避免逐节点 version 抖动）+ mark_done（批 :done 事实源 S4）。
     version, hash_, changed = canvas_service.advance_baseline(tx, canvas["id"])
@@ -642,6 +675,7 @@ def upsert_builtin_templates(engine: Engine) -> None:
 
 __all__ = [
     "UNCLAIMED_PLACEHOLDER",
+    "channel_has_canvas",
     "fetch_template",
     "fetch_templates",
     "has_draft_layer",
@@ -649,6 +683,7 @@ __all__ = [
     "instantiate_template",
     "missing_role_mappings",
     "serialize_canvas_to_body",
+    "unknown_role_members",
     "upsert_builtin_templates",
     "validate_template_body",
 ]

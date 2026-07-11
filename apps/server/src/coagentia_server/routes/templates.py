@@ -106,10 +106,16 @@ def _instantiate_result(tx: Tx, batch: Any, task_rows: list[dict[str, Any]]) -> 
 
 
 def _reconstruct_from_ledger(tx: Tx, payload: dict[str, Any]) -> dict[str, Any]:
-    """幂等命中 → 凭账本 payload 重建原 InstantiateResult（batch_id + task_ids 回查落库行）。"""
+    """幂等命中 → 凭账本重建原 InstantiateResult。
+
+    REST op_id 采 reserve-before 语义（建任何节点前登记，见 instantiate_template），故其 payload
+    只携 batch_id；task_rows 从该批已落库的逐节点 `create_node` 账本行派生（batch_node_task_ids），
+    而非一份只有落库后才算得出的 task_ids 列表。
+    """
     batch = service._fetch_batch(tx.conn, payload["batch_id"])
     assert batch is not None
-    task_rows = [tasks_service.fetch_task(tx.conn, tid) for tid in payload["task_ids"]]
+    task_ids = service.batch_node_task_ids(tx.conn, payload["batch_id"])
+    task_rows = [tasks_service.fetch_task(tx.conn, tid) for tid in task_ids]
     return _instantiate_result(tx, batch, task_rows)
 
 
@@ -139,7 +145,8 @@ def instantiate_template(
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "模板不存在")
 
     tbody = TemplateBody.model_validate(template["body"])
-    missing = templates_service.missing_role_mappings(tbody, dict(body.role_mapping))
+    role_mapping = dict(body.role_mapping)
+    missing = templates_service.missing_role_mappings(tbody, role_mapping)
     if missing:
         raise ApiError(
             422,
@@ -148,46 +155,49 @@ def instantiate_template(
             rule="B§11.2",
             details={"missing": missing},
         )
+    # role_mapping 值须指向在册活动成员：格式合法但不存在的 member id 会在建任务/mention 时触发
+    # FK IntegrityError（未捕获 → 500 + 回滚）；落库前显式拒为 422（details.unknown 列之）。
+    unknown = templates_service.unknown_role_members(tx.conn, role_mapping)
+    if unknown:
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "role_mapping 含未知成员",
+            rule="B§11.2",
+            details={"unknown": unknown},
+        )
+    # 无画布 404 前移到 reserve 之前：ApiError 有处理器 → 事务不回滚（fail-closed 标记赖此），故
+    # reserve 之后不得再抛可失败错误，否则残留 op_id 指向未建落地批（重放 reconstruct 落空）。
+    if not templates_service.channel_has_canvas(tx.conn, body.channel_id):
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "目标频道无画布，无法实例化")
 
-    # 幂等命中前置（照 messages.py:404-448）：只读 lookup 探已登记首次结果，absent 才走落库路径。
-    op_id: str | None = None
-    req_hash: str | None = None
+    batch_id = service.new_ulid()
+
+    # 幂等 reserve-before（照 messages.py:430-448：record 先于副作用）：并发对手先落库同键时，本
+    # 请求在建任何节点前即 409/回其结果，绝不产生重复落地批。所有可失败校验（404/422）已全部前置
+    # 于 reserve 之上，故 reserve 后 instantiate 不再抛错（模板已校验无环、实例化子图与既有画布不
+    # 相交故不成环）——因 ApiError 不回滚事务，op_id 不会残留指向未建的批。op_id payload 只记
+    # batch_id，task_ids 由逐节点 create_node 账本行派生（_reconstruct_from_ledger）。
     if idempotency_key is not None:
         op_id = OPID_REST_IDEMPOTENCY.format(key=idempotency_key)
         req_hash = fingerprint(body.model_dump(mode="json"))
-        look = service.lookup(tx.conn, op_id, req_hash)
-        if look["status"] == "hit":
-            return _reconstruct_from_ledger(tx, look["entry"].payload)
-        if look["status"] == "mismatch":
-            raise ApiError(
-                409, rest.ErrorCode.IDEMPOTENCY_MISMATCH, "同 Idempotency-Key 不同请求体"
-            )
-
-    batch_id = service.new_ulid()
-    batch, task_rows = templates_service.instantiate_template(
-        tx,
-        template_row=template,
-        channel_id=body.channel_id,
-        role_mapping=dict(body.role_mapping),
-        owner_id=me["id"],
-        batch_id=batch_id,
-    )
-
-    # 幂等登记（落库路径才写账本）：payload 携 batch_id + task_ids 供重放重建；record 兜并发抢先。
-    if idempotency_key is not None:
-        assert op_id is not None and req_hash is not None
         res = service.record(
-            tx.conn,
-            op_id,
-            "rest_instantiate",
-            {"batch_id": batch_id, "task_ids": [t["id"] for t in task_rows]},
-            request_hash=req_hash,
+            tx.conn, op_id, "rest_instantiate", {"batch_id": batch_id}, request_hash=req_hash
         )
-        if res["status"] == "hit":  # 并发对手已抢先落库同键 → 回其结果
+        if res["status"] == "hit":  # 并发对手已抢先登记同键同体 → 回其结果，不建节点
             return _reconstruct_from_ledger(tx, res["entry"].payload)
         if res["status"] == "mismatch":
             raise ApiError(
                 409, rest.ErrorCode.IDEMPOTENCY_MISMATCH, "同 Idempotency-Key 不同请求体"
             )
+        batch_id = res["entry"].payload["batch_id"]  # new：复用账本登记的 batch_id
 
+    batch, task_rows = templates_service.instantiate_template(
+        tx,
+        template_row=template,
+        channel_id=body.channel_id,
+        role_mapping=role_mapping,
+        owner_id=me["id"],
+        batch_id=batch_id,
+    )
     return _instantiate_result(tx, batch, task_rows)

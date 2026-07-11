@@ -173,8 +173,9 @@ export const useInstantiateTemplate = () => {
   const qc = useQueryClient();
   const toast = useToast();
   return useMutation({
-    mutationFn: ({ templateId, body }: { templateId: string; body: TemplateInstantiate }) =>
-      api.instantiateTemplate(templateId, body),
+    mutationFn: ({ templateId, body, idempotencyKey }: {
+      templateId: string; body: TemplateInstantiate; idempotencyKey?: string;
+    }) => api.instantiateTemplate(templateId, body, idempotencyKey),
     onSuccess: (_res, { body }) => {
       const ch = body.channel_id;
       void qc.invalidateQueries({ queryKey: qk.canvas(ch) });
@@ -182,8 +183,18 @@ export const useInstantiateTemplate = () => {
       void qc.invalidateQueries({ queryKey: qk.messages(ch) });
       toast.push('已从模板实例化到频道', { tone: 'success' });
     },
-    onError: (e: unknown) =>
-      toast.push(e instanceof ApiError ? e.message : '实例化失败', { tone: 'error' }),
+    // 422 VALIDATION_FAILED 携 details.missing(未覆盖的角色占位名列表)——UI 责任层已用
+    // missingRoleMappings 拦在实例化钮前，此处仅兜底(如并发改模板等边缘态)并把占位名带进 toast。
+    onError: (e: unknown) => {
+      let msg = e instanceof ApiError ? e.message : '实例化失败';
+      if (e instanceof ApiError && e.code === 'VALIDATION_FAILED') {
+        const missing = (e.details as { missing?: unknown } | undefined)?.missing;
+        if (Array.isArray(missing) && missing.length > 0) {
+          msg = `${msg}:${missing.join('、')}`;
+        }
+      }
+      toast.push(msg, { tone: 'error' });
+    },
   });
 };
 

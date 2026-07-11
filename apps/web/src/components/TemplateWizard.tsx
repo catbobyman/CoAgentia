@@ -1,8 +1,10 @@
 // 模板向导三步(B-M5-2 ②，对照设计稿 P13 向导)：①选模板(卡片 + DAG 缩略图) → ②角色映射
-// (每占位下拉选成员/待认领/新建；评审+实现映射到同 runtime 就地 warning 不阻塞 FR-7.3/§11.2 #6)
+// (每占位下拉选成员/待认领；评审+实现映射到同 runtime 就地 warning 不阻塞 FR-7.3/§11.2 #6。
+// 无内联「新建 Agent」——M5 前端无建 Agent 流程，v1.3 契约已收窄，见 §7 #8)
 // → ③预览简报 + DAG → 实例化(单事务落地批，成功跳目标频道画布)。role_mapping 全覆盖后才可实例化
-// (§11.2 #1，避免 422)。零新增 WS 事件(裁决 #7)——落地广播走既有 task/canvas/message 事件。
-import { useEffect, useMemo, useRef, useState } from 'react';
+// (§11.2 #1，避免 422)。实例化携 Idempotency-Key(同键同体重放回同一批，防丢响应重试重复落地)。
+// 零新增 WS 事件(裁决 #7)——落地广播走既有 task/canvas/message 事件。
+import { useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, ArrowRight, Rocket } from 'lucide-react';
 
@@ -20,7 +22,6 @@ import './templates.css';
 
 const RUNTIME_WORD: Record<string, string> = { claude_code: 'Claude Code', codex: 'Codex' };
 const UNASSIGNED = '__unassigned__';
-const CREATE = '__create__';
 
 // ---- DAG 缩略图(纯展示)：按最长路径分层左→右排布，小矩形节点 + 连线。有环兜底 depth 0。
 export function TemplateDagThumb({ body }: { body: TemplateBody }) {
@@ -97,12 +98,11 @@ export function TemplateDagThumb({ body }: { body: TemplateBody }) {
   );
 }
 
-export function TemplateWizard({ channelId, members, onClose, onInstantiated, onCreateAgent }: {
+export function TemplateWizard({ channelId, members, onClose, onInstantiated }: {
   channelId: string;
   members: MemberPublic[];
   onClose: () => void;
   onInstantiated: (channelId: string) => void;
-  onCreateAgent?: (placeholder: string) => void;
 }) {
   const templatesQ = useTemplates();
   const instantiateM = useInstantiateTemplate();
@@ -122,30 +122,18 @@ export function TemplateWizard({ channelId, members, onClose, onInstantiated, on
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
-  const [awaitingCreateFor, setAwaitingCreateFor] = useState<string | null>(null);
+  // 本次提交的幂等键:首次点「实例化」时惰性生成并固定，同一次提交的网络重试复用同键同体，
+  // 防丢响应重试在目标频道重复落地一批(server 侧 OPID_REST_IDEMPOTENCY 幂等登记)。
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const selected: TemplatePublic | undefined = templates.find((t) => t.id === selectedId);
   const roles = selected?.body.roles ?? [];
-
-  // 「新建 Agent」回填:awaitingCreateFor 期间若成员表新增 agent，自动映射到该占位(§7 #8 回填)。
-  const prevIdsRef = useRef<Set<string>>(new Set(members.map((m) => m.id)));
-  useEffect(() => {
-    if (awaitingCreateFor) {
-      const fresh = members.find((m) => m.kind === 'agent' && !prevIdsRef.current.has(m.id));
-      if (fresh) {
-        setMapping((prev) => ({ ...prev, [awaitingCreateFor]: fresh.id }));
-        setAwaitingCreateFor(null);
-      }
-    }
-    prevIdsRef.current = new Set(members.map((m) => m.id));
-  }, [members, awaitingCreateFor]);
 
   const missing = missingRoleMappings(roles, mapping);
   const sameRuntimeWarn = hasSameRuntimeReview(roles, mapping, (id) => runtimeOf[id]);
 
   const pickTemplate = (id: string) => { setSelectedId(id); setMapping({}); };
   const onRoleChange = (ph: string, v: string) => {
-    if (v === CREATE) { setAwaitingCreateFor(ph); onCreateAgent?.(ph); return; }
     if (v === '') {
       setMapping((prev) => { const n = { ...prev }; delete n[ph]; return n; });
       return;
@@ -155,8 +143,13 @@ export function TemplateWizard({ channelId, members, onClose, onInstantiated, on
 
   const instantiate = () => {
     if (!selectedId || missing.length > 0) return;
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
     instantiateM.mutate(
-      { templateId: selectedId, body: { channel_id: channelId, role_mapping: mapping } },
+      {
+        templateId: selectedId,
+        body: { channel_id: channelId, role_mapping: mapping },
+        idempotencyKey: idempotencyKeyRef.current,
+      },
       { onSuccess: () => { onInstantiated(channelId); onClose(); } },
     );
   };
@@ -251,7 +244,6 @@ export function TemplateWizard({ channelId, members, onClose, onInstantiated, on
                           </option>
                         );
                       })}
-                      <option value={CREATE}>＋ 新建 Agent…</option>
                     </select>
                   </div>
                 );

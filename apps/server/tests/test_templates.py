@@ -706,3 +706,40 @@ def test_instantiate_builtin_triangle(
     with seeded_engine.connect() as conn:
         assert canvas_service.is_task_blocked(conn, first.id) is False
         assert canvas_service.is_task_blocked(conn, gate.id) is True
+
+
+def test_instantiate_unknown_member_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """role_mapping 含格式合法但不存在的 member id → 422 VALIDATION_FAILED（details.unknown），
+    落库前拒，不触发 create_task/mention 的 FK IntegrityError 500。"""
+    tpl = _two_node_template(server_client, seeded_engine, with_plan=False)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    bogus = "01K0MMBR000000000000000099"  # 26 字 ULID 形状但无此成员
+    r = _instantiate(
+        server_client, tpl["id"], research["id"], {"producer": rin["id"], "consumer": bogus}
+    )
+    assert r.status_code == 422, r.text
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
+    assert err.error.details == {"unknown": [bogus]}
+    # 画布零落地（reserve/落库前即拒）。
+    assert len(_canvas_detail(server_client, research["id"])["nodes"]) == 0
+
+
+def test_instantiate_failed_precheck_leaves_no_op_id(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """可失败校验全部前置于幂等 reserve 之前（ApiError 不回滚事务）：同键先打无画布频道 404，op_id
+    不残留；再打有效频道同键（异体）不因残留 op_id 误判 409 mismatch，而是照常 201。"""
+    tpl = _two_node_template(server_client, seeded_engine, with_plan=False)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    mapping: dict[str, str | None] = {"producer": rin["id"], "consumer": None}
+    ghost_channel = "01K0CHAN000000000000000099"  # 无此频道 → instantiate 内 404 无画布
+    r1 = _instantiate(server_client, tpl["id"], ghost_channel, mapping, idempotency_key="rk1")
+    assert r1.status_code == 404, r1.text
+    r2 = _instantiate(server_client, tpl["id"], research["id"], mapping, idempotency_key="rk1")
+    assert r2.status_code == 201, r2.text  # op_id 随失败事务回滚 → 非 409
+    assert len(_canvas_detail(server_client, research["id"])["nodes"]) == 2

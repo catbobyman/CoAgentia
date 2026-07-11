@@ -1,5 +1,6 @@
 // 模板向导三步(M5 B-M5-2 ②):选模板 / 角色映射 / 同 runtime warning / 异 runtime 无 warning /
-// 新建回填 / 实例化跳转。runtime 经 qk.agent 缓存 seed(staleTime Infinity 免 refetch)。
+// 步③预览(简报 + 映射摘要 + DAG) / 实例化跳转(携 Idempotency-Key)。runtime 经 qk.agent 缓存 seed
+// (staleTime Infinity 免 refetch)。步②下拉无「新建 Agent」选项(M5 前端无建 Agent 流程，见 FIX 1)。
 // 运行:pnpm -F @coagentia/web test
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -53,7 +54,6 @@ function renderWizard(members: MemberPublic[]) {
   members.forEach((m) => qc.setQueryData<AgentPublic>(qk.agent(m.id), agentOf(m.id, RT[m.id] ?? 'claude_code')));
   const onClose = vi.fn();
   const onInstantiated = vi.fn();
-  const onCreateAgent = vi.fn();
   const tree = (ms: MemberPublic[]) => (
     <QueryClientProvider client={qc}>
       <ToastProvider>
@@ -62,7 +62,6 @@ function renderWizard(members: MemberPublic[]) {
           members={ms}
           onClose={onClose}
           onInstantiated={onInstantiated}
-          onCreateAgent={onCreateAgent}
         />
         <Toaster />
       </ToastProvider>
@@ -73,7 +72,7 @@ function renderWizard(members: MemberPublic[]) {
     ms.forEach((m) => qc.setQueryData<AgentPublic>(qk.agent(m.id), agentOf(m.id, RT[m.id] ?? 'claude_code')));
     utils.rerender(tree(ms));
   };
-  return { qc, onClose, onInstantiated, onCreateAgent, rerender };
+  return { qc, onClose, onInstantiated, rerender };
 }
 
 async function gotoStep2() {
@@ -127,17 +126,33 @@ describe('TemplateWizard', () => {
     expect(screen.queryByTestId('same-runtime-warn')).not.toBeInTheDocument();
   });
 
-  it('「新建 Agent」→ onCreateAgent；成员表新增 agent → 自动回填', async () => {
-    const { onCreateAgent, rerender } = renderWizard([member('a', 'Alice')]);
+  it('步②下拉仅 请选择成员…/待认领/agent 选项，无「新建 Agent」(FIX 1:死控件已移除)', async () => {
+    renderWizard([member('a', 'Alice'), member('b', 'Bob')]);
     await gotoStep2();
-    fireEvent.change(screen.getByLabelText('映射 实现工程师'), { target: { value: '__create__' } });
-    expect(onCreateAgent).toHaveBeenCalledWith('实现工程师');
-    // 父层创建 Agent 后回传成员表 → 向导自动映射到新成员。
-    rerender([member('a', 'Alice'), member('d', 'Dana')]);
-    await waitFor(() => expect((screen.getByLabelText('映射 实现工程师') as HTMLSelectElement).value).toBe('d'));
+    const sel = screen.getByLabelText('映射 实现工程师') as HTMLSelectElement;
+    const optionTexts = Array.from(sel.options).map((o) => o.textContent);
+    expect(optionTexts).toEqual(['请选择成员…', '待认领', 'Alice · Claude Code', 'Bob · Claude Code']);
+    expect(optionTexts.some((t) => t?.includes('新建'))).toBe(false);
   });
 
-  it('步③实例化 → 调 instantiateTemplate 并跳转(onInstantiated)', async () => {
+  it('步③预览:简报文案 + 角色映射摘要(含待认领回退) + DAG 缩略图', async () => {
+    renderWizard([member('a', 'Alice'), member('b', 'Bob')]);
+    await gotoStep2();
+    fireEvent.change(screen.getByLabelText('映射 实现工程师'), { target: { value: 'a' } });
+    fireEvent.change(screen.getByLabelText('映射 评审工程师'), { target: { value: '__unassigned__' } });
+    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
+    await screen.findByTestId('wizard-step-3');
+
+    const briefing = document.querySelector('.tw-briefing');
+    expect(briefing?.textContent).toBe('本频道由工程三角实例化：实现方交付、评审方复核。');
+
+    const rows = Array.from(document.querySelectorAll('.tw-summary .sr')).map((el) => el.textContent);
+    expect(rows).toEqual(['实现工程师→Alice', '评审工程师→待认领']);
+
+    expect(screen.getByTestId('dag-thumb')).toBeInTheDocument();
+  });
+
+  it('步③实例化 → 调 instantiateTemplate(携 Idempotency-Key)并跳转(onInstantiated)', async () => {
     vi.mocked(api.instantiateTemplate).mockResolvedValue({
       batch: {
         id: 'b', workspace_id: 'ws', channel_id: 'ch', kind: 'tmpl', content_hash: 'h',
@@ -153,10 +168,11 @@ describe('TemplateWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
     await screen.findByTestId('wizard-step-3');
     fireEvent.click(screen.getByTestId('instantiate-submit'));
-    await waitFor(() => expect(api.instantiateTemplate).toHaveBeenCalledWith('tpl_tri', {
-      channel_id: 'ch',
-      role_mapping: { 实现工程师: 'a', 评审工程师: 'b' },
-    }));
+    await waitFor(() => expect(api.instantiateTemplate).toHaveBeenCalledWith(
+      'tpl_tri',
+      { channel_id: 'ch', role_mapping: { 实现工程师: 'a', 评审工程师: 'b' } },
+      expect.any(String), // Idempotency-Key(crypto.randomUUID，值不固定，仅断言已传)
+    ));
     await waitFor(() => expect(onInstantiated).toHaveBeenCalledWith('ch'));
   });
 });

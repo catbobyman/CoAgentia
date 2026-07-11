@@ -84,15 +84,17 @@ export class ApiError extends Error {
   }
 }
 
-/** 统一写请求:非 2xx 时解析契约错误体 → 抛 ApiError(带 code/details 供 toast)。 */
+/** 统一写请求:非 2xx 时解析契约错误体 → 抛 ApiError(带 code/details 供 toast)。
+ *  extraHeaders 可选(如 Idempotency-Key)——同键同体重放由 server 幂等登记收敛，不重复副作用。 */
 async function writeJson<T>(
   path: string,
   method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: unknown,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!r.ok) {
@@ -321,8 +323,15 @@ export const api = {
   templates: () => get<TemplatePublic[]>('/api/templates'),
   createTemplate: (body: TemplateCreate) =>
     writeJson<TemplatePublic>('/api/templates', 'POST', body),
-  instantiateTemplate: (templateId: string, body: TemplateInstantiate) =>
-    writeJson<InstantiateResult>(`/api/templates/${templateId}/instantiate`, 'POST', body),
+  // idempotencyKey 可选:同键同体重放回同一批(见 routes/templates.py OPID_REST_IDEMPOTENCY)，
+  // 防丢响应网络重试在目标频道重复落地一批。
+  instantiateTemplate: (templateId: string, body: TemplateInstantiate, idempotencyKey?: string) =>
+    writeJson<InstantiateResult>(
+      `/api/templates/${templateId}/instantiate`,
+      'POST',
+      body,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    ),
 
   setReadPosition: (channelId: string, lastReadMessageId: string) =>
     fetch(`${API_BASE}/api/channels/${channelId}/read-position`, {

@@ -84,6 +84,24 @@ def _fetch_batch(conn: Connection, batch_id: str) -> LandingBatchRow | None:
     return LandingBatchRow(**row) if row is not None else None
 
 
+def batch_node_task_ids(conn: Connection, batch_id: str) -> list[str]:
+    """回收该落地批 `create_node` 账本行携带的 task_id（按落地顺序）。
+
+    模板实例化幂等重放重建 InstantiateResult 用（reserve-before 语义下 REST op_id 只记 batch_id，
+    task_ids 从已落库的逐节点账本行派生——见 routes/templates._reconstruct_from_ledger）。
+    """
+    rows = (
+        conn.execute(
+            select(_LEDGER.c.payload)
+            .where(_LEDGER.c.batch_id == batch_id, _LEDGER.c.kind == "create_node")
+            .order_by(_LEDGER.c.created_at, _LEDGER.c.op_id)
+        )
+        .scalars()
+        .all()
+    )
+    return [p["task_id"] for p in rows if isinstance(p, dict) and "task_id" in p]
+
+
 # ---------------------------------------------------------------- 账本 record（三态）
 
 
