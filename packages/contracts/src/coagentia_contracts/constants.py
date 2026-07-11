@@ -62,6 +62,12 @@ DISALLOWED_TOOLS: tuple[str, ...] = (
     "DesignSync",
 )
 
+# ---------------- Codex 禁用工具（契约 E2 §2.5；终表 H2 A 级实测校准回填）
+#
+# 依据同 DISALLOWED_TOOLS：凡与 coagentia MCP 工具功能重叠的 codex 内置工具须禁用。codex 无
+# send_message/task 类内置工具与 coagentia 工具重叠，终表实测 ≈ 空——占位空 tuple，H2 实测后回填。
+CODEX_DISALLOWED_TOOLS: tuple[str, ...] = ()
+
 # ---------------- 诊断类型（契约 A §4.6 命名空间；
 # draft/delta/landing 与 WS 事件一名两用——预留 #4；开放集，此处登记已知类型）
 

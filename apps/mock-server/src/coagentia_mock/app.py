@@ -296,8 +296,10 @@ async def cancel_reminder(reminder_id: str) -> Response:
 @app.get("/api/channels", response_model=rest.ChannelsSnapshot)
 async def list_channels() -> Any:
     me = store.members[0]["id"]  # 浏览器 = Owner 人类（契约 B §2）
+    # notification_settings = 本人非默认行（§11.4 #5）；mock 无设置存储，形状源回空列表。
     return {"items": store.channels,
-            "read_positions": [r for r in store.read_positions if r["member_id"] == me]}
+            "read_positions": [r for r in store.read_positions if r["member_id"] == me],
+            "notification_settings": []}
 
 
 @app.post("/api/channels", response_model=entities.ChannelPublic, status_code=201)
@@ -615,6 +617,80 @@ async def list_held_drafts(status: str | None = None, channel_id: str | None = N
                            limit: int = rest.PAGE_DEFAULT_LIMIT) -> Any:
     """被扣草稿清单（§6 重同步清单成员，status=held = 现行被扣）；mock 恒空，形状源非逻辑源。"""
     return {"items": [], "next_cursor": None}
+
+
+# ---------------------------------------------------------------- M5 模板与通知设置（纯形状）
+#
+# C0 登记：mock 只验形状不做业务（纪律 4）——快照序列化/实例化事务/409 约束/mode 门/dm 422 全活
+# 真 server（H3/H5/H6）。此处仅喂 OpenAPI→rest.ts：GET /templates 含 builtin 工程三角形状占位。
+
+
+def _builtin_triangle_template() -> dict[str, Any]:
+    """工程三角 builtin 的形状占位（真值 = contracts 常量 + server 启动 upsert，H5）。"""
+    return {
+        "id": new_id(), "workspace_id": store.workspace["id"], "name": "工程三角",
+        "description": "PM 框定→评审门→实现契约→TDD 实现→独立验收→人类终审（builtin 形状占位）",
+        "builtin": True, "created_by_member_id": store.members[0]["id"], "created_at": now_ts(),
+        "body": {
+            "nodes": [
+                {"key": "impl", "title": "实现", "role": "实现工程师", "plan_skeleton": None},
+                {"key": "review", "title": "独立验收", "role": "评审工程师",
+                 "plan_skeleton": None},
+            ],
+            "edges": [{"from_key": "impl", "to_key": "review"}],
+            "roles": [
+                {"placeholder": "实现工程师", "description": "落地实现（doer）"},
+                {"placeholder": "评审工程师", "description": "独立评审（checker ≠ doer）"},
+            ],
+            "briefing": "本频道由工程三角模板实例化：实现方交付、评审方独立复核、人类终审。",
+        },
+    }
+
+
+@app.get("/api/templates", response_model=list[entities.TemplatePublic])
+async def list_templates() -> Any:
+    """工作区级列表（builtin 置前，body 全量携带——向导预览用）；用户模板 mock 恒空。"""
+    return [_builtin_triangle_template()]
+
+
+@app.post("/api/templates", response_model=entities.TemplatePublic, status_code=201)
+async def create_template(body: rest.TemplateCreate) -> Any:
+    """存为模板（B §4.12）：mock 回形状占位（不读画布、不校验 409，纪律 4）。"""
+    return {
+        "id": new_id(), "workspace_id": store.workspace["id"], "name": body.name,
+        "description": body.description, "builtin": False,
+        "created_by_member_id": store.members[0]["id"], "created_at": now_ts(),
+        "body": {"nodes": [], "edges": [], "roles": [], "briefing": ""},
+    }
+
+
+@app.post("/api/templates/{template_id}/instantiate", response_model=rest.InstantiateResult,
+          status_code=201)
+async def instantiate_template(template_id: str, body: rest.TemplateInstantiate) -> Any:
+    """实例化（B §4.12/§11.2）：mock 回落地批 + 空任务形状（单事务/幂等/briefing 活真 server）。"""
+    batch = {
+        "id": new_id(), "workspace_id": store.workspace["id"], "channel_id": body.channel_id,
+        "kind": "tmpl", "content_hash": hashlib.sha256(template_id.encode()).hexdigest(),
+        "source_ref": template_id, "confirmed_by": store.members[0]["id"], "status": "done",
+        "created_at": now_ts(), "done_at": now_ts(),
+    }
+    return {"batch": batch, "tasks": []}
+
+
+@app.get("/api/channels/{channel_id}/notification-setting",
+         response_model=entities.ChannelNotificationSettingPublic)
+async def get_notification_setting(channel_id: str) -> Any:
+    """GET 无行回默认 {mode: all}（B §4.5）；dm 422 / Agent 403 活真 server（纪律 4）。"""
+    require_channel(channel_id)
+    return {"channel_id": channel_id, "member_id": store.members[0]["id"], "mode": "all"}
+
+
+@app.put("/api/channels/{channel_id}/notification-setting",
+         response_model=entities.ChannelNotificationSettingPublic)
+async def put_notification_setting(channel_id: str, body: rest.NotificationSettingPut) -> Any:
+    """PUT upsert 懒建（B §4.5）：mock 回请求 mode 的形状（自治/dm 422 活真 server）。"""
+    require_channel(channel_id)
+    return {"channel_id": channel_id, "member_id": store.members[0]["id"], "mode": body.mode}
 
 
 # ---------------------------------------------------------------- WS 与 mock 控制面

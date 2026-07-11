@@ -5,9 +5,12 @@
 - encoding.py deliver / inject → stdin user 帧（E §6）
 - cmdline.py  命令行拼装 + 环境隔离 + MCP 配置物化（E §2/§3）
 - mcp.py      coagentia stdio MCP server（M1 最小工具集 → REST 代理，E §3）
-- claude_code.py  ClaudeCodeProcess（每进程驱动）+ ClaudeCodeAdapter（daemon 侧管理器，A6 接口）
+- claude_code.py  ClaudeCodeProcess（每进程驱动）+ RuntimeManager（daemon 侧管理器，A6 接口）
+- codex.py    CodexProcess（每进程驱动，契约 E2）+ CodexFrameRouter（JSON-RPC 帧映射）
+- codex_cmdline.py  codex 命令行 + CODEX_HOME 隔离 + config.toml 物化（E2 §1/§2）
 """
 
-from coagentia_daemon.adapters.claude_code import ClaudeCodeAdapter
+from coagentia_daemon.adapters.claude_code import ClaudeCodeAdapter, RuntimeManager
+from coagentia_daemon.adapters.codex import CodexProcess
 
-__all__ = ["ClaudeCodeAdapter"]
+__all__ = ["ClaudeCodeAdapter", "CodexProcess", "RuntimeManager"]

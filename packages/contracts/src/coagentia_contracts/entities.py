@@ -10,6 +10,8 @@
 - 未列出的表/字段不要发明（契约 A 实现说明）。
 """
 
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from coagentia_contracts.enums import (
@@ -42,6 +44,7 @@ from coagentia_contracts.enums import (
     TaskLevel,
     TaskStatus,
     UiTheme,
+    VerifyBy,
     WorktreeStatus,
 )
 from coagentia_contracts.ids import Sha256Hex, TimestampZ, Ulid
@@ -79,6 +82,8 @@ class DetectedRuntime(ContractModel):
     runtime: Runtime
     installed: bool
     models: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)  # v1.0.6：候选技能池（daemon 探测上报，
+    # 列出≠授予不违反 R6；P6 技能页签勾选来源；codex 无技能机制恒空，契约 A v1.0.6 / D v1.0.2）
 
 
 class ComputerRow(ContractModel):
@@ -394,6 +399,33 @@ class TaskContractRow(ContractModel):
 
 class TaskContractPublic(TaskContractRow):
     pass
+
+
+# ---- L2 契约 body schema：TaskPlan（PRD §4.3 v1）
+#
+# JSON 列嵌套模型（§8.3）：task_contracts.body 按 kind 二次 model_validate 的 TaskPlan 分支、
+# 且 templates.plan_skeleton 复用同形状（A §4.10）。放在 entities 层（下层）供 rest（NodeCreate/
+# CONTRACT_BODY_MODELS，上层 re-export）与 TemplateBody 共用——TaskHandoff/LoopContract body 仍
+# 在 rest（仅请求侧消费，无实体 JSON 列引用）。纪律 7 单一事实源。
+
+
+class AcceptanceCriterion(ContractModel):
+    """TaskPlan 验收标准单条（可证伪表述、禁形容词——PRD §4.3；文案规范不在此校验）。"""
+
+    id: str
+    statement: str
+    verify_by: VerifyBy
+    verify_ref: str  # 验证命令或核对说明
+
+
+class TaskPlanBody(ContractModel):
+    """L2 任务计划契约（进入画布/正式立项时必填——PRD §4.3 v1）。"""
+
+    version: Literal["coagentia.task-plan.v1"] = "coagentia.task-plan.v1"
+    goal: str  # 一句话用户成果（用户视角）
+    acceptance_criteria: Annotated[list[AcceptanceCriterion], Field(min_length=1)]
+    defaults_decided: list[str] = []  # 替用户拍板的默认决策（可空但须列明）
+    out_of_scope: list[str] = []  # 明确不做（可空）
 
 
 # ---------------------------------------------------------------- 4.4 画布（S3）
@@ -724,6 +756,44 @@ class DeploymentPublic(ContractModel):
 # ---------------------------------------------------------------- 4.10 模板
 
 
+class TemplateNode(ContractModel):
+    """TemplateBody.nodes 元素（A v1.0.6 §4.10）：模板内一个 task 节点。"""
+
+    key: str  # 模板内唯一节点键（实例化映射/连边引用）
+    title: str  # 任务标题
+    role: str  # 角色占位名（引用 TemplateBody.roles[].placeholder）
+    plan_skeleton: TaskPlanBody | None = None  # TaskPlan 骨架预填（实例化作 L2 初稿；无则 null）
+
+
+class TemplateEdge(ContractModel):
+    """TemplateBody.edges 元素：node key 引用（`from`/`to` 是 Python 关键字，沿 TaskHandoffBody
+    from_member 先例改名 from_key/to_key）；保存与实例化均校验无环（复用 kernel/graph）。"""
+
+    from_key: str
+    to_key: str
+
+
+class TemplateRole(ContractModel):
+    """TemplateBody.roles 元素（P13 保存模板弹窗提取表）：角色占位。"""
+
+    placeholder: str  # 占位名（如"实现工程师"）
+    description: str = ""  # 角色 description 话术（向导"新建 Agent"预填，FR-7.1）
+
+
+class TemplateBody(ContractModel):
+    """templates.body（A v1.0.6 §4.10 M5 收紧）：DAG 结构 + 角色占位表 + 简报话术（C7）。
+
+    保存序列化（B §11.1）：从画布快照仅取 task 节点、pos 不入；占位按节点 owner 去重、无 owner
+    归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）。校验：model_validate +
+    edges 无环（复用 kernel/graph）+ nodes.role/edges 引用一致性（server 侧执法）。
+    """
+
+    nodes: list[TemplateNode] = Field(default_factory=list)
+    edges: list[TemplateEdge] = Field(default_factory=list)
+    roles: list[TemplateRole] = Field(default_factory=list)
+    briefing: str = ""  # 房间简报话术——实例化后自动发目标频道主流系统消息（FR-7.2）
+
+
 class TemplateRow(ContractModel):
     """M5：DAG 结构 + 角色占位表 + 简报话术（C7）；实例化走落地事务器（tmpl:<batch_id>:…）。"""
 
@@ -731,7 +801,7 @@ class TemplateRow(ContractModel):
     workspace_id: Ulid
     name: str
     description: str = ""
-    body: JsonValue  # M5 收紧
+    body: TemplateBody  # v1.0.6 收紧（JsonValue → TemplateBody 嵌套模型，A §4.10）
     builtin: bool = False  # 工程三角 = builtin 行（FR-7.1）
     created_by_member_id: Ulid
     created_at: TimestampZ

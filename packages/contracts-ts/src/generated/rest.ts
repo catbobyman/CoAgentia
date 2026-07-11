@@ -381,6 +381,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/channels/{channel_id}/notification-setting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Notification Setting
+         * @description GET 无行回默认 {mode: all}（B §4.5）；dm 422 / Agent 403 活真 server（纪律 4）。
+         */
+        get: operations["get_notification_setting_api_channels__channel_id__notification_setting_get"];
+        /**
+         * Put Notification Setting
+         * @description PUT upsert 懒建（B §4.5）：mock 回请求 mode 的形状（自治/dm 422 活真 server）。
+         */
+        put: operations["put_notification_setting_api_channels__channel_id__notification_setting_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/channels/{channel_id}/read-position": {
         parameters: {
             query?: never;
@@ -781,6 +805,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Templates
+         * @description 工作区级列表（builtin 置前，body 全量携带——向导预览用）；用户模板 mock 恒空。
+         */
+        get: operations["list_templates_api_templates_get"];
+        put?: never;
+        /**
+         * Create Template
+         * @description 存为模板（B §4.12）：mock 回形状占位（不读画布、不校验 409，纪律 4）。
+         */
+        post: operations["create_template_api_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/templates/{template_id}/instantiate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Instantiate Template
+         * @description 实例化（B §4.12/§11.2）：mock 回落地批 + 空任务形状（单事务/幂等/briefing 活真 server）。
+         */
+        post: operations["instantiate_template_api_templates__template_id__instantiate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace": {
         parameters: {
             query?: never;
@@ -804,6 +872,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AcceptanceCriterion
+         * @description TaskPlan 验收标准单条（可证伪表述、禁形容词——PRD §4.3；文案规范不在此校验）。
+         */
+        AcceptanceCriterion: {
+            /** Id */
+            id: string;
+            /** Statement */
+            statement: string;
+            verify_by: components["schemas"]["VerifyBy"];
+            /** Verify Ref */
+            verify_ref: string;
+        };
         /**
          * ActivityFilter
          * @description GET /activity?filter=（B §9.7.3）。
@@ -1047,6 +1128,15 @@ export interface components {
             /** Member Id */
             member_id: string;
         };
+        /** ChannelNotificationSettingPublic */
+        ChannelNotificationSettingPublic: {
+            /** Channel Id */
+            channel_id: string;
+            /** Member Id */
+            member_id: string;
+            /** @default all */
+            mode: components["schemas"]["NotificationMode"];
+        };
         /** ChannelPatch */
         ChannelPatch: {
             /** Decomp Mode */
@@ -1149,11 +1239,19 @@ export interface components {
         };
         /**
          * ChannelsSnapshot
-         * @description GET /channels：全量频道 + **自身** read-position 附带（契约 B §4.5/§6）。
+         * @description GET /channels：全量频道 + 自身 read-position + 本人非默认通知设置（B §4.5/§6/§11.4）。
+         *
+         *     v1.3：扩第三字段 `notification_settings`（本人全部**非默认**行，前端渲染徽标源；PUT 后
+         *     本地更新，零新增 WS 事件）。冷态/全默认 → []（H0 字段就位，H3 填充）。
          */
         ChannelsSnapshot: {
             /** Items */
             items: components["schemas"]["ChannelPublic"][];
+            /**
+             * Notification Settings
+             * @default []
+             */
+            notification_settings: components["schemas"]["ChannelNotificationSettingPublic"][];
             /** Read Positions */
             read_positions: components["schemas"]["ReadPositionPublic"][];
         };
@@ -1239,6 +1337,8 @@ export interface components {
             /** Models */
             models?: string[];
             runtime: components["schemas"]["Runtime"];
+            /** Skills */
+            skills?: string[];
         };
         /** DiagnosticEventPublic */
         DiagnosticEventPublic: {
@@ -1366,7 +1466,51 @@ export interface components {
          * @enum {string}
          */
         HeldResolution: "released" | "discarded" | "reevaluated";
+        /**
+         * InstantiateResult
+         * @description 实例化响应（B §4.12）：单事务落地批 + 逐节点落地任务（零新增 WS 事件，广播走既有事件）。
+         */
+        InstantiateResult: {
+            batch: components["schemas"]["LandingBatchPublic"];
+            /**
+             * Tasks
+             * @default []
+             */
+            tasks: components["schemas"]["TaskPublic"][];
+        };
         JsonValue: unknown;
+        /**
+         * LandingBatchKind
+         * @enum {string}
+         */
+        LandingBatchKind: "decomp" | "tmpl" | "delta";
+        /** LandingBatchPublic */
+        LandingBatchPublic: {
+            /** Channel Id */
+            channel_id: string;
+            /** Confirmed By */
+            confirmed_by: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Created At */
+            created_at: string;
+            /** Done At */
+            done_at?: string | null;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["LandingBatchKind"];
+            /** Source Ref */
+            source_ref: string;
+            /** @default running */
+            status: components["schemas"]["LandingBatchStatus"];
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * LandingBatchStatus
+         * @enum {string}
+         */
+        LandingBatchStatus: "running" | "done" | "fail_closed";
         /**
          * LifecycleAction
          * @description `POST /agents/{id}/lifecycle`（契约 B §4.3；三档重置枚举只定义这一次）。
@@ -1497,6 +1641,20 @@ export interface components {
             /** Workspace Id */
             workspace_id: string;
         };
+        /**
+         * NotificationMode
+         * @enum {string}
+         */
+        NotificationMode: "all" | "mentions" | "mute";
+        /**
+         * NotificationSettingPut
+         * @description PUT /channels/{id}/notification-setting（B §4.5/§11.4）：upsert 懒建；人类成员本人自治
+         *     （无 admin 门）；Agent 主体 403（通知是人类面）；kind=dm → 422 NOTIF_IN_DM（DM 必达）。
+         *     GET 无行回默认 `{mode: all}`（响应用 entities.ChannelNotificationSettingPublic）。
+         */
+        NotificationSettingPut: {
+            mode: components["schemas"]["NotificationMode"];
+        };
         /** Page[ActivityItemPublic] */
         Page_ActivityItemPublic_: {
             /** Items */
@@ -1588,8 +1746,10 @@ export interface components {
          *     创建，故请求侧不接受 loop_contract_id（那是存储列，非请求字段）。前向引用 LoopContractBody
          *     （定义序在后，同 entities.MessagePublic.files 先例），文件末尾 model_rebuild() 补全。
          *
-         *     cadence（B §10.6）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如 `PT1H`；
-         *     cron 归 M5+），且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。
+         *     cadence（B §10.6/§11.5）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如
+         *     `PT1H`）或 **cron 五段式**（`分 时 日 月 周`，服务器本地时区，无秒/年/@keyword——M5 v1.3 扩），
+         *     且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。cadence 在 contracts 侧
+         *     是纯 str（无语义校验器）：cron 值域解析/塌缩式重排的判定归 H4 server 侧单点（纪律 7）。
          */
         ReminderCreate: {
             /** Anchor Channel Id */
@@ -1765,6 +1925,32 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * TaskPlanBody
+         * @description L2 任务计划契约（进入画布/正式立项时必填——PRD §4.3 v1）。
+         */
+        TaskPlanBody: {
+            /** Acceptance Criteria */
+            acceptance_criteria: components["schemas"]["AcceptanceCriterion"][];
+            /**
+             * Defaults Decided
+             * @default []
+             */
+            defaults_decided: string[];
+            /** Goal */
+            goal: string;
+            /**
+             * Out Of Scope
+             * @default []
+             */
+            out_of_scope: string[];
+            /**
+             * Version
+             * @default coagentia.task-plan.v1
+             * @constant
+             */
+            version: "coagentia.task-plan.v1";
+        };
         /** TaskPublic */
         TaskPublic: {
             /** Channel Id */
@@ -1840,6 +2026,130 @@ export interface components {
             output_tokens: number;
         };
         /**
+         * TemplateBody
+         * @description templates.body（A v1.0.6 §4.10 M5 收紧）：DAG 结构 + 角色占位表 + 简报话术（C7）。
+         *
+         *     保存序列化（B §11.1）：从画布快照仅取 task 节点、pos 不入；占位按节点 owner 去重、无 owner
+         *     归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）。校验：model_validate +
+         *     edges 无环（复用 kernel/graph）+ nodes.role/edges 引用一致性（server 侧执法）。
+         */
+        TemplateBody: {
+            /**
+             * Briefing
+             * @default
+             */
+            briefing: string;
+            /** Edges */
+            edges?: components["schemas"]["TemplateEdge"][];
+            /** Nodes */
+            nodes?: components["schemas"]["TemplateNode"][];
+            /** Roles */
+            roles?: components["schemas"]["TemplateRole"][];
+        };
+        /**
+         * TemplateCreate
+         * @description POST /templates 存为模板（B §4.12/§11.1）。
+         *
+         *     服务端读 `channel_id` 频道画布快照序列化 `TemplateBody`（A §4.10 提取规则）；
+         *     `role_placeholders`（{member_id: 占位名}）覆盖默认 owner 去重占位名；`include_node_ids` 缺省
+         *     = 全部 task 节点；画布无正式节点 / 存在草稿层 → 409 TEMPLATE_CANVAS_NOT_READY。
+         */
+        TemplateCreate: {
+            /** Channel Id */
+            channel_id: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Include Node Ids */
+            include_node_ids?: string[] | null;
+            /** Name */
+            name: string;
+            /** Role Placeholders */
+            role_placeholders?: {
+                [key: string]: string;
+            } | null;
+        };
+        /**
+         * TemplateEdge
+         * @description TemplateBody.edges 元素：node key 引用（`from`/`to` 是 Python 关键字，沿 TaskHandoffBody
+         *     from_member 先例改名 from_key/to_key）；保存与实例化均校验无环（复用 kernel/graph）。
+         */
+        TemplateEdge: {
+            /** From Key */
+            from_key: string;
+            /** To Key */
+            to_key: string;
+        };
+        /**
+         * TemplateInstantiate
+         * @description POST /templates/{id}/instantiate（B §4.12/§11.2）。
+         *
+         *     `role_mapping` 须覆盖 body.roles 全部占位（缺失 → 422 VALIDATION_FAILED，details.missing 列
+         *     占位名）；值 null = 该角色节点落地为无 owner（"待认领"）。单事务落地批（`tmpl:<batch_id>:
+         *     <node_key>` 幂等，接受 Idempotency-Key）。v1.3 收窄：无内联 create——向导"新建"走既有创建
+         *     Agent 弹窗再回填映射（§7 #8）。
+         */
+        TemplateInstantiate: {
+            /** Channel Id */
+            channel_id: string;
+            /** Role Mapping */
+            role_mapping: {
+                [key: string]: string | null;
+            };
+        };
+        /**
+         * TemplateNode
+         * @description TemplateBody.nodes 元素（A v1.0.6 §4.10）：模板内一个 task 节点。
+         */
+        TemplateNode: {
+            /** Key */
+            key: string;
+            plan_skeleton?: components["schemas"]["TaskPlanBody"] | null;
+            /** Role */
+            role: string;
+            /** Title */
+            title: string;
+        };
+        /** TemplatePublic */
+        TemplatePublic: {
+            body: components["schemas"]["TemplateBody"];
+            /**
+             * Builtin
+             * @default false
+             */
+            builtin: boolean;
+            /** Created At */
+            created_at: string;
+            /** Created By Member Id */
+            created_by_member_id: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * TemplateRole
+         * @description TemplateBody.roles 元素（P13 保存模板弹窗提取表）：角色占位。
+         */
+        TemplateRole: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Placeholder */
+            placeholder: string;
+        };
+        /**
          * UiTheme
          * @enum {string}
          */
@@ -1857,6 +2167,12 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * VerifyBy
+         * @description TaskPlan.acceptance_criteria[].verify_by（PRD §4.3 v1）。
+         * @enum {string}
+         */
+        VerifyBy: "command" | "inspect" | "manual";
         /** WorkspaceCreate */
         WorkspaceCreate: {
             /** Name */
@@ -2774,6 +3090,72 @@ export interface operations {
             };
         };
     };
+    get_notification_setting_api_channels__channel_id__notification_setting_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelNotificationSettingPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_notification_setting_api_channels__channel_id__notification_setting_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettingPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelNotificationSettingPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     put_read_position_api_channels__channel_id__read_position_put: {
         parameters: {
             query?: never;
@@ -3591,6 +3973,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_api_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplatePublic"][];
+                };
+            };
+        };
+    };
+    create_template_api_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplatePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    instantiate_template_api_templates__template_id__instantiate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateInstantiate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstantiateResult"];
                 };
             };
             /** @description Validation Error */

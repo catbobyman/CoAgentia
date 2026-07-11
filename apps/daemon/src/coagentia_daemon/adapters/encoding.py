@@ -70,16 +70,5 @@ def render_inject(body: str, source: dict[str, Any] | None = None) -> str:
     return f"{label}\n{body}"
 
 
-def encode_deliver(
-    messages: list[dict[str, Any]],
-    *,
-    reason: str | None = None,
-    thread_root_id: str | None = None,
-) -> str:
-    """deliver 批 → stdin 行（渲染 + user 帧封装）。"""
-    return user_frame_line(render_deliver(messages, reason=reason, thread_root_id=thread_root_id))
-
-
-def encode_inject(body: str, source: dict[str, Any] | None = None) -> str:
-    """inject → stdin 行。"""
-    return user_frame_line(render_inject(body, source))
+# 说明：render_* 是**运行时无关正文**（管理器单点渲染，纪律 8）；载体封装（claude=stream-json
+# user 帧 `user_frame_line` / codex=turn/start input）落在各 Process，不在此层组合。

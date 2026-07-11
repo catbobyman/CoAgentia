@@ -23,6 +23,8 @@ M2_EXPECTED_TABLES = {"tasks", "task_events", "message_task_refs", "activity_ite
 M3_EXPECTED_TABLES = {"task_contracts", "canvas_nodes", "canvas_edges"}
 # 契约 A §5 M4 批次（1 张：held_drafts，0006）。
 M4_EXPECTED_TABLES = {"held_drafts"}
+# 契约 A §5 M5 批次（2 张：templates + channel_notification_settings，0007）。
+M5_EXPECTED_TABLES = {"templates", "channel_notification_settings"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -77,11 +79,13 @@ def test_incremental_upgrade_from_0001_to_head(db_url: str, alembic_cfg: Config)
     assert M2_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M2 表（坑1 回归守门）
     assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M3 表（坑1 回归守门）
     assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M4 表（坑1 回归守门）
+    assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0001 不得泄漏建出 M5 表（坑1 回归守门）
     assert "messages_fts" not in mid
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert (
-        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES | M4_EXPECTED_TABLES
+        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES
+        | M4_EXPECTED_TABLES | M5_EXPECTED_TABLES
     ) <= final
     assert "messages_fts" in final
 
@@ -98,6 +102,14 @@ def test_upgrade_head_creates_m4_held_drafts(db_url: str, alembic_cfg: Config) -
     names = _table_names(db_url)
     assert M4_EXPECTED_TABLES <= names
     assert len(M4_EXPECTED_TABLES) == 1
+
+
+def test_upgrade_head_creates_m5_tables(db_url: str, alembic_cfg: Config) -> None:
+    # 契约 A §5 M5 批次（templates + channel_notification_settings，0007）从零建齐。
+    command.upgrade(alembic_cfg, "head")
+    names = _table_names(db_url)
+    assert M5_EXPECTED_TABLES <= names
+    assert len(M5_EXPECTED_TABLES) == 2
 
 
 def test_upgrade_head_creates_held_drafts_active_index(db_url: str, alembic_cfg: Config) -> None:
@@ -165,6 +177,29 @@ def test_held_drafts_active_index_enforces_uniqueness(db_url: str, alembic_cfg: 
         engine.dispose()
 
 
+def test_m5_tables_columns_and_pk(db_url: str, alembic_cfg: Config) -> None:
+    # M5 两表列面与 PK 对照契约 A §4.10/§4.2：templates 全列齐、builtin 默认 0；
+    # channel_notification_settings 复合 PK (channel_id, member_id) + mode 默认 'all'。
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        insp = inspect(engine)
+        tmpl_cols = {c["name"] for c in insp.get_columns("templates")}
+        cns_cols = {c["name"]: c for c in insp.get_columns("channel_notification_settings")}
+        cns_pk = insp.get_pk_constraint("channel_notification_settings")
+    finally:
+        engine.dispose()
+    assert tmpl_cols == {
+        "id", "workspace_id", "name", "description", "body",
+        "builtin", "created_by_member_id", "created_at",
+    }
+    assert set(cns_cols) == {"channel_id", "member_id", "mode"}
+    # 复合 PK 两列（顺序 = channel_id, member_id）。
+    assert cns_pk["constrained_columns"] == ["channel_id", "member_id"]
+    # mode 默认 'all'（SQLite server_default 反射带引号）。
+    assert "all" in str(cns_cols["mode"]["default"])
+
+
 def test_upgrade_head_creates_files_indexes(db_url: str, alembic_cfg: Config) -> None:
     # 0004：files 二级索引（消息读面派生 files 批查 + 频道文件页签游标）
     command.upgrade(alembic_cfg, "head")
@@ -183,10 +218,12 @@ def test_incremental_from_0002_to_head(db_url: str, alembic_cfg: Config) -> None
     assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES) <= mid
     assert M3_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M3 表（坑1 回归守门）
     assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M4 表（坑1 回归守门）
+    assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0002 不得泄漏建出 M5 表（坑1 回归守门）
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert (
-        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES | M4_EXPECTED_TABLES
+        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES
+        | M4_EXPECTED_TABLES | M5_EXPECTED_TABLES
     ) <= final
 
 
@@ -196,9 +233,23 @@ def test_incremental_from_0005_to_head(db_url: str, alembic_cfg: Config) -> None
     mid = _table_names(db_url)
     assert (M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES) <= mid
     assert M4_EXPECTED_TABLES.isdisjoint(mid)   # 0005 不得泄漏建出 M4 表（坑1 回归守门）
+    assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0005 不得泄漏建出 M5 表（坑1 回归守门）
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert M4_EXPECTED_TABLES <= final          # 0006 增量建出 held_drafts
+
+
+def test_incremental_from_0006_to_head(db_url: str, alembic_cfg: Config) -> None:
+    # 增量路径：先到 0006（M1..M4 库），再升 head——模拟线上 M4 库升 M5（H1 出口）。
+    command.upgrade(alembic_cfg, "0006_m4_held_drafts")
+    mid = _table_names(db_url)
+    assert (
+        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES | M4_EXPECTED_TABLES
+    ) <= mid
+    assert M5_EXPECTED_TABLES.isdisjoint(mid)   # 0006 不得泄漏建出 M5 表（坑1 回归守门）
+    command.upgrade(alembic_cfg, "head")
+    final = _table_names(db_url)
+    assert M5_EXPECTED_TABLES <= final          # 0007 增量建出 templates + notification_settings
 
 
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
@@ -209,4 +260,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     assert M2_EXPECTED_TABLES.isdisjoint(names)
     assert M3_EXPECTED_TABLES.isdisjoint(names)
     assert M4_EXPECTED_TABLES.isdisjoint(names)
+    assert M5_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

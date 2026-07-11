@@ -16,14 +16,17 @@ import contextlib
 from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from coagentia_contracts.daemon import (
     AgentBoot,
     DaemonAgentState,
     DiagnosticEventIn,
 )
-from coagentia_contracts.enums import AgentStatus, WakeReason
+from coagentia_contracts.enums import AgentStatus, Runtime, WakeReason
+
+if TYPE_CHECKING:
+    from coagentia_daemon.adapters.codex import CodexProcess
 
 from coagentia_daemon.adapter import AdapterSink
 from coagentia_daemon.adapters import cmdline, encoding
@@ -42,6 +45,13 @@ _AUTH_ERROR_MARKERS = (
     "oauth session expired",
     "authentication_error",
 )
+
+# 会话续接判据的簿记键（按 runtime）：claude=session_id（--resume），codex=conversation_id
+# （thread/resume）。管理器骨架 runtime 无关，仅此处按 runtime 取键（适配器边界内特化，纪律 8）。
+_RESUME_KEY: dict[Runtime, str] = {
+    Runtime.CLAUDE_CODE: "session_id",
+    Runtime.CODEX: "conversation_id",
+}
 
 
 class ProcLike(Protocol):
@@ -223,7 +233,11 @@ class ClaudeCodeProcess:
                 await self._retry_after_auth_failure()
 
     async def feed(self, text: str) -> None:
-        """写入一个 turn 的 stdin 输入（§6.4：写 stdin 即 ack）。"""
+        """写入一个 turn 的输入（§6.4：写 stdin 即 ack）。
+
+        text = 管理器渲染的**运行时无关正文**（encoding.render_*，纪律 8）；载体（stream-json
+        user 帧封装）是 claude 侧特化，落在本 Process（区别于 codex 的 turn/start input）。
+        """
         if self._config_dir is not None:
             cmdline.materialize_credentials(self._config_dir)
         self._last_input = text
@@ -235,7 +249,7 @@ class ClaudeCodeProcess:
         if proc is None or proc.stdin is None:
             raise RuntimeError("process not running")
         self.router.begin_turn()  # 抑制随后的 init→idle 误报（init 帧在首输入后到）
-        data = (text + "\n").encode("utf-8")
+        data = (encoding.user_frame_line(text) + "\n").encode("utf-8")  # 载体封装（claude 特化）
         proc.stdin.write(data)
         drain = getattr(proc.stdin, "drain", None)
         if drain is not None:
@@ -314,7 +328,7 @@ class _AgentEntry:
         "restart_task",
     )
 
-    def __init__(self, boot: AgentBoot, process: ClaudeCodeProcess) -> None:
+    def __init__(self, boot: AgentBoot, process: ClaudeCodeProcess | CodexProcess) -> None:
         self.boot = boot
         self.process = process
         self.status = AgentStatus.STARTING
@@ -353,8 +367,12 @@ class _AgentSink:
         self._real.on_diagnostic(event)
 
 
-class ClaudeCodeAdapter:
-    """daemon 侧 runtime 管理器（A6 RuntimeAdapter 接口；DaemonClient / handlers 不变）。"""
+class RuntimeManager:
+    """daemon 侧 runtime 管理器（A6 RuntimeAdapter 接口；DaemonClient / handlers 不变）。
+
+    按 `boot.runtime` 分派进程类（ClaudeCodeProcess / CodexProcess，E2 §1）——会话簿记 / 三档
+    重置 / 崩溃熔断 / 去重游标骨架 runtime 无关原样复用。历史名 `ClaudeCodeAdapter` 保留为别名。
+    """
 
     def __init__(
         self,
@@ -385,25 +403,41 @@ class ClaudeCodeAdapter:
         existing = self._agents.get(aid)
         if existing is not None and existing.process.is_running():
             return False  # 已在跑 → noop（自然键幂等）
-        resume = bool(self.paths.read_session(aid).get("session_id"))
+        resume = self._has_resumable_session(boot)
         await self._launch(boot, resume=resume)
         return True
+
+    def _has_resumable_session(self, boot: AgentBoot) -> bool:
+        key = _RESUME_KEY.get(boot.runtime, "session_id")
+        return bool(self.paths.read_session(boot.agent_member_id).get(key))
+
+    def _new_process(
+        self, aid: str, runtime: Runtime
+    ) -> ClaudeCodeProcess | CodexProcess:
+        """按 runtime 分派进程类（E2 §1；codex 惰性 import 避免模块级循环依赖）。"""
+        if runtime == Runtime.CODEX:
+            from coagentia_daemon.adapters.codex import CodexProcess
+
+            cls: type = CodexProcess
+        else:
+            cls = ClaudeCodeProcess
+        return cls(
+            aid,
+            _placeholder_sink(),  # 占位，_launch 内即刻替换为 _AgentSink
+            self.paths,
+            server_url=self._server_url,
+            api_key=self._api_key,
+            spawn=self._spawn,
+            on_exit=self._on_process_exit,
+            ulid=self._ulid,
+            now=self._now,
+        )
 
     async def _launch(self, boot: AgentBoot, *, resume: bool) -> _AgentEntry:
         aid = boot.agent_member_id
         entry = self._agents.get(aid)
         if entry is None:
-            process = ClaudeCodeProcess(
-                aid,
-                _placeholder_sink(),  # 占位，_launch 内即刻替换为 _AgentSink
-                self.paths,
-                server_url=self._server_url,
-                api_key=self._api_key,
-                spawn=self._spawn,
-                on_exit=self._on_process_exit,
-                ulid=self._ulid,
-                now=self._now,
-            )
+            process = self._new_process(aid, boot.runtime)
             entry = _AgentEntry(boot, process)
             self._agents[aid] = entry
         entry.boot = boot
@@ -479,8 +513,9 @@ class ClaudeCodeAdapter:
         entry.last_delivered[channel_id] = max_id
         entry.process.set_turn_context(channel_id, thread_root_id)
         await self._emit(entry, AgentStatus.BUSY)
+        # 渲染运行时无关正文（纪律 8）；载体封装归各 Process（claude / codex 各自特化）。
         await entry.process.feed(
-            encoding.encode_deliver(messages, thread_root_id=thread_root_id)
+            encoding.render_deliver(messages, thread_root_id=thread_root_id)
         )
         return True
 
@@ -500,7 +535,7 @@ class ClaudeCodeAdapter:
         )
         entry.process.set_turn_context(None, None)
         await self._emit(entry, AgentStatus.BUSY)
-        await entry.process.feed(encoding.encode_inject(body, source))
+        await entry.process.feed(encoding.render_inject(body, source))
 
     # -------------------------------------------------------- 进程表 / Home
 
@@ -590,6 +625,10 @@ class ClaudeCodeAdapter:
         await self._require_sink().on_status_changed(
             entry.boot.agent_member_id, status, error_detail
         )
+
+
+# 历史名向后兼容（cli / 测试曾以 ClaudeCodeAdapter 引用管理器；M5 泛化为 RuntimeManager）。
+ClaudeCodeAdapter = RuntimeManager
 
 
 # ------------------------------------------------------------ 小工具

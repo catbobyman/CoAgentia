@@ -40,9 +40,11 @@ async def test_probe_claude_bad_exit() -> None:
 
 @pytest.mark.asyncio
 async def test_probe_runtimes_list() -> None:
+    # 注入 runner（测试上下文）→ codex 深探跳过真机 spawn；两 runtime 均在列。
     rts = await probe_runtimes(_runner_ok)
-    assert len(rts) == 1
+    assert len(rts) == 2
     assert rts[0].runtime == Runtime.CLAUDE_CODE
+    assert rts[1].runtime == Runtime.CODEX
 
 
 def test_parse_version() -> None:

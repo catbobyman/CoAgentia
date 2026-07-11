@@ -30,6 +30,7 @@ from coagentia_contracts.enums import (
     MemberKind,
     MemberRole,
     MessageKind,
+    NotificationMode,
     ReminderKind,
     ReminderStatus,
     Runtime,
@@ -80,6 +81,10 @@ M3_TABLES: tuple[str, ...] = ("task_contracts", "canvas_nodes", "canvas_edges")
 # （重评估重发 = 同行 held_count+1、status 回 held；三键干预写 resolved_*），故不进任何
 # IMMUTABLE 集、不建禁 UPDATE/DELETE 触发器。0006 一次建齐（块 a 期间空置）。
 M4_TABLES: tuple[str, ...] = ("held_drafts",)
+# M5（契约 A §4.10/§4.2）：templates + channel_notification_settings 两张，0007 一次建齐。
+# 均**可变**（templates 无 UPDATE 面但 builtin 启动 upsert 会改；notification_settings mode 会
+# UPDATE）——不进 IMMUTABLE 集、无触发器。templates 块 a 期间空置（M3"迁移不拆两次"先例）。
+M5_TABLES: tuple[str, ...] = ("templates", "channel_notification_settings")
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -636,3 +641,42 @@ class HeldDraft(Base):
     resolved_at: Mapped[str | None] = mapped_column(Text)
     resolution: Mapped[str | None] = mapped_column(_enum(HeldResolution))
     created_at: Mapped[str] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- 4.10 模板（M5）
+
+
+class Template(Base):
+    """M5（FR-7.1）：工程三角等流程资产。body = TemplateBody（nodes/edges/roles/briefing，
+    契约 A §4.10，入库前 model_validate）。builtin 行（工程三角）= server 启动 upsert 维护，
+    不可删改（B §11.1）。工作区级小表，查询恒按 workspace_id 全量拉——零额外索引。"""
+
+    __tablename__ = "templates"
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    body: Mapped[dict] = mapped_column(JSON)  # TemplateBody（A v1.0.6，contracts 收紧）
+    # builtin：契约 A §4.10 INTEGER 0（TemplateRow.builtin 读面为 bool，0/1 天然互转）。
+    builtin: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    created_at: Mapped[str] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- 4.2 会话面（M5）
+
+
+class ChannelNotificationSetting(Base):
+    """M5（FR-4.7）：每频道通知设置。**可变表**——mode 会 UPDATE（PUT upsert）。
+    复合 PK (channel_id, member_id) 即查询键，无行回默认 mode='all'（服务层派生）。"""
+
+    __tablename__ = "channel_notification_settings"
+    __table_args__ = (PrimaryKeyConstraint("channel_id", "member_id"),)
+
+    channel_id: Mapped[str] = mapped_column(_ULID, ForeignKey("channels.id"))
+    member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    # mode：值域单源自 contracts.NotificationMode（all/mentions/mute），_enum → TEXT+CHECK。
+    mode: Mapped[str] = mapped_column(
+        _enum(NotificationMode), server_default=text("'all'")
+    )

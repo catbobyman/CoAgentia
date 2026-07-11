@@ -385,6 +385,31 @@ def test_canvas_node_added_broadcast(server_client: TestClient) -> None:
         assert added.channel_id == build["id"]
 
 
+# ---------------------------------------------------------------- M5 契约登记（H0）
+#
+# H0 只登记契约面：mock serve 全部 M5 五端点（形状源喂 OpenAPI→rest.ts），ChannelsSnapshot 扩
+# notification_settings 第三字段。真 server serve 与逐端点行为双跑（通知 mode 门 / 模板序列化 /
+# 实例化事务）归实现模块（H3/H5/H6）各自测试文件——H0 不在此断言真 server serve（块 a 期间尚未
+# 实现，同 M3a 画布"登记不 serve"先例）。
+
+
+def test_mock_covers_m5_endpoints() -> None:
+    """mock 形状源 serve 全部 M5 五端点（§4.12 模板三 + §4.5 通知设置二）——喂 OpenAPI→rest.ts。"""
+    from coagentia_mock.app import app as mock_app
+
+    served = _served(TestClient(mock_app))
+    missing = [(m, p) for m, p in rest.ENDPOINTS_M5 if (m, _norm(p)) not in served]
+    assert not missing, f"mock 未 serve M5 端点: {missing}"
+
+
+def test_channels_snapshot_notification_settings_field(dual: DualClient) -> None:
+    """ChannelsSnapshot 扩第三字段 notification_settings（§11.4 #5）：H0 字段就位默认空——双跑形状
+    零偏差（mock/真 server 冷态均无本人非默认行 → []；H3 落 mute/mentions 后填充）。"""
+    _, client = dual
+    snap = rest.ChannelsSnapshot.model_validate(client.get("/api/channels").json())
+    assert snap.notification_settings == []
+
+
 # ---------------------------------------------------------------- WS 信封与广播（A4 双跑）
 
 

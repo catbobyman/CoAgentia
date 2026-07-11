@@ -16,7 +16,7 @@ import platform
 import sys
 
 from coagentia_daemon import __version__
-from coagentia_daemon.adapters import ClaudeCodeAdapter
+from coagentia_daemon.adapters import RuntimeManager
 from coagentia_daemon.buffer import TelemetryBuffer
 from coagentia_daemon.client import DaemonClient
 from coagentia_daemon.paths import DataPaths
@@ -48,7 +48,8 @@ def build_client(server_url: str, api_key: str, *, data_root: str | None = None)
     paths = DataPaths(data_root)
     paths.ensure_dirs()
     buffer = TelemetryBuffer(paths)
-    adapter = ClaudeCodeAdapter(paths, server_url=server_url, api_key=api_key)  # A7 真适配器
+    # M5：runtime 管理器按 boot.runtime 分派 claude / codex 进程类（契约 E2）。
+    adapter = RuntimeManager(paths, server_url=server_url, api_key=api_key)
     return DaemonClient(
         server_url=server_url,
         api_key=api_key,

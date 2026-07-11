@@ -28,7 +28,8 @@ def _boot(**kw) -> AgentBoot:
 # ---------------- 输入编码 ----------------
 
 
-def test_encode_deliver_template_and_frame() -> None:
+def test_render_deliver_template() -> None:
+    """deliver 渲染 = 运行时无关正文（管理器单点，纪律 8）；载体封装归各 Process。"""
     msgs = [
         {
             "id": "01K5MSG100000000000000000A",
@@ -38,21 +39,17 @@ def test_encode_deliver_template_and_frame() -> None:
             "body": "你好世界",
         }
     ]
-    line = encoding.encode_deliver(
+    text = encoding.render_deliver(
         msgs, reason="mention", thread_root_id="01K5THRD00000000000000000A"
     )
-    obj = json.loads(line)
-    assert obj["type"] == "user"
-    text = obj["message"]["content"][0]["text"]
     assert "[投递" in text and "有人 @你" in text  # 批首投递原因
     # 模板 [#频道] @作者 (时间): 正文
     assert "[#01K5CHAN00000000000000000A] @01K5AUTH00000000000000000A " in text
     assert "(2026-07-09T01:02:03.000Z): 你好世界" in text
 
 
-def test_encode_inject_system_first_line() -> None:
-    line = encoding.encode_inject("修复清单如下", {"kind": "repair", "ref": "err-1"})
-    text = json.loads(line)["message"]["content"][0]["text"]
+def test_render_inject_system_first_line() -> None:
+    text = encoding.render_inject("修复清单如下", {"kind": "repair", "ref": "err-1"})
     assert text.startswith("[system → 仅你可见] (repair: err-1)\n")
     assert "修复清单如下" in text
 

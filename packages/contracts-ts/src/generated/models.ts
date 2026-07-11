@@ -238,6 +238,7 @@ export type RemindReviewH2 = number;
 export type RemindTodoH2 = number;
 export type WorkspaceId5 = string;
 export type Items = ChannelPublic[];
+export type NotificationSettings = ChannelNotificationSettingPublic[];
 export type ChannelId11 = string;
 export type LastReadAt = string;
 export type LastReadMessageId = string;
@@ -251,6 +252,7 @@ export type CreatedAt6 = string;
 export type DaemonVersion = string | null;
 export type Installed = boolean;
 export type Models = string[];
+export type Skills1 = string[];
 export type DetectedRuntimes = DetectedRuntime[];
 export type Id13 = string;
 export type LastSeenAt = string | null;
@@ -452,6 +454,8 @@ export type ErrorCode =
   | 'DAEMON_OFFLINE'
   | 'FILE_TOO_LARGE'
   | 'HELD_DRAFT_RESOLVED'
+  | 'NOTIF_IN_DM'
+  | 'TEMPLATE_CANVAS_NOT_READY'
   | 'PERMISSION_DENIED'
   | 'NOT_FOUND';
 export type Message1 = string;
@@ -551,6 +555,30 @@ export type Entries = HomeTreeEntry[];
  */
 export type InjectKind = 'repair' | 'guard_feedback' | 'contract_draft_request' | 'system';
 export type Ref2 = string | null;
+export type ChannelId21 = string;
+export type ConfirmedBy = string;
+export type ContentHash = string;
+export type CreatedAt15 = string;
+export type DoneAt2 = string | null;
+export type Id22 = string;
+export type LandingBatchKind = 'decomp' | 'tmpl' | 'delta';
+export type SourceRef = string;
+export type LandingBatchStatus = 'running' | 'done' | 'fail_closed';
+export type WorkspaceId19 = string;
+export type ChannelId22 = string;
+export type CreatedAt16 = string;
+export type CreatedByMemberId2 = string;
+export type Id23 = string;
+export type TaskLevel = 'l1' | 'l2';
+export type Number = number;
+export type OwnerMemberId = string | null;
+export type RootMessageId = string;
+export type SilenceOverrideH = number | null;
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
+export type StatusChangedAt = string;
+export type Title3 = string;
+export type WorkspaceId20 = string;
+export type Tasks = TaskPublic[];
 export type At2 = string;
 export type FrameId = string;
 export type Kind4 = 'instr';
@@ -575,39 +603,29 @@ export type InstrType =
   | 'deploy.run'
   | 'runtime.rescan';
 export type V2 = number;
-export type ChannelId21 = string;
-export type ConfirmedBy = string;
-export type ContentHash = string;
-export type CreatedAt15 = string;
-export type DoneAt2 = string | null;
-export type Id22 = string;
-export type LandingBatchKind = 'decomp' | 'tmpl' | 'delta';
-export type SourceRef = string;
-export type LandingBatchStatus = 'running' | 'done' | 'fail_closed';
-export type WorkspaceId19 = string;
-export type ChannelId22 = string;
+export type ChannelId23 = string;
 export type ConfirmedBy1 = string;
 export type ContentHash1 = string;
-export type CreatedAt16 = string;
+export type CreatedAt17 = string;
 export type DoneAt3 = string | null;
-export type Id23 = string;
+export type Id24 = string;
 export type SourceRef1 = string;
 export type LandingBatchStatus1 = 'running' | 'done' | 'fail_closed';
-export type WorkspaceId20 = string;
+export type WorkspaceId21 = string;
 export type NodeId3 = string;
 export type X1 = number;
 export type Y1 = number;
 export type Positions1 = LayoutPositionIn[];
 export type ActorMemberId1 = string | null;
 export type BatchId3 = string | null;
-export type CreatedAt17 = string;
+export type CreatedAt18 = string;
 export type Kind5 = string;
 export type OpId = string;
 export type RequestHash = string;
 export type Seq3 = number;
 export type ActorMemberId2 = string | null;
 export type BatchId4 = string | null;
-export type CreatedAt18 = string;
+export type CreatedAt19 = string;
 export type Kind6 = string;
 export type OpId1 = string;
 export type RequestHash1 = string;
@@ -623,36 +641,23 @@ export type Escalation = string;
 export type Tools = string[];
 export type Verification = string[];
 export type Version = 'coagentia.loop-contract.v1';
-export type CreatedAt19 = string;
-export type Id24 = string;
+export type CreatedAt20 = string;
+export type Id25 = string;
 export type MemberKind = 'human' | 'agent';
 export type Name14 = string;
 export type RemovedAt = string | null;
 export type MemberRole = 'member' | 'admin' | 'owner';
-export type WorkspaceId21 = string;
+export type WorkspaceId22 = string;
 export type MemberRole1 = 'member' | 'admin' | 'owner';
-export type CreatedAt20 = string;
-export type Id25 = string;
+export type CreatedAt21 = string;
+export type Id26 = string;
 export type Name15 = string;
 export type RemovedAt1 = string | null;
 export type MemberRole2 = 'member' | 'admin' | 'owner';
-export type WorkspaceId22 = string;
+export type WorkspaceId23 = string;
 export type Body1 = string;
 export type FileIds2 = string[];
 export type ThreadRootId3 = string | null;
-export type ChannelId23 = string;
-export type CreatedAt21 = string;
-export type CreatedByMemberId2 = string;
-export type Id26 = string;
-export type TaskLevel = 'l1' | 'l2';
-export type Number = number;
-export type OwnerMemberId = string | null;
-export type RootMessageId = string;
-export type SilenceOverrideH = number | null;
-export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
-export type StatusChangedAt = string;
-export type Title3 = string;
-export type WorkspaceId23 = string;
 export type AgentMemberId17 = string;
 export type ChannelId24 = string;
 export type Messages = MessagePublic[];
@@ -689,6 +694,7 @@ export type Version1 = 'coagentia.task-plan.v1';
 export type Title4 = string;
 export type Command6 = string | null;
 export type Title5 = string | null;
+export type NotificationMode2 = 'all' | 'mentions' | 'mute';
 export type Items1 = unknown[];
 export type NextCursor = string | null;
 export type Type3 = 'ping';
@@ -864,8 +870,8 @@ export type Channels = ChannelPublic[];
 export type Members = MemberPublic[];
 export type Snippet = string;
 export type Messages1 = SearchMessageResult[];
-export type Tasks = TaskPublic[];
-export type Skills1 = string[];
+export type Tasks1 = TaskPublic[];
+export type Skills2 = string[];
 export type DeploymentId4 = string;
 export type Stream = 'deploy_log';
 export type Type4 = 'sub' | 'unsub';
@@ -938,19 +944,38 @@ export type TaskStatus2 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'close
 export type StatusChangedAt1 = string;
 export type Title7 = string;
 export type WorkspaceId36 = string;
+export type Briefing = string;
+export type FromKey = string;
+export type ToKey = string;
+export type Edges1 = TemplateEdge[];
+export type Key3 = string;
+export type Role = string;
+export type Title8 = string;
+export type Nodes1 = TemplateNode[];
+export type Description8 = string;
+export type Placeholder = string;
+export type Roles = TemplateRole[];
+export type ChannelId31 = string;
+export type Description9 = string;
+export type IncludeNodeIds = string[] | null;
+export type Name18 = string;
+export type RolePlaceholders = {
+  [k: string]: string;
+} | null;
+export type ChannelId32 = string;
 export type Builtin2 = boolean;
 export type CreatedAt34 = string;
 export type CreatedByMemberId6 = string;
-export type Description8 = string;
+export type Description10 = string;
 export type Id39 = string;
-export type Name18 = string;
+export type Name19 = string;
 export type WorkspaceId37 = string;
 export type Builtin3 = boolean;
 export type CreatedAt35 = string;
 export type CreatedByMemberId7 = string;
-export type Description9 = string;
+export type Description11 = string;
 export type Id40 = string;
-export type Name19 = string;
+export type Name20 = string;
 export type WorkspaceId38 = string;
 export type CacheReadTokens1 = number;
 export type CacheWriteTokens1 = number;
@@ -959,7 +984,7 @@ export type OutputTokens1 = number;
 export type AgentMemberId22 = string;
 export type CacheReadTokens2 = number;
 export type CacheWriteTokens2 = number;
-export type ChannelId31 = string | null;
+export type ChannelId33 = string | null;
 export type Id41 = string;
 export type InputTokens2 = number;
 export type OutputTokens2 = number;
@@ -969,7 +994,7 @@ export type ThreadRootId6 = string | null;
 export type AgentMemberId23 = string;
 export type CacheReadTokens3 = number;
 export type CacheWriteTokens3 = number;
-export type ChannelId32 = string | null;
+export type ChannelId34 = string | null;
 export type Id42 = string;
 export type InputTokens3 = number;
 export type OutputTokens3 = number;
@@ -980,7 +1005,7 @@ export type WorkspaceId39 = string;
 export type AgentMemberId24 = string;
 export type CacheReadTokens4 = number;
 export type CacheWriteTokens4 = number;
-export type ChannelId33 = string | null;
+export type ChannelId35 = string | null;
 export type Id43 = string;
 export type InputTokens4 = number;
 export type OutputTokens4 = number;
@@ -991,10 +1016,10 @@ export type WorkspaceId40 = string;
 export type AgentMemberId25 = string;
 export type TaskId19 = string | null;
 export type Events3 = TokenUsageEventIn[];
-export type Name20 = string;
+export type Name21 = string;
 export type Slug = string;
 export type AttachmentMaxMb = number | null;
-export type Name21 = string | null;
+export type Name22 = string | null;
 export type NotifDesktop = boolean | null;
 export type NotifSound = boolean | null;
 export type OnboardingGreeting = boolean | null;
@@ -1006,7 +1031,7 @@ export type UiTheme = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb1 = number;
 export type CreatedAt36 = string;
 export type Id44 = string;
-export type Name22 = string;
+export type Name23 = string;
 export type NotifDesktop1 = boolean;
 export type NotifSound1 = boolean;
 export type OnboardingGreeting1 = boolean;
@@ -1015,7 +1040,7 @@ export type UiTheme1 = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb2 = number;
 export type CreatedAt37 = string;
 export type Id45 = string;
-export type Name23 = string;
+export type Name24 = string;
 export type NotifDesktop2 = boolean;
 export type NotifSound2 = boolean;
 export type OnboardingGreeting2 = boolean;
@@ -1157,6 +1182,7 @@ export interface CoAgentiaContracts {
   HomeTreeQuery?: HomeTreeQuery;
   HomeTreeReply?: HomeTreeReply;
   InjectSource?: InjectSource;
+  InstantiateResult?: InstantiateResult;
   InstrFrame?: InstrFrame;
   LandingBatchData?: LandingBatchData;
   LandingBatchPublic?: LandingBatchPublic;
@@ -1187,6 +1213,7 @@ export interface CoAgentiaContracts {
   NodeCreate?: NodeCreate;
   NodePatch?: NodePatch;
   NodePosition?: NodePosition;
+  NotificationSettingPut?: NotificationSettingPut;
   Page?: Page;
   PingMsg?: PingMsg;
   PresenceChangedData?: PresenceChangedData;
@@ -1241,7 +1268,13 @@ export interface CoAgentiaContracts {
   TaskStatusChange?: TaskStatusChange;
   TaskUpdatedData?: TaskUpdatedData;
   TaskUsage?: TaskUsage;
+  TemplateBody?: TemplateBody;
+  TemplateCreate?: TemplateCreate;
+  TemplateEdge?: TemplateEdge;
+  TemplateInstantiate?: TemplateInstantiate;
+  TemplateNode?: TemplateNode;
   TemplatePublic?: TemplatePublic;
+  TemplateRole?: TemplateRole;
   TemplateRow?: TemplateRow;
   TokenTotals?: TokenTotals;
   TokenUsageEventIn?: TokenUsageEventIn;
@@ -1658,10 +1691,14 @@ export interface ChannelRow {
   workspace_id: WorkspaceId5;
 }
 /**
- * GET /channels：全量频道 + **自身** read-position 附带（契约 B §4.5/§6）。
+ * GET /channels：全量频道 + 自身 read-position + 本人非默认通知设置（B §4.5/§6/§11.4）。
+ *
+ * v1.3：扩第三字段 `notification_settings`（本人全部**非默认**行，前端渲染徽标源；PUT 后
+ * 本地更新，零新增 WS 事件）。冷态/全默认 → []（H0 字段就位，H3 填充）。
  */
 export interface ChannelsSnapshot {
   items: Items;
+  notification_settings?: NotificationSettings;
   read_positions: ReadPositions;
 }
 export interface ReadPositionPublic {
@@ -1703,6 +1740,7 @@ export interface DetectedRuntime {
   installed: Installed;
   models?: Models;
   runtime: Runtime;
+  skills?: Skills1;
 }
 export interface ComputerData {
   computer: ComputerPublic;
@@ -2099,18 +2137,11 @@ export interface InjectSource {
   ref?: Ref2;
 }
 /**
- * at-least-once：ack 超时原帧原样重发（同 frame_id）；同 Agent 串行。
+ * 实例化响应（B §4.12）：单事务落地批 + 逐节点落地任务（零新增 WS 事件，广播走既有事件）。
  */
-export interface InstrFrame {
-  at: At2;
-  data: JsonValue;
-  frame_id: FrameId;
-  kind?: Kind4;
-  type: InstrType;
-  v?: V2;
-}
-export interface LandingBatchData {
+export interface InstantiateResult {
   batch: LandingBatchPublic;
+  tasks?: Tasks;
 }
 export interface LandingBatchPublic {
   channel_id: ChannelId21;
@@ -2124,20 +2155,49 @@ export interface LandingBatchPublic {
   status?: LandingBatchStatus;
   workspace_id: WorkspaceId19;
 }
+export interface TaskPublic {
+  channel_id: ChannelId22;
+  created_at: CreatedAt16;
+  created_by_member_id: CreatedByMemberId2;
+  id: Id23;
+  level?: TaskLevel;
+  number: Number;
+  owner_member_id?: OwnerMemberId;
+  root_message_id: RootMessageId;
+  silence_override_h?: SilenceOverrideH;
+  status?: TaskStatus;
+  status_changed_at: StatusChangedAt;
+  title: Title3;
+  workspace_id: WorkspaceId20;
+}
+/**
+ * at-least-once：ack 超时原帧原样重发（同 frame_id）；同 Agent 串行。
+ */
+export interface InstrFrame {
+  at: At2;
+  data: JsonValue;
+  frame_id: FrameId;
+  kind?: Kind4;
+  type: InstrType;
+  v?: V2;
+}
+export interface LandingBatchData {
+  batch: LandingBatchPublic;
+}
 /**
  * 幂等键命名空间锚（01 §5.1 修订：opId 含 batch_id）。
  */
 export interface LandingBatchRow {
-  channel_id: ChannelId22;
+  channel_id: ChannelId23;
   confirmed_by: ConfirmedBy1;
   content_hash: ContentHash1;
-  created_at: CreatedAt16;
+  created_at: CreatedAt17;
   done_at?: DoneAt3;
-  id: Id23;
+  id: Id24;
   kind: LandingBatchKind;
   source_ref: SourceRef1;
   status?: LandingBatchStatus1;
-  workspace_id: WorkspaceId20;
+  workspace_id: WorkspaceId21;
 }
 /**
  * 单节点坐标（pos_x/pos_y 不参与基线快照，契约 A §6）。
@@ -2156,7 +2216,7 @@ export interface LayoutPut {
 export interface LedgerEntryPublic {
   actor_member_id?: ActorMemberId1;
   batch_id?: BatchId3;
-  created_at: CreatedAt17;
+  created_at: CreatedAt18;
   kind: Kind5;
   op_id: OpId;
   payload: JsonValue;
@@ -2169,7 +2229,7 @@ export interface LedgerEntryPublic {
 export interface LedgerEntryRow {
   actor_member_id?: ActorMemberId2;
   batch_id?: BatchId4;
-  created_at: CreatedAt18;
+  created_at: CreatedAt19;
   kind: Kind6;
   op_id: OpId1;
   payload: JsonValue;
@@ -2198,25 +2258,25 @@ export interface MemberData {
   member: MemberPublic;
 }
 export interface MemberPublic {
-  created_at: CreatedAt19;
-  id: Id24;
+  created_at: CreatedAt20;
+  id: Id25;
   kind: MemberKind;
   name: Name14;
   removed_at?: RemovedAt;
   role?: MemberRole;
-  workspace_id: WorkspaceId21;
+  workspace_id: WorkspaceId22;
 }
 export interface MemberPatch {
   role: MemberRole1;
 }
 export interface MemberRow {
-  created_at: CreatedAt20;
-  id: Id25;
+  created_at: CreatedAt21;
+  id: Id26;
   kind: MemberKind;
   name: Name15;
   removed_at?: RemovedAt1;
   role?: MemberRole2;
-  workspace_id: WorkspaceId22;
+  workspace_id: WorkspaceId23;
 }
 export interface MessageCreate {
   as_task?: AsTask | null;
@@ -2230,21 +2290,6 @@ export interface MessageCreate {
 export interface MessageCreated {
   message: MessagePublic;
   task?: TaskPublic | null;
-}
-export interface TaskPublic {
-  channel_id: ChannelId23;
-  created_at: CreatedAt21;
-  created_by_member_id: CreatedByMemberId2;
-  id: Id26;
-  level?: TaskLevel;
-  number: Number;
-  owner_member_id?: OwnerMemberId;
-  root_message_id: RootMessageId;
-  silence_override_h?: SilenceOverrideH;
-  status?: TaskStatus;
-  status_changed_at: StatusChangedAt;
-  title: Title3;
-  workspace_id: WorkspaceId23;
 }
 export interface MessageCreatedData {
   message: MessagePublic;
@@ -2339,6 +2384,14 @@ export interface TaskPlanBody {
 export interface NodePatch {
   command?: Command6;
   title?: Title5;
+}
+/**
+ * PUT /channels/{id}/notification-setting（B §4.5/§11.4）：upsert 懒建；人类成员本人自治
+ * （无 admin 门）；Agent 主体 403（通知是人类面）；kind=dm → 422 NOTIF_IN_DM（DM 必达）。
+ * GET 无行回默认 `{mode: all}`（响应用 entities.ChannelNotificationSettingPublic）。
+ */
+export interface NotificationSettingPut {
+  mode: NotificationMode2;
 }
 /**
  * 游标分页：?after=（正序）/ ?before=（倒序回翻）。
@@ -2504,8 +2557,10 @@ export interface ReadUpdatedData {
  * 创建，故请求侧不接受 loop_contract_id（那是存储列，非请求字段）。前向引用 LoopContractBody
  * （定义序在后，同 entities.MessagePublic.files 先例），文件末尾 model_rebuild() 补全。
  *
- * cadence（B §10.6）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如 `PT1H`；
- * cron 归 M5+），且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。
+ * cadence（B §10.6/§11.5）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如
+ * `PT1H`）或 **cron 五段式**（`分 时 日 月 周`，服务器本地时区，无秒/年/@keyword——M5 v1.3 扩），
+ * 且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。cadence 在 contracts 侧
+ * 是纯 str（无语义校验器）：cron 值域解析/塌缩式重排的判定归 H4 server 侧单点（纪律 7）。
  */
 export interface ReminderCreate {
   anchor_channel_id: AnchorChannelId;
@@ -2586,10 +2641,10 @@ export interface SearchMessageResult {
 export interface SearchResponse {
   jumps: SearchJumps;
   messages?: Messages1;
-  tasks?: Tasks;
+  tasks?: Tasks1;
 }
 export interface SkillsPut {
-  skills: Skills1;
+  skills: Skills2;
 }
 export interface SubDeployLogMsg {
   deployment_id: DeploymentId4;
@@ -2744,27 +2799,93 @@ export interface TaskUpdatedData {
   change?: TaskChange | null;
   task: TaskPublic;
 }
+/**
+ * templates.body（A v1.0.6 §4.10 M5 收紧）：DAG 结构 + 角色占位表 + 简报话术（C7）。
+ *
+ * 保存序列化（B §11.1）：从画布快照仅取 task 节点、pos 不入；占位按节点 owner 去重、无 owner
+ * 归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）。校验：model_validate +
+ * edges 无环（复用 kernel/graph）+ nodes.role/edges 引用一致性（server 侧执法）。
+ */
+export interface TemplateBody {
+  briefing?: Briefing;
+  edges?: Edges1;
+  nodes?: Nodes1;
+  roles?: Roles;
+}
+/**
+ * TemplateBody.edges 元素：node key 引用（`from`/`to` 是 Python 关键字，沿 TaskHandoffBody
+ * from_member 先例改名 from_key/to_key）；保存与实例化均校验无环（复用 kernel/graph）。
+ */
+export interface TemplateEdge {
+  from_key: FromKey;
+  to_key: ToKey;
+}
+/**
+ * TemplateBody.nodes 元素（A v1.0.6 §4.10）：模板内一个 task 节点。
+ */
+export interface TemplateNode {
+  key: Key3;
+  plan_skeleton?: TaskPlanBody | null;
+  role: Role;
+  title: Title8;
+}
+/**
+ * TemplateBody.roles 元素（P13 保存模板弹窗提取表）：角色占位。
+ */
+export interface TemplateRole {
+  description?: Description8;
+  placeholder: Placeholder;
+}
+/**
+ * POST /templates 存为模板（B §4.12/§11.1）。
+ *
+ * 服务端读 `channel_id` 频道画布快照序列化 `TemplateBody`（A §4.10 提取规则）；
+ * `role_placeholders`（{member_id: 占位名}）覆盖默认 owner 去重占位名；`include_node_ids` 缺省
+ * = 全部 task 节点；画布无正式节点 / 存在草稿层 → 409 TEMPLATE_CANVAS_NOT_READY。
+ */
+export interface TemplateCreate {
+  channel_id: ChannelId31;
+  description?: Description9;
+  include_node_ids?: IncludeNodeIds;
+  name: Name18;
+  role_placeholders?: RolePlaceholders;
+}
+/**
+ * POST /templates/{id}/instantiate（B §4.12/§11.2）。
+ *
+ * `role_mapping` 须覆盖 body.roles 全部占位（缺失 → 422 VALIDATION_FAILED，details.missing 列
+ * 占位名）；值 null = 该角色节点落地为无 owner（"待认领"）。单事务落地批（`tmpl:<batch_id>:
+ * <node_key>` 幂等，接受 Idempotency-Key）。v1.3 收窄：无内联 create——向导"新建"走既有创建
+ * Agent 弹窗再回填映射（§7 #8）。
+ */
+export interface TemplateInstantiate {
+  channel_id: ChannelId32;
+  role_mapping: RoleMapping;
+}
+export interface RoleMapping {
+  [k: string]: string | null;
+}
 export interface TemplatePublic {
-  body: JsonValue;
+  body: TemplateBody;
   builtin?: Builtin2;
   created_at: CreatedAt34;
   created_by_member_id: CreatedByMemberId6;
-  description?: Description8;
+  description?: Description10;
   id: Id39;
-  name: Name18;
+  name: Name19;
   workspace_id: WorkspaceId37;
 }
 /**
  * M5：DAG 结构 + 角色占位表 + 简报话术（C7）；实例化走落地事务器（tmpl:<batch_id>:…）。
  */
 export interface TemplateRow {
-  body: JsonValue;
+  body: TemplateBody;
   builtin?: Builtin3;
   created_at: CreatedAt35;
   created_by_member_id: CreatedByMemberId7;
-  description?: Description9;
+  description?: Description11;
   id: Id40;
-  name: Name19;
+  name: Name20;
   workspace_id: WorkspaceId38;
 }
 export interface TokenTotals {
@@ -2781,7 +2902,7 @@ export interface TokenUsageEventIn {
   agent_member_id: AgentMemberId22;
   cache_read_tokens?: CacheReadTokens2;
   cache_write_tokens?: CacheWriteTokens2;
-  channel_id?: ChannelId31;
+  channel_id?: ChannelId33;
   id: Id41;
   input_tokens?: InputTokens2;
   output_tokens?: OutputTokens2;
@@ -2793,7 +2914,7 @@ export interface TokenUsageEventPublic {
   agent_member_id: AgentMemberId23;
   cache_read_tokens?: CacheReadTokens3;
   cache_write_tokens?: CacheWriteTokens3;
-  channel_id?: ChannelId32;
+  channel_id?: ChannelId34;
   id: Id42;
   input_tokens?: InputTokens3;
   output_tokens?: OutputTokens3;
@@ -2809,7 +2930,7 @@ export interface TokenUsageEventRow {
   agent_member_id: AgentMemberId24;
   cache_read_tokens?: CacheReadTokens4;
   cache_write_tokens?: CacheWriteTokens4;
-  channel_id?: ChannelId33;
+  channel_id?: ChannelId35;
   id: Id43;
   input_tokens?: InputTokens4;
   output_tokens?: OutputTokens4;
@@ -2827,12 +2948,12 @@ export interface UsageBatchData {
   events: Events3;
 }
 export interface WorkspaceCreate {
-  name: Name20;
+  name: Name21;
   slug: Slug;
 }
 export interface WorkspacePatch {
   attachment_max_mb?: AttachmentMaxMb;
-  name?: Name21;
+  name?: Name22;
   notif_desktop?: NotifDesktop;
   notif_sound?: NotifSound;
   onboarding_greeting?: OnboardingGreeting;
@@ -2844,7 +2965,7 @@ export interface WorkspacePublic {
   attachment_max_mb?: AttachmentMaxMb1;
   created_at: CreatedAt36;
   id: Id44;
-  name: Name22;
+  name: Name23;
   notif_desktop?: NotifDesktop1;
   notif_sound?: NotifSound1;
   onboarding_greeting?: OnboardingGreeting1;
@@ -2859,7 +2980,7 @@ export interface WorkspaceRow {
   attachment_max_mb?: AttachmentMaxMb2;
   created_at: CreatedAt37;
   id: Id45;
-  name: Name23;
+  name: Name24;
   notif_desktop?: NotifDesktop2;
   notif_sound?: NotifSound2;
   onboarding_greeting?: OnboardingGreeting2;

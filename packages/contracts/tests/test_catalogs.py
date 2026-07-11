@@ -3,14 +3,16 @@
 from coagentia_contracts import constants, daemon, rest, ws
 from coagentia_contracts.enums import TaskStatus
 
-# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.2 起 23 个，M4 新增 HELD_DRAFT_RESOLVED）
+# 契约 B §3 全集（转录自 02-REST-API契约.md；v1.3 起 25 个，
+# M5 新增 NOTIF_IN_DM / TEMPLATE_CANVAS_NOT_READY）
 ERROR_CODES = {
     "VALIDATION_FAILED", "TASK_IN_DM", "NOT_TOP_LEVEL_MESSAGE", "CLAIM_RACE",
     "HANDOFF_INCOMPLETE", "TASK_TRANSITION_INVALID", "GRAPH_CYCLE", "STALE_CONFIRM",
     "DELTA_BASE_MISMATCH", "NODE_ACTIVE", "NO_ORCHESTRATOR", "IDEMPOTENCY_MISMATCH",
     "NAME_TAKEN", "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS",
     "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE",
-    "HELD_DRAFT_RESOLVED", "PERMISSION_DENIED", "NOT_FOUND",
+    "HELD_DRAFT_RESOLVED", "NOTIF_IN_DM", "TEMPLATE_CANVAS_NOT_READY",
+    "PERMISSION_DENIED", "NOT_FOUND",
 }
 
 # 契约 C §6/§7/§8 全集（转录自 03-WS事件协议.md v1.0）
@@ -61,7 +63,7 @@ REPORT_TYPES = {
 
 def test_error_codes_exact() -> None:
     assert {c.value for c in rest.ErrorCode} == ERROR_CODES
-    assert len(ERROR_CODES) == 23
+    assert len(ERROR_CODES) == 25
 
 
 def test_ws_event_catalog_exact() -> None:
@@ -183,3 +185,22 @@ def test_m4_adds_no_mcp_tools() -> None:
     """E 契约 v1.3 裁决：M4 零新 Agent 工具（护栏干预是人类面 rule=G3；create_reminder 参数
     扩展属 daemon mcp.py 非工具目录）。COAGENTIA_MCP_TOOLS 不增补。"""
     assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3/M4 无增
+
+
+def test_m5_endpoint_catalog_size() -> None:
+    """M5 端点清单：5 条（§4.12 模板三 + §4.5 通知设置二），与 M1/M2/M3/M4 不相交。"""
+    assert len(rest.ENDPOINTS_M5) == 5
+    assert len(set(rest.ENDPOINTS_M5)) == 5
+    for prior in (rest.ENDPOINTS_M1, rest.ENDPOINTS_M2, rest.ENDPOINTS_M3, rest.ENDPOINTS_M4):
+        assert set(prior).isdisjoint(rest.ENDPOINTS_M5)
+
+
+def test_m5_adds_no_mcp_tools() -> None:
+    """E 契约 v1.4 裁决（§7 #12）：M5 工具组为空——连续第三个里程碑零新增 Agent 工具（唯一变化 =
+    create_reminder cadence 值域扩 cron，属描述文案非工具目录）。COAGENTIA_MCP_TOOLS 不增补。"""
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3/M4/M5 无增
+
+
+def test_codex_disallowed_tools_placeholder() -> None:
+    """CODEX_DISALLOWED_TOOLS 占位空 tuple（契约 E2 §2.5；终表 H2 A 级实测校准回填）。"""
+    assert constants.CODEX_DISALLOWED_TOOLS == ()

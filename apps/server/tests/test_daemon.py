@@ -597,8 +597,9 @@ def test_runtimes_detected_updates_computer(ctx: tuple[TestClient, Env, Any]) ->
             {"runtimes": [{"runtime": "claude_code", "installed": True, "models": ["opus"]}]},
         )
         d.sync()
+        # skills 为 DetectedRuntime v1.0.6 扩字段（A/D）：上行缺省 → server 落库补默认 []。
         assert _poll(lambda: env.detected_runtimes() == [
-            {"runtime": "claude_code", "installed": True, "models": ["opus"]}
+            {"runtime": "claude_code", "installed": True, "models": ["opus"], "skills": []}
         ])
 
 
