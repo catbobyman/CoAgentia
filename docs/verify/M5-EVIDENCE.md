@@ -87,6 +87,21 @@ runtime 真活见 §1。
 
 单测用干净占位/未断言坐标故漏网——实机浏览器一眼现形，是 verify 存在的意义。
 
+## 5b. /code-review high（8 维度 workflow → 36 候选 → 27 kept → 6 distinct CONFIRMED 全修，提交 `bef88eb`）
+
+8 finder 角度（line-scan/removed-behavior/cross-file/reuse/simplify/efficiency/altitude/conventions）× ≤6 候选 → 1 票对抗性 verify → 去重后 6 处独立 CONFIRMED 全修：
+
+| # | 缺陷 | 修复 | 回归测试 |
+| --- | --- | --- | --- |
+| B | instantiate 幂等身份漏 template_id → 同键+同 {channel,role_mapping} 跨两模板误判 hit、回放错模板 | req_hash 折入 template_id | `test_instantiate_idempotency_key_scoped_to_template`（跨模板同键 → 409） |
+| C | 幂等重放 tasks 顺序漂移（batch_node_task_ids 按 (created_at,op_id) → 同毫秒 op_id 字典序打乱） | 改按 `seq`（自增 PK=落库序）排序 | `test_instantiate_replay_preserves_task_order` |
+| A | 前端 idempotencyKeyRef 首次生成后不重置 → 丢响应重试选别模板/改映射复用陈旧键 → 409 卡死/回放错模板 | pickTemplate/onRoleChange 即作废键 | `改映射后作废旧幂等键`（vitest） |
+| D | `crypto.randomUUID` 非 secure context（局域网 http）undefined → 实例化按钮静默失效 | `newIdempotencyKey` 兜底 | tsc + 既有实例化测 |
+| E | 注释误述「ApiError 不回滚事务」（实证 get_tx 对 ApiError 确回滚普通写；op_id 残留实因 record 走 SAVEPOINT） | 改注释为机制无关：可失败校验全前置于 reserve 之上=安全性所系（3 处） | — |
+| H | `_instantiate_result` 未用 tx 形参 | 删形参 | — |
+
+**PLAUSIBLE 挂账（非 bug，未修）**：briefing @全部映射 agent（含下游 blocked——by-design 唤醒信号，gating 仍护任务线程投递）/ `_layout_positions` 与前端 `TemplateDagThumb` 分层重复（尺度/用途不同，非纪律 8 图算法单源）/ serialize `_plan_skeleton` N+1（稀有存模板路径）/ node-mismatch 分支 fail-closed 持久性（M6-only 不可达）。
+
 ## 6. 守门基线（M5b + 全部修复收口态）
 
 ```

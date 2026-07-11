@@ -122,6 +122,20 @@
 - **实机 verify**：隔离临时库 + 真 uvicorn 8801 + **真 websockets daemon-sim** + 浏览器 WS 探针 **38/38**——held 场景（Pat 发消息被扣 202 → 卡片草稿全文+未读原因+guard.held → 放行 → **1 分钟内 message.deliver 送达 Rin**）+ discard 直投 + reevaluate（**deliver ack 推进游标→重发过门 201 死循环破除**）+ G4 超时自愈 + G5 连扣升级（escalated_at+系统消息@人类+held_escalation activity+停自动）+ playwright 3 截图（held 卡/升级横条/Activity 置顶）+ console 0（[M4B-EVIDENCE.md](../verify/M4B-EVIDENCE.md)）。
 - **M4 里程碑收口**（§9a+§9b 出口清单全绿）；M4-HANDOFF 移入 archive/。**无待收口里程碑，接续 = M5+（未立项）**。
 
+## 12. M5 第二 runtime·配置面与模板向导（M5 里程碑收口 2026-07-11 = PRD M5 出口达成）
+
+- **块 M5a 第二 runtime 与配置面**（`da6833a`，详情 [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)）：Codex 适配器（`adapters/codex.py` CodexProcess 长驻 JSON-RPC、`_new_process` 按 runtime 分派、CODEX_HOME 隔离 + auth.json mtime 物化、probe_codex+skills）+ 每频道通知设置（GET/PUT + mode 门 mute 掐 mention activity + 原子 upsert）+ cron cadence（手写 5 段无依赖 + 塌缩重排 + DST fold）+ 技能白名单 UI（两 runtime 候选池）+ P12 阈值收编。实机 codex 0.144.0 PONG + REST 9/9 + code-review 5 CONFIRMED（cron 500/DST/通知 TOCTOU/codex 凭证/probe symlink）。契约 M5 全程零修订（H0 已落 A v1.0.6/B v1.3/E2 v1.0.1）。
+- **块 M5b 模板与向导**（`b4203c4`→`12aaac6`→`42b7b64`→`bb760f0`→`bef88eb`，详情 [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md)）：
+  - **H5 模板域**：`serialize_canvas_to_body`（画布快照→TemplateBody：仅 task 节点/占位 owner 去重/plan_skeleton 带走/pos 不入/node key `n{idx}`）+ `validate_template_body` 单执法点（无环 detect_cycle + 引用一致）+ `upsert_builtin_templates` 启动幂等；**工程三角 builtin**（`templates/builtin.py` 6 节点线性 DAG + 4 角色占位 checker≠doer 话术 + briefing + 每节点 plan_skeleton）。
+  - **H6 实例化事务器**（全仓首个 landing batch 消费者）：`routes/templates.py` POST instantiate——role_mapping 全覆盖 422/未知成员 422/无画布 404 **全前置于幂等 reserve-before**（record 先于副作用、req_hash 折 template_id、并发同键不重复落地批；reserve 后不再抛错=安全性所系，因 record 走 SAVEPOINT 写入未必随回滚撤销）；`instantiate_template` 单事务：落地批 kind=tmpl → 逐节点 create_node 全链（`tmpl:<batch_id>:<node_key>` 幂等 + `_layout_positions` 分层布局）→ 连边（无环兜底 + triplet SAVEPOINT）→ briefing @映射角色（唤醒）→ baseline bump → mark_done；重放 reconstruct 由 `ledger.batch_node_task_ids` 按 **seq 保序**派生；blocked-gating 天然生效。
+  - **B-M5-2 前端**：SaveTemplateModal（占位提取表/gating disabled）+ TemplateWizard 三步（DAG 缩略图 / 同 runtime 互审 warning=`lib/templates.classifyRole` **仅按占位名判定** / 预览 / 实例化跳画布）+ CanvasTab 模板钮 + SetupChecklist 003 接真 + 幂等键每次提交作废重置 + `crypto.randomUUID` 兜底。
+- **并行审计（4 agent 前置于实机）**：**1 blocking**（实例化幂等 reserve-before：原 record 在副作用后 → 并发同键各建一批）+ **1 major**（向导「新建 Agent」死控件 + awaitingCreateFor 误映射）+ minor 全修（未知成员 422/validate 再执法/briefing 空跳过/前端幂等键）+ 覆盖补齐（SetupChecklist 003/向导预览）。
+- **H7 实机 verify = PRD M5 出口**：隔离库 + 真 codex 0.144.0 + 真 uvicorn + playwright 1440×900——codex 真机 PONG；**e2e 12/12**：工程三角实例化（实现=Codex Hank/评审=Claude Rin）→ 落地批 done/6 节点 5 边/TaskPlan 初稿/briefing @codex+claude/gating 初态 → 幂等重放 → **全管道逐节点 claim/T7 handoff/in_review/done 走到人类终审 done（gating 逐级解锁）**；5 前端截图（菜单/向导三步/画布）+ console 0。
+- **verify-surfaced 修复（单测漏网实机现形）**：`classifyRole` 原并入 description → builtin「实现工程师」含「交独立验收」被误归 review 致 FR-7.3 warning 失效 → 改仅按占位名；实例化节点原全落原点堆叠 → `_layout_positions` 分层。
+- **`/code-review high`**（8 维度 workflow → 36 候选→27 kept→**6 distinct CONFIRMED 全修**，明细 [M5-EVIDENCE.md §5b](../verify/M5-EVIDENCE.md)）：**B** 幂等身份漏 template_id（跨模板同键回放错模板）→ req_hash 折 template_id / **C** 重放顺序漂移（(created_at,op_id) 字典序）→ 按 seq 保序 / **A** 前端幂等键不重置 → pickTemplate·onRoleChange 作废 / **D** randomUUID 非 secure context 崩 → 兜底 / **E** 「ApiError 不回滚事务」误述（实证 get_tx 对 ApiError 确回滚普通写，op_id 残留实因 record SAVEPOINT）→ 注释改机制无关 / **H** 死参。PLAUSIBLE 挂账（briefing 全 @/layout 重复/serialize N+1/fail-closed M6-only）。
+- **收口基线**：后端 **712 passed / 4 skipped**（672 → +40）、web vitest **175**（142 → +33）、pyright 0、ruff 干净、`pnpm gen` 确定、双侧 build 绿。
+- **M5 里程碑收口**（§9a+§9b 出口清单全绿）；M5-HANDOFF 移入 archive/。**M1–M5 全收口，无待收口里程碑，接续 = M6（未立项）**。
+
 ## 已失效结论
 
 | 历史表述 | 当前结论 |
@@ -134,11 +148,13 @@
 | pyright 有 109 个既有错误挂账 | 挂账批3 已清零（实清 133），pyright 已并入 `pnpm typecheck` 守门 |
 | `421 passed` + vitest 23 是最新基线 | 挂账三批后为 `428 passed, 3 skipped` + vitest 23 |
 | `428 passed` + vitest 23 是最新基线 | **M3b 收口后为 `483 passed, 3 skipped` + vitest 76**（M3 里程碑完成） |
-| 接续 = 块 M3b 画布与 gating | **M3 里程碑已收口（§9a+§9b 全绿）；接续 = M4**（freshness/HeldDraft/沉默提醒/LoopContract 生成与循环 Reminder） |
+| 接续 = 块 M3b 画布与 gating | M3 里程碑已收口；接续 = M4（已收口，§10+§11） |
+| `483`/`572`/`672 passed` 是最新基线 | **M5 里程碑收口后为 `712 passed, 4 skipped` + vitest 175** |
+| 接续 = M5（模板与向导）/ M5b 待开工 | **M5 里程碑已收口（§12 = PRD M5 出口达成，`bef88eb`）；接续 = M6（未立项）** |
 
 ## 当前接续任务
 
-1. **M4 里程碑已整体收口（§10 M4a + §11 M4b = PRD M4 出口达成，`1052ee6`，实机 38/38 + code-review 17 CONFIRMED 全处理）**。M1–M4 全部收口，**无待完成里程碑**；接续 = M5+（cron cadence / Codex 适配 / 通知设置 / fail_closed 落地 / O2 接线，PRD §8，尚未立项）。M4-HANDOFF 已移 archive/。
+1. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。**M1–M5 全部收口，无待完成里程碑**；接续 = M6（拆解 proposals 落地 / 编排 Orchestrator / FR-7.5 评审结论枚举 schema 化 / 模板 DELETE·PATCH / fail-closed M6-replay 复核，PRD §8，尚未立项）。M5-HANDOFF 已移 archive/。
 2. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 3. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。
 4. 真实双 Agent OAuth 冷启动复验（M1 遗留）：M3b E6 用真 websockets daemon-sim 复证了网关侧 gating/force-start；真 OAuth refresh 竞争仍依赖既有确定性单测，未在干净环境重新消耗完整双 Agent 对话，结论沿用未变。

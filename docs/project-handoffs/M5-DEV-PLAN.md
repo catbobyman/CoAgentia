@@ -37,13 +37,15 @@
 | — | 并行审计（4 agent）→ 1 blocking(幂等 reserve-before)+1 major(向导死控件)+minor 全修 + 覆盖补齐 | ✅ | `42b7b64` | 前置于实机 |
 | H7 | 实机 verify → [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md)（codex PONG / e2e 12/12 全管道到人类终审 done / 5 截图 / console 0） | ✅ | `bb760f0` | = PRD M5 出口 |
 | — | verify-surfaced 修复（FR-7.3 classifyRole warning / 实例化节点分层布局） | ✅ | `bb760f0` | 单测漏网实机现形 |
-| — | /code-review high（8 维度 workflow → 见 [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md) §收口） | ⏳ | — | 块 M5b 收口中 |
+| — | /code-review high（8 维度 workflow → 36 候选→27 kept→6 CONFIRMED 全修：template_id 幂等/重放顺序/前端幂等键重置/randomUUID 兜底/错误前提注释/死参） | ✅ | `bef88eb` | 见 [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md) §5b |
+
+**M5 里程碑收口** = 块 M5a（`da6833a`）+ 块 M5b（`b4203c4`→`12aaac6`→`42b7b64`→`bb760f0`→`bef88eb`）；PRD M5 出口达成。
 
 ## 2. 守门命令（波间与收口）
 
 ```
-uv run pytest -q                    # 572 passed 基线，只增不减
-pnpm -F @coagentia/web test         # vitest 106 基线
+uv run pytest -q                    # 712 passed / 4 skipped（M5b 收口态）
+pnpm -F @coagentia/web test         # vitest 175
 pnpm typecheck                      # pyright 0 + 双 tsc
 uv run ruff check .
 pnpm gen                            # diff 空
