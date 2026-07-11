@@ -109,7 +109,18 @@
 - **`/code-review high`**（8 角度 × 25 agents → 10 CONFIRMED + 2 PLAUSIBLE）：**1 正确性 + 一簇 hub 清理/效率**全处理——① **recurring reminder 重放风暴**（旧实现每轮 +1 interval：建即触发 + 停机漏 K 周期后逐格重放洪泛）→ `interval.next_after` O(1) 塌缩到 >now 下一网格点 + 创建 recurring next_fire_at=now+interval；② 抽 hub `_post_system_message`（系统消息发射三处共用）；③ _silence_inputs 三 func.max → 单查询条件聚合；④ run_silence_scan channel N+1 → distinct IN 批取；⑤ run_reminder_scan 免回读 + `ledger.service.format_iso` 单源。PLAUSIBLE per-task SAVEPOINT **评估后不采纳**（与 tx.emit 提交后 flush 解耦产幽灵事件，单事务原子 + 下轮重试更安全）。
 - **收口基线**：后端 **542 passed / 3 skipped**（483 → +59 M4a + review 回归，零回归）、web vitest **89**（76 → +13）、pyright 0、ruff 干净、`pnpm gen` 确定、双侧 build 绿。
 - **实机 verify**：隔离临时库 + 真 uvicorn 8799 探针 **16/16**——沉默场景（todo/in_progress 双任务 reminder_sent → 任务 A escalated → @创建者/@owner/@人类目标正确 → Activity silence_escalation → 升级后静默）+ 循环 Reminder（recurring 无契约/once 携带 422 → recurring+loop_contract 201 + task_contracts 挂接行 + next_fire_at 塌缩重排）+ 3 浏览器截图（沉默流/Activity 置顶/Reminders 页签）+ console 0（[M4A-EVIDENCE.md](../verify/M4A-EVIDENCE.md)）。
-- **块 M4a 收口**；接续 = **块 M4b「freshness 与 HeldDraft」**（M4 出口前半：held 卡片可见+放行 1 分钟交付；M4-HANDOFF §9b，held_drafts 表已建、契约已就位）。M4-HANDOFF **暂留 handoffs/**（M4b 未收口，里程碑未整体完成，不移档）。
+- **块 M4a 收口**；接续 = 块 M4b。
+
+## 11. M4b freshness 与 HeldDraft（块 M4b 收口 2026-07-10 = PRD M4 出口达成 = M4 里程碑完成，`1052ee6`）
+
+- **编排**：Workflow 多 agent 并行——后端 **F5→F6 串行**（同改 server 文件保语义连贯）与前端 **B-M4-2** 并行两条流，各自测；集成守门（主循环）→ 实机 verify → `/code-review high` → 修复复跑。
+- **F5 freshness 门 + 三键端点**：`guard/service.py` 判定单源（`compute_unread` scope=线程 id==root|thread_root==root / 主流 thread_root IS NULL、未读=id>read_position 且 author!=agent、无游标全量、空放行；`hold_or_update` 活动行再扣 held_count+1 靠 `begin_nested` SAVEPOINT 兜 IntegrityError；`_escalate` G5；`freshness_hold` 总装）。messages.py 门位 = 仅 agent、既有校验 + **幂等 hit** 之后、落库前；抽 `persist_message` 落库核心（post/release 共用保零行为差）。`routes/held_drafts.py` 四端点（GET 默认活动态 / release 原载荷不依赖 daemon + 跳过 freshness / discard 直投 503 回滚 / reevaluate 委托 hub）。hub `inject_guard_feedback`/`_held_reevaluation_combo`/`reevaluate_held`（**死锁规避**：路由 tx 只读、写 + daemon I/O 全在 hub loop 独立已提交 tx）。
+- **F6 G4 定时 + GC 豁免**：hub `run_held_scan`+`_held_loop`（held_interval，**在线先探再翻 reevaluating**，提交后组合含 **deliver 推进 read_position** 防复扣死循环）；`gc.py` 活动 held file_ids 豁免。
+- **B-M4-2**：HeldDraftCard（草稿折叠 / 未读跳转 / 本地读秒倒计时不推帧 / 三键仅人类 / 升级横条 / 终态回执 / 409 刷新 / 非-409 error toast）+ HeldDraftList 按 thread_root 归位 + ChannelChatScreen·ThreadPanel 挂载 + wsBridge `held_draft.*` + api/queries 三键 hook。
+- **`/code-review high`**（8 角度 × ≤6 候选 → 对抗性 verify → **17 CONFIRMED + 2 PLAUSIBLE**）：5 正确性/健壮性修 + 1 簇清理 + 2 DRY 债挂账（明细 [M4B-EVIDENCE.md §5](../verify/M4B-EVIDENCE.md)）——**#4 幂等前置**（`ledger.lookup` 只读探账本，门前查 hit 回原 M1，absent 落库路径才 record；防重放遇新未读误扣→人类放行产生重复消息违 §1）/ **#5 reevaluate 终态守卫**（UPDATE 限活动态 + rowcount0→`HeldDraftResolved`→409；防并发复活丢弃草稿）/ **#6 G4 离线先探**（防离线行永卡 reevaluating、对账无 held 感知永不恢复）/ **#1 清单默认活动态**（`ACTIVE_STATUSES` 提公开单源 gc 复用；防活动 held 被终态挤到后页）/ **#3 三键 503 toast** / #7·#10 诊断走 helper 常量；#2 由 #6 覆盖；**#8·#9**（系统消息骨架/human_members 跨模块 DRY 债）挂账。
+- **收口基线**：后端 **572 passed / 3 skipped**（542 → +30，含 review 新增 3）、web vitest **106**（89 → +17）、pyright 0、ruff 干净、`pnpm gen` 确定、双侧 build 绿。
+- **实机 verify**：隔离临时库 + 真 uvicorn 8801 + **真 websockets daemon-sim** + 浏览器 WS 探针 **38/38**——held 场景（Pat 发消息被扣 202 → 卡片草稿全文+未读原因+guard.held → 放行 → **1 分钟内 message.deliver 送达 Rin**）+ discard 直投 + reevaluate（**deliver ack 推进游标→重发过门 201 死循环破除**）+ G4 超时自愈 + G5 连扣升级（escalated_at+系统消息@人类+held_escalation activity+停自动）+ playwright 3 截图（held 卡/升级横条/Activity 置顶）+ console 0（[M4B-EVIDENCE.md](../verify/M4B-EVIDENCE.md)）。
+- **M4 里程碑收口**（§9a+§9b 出口清单全绿）；M4-HANDOFF 移入 archive/。**无待收口里程碑，接续 = M5+（未立项）**。
 
 ## 已失效结论
 
@@ -127,7 +138,7 @@
 
 ## 当前接续任务
 
-1. **M4a 已收口（§10：D5 沉默提醒升级链 + 循环 Reminder/LoopContract 解锁，实机 16/16）**；接续 = **块 M4b「freshness 与 HeldDraft」**（M4 出口前半：held 卡片可见+放行 1 分钟交付；任务书 M4-HANDOFF §9b，held_drafts 表已建、契约已就位）。M4-HANDOFF 暂留 handoffs/（M4b 未收口不移档）。
+1. **M4 里程碑已整体收口（§10 M4a + §11 M4b = PRD M4 出口达成，`1052ee6`，实机 38/38 + code-review 17 CONFIRMED 全处理）**。M1–M4 全部收口，**无待完成里程碑**；接续 = M5+（cron cadence / Codex 适配 / 通知设置 / fail_closed 落地 / O2 接线，PRD §8，尚未立项）。M4-HANDOFF 已移 archive/。
 2. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 3. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。
 4. 真实双 Agent OAuth 冷启动复验（M1 遗留）：M3b E6 用真 websockets daemon-sim 复证了网关侧 gating/force-start；真 OAuth refresh 竞争仍依赖既有确定性单测，未在干净环境重新消耗完整双 Agent 对话，结论沿用未变。
