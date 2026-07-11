@@ -194,7 +194,8 @@ export function SkillsTab({ memberId, agent, computer, editable }: {
 
   const granted = q.data ?? [];
   const grantedSet = new Set(granted.map((s) => s.skill));
-  // 该 Agent 所在机器、该 runtime 的候选技能池(computer 探测数据;codex 恒 [] —— 裁决 #11)。
+  // 该 Agent 所在机器、该 runtime 的候选技能池(computer 探测上报;claude=全局技能目录、
+  // codex=app-server skills/list——实测两 runtime 均有池,裁决 #11 已推翻)。
   const pool = computer?.detected_runtimes?.find((rt) => rt.runtime === agent.runtime)?.skills ?? [];
   // 展示序:候选池在前(保序去重),再补池外已授予项。
   const union: string[] = [];

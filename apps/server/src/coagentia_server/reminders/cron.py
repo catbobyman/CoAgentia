@@ -160,6 +160,15 @@ def next_after(cadence: str, after_iso: str) -> str:
     语义一致（"其后首个命中"），无需锚点相位。
     """
     expr = parse_cron(cadence)
-    after_local = _parse_utc(after_iso).astimezone().replace(tzinfo=None)  # UTC → naive 本地壁钟
-    match_local = _next_local(expr, after_local)
-    return format_iso(match_local)  # naive 本地 → UTC Z（format_iso 对 naive 按本地解释）
+    after_utc = _parse_utc(after_iso)
+    cur_local = after_utc.astimezone().replace(tzinfo=None)  # UTC → naive 本地壁钟
+    # DST 回拨重复小时：naive 本地映射回 UTC 取 fold=0（较早实例），可能 ≤ after_utc，破坏
+    # "严格晚于"不变量（B §11.5 #2 fire-once）→ scan 每 5s 复选重复触发。以 UTC 严格比较兜底：
+    # 结果不晚于 after 则从该命中继续找下一个（正常无 DST 场景首次即返回）。
+    for _ in range(128):  # 回拨至多 60 分钟内命中 + 余量；防御上限（正常路径单次返回）
+        match_local = _next_local(expr, cur_local)
+        result_iso = format_iso(match_local)  # naive 本地 → UTC Z（format_iso 对 naive 按本地解释）
+        if _parse_utc(result_iso) > after_utc:
+            return result_iso
+        cur_local = match_local
+    raise ValueError(f"cron next-fire 无法严格晚于参照: {cadence}")

@@ -404,6 +404,27 @@ def test_recurring_reminder_invalid_cadence_422(
     assert err.error.details == {"field": "cadence"}
 
 
+def test_recurring_reminder_impossible_cron_422(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """语法合法但组合永不匹配的 cron（2/30）→ 422 VALIDATION_FAILED（review：非裸抛 500）。"""
+    pat = _member(server_client, PAT)
+    build = _channel(server_client, BUILD_CHANNEL)
+    r = server_client.post(
+        "/api/reminders",
+        json={
+            "kind": "recurring",
+            "cadence": "0 0 30 2 *",
+            "anchor_channel_id": build["id"],
+            "loop_contract": _loop_contract("0 0 30 2 *"),
+        },
+        headers=_agent_headers(seeded_engine, pat["id"]),
+    )
+    assert r.status_code == 422, r.text
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.VALIDATION_FAILED
+
+
 def test_recurring_reminder_accepts_cron_cadence(
     server_client: TestClient, seeded_engine: Engine
 ) -> None:

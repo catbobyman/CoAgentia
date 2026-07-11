@@ -53,28 +53,59 @@ async def _default_runner(argv: list[str]) -> tuple[int, str, str]:
     return proc.returncode or 0, out.decode(errors="replace"), err.decode(errors="replace")
 
 
+def _claude_config_dir() -> Path:
+    """claude 全局配置目录：`CLAUDE_CONFIG_DIR` 覆盖，回退 `~/.claude`（契约 E §2 隔离基）。"""
+    import os
+
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(override) if override else Path.home() / ".claude"
+
+
+def scan_claude_skills(config_dir: Path | None = None) -> list[str]:
+    """claude 全局技能目录名清单（候选池，契约 E v1.4 §9；**列出 ≠ 授予**，授予走白名单）。
+
+    扫 `<config_dir>/skills/` 下的子目录名（每个子目录 = 一个技能）；非目录条目（SCHEMA.md 等）
+    与隐藏项跳过。目录缺失/不可读 → [] 不阻塞探测（与 codex 深探失败退化一致）。
+    """
+    root = (config_dir or _claude_config_dir()) / "skills"
+    if not root.is_dir():
+        return []
+    names: list[str] = []
+    with contextlib.suppress(OSError):
+        for entry in sorted(root.iterdir()):
+            # 跳过隐藏项与 symlink（review #3：不跟随，防指向大目录/循环卡住或越界）。
+            if entry.name.startswith(".") or entry.is_symlink():
+                continue
+            if entry.is_dir():
+                names.append(entry.name)
+    return names
+
+
 async def probe_claude(
     runner: CommandRunner | None = None,
     *,
     which: Callable[[str], str | None] = shutil.which,
+    skills_scan: Callable[[], list[str]] = scan_claude_skills,
 ) -> tuple[DetectedRuntime, str | None]:
     """探测 claude CLI。返回 (DetectedRuntime, version|None)。
 
-    未安装（which 未命中）→ installed=False, models=[]。
-    命中 → `claude --version` rc==0 视为可用，models 用已知候选。
+    未安装（which 未命中）→ installed=False, models=[], skills=[]。
+    命中 → `claude --version` rc==0 视为可用，models 用已知候选，skills 扫全局技能目录
+    （契约 E v1.4 §9 候选池；测试注入 skills_scan 桩免依赖真目录）。
     """
     path = which("claude")
     if not path:
-        return DetectedRuntime(runtime=Runtime.CLAUDE_CODE, installed=False, models=[]), None
+        return _make_detected(Runtime.CLAUDE_CODE, False, [], []), None
     run = runner or _default_runner
     try:
         rc, out, _err = await run([path, "--version"])
     except (OSError, ValueError):
-        return DetectedRuntime(runtime=Runtime.CLAUDE_CODE, installed=False, models=[]), None
+        return _make_detected(Runtime.CLAUDE_CODE, False, [], []), None
     installed = rc == 0
     version = _parse_version(out) if installed else None
     models = list(DEFAULT_CLAUDE_MODELS) if installed else []
-    return DetectedRuntime(runtime=Runtime.CLAUDE_CODE, installed=installed, models=models), version
+    skills = skills_scan() if installed else []
+    return _make_detected(Runtime.CLAUDE_CODE, installed, models, skills), version
 
 
 def _parse_version(text: str) -> str | None:

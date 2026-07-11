@@ -45,9 +45,19 @@ def classify(cadence: str) -> CadenceKind:
     raise ValueError(_BAD.format(value=cadence))
 
 
+# 可满足性探测基准：闰年前一年，8 年窗口含 2004/2008 闰年——可满足的 2-29 命中；语法合法但组合
+# 永不匹配的 2-30/4-31 等在此暴露为 ValueError（否则留到 initial_fire 处裸抛 → 端点 500）。
+_PROBE_BASE = "2001-01-01T00:00:00.000Z"
+
+
 def validate(cadence: str) -> CadenceKind:
-    """校验 cadence 合法并返回其类型；非法 → ValueError。三处同门校验的入口。"""
-    return classify(cadence)
+    """校验 cadence 合法且**可满足**返回类型；非法/永不匹配 → ValueError。三处同门校验入口。"""
+    kind = classify(cadence)
+    if kind is CadenceKind.CRON:
+        # cron 各字段合法但组合永不匹配（如 `0 0 30 2 *`）→ next_after 扫 8 年抛 ValueError。
+        # 在 validate 单点暴露，端点转 422（否则留到 initial_fire 处未捕获 → HTTP 500）。
+        cron.next_after(cadence, _PROBE_BASE)
+    return kind
 
 
 def initial_fire(created_iso: str, cadence: str) -> str:

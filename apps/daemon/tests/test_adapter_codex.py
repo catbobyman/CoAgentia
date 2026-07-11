@@ -403,3 +403,30 @@ async def test_handshake_failure_kills_process(tmp_path: Path, monkeypatch) -> N
     await until(lambda: _has_line(proc, '"thread/start"'))
     proc.stdout.push({"id": 2, "result": {"thread": {}}})  # 无 id → 握手失败
     await until(lambda: proc.returncode is not None, timeout=5)  # 被 kill
+
+
+def test_codex_materialize_credentials_preserves_refreshed(tmp_path: Path) -> None:
+    """review #5：隔离 auth.json 比机器源新（codex 刷新 OAuth）→ 保留不覆写；机器源更新才复制。"""
+    import os
+
+    from coagentia_daemon.adapters import codex_cmdline
+
+    machine = tmp_path / "machine"
+    machine.mkdir()
+    target = tmp_path / "isolated"
+    target.mkdir()
+    (machine / "auth.json").write_text('{"v":"machine-old"}', encoding="utf-8")
+    (target / "auth.json").write_text('{"v":"codex-refreshed"}', encoding="utf-8")
+    # 隔离目标更新（codex 运行时刷新）——机器源置旧。
+    os.utime(machine / "auth.json", (1000, 1000))
+    os.utime(target / "auth.json", (5000, 5000))
+
+    copied = codex_cmdline.materialize_credentials(target, source=machine)
+    assert copied == []  # 保留刷新态，未覆写
+    assert (target / "auth.json").read_text(encoding="utf-8") == '{"v":"codex-refreshed"}'
+
+    # 机器源更新（用户重登）→ 复制覆盖。
+    os.utime(machine / "auth.json", (9000, 9000))
+    copied2 = codex_cmdline.materialize_credentials(target, source=machine)
+    assert copied2 == ["auth.json"]
+    assert (target / "auth.json").read_text(encoding="utf-8") == '{"v":"machine-old"}'

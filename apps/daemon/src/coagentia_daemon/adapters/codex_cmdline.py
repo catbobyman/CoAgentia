@@ -74,8 +74,13 @@ def materialize_credentials(codex_home: Path, source: Path | None = None) -> lis
         if not s.is_file():
             continue
         with contextlib.suppress(OSError):
-            data = s.read_bytes()
             d = codex_home / name
+            # 新鲜度选优（review #5）：隔离目标已存在且不比机器源旧 → 保留。codex app-server 运行时
+            # 会刷新 OAuth token（写隔离 auth.json），无条件覆写会用机器旧凭证回退刷新；仅目标缺失
+            # （首次）或机器源更新（用户重登）才复制。
+            if d.is_file() and d.stat().st_mtime >= s.stat().st_mtime:
+                continue
+            data = s.read_bytes()
             tmp = d.with_name(f"{d.name}.{os.getpid()}.tmp")
             tmp.write_bytes(data)
             with contextlib.suppress(OSError):

@@ -10,6 +10,7 @@ from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import delete, insert, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from coagentia_server.api import ApiError
 from coagentia_server.db import models
@@ -353,22 +354,15 @@ def put_notification_setting(
     tx: Tx = Depends(get_tx),
 ) -> Any:
     _, me = _notif_subject(request, tx, channel_id)
-    # upsert 懒建（复合 PK channel_id+member_id）：无行 insert、有行 update mode。零新增 WS 事件。
-    existing = tx.conn.execute(
-        select(_NOTIF.c.channel_id).where(
-            _NOTIF.c.channel_id == channel_id, _NOTIF.c.member_id == me["id"]
+    # 原子 upsert（复合 PK channel_id+member_id）——消除"先查后插"并发双 PUT 的 TOCTOU
+    # （两请求都读到无行 → 双 insert → 复合 PK 冲突 IntegrityError 500）。零新增 WS 事件。
+    stmt = sqlite_insert(_NOTIF).values(channel_id=channel_id, member_id=me["id"], mode=body.mode)
+    tx.conn.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[_NOTIF.c.channel_id, _NOTIF.c.member_id],
+            set_={"mode": body.mode},
         )
-    ).first()
-    if existing is None:
-        tx.conn.execute(
-            insert(_NOTIF).values(channel_id=channel_id, member_id=me["id"], mode=body.mode)
-        )
-    else:
-        tx.conn.execute(
-            update(_NOTIF)
-            .where(_NOTIF.c.channel_id == channel_id, _NOTIF.c.member_id == me["id"])
-            .values(mode=body.mode)
-        )
+    )
     row = models.row_dict(
         tx.conn.execute(
             select(_NOTIF).where(

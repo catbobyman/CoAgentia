@@ -204,3 +204,27 @@ def test_cadence_dispatch_interval_classify() -> None:
     assert cadence.classify("PT1H") is cadence.CadenceKind.INTERVAL
     # interval 分支 initial_fire = 建后一个周期（非建即触发）。
     assert cadence.initial_fire("2026-07-11T08:00:00.000Z", "P1D") == "2026-07-12T08:00:00.000Z"
+
+
+def test_validate_rejects_impossible_cron() -> None:
+    """语法合法但组合永不匹配的 cron → validate 抛 ValueError（端点转 422，非裸抛 500）。"""
+    for expr in ("0 0 30 2 *", "0 0 31 4 *", "0 0 31 6 *", "0 0 31 11 *"):
+        with pytest.raises(ValueError):
+            cadence.validate(expr)
+
+
+def test_validate_accepts_leap_day_cron() -> None:
+    """2/29（闰日）可满足——validate 通过（8 年探测窗含闰年）。"""
+    assert cadence.validate("0 0 29 2 *") is cadence.CadenceKind.CRON
+
+
+def test_next_after_strictly_later_utc_invariant() -> None:
+    """next_after 结果 UTC 恒严格晚于 after（DST 回拨兜底不变量，B §11.5 #2 fire-once）。"""
+    for after in (
+        "2026-07-14T10:00:00.000Z",
+        "2026-11-01T08:00:00.000Z",
+        "2026-03-08T09:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+    ):
+        nf = cron.next_after("30 1 * * *", after)
+        assert nf > after, f"{nf} not strictly > {after}"  # 同格式 ISO Z 串字典序=时序
