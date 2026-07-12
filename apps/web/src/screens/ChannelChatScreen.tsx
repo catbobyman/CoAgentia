@@ -139,6 +139,8 @@ export function ChannelChatScreen({ search, setSearch }: {
               onLocateDone={() => setLocateId(undefined)}
               onSelectTask={selectTask}
               onOpenAgent={openAgent}
+              onReviewProposal={() => setSearch({ tab: 'canvas' })}
+              onOpenProposalThread={(m) => setSearch({ tab: 'chat', thread: m.thread_root_id ?? m.id })}
             />
             {/* 主流被扣草稿(thread_root_id 为空)——线程内的由 ThreadPanel 渲染。 */}
             <HeldDraftList
@@ -208,6 +210,7 @@ export function ChannelChatScreen({ search, setSearch }: {
           onLocateDone={() => setLocateId(undefined)}
           onClose={() => setSearch({ thread: undefined, task: undefined })}
           onSend={(body) => void api.sendMessage(channel.id, body, false)}
+          onReviewProposal={() => setSearch({ tab: 'canvas' })}
         />
       )}
     </div>

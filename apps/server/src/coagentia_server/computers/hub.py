@@ -89,6 +89,7 @@ from coagentia_server.db import models
 from coagentia_server.events import EventBus
 from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger.service import format_iso, new_ulid, now_iso
+from coagentia_server.orchestration import landing as landing_domain
 from coagentia_server.orchestration import proposal as proposal_domain
 from coagentia_server.reminders import cadence as reminder_cadence
 from coagentia_server.routes.serialize import (
@@ -194,6 +195,7 @@ class DaemonHub:
         silence_interval: float = 60.0,
         held_interval: float = 5.0,
         heartbeat_timeout: float = 60.0,
+        landing_interval: float = 15.0,
     ) -> None:
         self._engine = engine
         self._bus = bus
@@ -205,6 +207,7 @@ class DaemonHub:
         self.silence_interval = silence_interval
         self.held_interval = held_interval
         self.heartbeat_timeout = heartbeat_timeout
+        self.landing_interval = landing_interval
         self._conns: dict[str, DaemonConnection] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._sub_token: int | None = None
@@ -213,6 +216,7 @@ class DaemonHub:
         self._worktree_locks: dict[str, asyncio.Lock] = {}
         self._system_node_locks: dict[str, asyncio.Lock] = {}
         self._system_pending: dict[str, tuple[tuple[str, str], str]] = {}
+        self._landing_lock = asyncio.Lock()  # J9 落地扫描进程内防重入（跨进程由账本三态兜）
 
     # ---------------------------------------------------------------- lifespan 装配
 
@@ -225,7 +229,11 @@ class DaemonHub:
             loop.create_task(self._silence_loop()),
             loop.create_task(self._held_loop()),
             loop.create_task(self._heartbeat_loop()),
+            loop.create_task(self._landing_loop()),
         ]
+        # 对账 #4 启动扫描（J9）：崩溃遗留的 running decomp 批次 / 直落 landing 提案即刻续跑
+        # （不等首个周期；幂等——前段 hit 跳过尾段补齐，§9.2）。
+        self._bg.append(loop.create_task(self._run_landing_scan()))
 
     async def stop(self) -> None:
         if self._sub_token is not None:
@@ -285,6 +293,16 @@ class DaemonHub:
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_system_nodes(channel_id)
                 )
+            return
+        # J9 落地执行器低延迟触发：confirm 建批（landing.started）与直落转态（proposal.updated
+        # status=landing）即刻领批执行；周期 _landing_loop 兜崩溃恢复（对账 #4）。
+        if event.type == EventType.LANDING_STARTED:
+            loop.call_soon_threadsafe(self._spawn, self._run_landing_scan())
+            return
+        if event.type == EventType.PROPOSAL_UPDATED:
+            proposal = event.data.get("proposal") or {}
+            if proposal.get("status") == "landing":
+                loop.call_soon_threadsafe(self._spawn, self._run_landing_scan())
 
     def _spawn(self, coro: Any) -> None:
         task = self._loop.create_task(coro)  # type: ignore[union-attr]
@@ -2372,6 +2390,25 @@ class DaemonHub:
         )
         with gateway_tx(self._engine, self._bus) as tx:
             return proposal_domain.awaiting_confirm_reminder_scan(tx, cutoff_iso=cutoff)
+
+    # ---------------------------------------------------------------- J9 落地执行器宿主
+
+    async def _run_landing_scan(self) -> None:
+        """落地待办扫描（orchestration.landing.pending_landing_scan 的异步宿主）：进程内
+        asyncio.Lock 串行（防重入双执行），DB 面由账本 record 三态兜（跨进程/竞态安全）。
+        同步 SQLite 执行体在线程池跑，不阻塞事件 loop。"""
+        async with self._landing_lock:
+            await asyncio.to_thread(
+                landing_domain.pending_landing_scan, self._engine, self._bus
+            )
+
+    async def _landing_loop(self) -> None:
+        """对账 #4 周期兜底（契约 D §4.4 语义的落地面）：崩溃/错过事件触发的 running 批次与
+        直落 landing 提案按 landing_interval 重入（幂等）。"""
+        while True:
+            await asyncio.sleep(self.landing_interval)
+            with contextlib.suppress(Exception):
+                await self._run_landing_scan()
 
     # ---------------------------------------------------------------- 周期后台 loop
 

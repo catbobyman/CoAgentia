@@ -7,6 +7,7 @@ AgentRoleTemplateRow 同形。
 
 from __future__ import annotations
 
+from coagentia_contracts import constants
 from coagentia_contracts.entities import AgentRoleTemplateRow
 from coagentia_server.ledger import service
 from coagentia_server.orchestration import role_templates
@@ -19,6 +20,17 @@ def _sections_text() -> str:
 def test_key_is_orchestrator() -> None:
     """key 恒 'orchestrator'（波 2 upsert 幂等键 / NO_ORCHESTRATOR 前端预选据此）。"""
     assert role_templates.ORCHESTRATOR_ROLE_KEY == "orchestrator"
+
+
+def test_display_constants_single_sourced_from_contracts() -> None:
+    """单源迁移（纪律 7）：key/name/description_prefill 的定义处 = contracts constants.py，
+    server 侧仅别名引用（语义不变）。此断言锁死迁移，防日后在 server 侧重新硬编码分叉。"""
+    assert role_templates.ORCHESTRATOR_ROLE_KEY is constants.ORCHESTRATOR_ROLE_TEMPLATE_KEY
+    assert role_templates.ORCHESTRATOR_ROLE_NAME is constants.ORCHESTRATOR_ROLE_TEMPLATE_NAME
+    assert (
+        role_templates.ORCHESTRATOR_DESCRIPTION_PREFILL
+        is constants.ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL
+    )
 
 
 def test_prompt_sections_serializable_shape() -> None:

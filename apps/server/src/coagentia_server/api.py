@@ -32,12 +32,33 @@ class ApiError(Exception):
 
 
 def install_error_handlers(app: FastAPI) -> None:
+    # 延迟 import：避免 api（众多路由/服务在加载期 `from ...api import ApiError`）与
+    # ledger.service 的加载序耦合——处理器体在应用装配期（全模块已加载）才引用。
+    from coagentia_server.ledger.service import LedgerFailClosed, persist_fail_closed
+
     @app.exception_handler(ApiError)
     async def _api_error(_req: Request, exc: ApiError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status,
             content=rest.ErrorResponse(error=exc.body).model_dump(),
         )
+
+    @app.exception_handler(LedgerFailClosed)
+    async def _ledger_fail_closed(req: Request, exc: LedgerFailClosed) -> JSONResponse:
+        # get_tx 已在异常传播中回滚外层事务并释放写锁（异常处理器于依赖清理之后运行）；此刻独立
+        # 连接落盘 fail-closed 处置链恒持久（契约 B §12.5 #4，M5b 挂账修复）。落盘在线程池执行，
+        # 避免阻塞事件循环（sync SQLite）。返回 409 IDEMPOTENCY_MISMATCH（同 tmpl 落地既有形状）。
+        import asyncio
+
+        engine = req.app.state.engine
+        await asyncio.to_thread(persist_fail_closed, engine, exc.batch, reason=exc.reason)
+        body = rest.ErrorBody(
+            code=rest.ErrorCode.IDEMPOTENCY_MISMATCH,
+            message="落地节点指纹与账本记录不一致，已 fail-closed",
+            rule="A§4.7",
+            details=None,
+        )
+        return JSONResponse(status_code=409, content=rest.ErrorResponse(error=body).model_dump())
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_req: Request, exc: RequestValidationError) -> JSONResponse:

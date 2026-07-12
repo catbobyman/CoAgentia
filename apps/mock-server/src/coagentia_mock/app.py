@@ -750,6 +750,12 @@ def _mock_proposal(
 @app.post("/api/channels/{channel_id}/decompose", response_model=entities.ProposalPublic,
           status_code=202)
 async def decompose(channel_id: str, body: rest.DecomposeRequest) -> Any:
+    # 形状源非逻辑源（纪律 4）：sentinel 文本触发 409/503 错误变体的**形状**——真判定
+    # （find_orchestrator / daemon 在线）只活在真 server；前端引导链（交互 §6.8）据 code 分派。
+    if body.text == "__no_orchestrator__":
+        raise ApiError(409, rest.ErrorCode.NO_ORCHESTRATOR, "本频道还没有协调 Agent")
+    if body.text == "__daemon_offline__":
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "@Orchestrator 当前离线（机器断连）")
     return _mock_proposal(channel_id=channel_id)
 
 

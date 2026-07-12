@@ -13,6 +13,7 @@ import type {
   MemberPublic,
   MessagePublic,
   PresenceEntry,
+  ProposalPublic,
   ReadPositionPublic,
   ReminderPublic,
   TaskPublic,
@@ -307,6 +308,29 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
         next[i] = draft; // updated / 幂等重放 / 终态反流:按 id 替换
         return next;
       });
+      break;
+    }
+
+    // ---- M6b 拆解提案（契约 C §7 M6 预留族；事件载 ProposalPublic 完整形状,整体替换、重复应用
+    // 无害）。proposal.updated = 生命周期态刷新（validating/repairing/landed/failed…）；draft.presented
+    // = 校验通过进 awaiting_confirm（草稿层渲染归后半——此处仅刷提案卡态,handler 挂点已就位）。
+    // 二者同载 {proposal}，按 proposal.id patch qk.proposal 缓存（未加载则放行不建——提案卡挂载时
+    // 由 REST 拉全，同 reminder/held_draft 范式）。消息流内提案卡数据绑定该 query,patch 即刷新。
+    case 'proposal.updated':
+    case 'draft.presented': {
+      const { proposal } = data as { proposal: ProposalPublic };
+      const key = qk.proposal(proposal.id);
+      if (qc.getQueryData<ProposalPublic>(key) === undefined) break;
+      qc.setQueryData<ProposalPublic>(key, proposal);
+      break;
+    }
+
+    // draft.superseded = 对话修正 rev+1，旧提案转 Superseded 终态（新 draft.presented 随后到，
+    // 草稿层替换归后半）。仅载 {proposal_id}，无完整实体——失效该提案 query 让已挂载的提案卡
+    // refetch 到 superseded 终态（未挂载无观察者、不触发请求）。
+    case 'draft.superseded': {
+      const { proposal_id } = data as { proposal_id: string };
+      void qc.invalidateQueries({ queryKey: qk.proposal(proposal_id) });
       break;
     }
 

@@ -152,6 +152,20 @@ SCHEMA_DECOMPOSITION_V1 = "coagentia.decomposition.v1"
 SCHEMA_DECOMPOSITION_DELTA_V1 = "coagentia.decomposition-delta.v1"
 SCHEMA_DECOMPOSITION_ERRORS_V1 = "coagentia.decomposition-errors.v1"
 
+# ---------------- Orchestrator 内置角色模板展示常量
+# （03-接入架构 §3.1「Orchestrator = 数据不是代码」）
+# 单源迁移（纪律 7）：key/name/description_prefill 三展示常量的唯一源。server orchestration/
+# role_templates.py import 引用（prompt_sections 等生成内容仍留 server 侧），前端经 gen 出的
+# constants.ts 消费（创建 Agent 弹窗角色模板段预填 + NO_ORCHESTRATOR 引导链）。值随 J11 阶段 4
+# 定稿话术时在此单点改。
+ORCHESTRATOR_ROLE_TEMPLATE_KEY = "orchestrator"
+ORCHESTRATOR_ROLE_TEMPLATE_NAME = "Orchestrator（任务拆解协调者）"
+ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL = (
+    "本频道的任务拆解协调者：@它并给一句话需求，它会把需求拆成可校验、可确认、可恢复的任务 DAG "
+    "提案（判断归模型、控制归引擎）。提案经系统确定性校验、需人类在草稿画布上确认后落地；被校验"
+    "退回时自动按错误清单修复重提。"
+)
+
 # ---------------- T7 流转门必填字段（PRD §4.3「T7 校验非空」；server 校验 + 前端提示同源）
 # 置 in_review 时该任务活动 TaskHandoff 须逐个非空；纪律 7 单一事实源，不在 server 侧另列字面量。
 HANDOFF_REQUIRED_FIELDS: tuple[str, ...] = ("deliverables", "evidence")

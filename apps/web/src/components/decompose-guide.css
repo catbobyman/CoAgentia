@@ -1,0 +1,12 @@
+/* M6b 拆解入口引导弹窗（交互 §6.8）与 T3 需求文本弹窗。复用 .modal/.ops 基础。 */
+.decompose-guide { width: 460px; }
+.decompose-guide .mtitle { display: flex; align-items: center; gap: 8px; }
+.decompose-guide .dg-ico { width: 16px; height: 16px; color: var(--warning); flex: none; }
+.decompose-guide .dg-body { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 8px; }
+.decompose-guide .dg-ta {
+  width: 100%; resize: vertical; min-height: 64px; margin-top: 8px; padding: 8px 10px;
+  font-family: var(--font-sans); font-size: 13px; line-height: 1.5; color: var(--text);
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s);
+  outline: none;
+}
+.decompose-guide .dg-ta:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--focus-ring); }

@@ -1,5 +1,6 @@
 // REST 数据层：类型全部来自 @coagentia/contracts-ts 生成物（零手写实体形状——同源的证明）。
 import type {
+  AgentCreate,
   AgentPublic,
   AgentSkillPublic,
   CanvasDetail,
@@ -13,6 +14,7 @@ import type {
   ComputerCreated,
   ComputerPublic,
   ContractDraftRequest,
+  DecomposeRequest,
   DiagnosticEventPublic,
   DiffPayload,
   EdgeCreate,
@@ -31,6 +33,7 @@ import type {
   ProjectCreate,
   ProjectPatch,
   ProjectPublic,
+  ProposalPublic,
   ReminderPublic,
   RestPaths,
   SearchResponse,
@@ -330,6 +333,14 @@ export const api = {
     return (await r.json()) as ComputerCreated;
   },
 
+  // ---- P13 创建 Agent（B §11.3）。role_template_key 可选：携带即按角色模板落地（Orchestrator 引导
+  // 链预选），缺省 = 现行创建行为不变。NAME_TAKEN(409) 等结构化错误上浮（writeJson）。
+  createAgent: (body: AgentCreate) => writeJson<AgentPublic>('/api/agents', 'POST', body),
+  // 频道加成员（B §4.5）。引导链创建 Orchestrator 后须入频道——decompose 的 NO_ORCHESTRATOR
+  // 判定按「频道成员中 role_template_key='orchestrator' 的 Agent」（server find_orchestrator）。
+  addChannelMember: (channelId: string, memberId: string) =>
+    writeJson<void>(`/api/channels/${channelId}/members`, 'POST', { member_id: memberId }),
+
   // ---- M5(B-M5-1)频道设置弹窗:阈值/描述/公开私有走既有 ChannelPatch(PATCH /channels/{id},
   // require_admin);通知设置走 notification-setting 端点(人类本人自治)。均结构化错误上浮(writeJson)。
   patchChannel: (channelId: string, patch: ChannelPatch) =>
@@ -358,6 +369,15 @@ export const api = {
   unbindProject: (channelId: string, projectId: string) =>
     writeJson<void>(`/api/channels/${channelId}/projects/${projectId}`, 'DELETE'),
   taskDiff: (taskId: string) => get<DiffPayload>(`/api/tasks/${taskId}/diff`),
+
+  // ---- M6b 拆解编排（B §4.10）。POST decompose 三入口归一（T1 @Orchestrator 消息自然走消息路；
+  // T2 携 task_id / T3 携 text）→ 202 ProposalPublic；无 Orchestrator → 409 NO_ORCHESTRATOR
+  // （前端据此弹创建引导，交互 §6.8）；Orchestrator 离线 → 503 DAEMON_OFFLINE（引导去 P7）。
+  // 均走 writeJson 结构化错误上浮，UI 据 code 分派引导弹窗。
+  decompose: (channelId: string, body: DecomposeRequest) =>
+    writeJson<ProposalPublic>(`/api/channels/${channelId}/decompose`, 'POST', body),
+  // 提案卡渲染源（草稿层归后半）。react-query GET，proposal.updated/draft.* WS 载体刷新。
+  proposal: (proposalId: string) => get<ProposalPublic>(`/api/proposals/${proposalId}`),
 
   // ---- M5(B-M5-2)模板域(B §4.12/§11.1/§11.2)。列表 GET(builtin 置前，body 全量携带供向导预览)；
   // 存为模板 POST(server 读频道画布快照序列化 TemplateBody，画布无正式节点/有草稿层 → 409

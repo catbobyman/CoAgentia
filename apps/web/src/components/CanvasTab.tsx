@@ -19,7 +19,7 @@ import {
 } from '@xyflow/react';
 import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react';
 import {
-  ChevronDown, CircleAlert, Eye, GitMerge, LayoutTemplate, Lock, Play, Plus, RefreshCw,
+  ChevronDown, CircleAlert, Eye, GitMerge, LayoutTemplate, ListTree, Lock, Play, Plus, RefreshCw,
   Rocket, Save, Terminal, Trash2, Workflow,
 } from 'lucide-react';
 
@@ -47,6 +47,7 @@ import { saveTemplateGate, formalTaskNodes } from '../lib/templates';
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
 import { api, ApiError } from '../api';
 import { Avatar } from './Avatar';
+import { DecomposeGuideModals, DecomposeTextModal, useDecompose } from './DecomposeGuide';
 import { ForceStartModal } from './ForceStartModal';
 import { SaveTemplateModal } from './SaveTemplateModal';
 import { TemplateWizard } from './TemplateWizard';
@@ -420,6 +421,17 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
   const [newOpen, setNewOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [outputText, setOutputText] = useState<string | null>(null);
+  // M6b 拆解入口（T3，交互 §6.8）：[▸拆解] 常显不隐藏；弹窗输入需求文本 → POST {text}。
+  // 202 → toast + 跳 source 任务线程；409/503 引导态由 useDecompose 分派、DecomposeGuideModals
+  // 渲染（文本弹窗保持打开——引导链走完即「回到画布重新聚焦拆解入口」，已输入文本不丢）。
+  const [decomposeOpen, setDecomposeOpen] = useState(false);
+  const decompose = useDecompose(channelId, (proposal) => {
+    toast.push('拆解已发起，提案将出现在 source 任务线程', { tone: 'success' });
+    // T3 代发消息刚转任务，tasks 缓存可能尚未收到 task.created——命中才深链线程，未命中留在
+    // 画布（WS 反流后用户可从消息流任务牌进入）。
+    const source = tasks.find((t) => t.id === proposal.source_task_id);
+    if (source) setSearch({ tab: 'chat', task: source.id, thread: source.root_message_id });
+  });
   // 模板▾ 下拉 + 存为模板弹窗 + 向导(B-M5-2)。
   const [tmplMenuOpen, setTmplMenuOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -526,6 +538,15 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
             </>
           )}
         </div>
+        {/* [▸拆解] 常显不隐藏（交互 §6.8）：无 Orchestrator/离线的判定归 server（409/503 引导）。 */}
+        <button
+          className="btn btn-ghost"
+          data-testid="decompose-entry"
+          title="发起拆解:输入一句话需求,由 @Orchestrator 拆成任务 DAG 提案"
+          onClick={() => setDecomposeOpen(true)}
+        >
+          <ListTree /> ▸拆解
+        </button>
         {cycleWarn && (
           <span className="cyclemsg" role="alert"><CircleAlert /> 连边会形成环</span>
         )}
@@ -586,6 +607,23 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
           onInstantiated={() => setWizardOpen(false)}
         />
       )}
+      {/* T3 需求文本弹窗：请求成功才关（409/503 时保持打开,引导弹窗压在其上——聚焦链不丢文本）。 */}
+      {decomposeOpen && (
+        <DecomposeTextModal
+          busy={decompose.busy}
+          onClose={() => setDecomposeOpen(false)}
+          onSubmit={(text) => {
+            void decompose.request({ text }).then((ok) => { if (ok) setDecomposeOpen(false); });
+          }}
+        />
+      )}
+      <DecomposeGuideModals
+        guide={decompose.guide}
+        channelId={channelId}
+        onClose={() => decompose.setGuide(null)}
+        // 创建完成（已拉入频道）→ 回画布重新聚焦拆解入口：重开文本弹窗（已开则保持）。
+        onOrchestratorCreated={() => setDecomposeOpen(true)}
+      />
     </section>
   );
 }

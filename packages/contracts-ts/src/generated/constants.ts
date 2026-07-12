@@ -33,3 +33,9 @@ export const UNCLAIMABLE_STATUSES: TaskStatus[] = [
   "closed",
   "done"
 ];
+
+/** Orchestrator 内置角色模板展示常量（源 = constants.py ORCHESTRATOR_ROLE_TEMPLATE_*）。
+ *  创建 Agent 弹窗角色模板段预填 + NO_ORCHESTRATOR 引导链的 MVP 唯一数据源（纪律 7）。 */
+export const ORCHESTRATOR_ROLE_TEMPLATE_KEY = "orchestrator";
+export const ORCHESTRATOR_ROLE_TEMPLATE_NAME = "Orchestrator（任务拆解协调者）";
+export const ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL = "本频道的任务拆解协调者：@它并给一句话需求，它会把需求拆成可校验、可确认、可恢复的任务 DAG 提案（判断归模型、控制归引擎）。提案经系统确定性校验、需人类在草稿画布上确认后落地；被校验退回时自动按错误清单修复重提。";

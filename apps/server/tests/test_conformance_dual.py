@@ -425,11 +425,13 @@ def test_mock_covers_m6_endpoints() -> None:
 
 
 def test_proposal_j8_endpoints_served(server_client: TestClient) -> None:
-    """J8 编排端点（POST /channels/{id}/decompose + GET /proposals/{id}）被真 server serve；
-    confirm/reject 归 J9，本波不实 serve（mock 仍全量覆盖 ENDPOINTS_M6）。"""
+    """编排端点四件套被真 server serve（J8 decompose/GET + J9 confirm/reject；
+    与 mock 的 ENDPOINTS_M6 全量覆盖双跑一致——纪律 3）。"""
     served = _served(server_client)
     assert ("POST", _norm("/channels/{channel_id}/decompose")) in served
     assert ("GET", _norm("/proposals/{proposal_id}")) in served
+    assert ("POST", _norm("/proposals/{proposal_id}/confirm")) in served
+    assert ("POST", _norm("/proposals/{proposal_id}/reject")) in served
 
 
 def test_mock_project_diff_proposal_shapes() -> None:

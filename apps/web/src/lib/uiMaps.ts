@@ -23,6 +23,22 @@ export const PRESENCE_VAR: Record<string, string> = {
   error: '--danger', offline: '--border-strong',
 };
 
+// ---- M6b 拆解提案生命周期态（ProposalStatus 全态：契约 models.ts ProposalStatus 9 值 = 拆解设计
+// §3 状态机全态）。徽标文案 + 色变量（零发明，只引用 afterglow token）；uiMaps 为展示单源，提案卡
+// 与草稿层（后半）共用，防漂移。进行中态用 accent/warning，终态成功 done、失败/拒绝 danger，
+// superseded 归静默 muted。
+export const PROPOSAL_STATUS_WORD: Record<string, string> = {
+  drafting: '起草中', validating: '校验中', repairing: '修复中',
+  awaiting_confirm: '待确认', landing: '落地中', landed: '已落地',
+  superseded: '已被取代', rejected: '已拒绝', failed: '已失败',
+};
+
+export const PROPOSAL_STATUS_VAR: Record<string, string> = {
+  drafting: '--text-muted', validating: '--accent', repairing: '--warning',
+  awaiting_confirm: '--accent', landing: '--accent', landed: '--success',
+  superseded: '--text-muted', rejected: '--danger', failed: '--danger',
+};
+
 export function avatarCfg(name: string): { v: number; human?: boolean } {
   return AVATARS[name] ?? { v: (name.charCodeAt(0) % 8) + 1 };
 }

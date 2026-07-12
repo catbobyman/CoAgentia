@@ -55,8 +55,15 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    # 运行时常量：状态机边表 + claim 语义门 → TS 防呆与 server 同源（纪律 7 单一事实源）。
-    from coagentia_contracts.constants import TASK_TRANSITIONS, UNCLAIMABLE_STATUSES
+    # 运行时常量：状态机边表 + claim 语义门 + Orchestrator 角色模板展示常量 → TS 防呆/展示与
+    # server 同源（纪律 7 单一事实源）。
+    from coagentia_contracts.constants import (
+        ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL,
+        ORCHESTRATOR_ROLE_TEMPLATE_KEY,
+        ORCHESTRATOR_ROLE_TEMPLATE_NAME,
+        TASK_TRANSITIONS,
+        UNCLAIMABLE_STATUSES,
+    )
 
     transitions = {
         frm.value: sorted(to.value for to in tos) for frm, tos in TASK_TRANSITIONS.items()
@@ -64,6 +71,11 @@ def main() -> None:
     (BUILD / "constants.json").write_text(
         json.dumps(
             {
+                "ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL": (
+                    ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL
+                ),
+                "ORCHESTRATOR_ROLE_TEMPLATE_KEY": ORCHESTRATOR_ROLE_TEMPLATE_KEY,
+                "ORCHESTRATOR_ROLE_TEMPLATE_NAME": ORCHESTRATOR_ROLE_TEMPLATE_NAME,
                 "TASK_TRANSITIONS": dict(sorted(transitions.items())),
                 "UNCLAIMABLE_STATUSES": sorted(s.value for s in UNCLAIMABLE_STATUSES),
             },

@@ -14,26 +14,26 @@ from __future__ import annotations
 
 from typing import cast
 
+from coagentia_contracts.constants import (
+    ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL,
+    ORCHESTRATOR_ROLE_TEMPLATE_KEY,
+    ORCHESTRATOR_ROLE_TEMPLATE_NAME,
+)
 from coagentia_contracts.entities import AgentRoleTemplateRow
 from pydantic import JsonValue
 from sqlalchemy import insert, select, update
 from sqlalchemy.engine import Engine
 
 # 幂等键与展示字段（波 2 upsert 以 key 为幂等键——key UNIQUE，A/03 §3.1）。
-ORCHESTRATOR_ROLE_KEY = "orchestrator"
-ORCHESTRATOR_ROLE_NAME = "Orchestrator（任务拆解协调者）"
+# 单源迁移（纪律 7）：key/name/description_prefill 定义处已迁至 contracts constants.py，此处仅
+# 别名引用（保持既有 ORCHESTRATOR_ROLE_KEY/NAME/DESCRIPTION_PREFILL 名不变，语义不变）；
+# prompt_sections 等生成内容仍留本文件。
+ORCHESTRATOR_ROLE_KEY = ORCHESTRATOR_ROLE_TEMPLATE_KEY
+ORCHESTRATOR_ROLE_NAME = ORCHESTRATOR_ROLE_TEMPLATE_NAME
+ORCHESTRATOR_DESCRIPTION_PREFILL = ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL
 
 # 拆解 schema 版本串（输出协议第 6 条；与 contracts kernel/golden 单源一致，勿改字面）。
 DECOMPOSITION_SCHEMA_VERSION = "coagentia.decomposition.v1"
-
-# 成员级原创话术（description_prefill 的丰满文案）留 TODO：
-# TODO(J11 阶段 4)：由主循环定稿 description_prefill 为成员级原创话术；当前为功能完整的朴素占位
-# （非空字符串），仅陈述职责与协作路径，不含个性化话术。
-ORCHESTRATOR_DESCRIPTION_PREFILL = (
-    "本频道的任务拆解协调者：@它并给一句话需求，它会把需求拆成可校验、可确认、可恢复的任务 DAG "
-    "提案（判断归模型、控制归引擎）。提案经系统确定性校验、需人类在草稿画布上确认后落地；被校验"
-    "退回时自动按错误清单修复重提。"
-)
 
 # §12 规模判断表四行原文（信号 → 倾向；「宁欠拆不过拆」理由句在第四行）——逐行注入第 1 条。
 # 信号/倾向两列完整保留；长行以隐式字符串拼接换行，运行期值与原文逐字一致。

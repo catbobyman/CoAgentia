@@ -28,4 +28,7 @@ export const qk = {
   templates: () => ['templates'] as const,
   // ---- M6a Project：工作区级小表；频道绑定关系由 ProjectPublic.channel_ids 派生。
   projects: () => ['projects'] as const,
+  // ---- M6b 拆解提案：按 proposal_id 存；消息流提案卡的渲染源（GET /proposals/{id}），
+  // WS proposal.updated/draft.* 载 ProposalPublic 时按 proposal.id 反查该键 patch。
+  proposal: (proposalId: string) => ['proposal', proposalId] as const,
 };

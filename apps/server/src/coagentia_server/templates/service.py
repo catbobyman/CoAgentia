@@ -652,14 +652,14 @@ def instantiate_template(
             task_rows.append(tasks_service.fetch_task(conn, payload["task_id"]))
             continue
         if look["status"] == "mismatch":  # 同键异指纹（模板漂移）→ fail-closed 停批
-            service.mark_fail_closed(conn, batch_id, reason="template node fingerprint mismatch")
-            from coagentia_contracts import rest
-
-            raise ApiError(
-                409,
-                rest.ErrorCode.IDEMPOTENCY_MISMATCH,
-                "模板节点指纹与账本记录不一致，已 fail-closed",
-                rule="A§4.7",
+            # ⚠️ 不 inline 写：REST 落地事务器抛 ApiError 会令 get_tx 回滚，inline fail-closed 随之
+            # 撤销（M5b 挂账缺陷）。改抛 LedgerFailClosed 携批元数据，由 app 层异常处理器在回滚后
+            # 经 persist_fail_closed 独立连接落盘（契约 B §12.5 #4）。批行此刻仅存于未提交事务，
+            # 回滚即消失——故携其快照供独立连接 upsert 重建为 fail_closed。
+            batch_row = service._fetch_batch(conn, batch_id)
+            assert batch_row is not None
+            raise service.LedgerFailClosed(
+                batch_row, reason="template node fingerprint mismatch"
             )
         created_by = role_mapping.get(node.role) or owner_id
         px, py = positions.get(node.key, (0, 0))

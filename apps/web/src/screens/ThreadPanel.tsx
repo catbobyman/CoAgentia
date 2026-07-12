@@ -2,7 +2,7 @@
 // 由类型化深链 ?thread= 驱动(在 ChannelChatScreen 内消费,非顶层路由)。
 // M2 接真:opsbar 的 claim/unclaim/状态流转打真端点;契约/usage 用 useTaskDetail 真数据(成功靠 WS task.updated 回灌,无乐观更新)。
 import { useState } from 'react';
-import { ArrowUp, ChevronDown, CircleAlert, GitBranch, Sparkles, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, CircleAlert, GitBranch, ListTree, Sparkles, X } from 'lucide-react';
 
 import type {
   ContractKind,
@@ -24,6 +24,7 @@ import { useTaskDetail, useThread } from '../data/queries';
 import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
 import { Avatar } from '../components/Avatar';
+import { DecomposeGuideModals, useDecompose } from '../components/DecomposeGuide';
 import { MessageFlow } from '../components/MessageFlow';
 import { Composer } from '../components/Composer';
 import { HeldDraftList } from './HeldDraftCard';
@@ -176,6 +177,7 @@ export function TaskHandoffCard({
 export function ThreadPanel({
   task, rootMessageId, channelId, memberById, memberNames, meName, meId, presenceOf, usage,
   heldDrafts, canResolve, onLocateMessage, locateId, onLocateDone, onClose, onSend,
+  onReviewProposal,
 }: {
   task?: TaskPublic;
   rootMessageId: string;
@@ -194,6 +196,8 @@ export function ThreadPanel({
   onLocateDone?: () => void;
   onClose: () => void;
   onSend: (body: string) => void;
+  /** M6b 提案卡「在画布中审阅」→ 切画布页签(由会话屏传入 setSearch 通道)。 */
+  onReviewProposal?: () => void;
 }) {
   const threadQ = useThread(rootMessageId);
   const detailQ = useTaskDetail(task?.id);
@@ -278,6 +282,17 @@ export function ThreadPanel({
     if (!task) return;
     setHandoffMissing(undefined);
     void api.promoteTask(task.id).catch(onWriteError);
+  };
+
+  // M6b 拆解入口 T2（拆解设计 §4）：任务卡「拆解」动作——该任务即 source，POST {task_id}。
+  // 202 → toast（提案将出现在本线程）；409 NO_ORCHESTRATOR / 503 DAEMON_OFFLINE 由
+  // useDecompose 分派引导态（DecomposeGuideModals 渲染，交互 §6.8）。
+  const decomposeH = useDecompose(channelId, () => {
+    toast.push('拆解已发起，提案将出现在本线程', { tone: 'success' });
+  });
+  const doDecompose = () => {
+    if (!task) return;
+    void decomposeH.request({ task_id: task.id });
   };
 
   // "让 @Agent 起草"(契约 D 定向直投唤醒);202 成功 toast,daemon 离线(503)单独文案。
@@ -392,6 +407,16 @@ export function ThreadPanel({
               <ArrowUp />升格为 L2
             </button>
           )}
+          <button
+            className="draft-ai"
+            data-testid="task-decompose"
+            style={{ marginLeft: 8 }}
+            onClick={doDecompose}
+            disabled={!task || decomposeH.busy}
+            title="以本任务为 source 发起拆解(@Orchestrator 产出任务 DAG 提案)"
+          >
+            <ListTree />拆解
+          </button>
           {draftOpen && (
             <div className="drop" style={{ top: 32, bottom: 'auto', left: 0, right: 'auto' }}>
               {agents.length === 0 && <div className="it" style={{ color: 'var(--text-muted)' }}>暂无可用 Agent</div>}
@@ -424,6 +449,7 @@ export function ThreadPanel({
         usageByTask={{}}
         locateId={locateId}
         onLocateDone={onLocateDone}
+        onReviewProposal={onReviewProposal}
       />
 
       {/* [3b] 本线程内被扣草稿(thread_root_id === rootMessageId)——主流的由会话屏渲染。 */}
@@ -464,6 +490,15 @@ export function ThreadPanel({
 
       {/* [5] 面板编辑器(无 As Task) */}
       <Composer channelName="thread" variant="panel" hideAsTask onSend={(body) => onSend(body)} />
+
+      {/* M6b 拆解引导链（T2 路径的 409/503 引导；创建完成 toast 引导重新点击「拆解」）。 */}
+      <DecomposeGuideModals
+        guide={decomposeH.guide}
+        channelId={channelId}
+        onClose={() => decomposeH.setGuide(null)}
+        onOrchestratorCreated={() =>
+          toast.push('@Orchestrator 已创建并拉入频道，可重新点击「拆解」', { tone: 'success' })}
+      />
     </aside>
   );
 }

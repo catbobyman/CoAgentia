@@ -22,14 +22,16 @@ from typing import Any
 from coagentia_contracts.constants import DIAGNOSTIC_TYPES
 from coagentia_contracts.entities import LandingBatchRow, LedgerEntryRow
 from coagentia_contracts.enums import (
+    ActivityKind,
     CardKind,
     LandingBatchKind,
     LandingBatchStatus,
+    MemberKind,
     MessageKind,
 )
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from sqlalchemy import insert, select, update
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import IntegrityError
 
 from coagentia_server.db import models
@@ -42,10 +44,24 @@ assert _DIAG_FAIL_CLOSED in DIAGNOSTIC_TYPES
 # fail-closed 告警卡消息正文（UI §4.7：卡片 = 不可变锚点，活状态从 landing_batches 行读）。
 _FAIL_CLOSED_CARD_BODY = "落地批次 fail-closed：请求指纹与账本记录不一致，已停止本批次后续操作。"
 
+
+class LedgerFailClosed(Exception):
+    """回滚路径 fail-closed 信号（携批元数据）：REST 落地事务器中途命中同键异指纹时抛出——
+    不 inline 写（会随外层回滚撤销），由 app 层异常处理器于 get_tx 回滚**之后**调
+    persist_fail_closed 独立落盘。"""
+
+    def __init__(self, batch: LandingBatchRow, *, reason: str | None = None) -> None:
+        super().__init__(reason or "request_hash mismatch")
+        self.batch = batch
+        self.reason = reason
+
 _LEDGER = models.tbl(models.LedgerEntry)
 _BATCH = models.tbl(models.LandingBatch)
 _DIAG = models.tbl(models.DiagnosticEvent)
 _MSG = models.tbl(models.Message)
+_ACTIVITY = models.tbl(models.ActivityItem)
+_MEMBER = models.tbl(models.Member)
+_CHANNEL_MEMBER = models.tbl(models.ChannelMember)
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"  # Crockford Base32（天然排除 I/L/O/U）
 
@@ -230,26 +246,41 @@ def mark_done(conn: Connection, batch_id: str, *, done_at: str | None = None) ->
     )
 
 
-def mark_fail_closed(conn: Connection, batch_id: str, *, reason: str | None = None) -> None:
-    """fail-closed 处置链（契约 A §4.7 规则 2，M1 可达部分）：
+def _channel_human_member_ids(conn: Connection, channel_id: str) -> list[str]:
+    """本频道未软删人类成员 id（fail-closed activity 接收者；activity 是人类面，B §9.7）。"""
+    rows = conn.execute(
+        select(_MEMBER.c.id)
+        .select_from(_CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id))
+        .where(
+            _CHANNEL_MEMBER.c.channel_id == channel_id,
+            _MEMBER.c.kind == MemberKind.HUMAN,
+            _MEMBER.c.removed_at.is_(None),
+        )
+        .order_by(_MEMBER.c.id)
+    ).scalars()
+    return list(rows)
 
-    1. landing_batches.status='fail_closed'；
-    2. 写 diagnostic_events(type='landing.fail_closed', batch_id=…)；
-    3. 向 source 线程发 fail-closed 告警卡（messages: card_kind='fail_closed',
-       card_ref=batch_id, author=NULL 系统消息）。
 
-    activity_items(kind='fail_closed') 置顶与铃声（notif_sound）属 M2 表——见下方 TODO 接缝。
+def _write_fail_closed_disposition(
+    conn: Connection, batch: LandingBatchRow, *, reason: str | None
+) -> None:
+    """fail-closed 处置链的 DB 写入（契约 A §4.7 规则 2 全套；inline 与独立连接两路共用）：
+
+    1. landing_batches.status='fail_closed'（幂等 UPDATE）；
+    2. diagnostic_events(type='landing.fail_closed', batch_id=…)；
+    3. source 线程 fail-closed 告警卡（messages: card_kind='fail_closed', card_ref=batch_id,
+       author=NULL 系统消息）；
+    4. **activity_items(kind='fail_closed') 置顶**（B §9.7 #2「随 M6 启用」——每个频道人类成员一条，
+       message_id 锚到告警卡；铃声 workspaces.notif_sound 属前端播放策略，此处只落持久行）。
+
+    纯 DB 写、无 bus emit（fail-closed 是低频损坏告警，WS 广播由持事务上下文的调用方另发；独立
+    连接路径无 bus，客户端下次拉取 REST 即见 activity/卡片）。
     """
-    batch = _fetch_batch(conn, batch_id)
-    assert batch is not None, f"unknown batch_id: {batch_id}"
-
-    # 1. 批次置 fail_closed（landing_batches 非不可变表，UPDATE 合法）。
+    ts = now_iso()
+    # 1. 批次置 fail_closed（landing_batches 非不可变表，UPDATE 合法；幂等）。
     conn.execute(
-        update(_BATCH)
-        .where(_BATCH.c.id == batch_id)
-        .values(status=LandingBatchStatus.FAIL_CLOSED)
+        update(_BATCH).where(_BATCH.c.id == batch.id).values(status=LandingBatchStatus.FAIL_CLOSED)
     )
-
     # 2. 诊断留痕（按 batch 过滤 = fail-closed 卡"查看诊断"入口，§4.6 索引）。
     conn.execute(
         insert(_DIAG).values(
@@ -258,27 +289,91 @@ def mark_fail_closed(conn: Connection, batch_id: str, *, reason: str | None = No
             type=_DIAG_FAIL_CLOSED,
             channel_id=batch.channel_id,
             task_id=None,
-            batch_id=batch_id,
+            batch_id=batch.id,
             payload={"reason": reason or "request_hash mismatch"},
-            created_at=now_iso(),
+            created_at=ts,
         )
     )
-
-    # 3. source 线程 fail-closed 告警卡（系统消息，author=NULL；thread_root_id 未知则落频道级）。
+    # 3. fail-closed 告警卡（系统消息，author=NULL；thread_root_id 未知则落频道级）。
+    card_id = new_ulid()
     conn.execute(
         insert(_MSG).values(
-            id=new_ulid(),
+            id=card_id,
             workspace_id=batch.workspace_id,
             channel_id=batch.channel_id,
             thread_root_id=None,
             author_member_id=None,
             kind=MessageKind.SYSTEM,
             card_kind=CardKind.FAIL_CLOSED,
-            card_ref=batch_id,
+            card_ref=batch.id,
             body=_FAIL_CLOSED_CARD_BODY,
-            created_at=now_iso(),
+            created_at=ts,
         )
     )
+    # 4. activity_items(kind='fail_closed') 置顶（每频道人类成员一条，锚到告警卡消息）。
+    for member_id in _channel_human_member_ids(conn, batch.channel_id):
+        conn.execute(
+            insert(_ACTIVITY).values(
+                id=new_ulid(),
+                workspace_id=batch.workspace_id,
+                member_id=member_id,
+                kind=ActivityKind.FAIL_CLOSED,
+                channel_id=batch.channel_id,
+                message_id=card_id,
+                task_id=None,
+                created_at=ts,
+                done_at=None,
+            )
+        )
 
-    # TODO(M2): activity_items(kind='fail_closed') 置顶 + 按 workspaces.notif_sound 铃声
-    #   （契约 A §4.7 规则 2 尾段）。activity_items 是 M2 表，此处留接缝，不实现、不建表。
+
+def mark_fail_closed(conn: Connection, batch_id: str, *, reason: str | None = None) -> None:
+    """inline fail-closed（契约 A §4.7 规则 2）：写在传入 conn 上——**仅供提交路径**（重放执行器
+    逐 op 小事务 record 三态命中 mismatch、既有账本测试等，事务提交后处置持久）。
+
+    ⚠️ 回滚路径（如 REST 落地事务器中途抛 ApiError → get_tx 回滚）**不得用本函数**：inline 写会
+    随外层回滚一并撤销（M5b 挂账缺陷）。回滚路径改用 `persist_fail_closed`（独立连接 + 提交），
+    见其 docstring 的锁时序方案。
+    """
+    batch = _fetch_batch(conn, batch_id)
+    assert batch is not None, f"unknown batch_id: {batch_id}"
+    _write_fail_closed_disposition(conn, batch, reason=reason)
+
+
+def persist_fail_closed(
+    engine: Engine, batch: LandingBatchRow, *, reason: str | None = None
+) -> None:
+    """回滚路径专用 fail-closed 落盘（M5b 挂账修复；契约 B §12.5 #4）：从 engine **另开独立连接**写
+    处置链并提交——外层业务事务无论回滚与否，fail-closed 告警恒持久。
+
+    SQLite 锁时序（外层持写锁时另开连接写会 busy）：**调用方必须先让外层事务释放写锁**再调本函数。
+    落地事务器路径 = 抛 `LedgerFailClosed`（不 inline 写）→ get_tx 捕获回滚（释放锁）→ app 层异常
+    处理器于回滚**之后**调本函数（此时无并发写锁，独立连接即刻取锁提交，不触 busy_timeout）。
+
+    批行落盘用 upsert：外层回滚已撤销 create_batch 时（tmpl 首次落地中途 mismatch）→ INSERT 全字段
+    以 fail_closed 建行；批行已提交存在时（落地执行器 confirm 事务先建批）→ 走处置链的 UPDATE 覆盖。
+    """
+    with engine.begin() as conn:
+        exists = conn.execute(select(_BATCH.c.id).where(_BATCH.c.id == batch.id)).first()
+        if exists is None:
+            conn.execute(
+                insert(_BATCH).values(
+                    id=batch.id,
+                    workspace_id=batch.workspace_id,
+                    channel_id=batch.channel_id,
+                    kind=LandingBatchKind(batch.kind),
+                    content_hash=batch.content_hash,
+                    source_ref=batch.source_ref,
+                    confirmed_by=batch.confirmed_by,
+                    status=LandingBatchStatus.FAIL_CLOSED,
+                    created_at=batch.created_at,
+                    done_at=None,
+                )
+            )
+            batch_row = _fetch_batch(conn, batch.id)
+            assert batch_row is not None
+            _write_fail_closed_disposition(conn, batch_row, reason=reason)
+        else:
+            batch_row = _fetch_batch(conn, batch.id)
+            assert batch_row is not None
+            _write_fail_closed_disposition(conn, batch_row, reason=reason)

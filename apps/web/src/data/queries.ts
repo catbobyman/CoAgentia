@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import type {
+  AgentCreate,
   ChannelNotificationSettingPublic,
   ChannelPatch,
   ChannelPublic,
@@ -282,6 +283,26 @@ export const useUnbindProject = () =>
     ({ channelId, projectId }) => api.unbindProject(channelId, projectId),
     'Project 已解除绑定',
   );
+
+// ---- M6b 拆解提案（B §4.10）。提案卡渲染源，按 proposal_id GET；proposal.updated/draft.* WS
+// 事件通过 wsBridge 按 proposal.id patch 本缓存（REST 是事实源，WS 载 ProposalPublic 整体替换）。
+export const useProposal = (proposalId: string | undefined, enabled = true) =>
+  useQuery({
+    queryKey: qk.proposal(proposalId ?? '_'),
+    queryFn: () => api.proposal(proposalId!),
+    enabled: !!proposalId && enabled,
+  });
+
+// P13 创建 Agent（引导链 [创建 Orchestrator] 消费）。成功后失效成员列表让新 Agent 现身（无乐观
+// 更新；MEMBER_CREATED WS 亦反流成员，invalidate 是兜底/收敛，REST 是事实源）。toast/就地错误由
+// 调用方弹窗处理（NAME_TAKEN 等结构化错误上浮，同 ProjectSettingsSection 就地报错体例）。
+export const useCreateAgent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AgentCreate) => api.createAgent(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.members() }),
+  });
+};
 
 export const useRetryCanvasNode = (channelId: string) => {
   const qc = useQueryClient();

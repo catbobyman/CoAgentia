@@ -49,6 +49,17 @@ const constTs =
     constants.UNCLAIMABLE_STATUSES,
     null,
     2,
+  )};\n\n` +
+  `/** Orchestrator 内置角色模板展示常量（源 = constants.py ORCHESTRATOR_ROLE_TEMPLATE_*）。\n` +
+  ` *  创建 Agent 弹窗角色模板段预填 + NO_ORCHESTRATOR 引导链的 MVP 唯一数据源（纪律 7）。 */\n` +
+  `export const ORCHESTRATOR_ROLE_TEMPLATE_KEY = ${JSON.stringify(
+    constants.ORCHESTRATOR_ROLE_TEMPLATE_KEY,
+  )};\n` +
+  `export const ORCHESTRATOR_ROLE_TEMPLATE_NAME = ${JSON.stringify(
+    constants.ORCHESTRATOR_ROLE_TEMPLATE_NAME,
+  )};\n` +
+  `export const ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL = ${JSON.stringify(
+    constants.ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL,
   )};\n`;
 writeFileSync(join(out, "constants.ts"), constTs);
 

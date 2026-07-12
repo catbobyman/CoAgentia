@@ -125,6 +125,29 @@ export function parseControl(text: string): { body: Dict | null; error: DecompEr
   return { body: parsed, error: null };
 }
 
+/**
+ * 剥离全部 `<control>…</control>` 块，返回给人读的散文（提案消息正文渲染用）。
+ * **非校验判定、不参与 golden 双跑**——仅复用 §5.3 的 `<control>` 定界（同 extractControlBlocks 的
+ * 标签扫描），供提案卡在消息流剥离控制块后渲染散文。残缺开标签（无配对闭标签）之后一律丢弃，
+ * 与 extractControlBlocks「残缺不计块」一致。
+ */
+export function stripControl(text: string): string {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const start = text.indexOf(CONTROL_OPEN, i);
+    if (start === -1) {
+      out += text.slice(i);
+      break;
+    }
+    out += text.slice(i, start);
+    const end = text.indexOf(CONTROL_CLOSE, start + CONTROL_OPEN.length);
+    if (end === -1) break; // 残缺开标签：其后（含标签）不当散文渲染
+    i = end + CONTROL_CLOSE.length;
+  }
+  return out.trim();
+}
+
 // ---------------------------------------------------------------- 近似匹配（EDGE_UNKNOWN_NODE hint）
 
 function levenshtein(a: string, b: string): number {

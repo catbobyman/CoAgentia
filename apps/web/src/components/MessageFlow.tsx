@@ -1,14 +1,18 @@
 // 消息流(设计稿 [E])。折叠头、日期分隔、未读线、系统消息、行内任务牌、附件卡 —— 从 App.tsx 抽出。
+// M6b:card_kind==='proposal' 的消息 → 正文剥离 <control> 块显示散文(lib/decomposition.stripControl,
+// 勿重写定界)+ 渲染提案卡(ProposalCard,数据源 GET /proposals/{card_ref} + WS 实时刷新)。
 import { useEffect } from 'react';
 import { ExternalLink, GitMerge } from 'lucide-react';
 
 import type { MemberPublic, MessagePublic, PresenceEntry, TaskPublic } from '@coagentia/contracts-ts';
 
 import { PRESENCE_VAR } from '../lib/uiMaps';
+import { stripControl } from '../lib/decomposition';
 import { renderBody } from '../lib/render';
 import { fmtDate, fmtTime } from '../lib/time';
 import { Avatar } from './Avatar';
 import { AttachCard } from './AttachCard';
+import { ProposalCard } from './ProposalCard';
 import { TaskChip } from './TaskChip';
 
 export interface MessageFlowProps {
@@ -25,6 +29,9 @@ export interface MessageFlowProps {
   onLocateDone?: () => void;
   onSelectTask?: (taskId: string) => void;
   onOpenAgent?: (memberId: string) => void; // 点击 Agent 头像/名进入 P6 详情
+  // M6b 提案卡入口(可选——未传则卡内隐藏对应入口):
+  onReviewProposal?: () => void; // 「在画布中审阅」→ 切画布页签(草稿层归后半)
+  onOpenProposalThread?: (message: MessagePublic) => void; // failed 态「查看线程」
 }
 
 /** J5 冲突锚点正文的稳定段：`冲突文件:` 后连续 `- path` 行；遇到其他正文立即停止。 */
@@ -45,6 +52,7 @@ export function MessageFlow(props: MessageFlowProps) {
   const {
     messages, memberById, memberNames, meName, presenceOf, taskByRoot, usageByTask,
     lastReadId, selectedTaskId, locateId, onLocateDone, onSelectTask, onOpenAgent,
+    onReviewProposal, onOpenProposalThread,
   } = props;
   const lastReadIdx = messages.findIndex((m) => m.id === lastReadId);
 
@@ -80,6 +88,9 @@ export function MessageFlow(props: MessageFlowProps) {
         const ownerId = task?.owner_member_id ?? undefined;
         const owner = ownerId ? memberById[ownerId] : undefined;
         const conflictFiles = m.kind === 'system' && m.card_kind === 'merge_conflict' ? parseConflictFiles(m.body) : [];
+        // 提案消息:正文剥离 <control> 块只渲染散文(定界复用内核镜像,勿重写);卡片单独渲染。
+        const isProposal = m.card_kind === 'proposal' && !!m.card_ref;
+        const bodyText = isProposal ? stripControl(m.body) : m.body;
         return (
           <div key={m.id} id={`msg-${m.id}`}>
             {newDay && <div className="datesep"><span>{date}</span></div>}
@@ -139,7 +150,15 @@ export function MessageFlow(props: MessageFlowProps) {
                       {pres?.busy_detail && <span className="tail">{pres.busy_detail}</span>}
                     </div>
                   )}
-                  <div className="body" dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
+                  <div className="body" dangerouslySetInnerHTML={{ __html: renderBody(bodyText, memberNames, meName) }} />
+                  {/* M6b 提案卡:card_ref = proposal_id,数据 GET /proposals/{id} + WS 实时刷新。 */}
+                  {isProposal && (
+                    <ProposalCard
+                      proposalId={m.card_ref!}
+                      onReviewInCanvas={onReviewProposal}
+                      onViewThread={onOpenProposalThread ? () => onOpenProposalThread(m) : undefined}
+                    />
+                  )}
                   {/* 附件卡数据源 = 消息读面派生 files(契约 A v1.0.4)——不再依赖 channelFiles 首页 ≤50 */}
                   {m.files?.map((f) => <AttachCard key={f.id} file={f} />)}
                   {task && (
