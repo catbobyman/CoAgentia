@@ -114,4 +114,39 @@ describe('ChannelSettingsModal 五组', () => {
     fireEvent.click(screen.getByRole('button', { name: /保存/ }));
     await waitFor(() => expect(api.patchChannel).toHaveBeenCalledWith('ch1', { is_private: true }));
   });
+
+  // ---- B-M6-2：编排组（decomp_mode / decomp_node_limit / orch_escalation）
+  it('渲染编排组 + 三控件', () => {
+    renderModal();
+    expect(screen.getByTestId('cs-orchestration')).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: '拆解模式' })).toBeInTheDocument();
+    expect(screen.getByLabelText('单次提案节点上限')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Orchestrator 升级接线' })).toBeInTheDocument();
+  });
+
+  it('DM 频道：无编排组（DM 不承载任务/拆解）', () => {
+    renderModal({ channel: channelOf({ kind: 'dm', name: 'Hank' }) });
+    expect(screen.queryByTestId('cs-orchestration')).not.toBeInTheDocument();
+  });
+
+  it('切直落 + 改节点上限 → 保存提交 decomp_mode/decomp_node_limit', async () => {
+    vi.mocked(api.patchChannel).mockResolvedValue(channelOf());
+    renderModal();
+    fireEvent.click(screen.getByRole('radio', { name: '直落' }));
+    fireEvent.change(screen.getByLabelText('单次提案节点上限'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() =>
+      expect(api.patchChannel).toHaveBeenCalledWith('ch1', { decomp_mode: 'direct', decomp_node_limit: 20 }),
+    );
+  });
+
+  it('节点上限越界（>50）→ 不提交该字段', async () => {
+    vi.mocked(api.patchChannel).mockResolvedValue(channelOf());
+    const { onClose } = renderModal();
+    fireEvent.change(screen.getByLabelText('单次提案节点上限'), { target: { value: '99' } });
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
+    // 越界字段不进 patch；无其它改动 → 直接关闭不发 PATCH
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(api.patchChannel).not.toHaveBeenCalled();
+  });
 });

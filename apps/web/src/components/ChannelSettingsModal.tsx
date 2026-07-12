@@ -1,11 +1,13 @@
-// P12 频道级设置弹窗（B-M5-1，裁决 #13）。四组：基本 / 通知 / 提醒阈值 / 护栏阈值。
-// 阈值·基本走既有 ChannelPatch（PATCH /channels/{id}，require_admin，单次「保存」批量提交差异）；
-// 通知走 notification-setting（人类本人自治，即点即存 + 本地更新快照）。编排/Project 组归 M6，不做。
-// DM 频道：无通知设置面（裁决 #5 DM 必达，422 NOTIF_IN_DM）——通知组隐藏。
+// P12 频道级设置弹窗（B-M5-1，裁决 #13；B-M6-2 补编排组）。五组：基本 / 通知 / 编排 / 提醒阈值 /
+// 护栏阈值 + Project 组。阈值·基本·编排走既有 ChannelPatch（PATCH /channels/{id}，require_admin，单次
+// 「保存」批量提交差异）；通知走 notification-setting（人类本人自治，即点即存 + 本地更新快照）。
+// DM 频道：无通知/编排设置面（裁决 #5 DM 必达 422 NOTIF_IN_DM；DM 不承载任务/拆解）——两组隐藏。
 import { useState } from 'react';
-import { Bell, Save, Shield, SlidersHorizontal, Timer } from 'lucide-react';
+import { Bell, GitFork, Save, Shield, SlidersHorizontal, Timer } from 'lucide-react';
 
-import type { ChannelPatch, ChannelPublic, NotificationMode } from '@coagentia/contracts-ts';
+import type {
+  ChannelPatch, ChannelPublic, DecompMode, NotificationMode,
+} from '@coagentia/contracts-ts';
 
 import { usePatchChannel, usePutNotificationSetting } from '../data/queries';
 import { useToast } from './Toast';
@@ -53,6 +55,10 @@ export function ChannelSettingsModal({ channel, meId, currentMode, canManageProj
   // 护栏阈值
   const [reevalMin, setReevalMin] = useState(numStr(channel.held_reeval_min));
   const [escalateN, setEscalateN] = useState(numStr(channel.held_escalate_n));
+  // 编排（B-M6-2；O5 拆解模式 / O6 单次提案节点上限 / Orchestrator 升级接线）
+  const [decompMode, setDecompMode] = useState<DecompMode>(channel.decomp_mode ?? 'draft');
+  const [nodeLimit, setNodeLimit] = useState(numStr(channel.decomp_node_limit));
+  const [orchEsc, setOrchEsc] = useState(!!channel.orch_escalation);
   // 通知 mode（即点即存的本地态）
   const [mode, setMode] = useState<NotificationMode>(currentMode);
 
@@ -77,6 +83,15 @@ export function ChannelSettingsModal({ channel, meId, currentMode, canManageProj
     addNum(patch, 'held_reeval_min', reevalMin, channel.held_reeval_min);
     addNum(patch, 'held_escalate_n', escalateN, channel.held_escalate_n);
     if (escalation !== !!channel.remind_escalation) patch.remind_escalation = escalation;
+    // 编排：decomp_mode / decomp_node_limit（1–50 边界，越界不提交）/ orch_escalation。
+    if (!isDm) {
+      if (decompMode !== (channel.decomp_mode ?? 'draft')) patch.decomp_mode = decompMode;
+      const nl = parseNum(nodeLimit);
+      if (nl !== undefined && nl >= 1 && nl <= 50 && nl !== (channel.decomp_node_limit ?? undefined)) {
+        patch.decomp_node_limit = nl;
+      }
+      if (orchEsc !== !!channel.orch_escalation) patch.orch_escalation = orchEsc;
+    }
     return patch;
   };
 
@@ -149,6 +164,55 @@ export function ChannelSettingsModal({ channel, meId, currentMode, canManageProj
                       >{o.label}</button>
                     ))}
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 编排（B-M6-2；DM 无任务/拆解 → 隐藏） */}
+        {!isDm && (
+          <div className="cs-sec" data-testid="cs-orchestration">
+            <div className="cs-label"><GitFork />编排</div>
+            <div className="cs-card">
+              <div className="cs-row">
+                <div className="cs-lb">
+                  <div className="t">拆解模式</div>
+                  <div className="d">草稿确认：提案先落草稿层待人确认；直落：拆解即建正式节点</div>
+                </div>
+                <div className="cs-ctl">
+                  <div className="cs-seg" role="radiogroup" aria-label="拆解模式">
+                    <button type="button" role="radio" aria-checked={decompMode === 'draft'} className={decompMode === 'draft' ? 'active' : ''} onClick={() => setDecompMode('draft')}>草稿确认</button>
+                    <button type="button" role="radio" aria-checked={decompMode === 'direct'} className={decompMode === 'direct' ? 'active' : ''} onClick={() => setDecompMode('direct')}>直落</button>
+                  </div>
+                </div>
+              </div>
+              <div className="cs-row">
+                <div className="cs-lb">
+                  <div className="t">单次提案节点上限</div>
+                  <div className="d">O6 · 超过则拆解拒绝并提示收窄范围（1–50）</div>
+                </div>
+                <div className="cs-ctl">
+                  <span className="cs-numinp">
+                    <input
+                      inputMode="numeric" value={nodeLimit} aria-label="单次提案节点上限"
+                      placeholder="默认 12" onChange={(e) => setNodeLimit(e.target.value)}
+                    />
+                    <span className="unit">节点</span>
+                  </span>
+                </div>
+              </div>
+              <div className="cs-row">
+                <div className="cs-lb">
+                  <div className="t">Orchestrator 升级接线</div>
+                  <div className="d">沉默提醒二次升级先经 @Orchestrator 处置，再升级人类</div>
+                </div>
+                <div className="cs-ctl">
+                  <button
+                    type="button" className={`cs-toggle${orchEsc ? ' on' : ''}`}
+                    role="switch" aria-checked={orchEsc} aria-label="Orchestrator 升级接线"
+                    onClick={() => setOrchEsc((v) => !v)}
+                  ><span className="knob" /></button>
                 </div>
               </div>
             </div>

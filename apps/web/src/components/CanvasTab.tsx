@@ -45,9 +45,12 @@ import { useCanvasSnapshot, useProjects, useRetryCanvasNode } from '../data/quer
 import { deriveCanvasBlocked, wouldCreateCycle } from '../lib/graph';
 import { saveTemplateGate, formalTaskNodes } from '../lib/templates';
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
+import { useUiStore } from '../lib/store';
 import { api, ApiError } from '../api';
 import { Avatar } from './Avatar';
 import { DecomposeGuideModals, DecomposeTextModal, useDecompose } from './DecomposeGuide';
+import { DraftLayer } from './DraftLayer';
+import { DeltaPanel } from './DeltaPanel';
 import { ForceStartModal } from './ForceStartModal';
 import { SaveTemplateModal } from './SaveTemplateModal';
 import { TemplateWizard } from './TemplateWizard';
@@ -448,6 +451,11 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
   const selTask = selNode?.task_id ? taskById[selNode.task_id] : undefined;
   const canForceStart = !!selTask && !!selectedNodeId && model.blocked.has(selectedNodeId);
   const boundProjects = (projectsQ.data ?? []).filter((p) => p.channel_ids.includes(channelId));
+  // M6b 草稿层 / delta 面板激活态（经提案卡进入，store 记 channelId→proposalId；rev 替换在 WS 桥维护）。
+  const activeDraftId = useUiStore((s) => s.activeDraft[channelId]) ?? null;
+  const activeDeltaId = useUiStore((s) => s.activeDelta[channelId]) ?? null;
+  const setActiveDraft = useUiStore((s) => s.setActiveDraft);
+  const setActiveDelta = useUiStore((s) => s.setActiveDelta);
   const showSystemOutput = useCallback((nodeId: string) => {
     const hit = [...messages].reverse().find((m) =>
       m.kind === 'system' && m.body.includes(`node_id: ${nodeId}`),
@@ -576,8 +584,32 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
             <Controls showInteractive={false} />
           </ReactFlow>
         </SystemActionsContext.Provider>
-        {(detail.nodes ?? []).length === 0 && (
+        {(detail.nodes ?? []).length === 0 && !activeDraftId && (
           <div className="canvas-empty">空画布 · 从上方「新建 L2 任务」起一个节点</div>
+        )}
+        {/* M6b 草稿层（kind=full awaiting_confirm）：半透明虚线节点 overlay + 顶部确认条。 */}
+        {activeDraftId && detail.canvas && (
+          <DraftLayer
+            channelId={channelId}
+            proposalId={activeDraftId}
+            members={members}
+            boundProjects={boundProjects}
+            canvas={detail.canvas}
+            onClose={() => setActiveDraft(channelId, null)}
+          />
+        )}
+        {/* M6b delta 面板（kind=delta awaiting_confirm）：增删高亮 + 部分接受。 */}
+        {activeDeltaId && detail.canvas && (
+          <DeltaPanel
+            channelId={channelId}
+            proposalId={activeDeltaId}
+            canvas={detail.canvas}
+            nodes={detail.nodes ?? []}
+            edges={detail.edges ?? []}
+            tasks={tasks}
+            members={members}
+            onClose={() => setActiveDelta(channelId, null)}
+          />
         )}
       </div>
 

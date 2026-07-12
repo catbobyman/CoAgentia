@@ -999,8 +999,9 @@ def test_confirm_success_202_and_background_landing(server_client: TestClient) -
     assert r2.json()["latest"]["proposal"]["status"] == "landed"
 
 
-def test_confirm_delta_kind_422(server_client: TestClient) -> None:
-    """kind=delta 暂 422（J10 接）——confirm 与 reject 同门。"""
+def test_confirm_delta_shared_endpoint(server_client: TestClient) -> None:
+    """J10：delta 提案走 confirm/reject 同两端点（不再 422 占位）——空 operations 确认（全剔除）→
+    422、reject → 200 DELTA_REJECTED（Agent 403 门与 full 同）。"""
     engine: Engine = server_client.app.state.engine  # type: ignore[attr-defined]
     channel = server_client.post(
         "/api/channels", json={"name": "delta-gate", "member_ids": []}
@@ -1008,6 +1009,7 @@ def test_confirm_delta_kind_422(server_client: TestClient) -> None:
     task = server_client.post(
         f"/api/channels/{channel}/messages", json={"body": "x", "as_task": {"title": "x"}}
     ).json()["task"]
+    canvas = server_client.get(f"/api/channels/{channel}/canvas").json()["canvas"]
     pid = new_ulid()
     with engine.begin() as c:
         ws_id = c.execute(select(models.Workspace.__table__.c.id)).scalar_one()
@@ -1020,16 +1022,24 @@ def test_confirm_delta_kind_422(server_client: TestClient) -> None:
             insert(_PROPOSAL).values(
                 id=pid, workspace_id=ws_id, channel_id=channel, source_task_id=task["id"],
                 kind="delta", revision=1, status="awaiting_confirm", body={},
-                proposal_hash="a" * 64, base_hash="b" * 64, landed_hash=None,
+                proposal_hash="a" * 64, base_hash=canvas["baseline_hash"], landed_hash=None,
                 adjustments=[], repair_count=0, proposed_by_member_id=owner_id,
                 created_at=now_iso(), updated_at=now_iso(),
             )
         )
-    expected = {"proposal_hash": "a" * 64, "baseline_version": 0, "baseline_hash": "c" * 64}
+    expected = {
+        "proposal_hash": "a" * 64,
+        "baseline_version": canvas["baseline_version"],
+        "baseline_hash": canvas["baseline_hash"],
+    }
+    # 空 operations → 全部剔除 → 422（不再是形态占位 422）。
     r = server_client.post(f"/api/proposals/{pid}/confirm", json={"expected": expected})
     assert r.status_code == 422, r.text
-    r = server_client.post(f"/api/proposals/{pid}/reject", json={})
-    assert r.status_code == 422, r.text
+    # reject 走同端点 → 200 rejected（DELTA_REJECTED）。
+    r = server_client.post(f"/api/proposals/{pid}/reject", json={"reason": "不需要"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+    assert _diag_count(engine, "delta.rejected") == 1
 
 
 def test_reject_paths_http(server_client: TestClient) -> None:

@@ -54,6 +54,7 @@ from coagentia_contracts.constants import (
     OPID_DECOMP_EDGE,
     OPID_DECOMP_NODE,
     OPID_DECOMP_SUMMARY,
+    OPID_DELTA_OP,
 )
 from coagentia_contracts.entities import LandingBatchRow, TaskPlanBody
 from coagentia_contracts.enums import (
@@ -66,6 +67,7 @@ from coagentia_contracts.enums import (
     SystemAction,
     SystemNodeStatus,
     TaskLevel,
+    TaskStatus,
 )
 from coagentia_contracts.kernel.decomposition import proposal_fingerprint
 from coagentia_contracts.kernel.fingerprint import fingerprint
@@ -79,6 +81,7 @@ from coagentia_server.computers.gateway_tx import gateway_tx
 from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
 from coagentia_server.events import EventBus
+from coagentia_server.ledger import replay as ledger_replay
 from coagentia_server.ledger import service
 from coagentia_server.orchestration import proposal as proposal_domain
 from coagentia_server.orchestration.draft import apply_adjustments
@@ -601,6 +604,7 @@ class _ExecContext:
         canvas: dict[str, Any],
         proposed_by: str,
         source_task_id: str,
+        existing_node_ids: set[str] | None = None,
     ) -> None:
         self.workspace_id = workspace_id
         self.channel_id = channel_id
@@ -608,16 +612,22 @@ class _ExecContext:
         self.proposed_by = proposed_by
         self.source_task_id = source_task_id
         self.by_temp: dict[str, dict[str, Any]] = {}
+        # delta：边端点可引用现画布节点 ULID（静态快照）；decomp 恒空（仅 temp_id 内部命名）。
+        self.existing_node_ids: set[str] = existing_node_ids or set()
 
     def absorb(self, payload: dict[str, Any]) -> None:
         temp_id = payload.get("temp_id")
         if isinstance(temp_id, str):
             self.by_temp[temp_id] = payload
 
-    def node_id(self, temp_id: str) -> str:
-        entry = self.by_temp.get(temp_id)
-        assert entry is not None, f"edge 引用的节点 '{temp_id}' 尚未落地（op 序列构造缺陷）"
-        return entry["node_id"]
+    def node_id(self, ref: str) -> str:
+        """解析边端点 ref → 落地节点 ULID：新增节点走 by_temp 映射，现画布节点（delta）原样返回。"""
+        entry = self.by_temp.get(ref)
+        if entry is not None:
+            return entry["node_id"]
+        if ref in self.existing_node_ids:
+            return ref
+        raise AssertionError(f"edge 引用的节点 '{ref}' 尚未落地（op 序列构造缺陷）")
 
 
 def _fail_close_batch(
@@ -663,14 +673,20 @@ class _StepMismatch(Exception):
         self.op_id = op_id
 
 
-def execute_batch(engine: Engine, bus: EventBus, batch_id: str) -> str:
-    """执行/续跑一个 decomp 批次（§9.2 恢复语义）。返回 'landed' | 'fail_closed' | 'already_done'。
+class _NodeBecameActive(Exception):
+    """delta 执行期复核（J10）：remove_node 目标任务在确认后转 in_progress/in_review（或系统节点
+    running）——整批 fail-closed（不静默删活动节点）。中止本步事务，外层独立收尾 fail-closed。"""
 
-    **步进式**（硬关口重写）：每步一个 gateway_tx，步内逐 op lookup 三态——hit 跳过（op_replayed
-    诊断）、mismatch 中止本步并在独立事务 fail-closed 停批、absent 执行处理器 + record +
-    op_applied 诊断；步事务提交即持久（kill 后重启从已提交步前缀续跑，步内崩溃整步回滚重跑）。
-    全部步过后 :done 事务：done 标记 + mark_done + baseline bump（批末恰一次）+「已落地」系统消息
-    （恰一条，§9.1 ⑤）+ landing→landed + landing.completed。
+    def __init__(self, node_id: str) -> None:
+        super().__init__(node_id)
+        self.node_id = node_id
+
+
+def execute_batch(engine: Engine, bus: EventBus, batch_id: str) -> str:
+    """执行/续跑一个落地批次（§9.2 恢复语义）。返回 'landed' | 'fail_closed' | 'already_done'。
+
+    按 batch.kind 分派：decomp（J9 现路径不动）与 delta（J10）共用步进 runner（_run_steps）与
+    fail-closed 处置，各自构造步序列 + :done 事务（decomp/delta 前缀不同、增删语义不同）。
     """
     with engine.connect() as conn:
         batch = service._fetch_batch(conn, batch_id)
@@ -688,24 +704,24 @@ def execute_batch(engine: Engine, bus: EventBus, batch_id: str) -> str:
             _fail_close_batch(tx, batch, None, reason="landing source missing")
         return "fail_closed"
 
-    landed = landed_content(proposal)
-    if proposal_fingerprint(landed) != batch.content_hash:
-        # landed 内容重算与批次指纹不一致（body/adjustments 被外部改动或代码缺陷）→ fail-closed。
-        with gateway_tx(engine, bus) as tx:
-            _fail_close_batch(tx, batch, proposal, reason="landed content recompute mismatch")
-        return "fail_closed"
+    if batch.kind == LandingBatchKind.DELTA.value:
+        return _execute_delta_batch(engine, bus, batch, proposal, canvas)
+    return _execute_decomp_batch(engine, bus, batch, proposal, canvas)
 
-    steps = build_landing_plan(
-        batch_id, landed, summary_owner=proposal["proposed_by_member_id"]
-    )
-    ctx = _ExecContext(
-        workspace_id=batch.workspace_id,
-        channel_id=batch.channel_id,
-        canvas=canvas,
-        proposed_by=proposal["proposed_by_member_id"],
-        source_task_id=proposal["source_task_id"],
-    )
 
+def _run_steps(
+    engine: Engine,
+    bus: EventBus,
+    batch: LandingBatchRow,
+    proposal: dict[str, Any],
+    ctx: _ExecContext,
+    steps: list[list[LandingOp]],
+    handlers: dict[str, Any],
+) -> str:
+    """共享步进 runner（decomp/delta 同款，避免双实现漂移）：每步一个 gateway_tx，步内逐 op
+    lookup 三态——hit 跳过（op_replayed 诊断）、mismatch/NODE_ACTIVE 中止本步并独立事务 fail-closed
+    停批、absent 执行处理器 + record + op_applied 诊断；步事务提交即持久（kill 后从已提交前缀续跑，
+    步内崩溃整步回滚重跑）。返回 'ok'（全步过）| 'fail_closed'。"""
     for step in steps:
         try:
             for _attempt in range(2):  # _OpRaced 重跑整步一次（重跑对手已提交 op 必 hit）
@@ -721,16 +737,16 @@ def execute_batch(engine: Engine, bus: EventBus, batch_id: str) -> str:
                                     tx.conn, DIAG_OP_REPLAYED,
                                     workspace_id=batch.workspace_id,
                                     channel_id=batch.channel_id,
-                                    task_id=proposal["source_task_id"], batch_id=batch_id,
+                                    task_id=proposal["source_task_id"], batch_id=batch.id,
                                     payload={"op_id": op.op_id, "kind": op.kind},
                                 )
                                 continue
                             if look["status"] == "mismatch":
                                 raise _StepMismatch(op.op_id)
-                            payload = _HANDLERS[op.kind](tx, ctx, op)
+                            payload = handlers[op.kind](tx, ctx, op)
                             res = service.record(
                                 tx.conn, op.op_id, op.kind, payload,
-                                request_hash=op.request_hash, batch_id=batch_id,
+                                request_hash=op.request_hash, batch_id=batch.id,
                                 actor=None,
                             )
                             if res["status"] != "new":
@@ -739,7 +755,7 @@ def execute_batch(engine: Engine, bus: EventBus, batch_id: str) -> str:
                             _write_diag(
                                 tx.conn, DIAG_OP_APPLIED,
                                 workspace_id=batch.workspace_id, channel_id=batch.channel_id,
-                                task_id=proposal["source_task_id"], batch_id=batch_id,
+                                task_id=proposal["source_task_id"], batch_id=batch.id,
                                 payload={"op_id": op.op_id, "kind": op.kind},
                             )
                     break  # 本步提交成功
@@ -748,58 +764,310 @@ def execute_batch(engine: Engine, bus: EventBus, batch_id: str) -> str:
             else:  # pragma: no cover - 两跑仍竞态（理论不可达）
                 raise AssertionError(f"landing step 竞态未收敛：{step[0].op_id}")
         except _StepMismatch as exc:
-            # 步事务已回滚（半步产物不留）；独立收尾事务 fail-closed 处置，提交即持久。
             with gateway_tx(engine, bus) as tx:
                 _fail_close_batch(
                     tx, batch, proposal, reason=f"op fingerprint mismatch: {exc.op_id}"
                 )
             return "fail_closed"
+        except _NodeBecameActive as exc:
+            # delta 执行期复核：目标节点已转活动 → 整批 fail-closed（步事务已回滚，无残留）。
+            with gateway_tx(engine, bus) as tx:
+                _fail_close_batch(
+                    tx, batch, proposal, reason=f"node became active: {exc.node_id}"
+                )
+            return "fail_closed"
+    return "ok"
+
+
+def _execute_decomp_batch(
+    engine: Engine, bus: EventBus, batch: LandingBatchRow,
+    proposal: dict[str, Any], canvas: dict[str, Any],
+) -> str:
+    """decomp 批次执行（J9 现路径）：landed 内容重算校验 → 步序列 → 步进 runner → :done 事务。"""
+    landed = landed_content(proposal)
+    if proposal_fingerprint(landed) != batch.content_hash:
+        with gateway_tx(engine, bus) as tx:
+            _fail_close_batch(tx, batch, proposal, reason="landed content recompute mismatch")
+        return "fail_closed"
+
+    steps = build_landing_plan(
+        batch.id, landed, summary_owner=proposal["proposed_by_member_id"]
+    )
+    ctx = _ExecContext(
+        workspace_id=batch.workspace_id,
+        channel_id=batch.channel_id,
+        canvas=canvas,
+        proposed_by=proposal["proposed_by_member_id"],
+        source_task_id=proposal["source_task_id"],
+    )
+    if _run_steps(engine, bus, batch, proposal, ctx, steps, _HANDLERS) == "fail_closed":
+        return "fail_closed"
 
     # :done 事务（§9.1 ⑤：消息只在 :done 后发；baseline bump 批末恰一次）。
     with gateway_tx(engine, bus) as tx:
-        done_oid = OPID_DECOMP_DONE.format(batch_id=batch_id)
+        done_oid = OPID_DECOMP_DONE.format(batch_id=batch.id)
         res = service.record(
-            tx.conn, done_oid, "mark_done", {"batch_id": batch_id}, batch_id=batch_id
+            tx.conn, done_oid, "mark_done", {"batch_id": batch.id}, batch_id=batch.id
         )
         if res["status"] == "hit":
             return "landed"  # 并发完成者已收尾（消息/转态齐备），本跑零副作用
         assert res["status"] == "new"  # payload 恒 {batch_id} → 不可能 mismatch
-        service.mark_done(tx.conn, batch_id)
+        service.mark_done(tx.conn, batch.id)
 
-        version, hash_, changed = canvas_service.advance_baseline(tx, canvas["id"])
-        if changed:
-            tx.emit(
-                EventType.CANVAS_BASELINE_ADVANCED, batch.channel_id,
-                {
-                    "canvas_id": canvas["id"],
-                    "baseline_version": version,
-                    "baseline_hash": hash_,
-                },
-            )
-
+        _bump_and_post_done(tx, batch, canvas)
         _post_landed_message(tx, ctx, batch, proposal, landed)
-
-        fresh = proposal_domain.fetch_proposal(tx.conn, proposal["id"])
-        assert fresh is not None
-        if fresh["status"] == ProposalStatus.LANDING.value:
-            fresh = proposal_domain._transition(tx, fresh, ProposalStatus.LANDED)
-            tx.emit(
-                EventType.PROPOSAL_UPDATED, fresh["channel_id"],
-                {"proposal": proposal_public(fresh)},
-            )
-        done_batch = service._fetch_batch(tx.conn, batch_id)
-        assert done_batch is not None
-        tx.emit(
-            EventType.LANDING_COMPLETED, batch.channel_id,
-            {"batch": done_batch.model_dump(mode="json")},
-        )
-        _write_diag(
-            tx.conn, DIAG_COMPLETED,
-            workspace_id=batch.workspace_id, channel_id=batch.channel_id,
-            task_id=proposal["source_task_id"], batch_id=batch_id,
-            payload={"batch_id": batch_id, "landed_hash": batch.content_hash},
-        )
+        _finish_landed(tx, batch, proposal)
     return "landed"
+
+
+def _bump_and_post_done(tx: Any, batch: LandingBatchRow, canvas: dict[str, Any]) -> None:
+    """baseline bump（批末恰一次）+ CANVAS_BASELINE_ADVANCED 广播（decomp/delta 共用）。"""
+    version, hash_, changed = canvas_service.advance_baseline(tx, canvas["id"])
+    if changed:
+        tx.emit(
+            EventType.CANVAS_BASELINE_ADVANCED, batch.channel_id,
+            {"canvas_id": canvas["id"], "baseline_version": version, "baseline_hash": hash_},
+        )
+
+
+def _finish_landed(tx: Any, batch: LandingBatchRow, proposal: dict[str, Any]) -> None:
+    """landing→landed 转态 + LANDING_COMPLETED + landing.completed 诊断（decomp/delta 共用）。"""
+    fresh = proposal_domain.fetch_proposal(tx.conn, proposal["id"])
+    assert fresh is not None
+    if fresh["status"] == ProposalStatus.LANDING.value:
+        fresh = proposal_domain._transition(tx, fresh, ProposalStatus.LANDED)
+        tx.emit(
+            EventType.PROPOSAL_UPDATED, fresh["channel_id"],
+            {"proposal": proposal_public(fresh)},
+        )
+    done_batch = service._fetch_batch(tx.conn, batch.id)
+    assert done_batch is not None
+    tx.emit(
+        EventType.LANDING_COMPLETED, batch.channel_id,
+        {"batch": done_batch.model_dump(mode="json")},
+    )
+    _write_diag(
+        tx.conn, DIAG_COMPLETED,
+        workspace_id=batch.workspace_id, channel_id=batch.channel_id,
+        task_id=proposal["source_task_id"], batch_id=batch.id,
+        payload={"batch_id": batch.id, "landed_hash": batch.content_hash},
+    )
+
+
+# ---------------------------------------------------------------- delta 落地（J10；拆解设计 §11）
+
+
+def build_delta_plan(
+    batch_id: str, operations: list[Any], removed: set[int]
+) -> list[list[LandingOp]]:
+    """从 delta operations（剔除 removed_ops）确定性重建步序列——op_id 用**原始下标** OPID_DELTA_OP
+    （重启从 DB body+adjustments 重算同序列，M5b 教训 #C）。步序（拆解设计 §11 落地，确定性）：
+      ① remove_edge 逐 op 一步 → ② remove_node 逐 op 一步（级联删关联边）→
+      ③ add_node 按新增子图拓扑序（平局 temp_id 字典序）成步，每步 = 该节点 create_node + 其全部
+         入边 create_edge 同一 gateway_tx（「已落地节点入边集恒完整」不变量，同 J9 步原子）→
+      ④ 其余 add_edge（现→现、新→现）逐 op 一步。
+    """
+    kept: list[tuple[int, dict[str, Any]]] = [
+        (i, op) for i, op in enumerate(operations)
+        if i not in removed and isinstance(op, dict)
+    ]
+    steps: list[list[LandingOp]] = []
+
+    for i, op in kept:  # ① remove_edge
+        if op.get("op") == "remove_edge":
+            steps.append([LandingOp(
+                op_id=OPID_DELTA_OP.format(batch_id=batch_id, index=i),
+                kind="delta_remove_edge",
+                request_hash=fingerprint({"from": op["from"], "to": op["to"]}),
+                spec={"from": op["from"], "to": op["to"]},
+            )])
+    for i, op in kept:  # ② remove_node
+        if op.get("op") == "remove_node":
+            steps.append([LandingOp(
+                op_id=OPID_DELTA_OP.format(batch_id=batch_id, index=i),
+                kind="delta_remove_node",
+                request_hash=fingerprint({"node_id": op["node_id"]}),
+                spec={"node_id": op["node_id"]},
+            )])
+
+    add_node_ops = [(i, op) for i, op in kept if op.get("op") == "add_node"]
+    add_edge_ops = [(i, op) for i, op in kept if op.get("op") == "add_edge"]
+    added_temp = [op["node"]["temp_id"] for _i, op in add_node_ops]
+    added_set = set(added_temp)
+    node_op_index = {op["node"]["temp_id"]: i for i, op in add_node_ops}
+    node_by_temp = {op["node"]["temp_id"]: op["node"] for _i, op in add_node_ops}
+
+    in_edges: dict[str, list[tuple[int, str, str]]] = {t: [] for t in added_temp}
+    add_edge_existing: list[tuple[int, str, str]] = []
+    inner_edges: list[tuple[str, str]] = []
+    for i, op in add_edge_ops:
+        frm, to = op["from"], op["to"]
+        if to in added_set:
+            in_edges[to].append((i, frm, to))
+            if frm in added_set:
+                inner_edges.append((frm, to))
+        else:
+            add_edge_existing.append((i, frm, to))
+
+    order = _topo_order(added_temp, inner_edges)
+    pos = _layout(order, inner_edges)
+    for t in order:  # ③ add_node + 其全部入边
+        node = node_by_temp[t]
+        x, y = pos[t]
+        step: list[LandingOp] = [LandingOp(
+            op_id=OPID_DELTA_OP.format(batch_id=batch_id, index=node_op_index[t]),
+            kind="create_node",
+            request_hash=fingerprint({"node": node, "pos": [x, y]}),
+            spec={"temp_id": t, "node": node, "pos": [x, y]},
+        )]
+        for i, frm, to in sorted(in_edges[t], key=lambda e: (e[1], e[2])):
+            step.append(LandingOp(
+                op_id=OPID_DELTA_OP.format(batch_id=batch_id, index=i),
+                kind="create_edge",
+                request_hash=fingerprint({"from": frm, "to": to}),
+                spec={"from": frm, "to": to},
+            ))
+        steps.append(step)
+    for i, frm, to in add_edge_existing:  # ④ 其余 add_edge
+        steps.append([LandingOp(
+            op_id=OPID_DELTA_OP.format(batch_id=batch_id, index=i),
+            kind="create_edge",
+            request_hash=fingerprint({"from": frm, "to": to}),
+            spec={"from": frm, "to": to},
+        )])
+    return steps
+
+
+def _node_active_at_exec(conn: Connection, node: dict[str, Any]) -> bool:
+    if node["kind"] == CanvasNodeKind.AGENT.value:
+        tid = node.get("task_id")
+        if tid is None:
+            return False
+        status = conn.execute(select(_TASK.c.status).where(_TASK.c.id == tid)).scalar()
+        return status in (TaskStatus.IN_PROGRESS.value, TaskStatus.IN_REVIEW.value)
+    return node.get("system_status") == SystemNodeStatus.RUNNING.value
+
+
+def _apply_delta_remove_edge(tx: Any, ctx: _ExecContext, op: LandingOp) -> dict[str, Any]:
+    """删除现画布边（幂等：目标边已消失 → 无操作成功落账）。from/to = 现画布节点 ULID。"""
+    frm, to = op.spec["from"], op.spec["to"]
+    edge = tx.conn.execute(
+        select(_EDGE).where(
+            _EDGE.c.canvas_id == ctx.canvas["id"],
+            _EDGE.c.from_node_id == frm,
+            _EDGE.c.to_node_id == to,
+        )
+    ).mappings().first()
+    edge_id: str | None = None
+    if edge is not None:
+        edge_id = str(edge["id"])
+        canvas_service.delete_edge(tx.conn, edge_id)
+        tx.emit(EventType.CANVAS_EDGE_REMOVED, ctx.channel_id, {"edge_id": edge_id})
+    return {"op": "remove_edge", "from": frm, "to": to, "edge_id": edge_id}
+
+
+def _apply_delta_remove_node(tx: Any, ctx: _ExecContext, op: LandingOp) -> dict[str, Any]:
+    """删除现画布节点（解除引用不删任务，同 C8）：执行期复核目标非活动（in_progress/in_review 或
+    running system → _NodeBecameActive 整批 fail-closed）；目标已消失 → 幂等无操作。级联删边。"""
+    node_id = op.spec["node_id"]
+    node = canvas_service.fetch_node(tx.conn, ctx.canvas["id"], node_id)
+    if node is None:
+        return {"op": "remove_node", "node_id": node_id, "removed": False}
+    if _node_active_at_exec(tx.conn, node):
+        raise _NodeBecameActive(node_id)
+    for edge in canvas_service.incident_edges(tx.conn, ctx.canvas["id"], node_id):
+        canvas_service.delete_edge(tx.conn, edge["id"])
+        tx.emit(EventType.CANVAS_EDGE_REMOVED, ctx.channel_id, {"edge_id": edge["id"]})
+    canvas_service.delete_node(tx.conn, node_id)
+    tx.emit(EventType.CANVAS_NODE_REMOVED, ctx.channel_id, {"node_id": node_id})
+    return {"op": "remove_node", "node_id": node_id, "removed": True}
+
+
+_DELTA_HANDLERS = {
+    "create_node": _apply_create_node,       # 复用 J9 提案节点全链
+    "create_edge": _apply_create_edge,       # 复用 J9 幂等插边（ctx.node_id 解析现节点/新增）
+    "delta_remove_edge": _apply_delta_remove_edge,
+    "delta_remove_node": _apply_delta_remove_node,
+}
+
+
+def _execute_delta_batch(
+    engine: Engine, bus: EventBus, batch: LandingBatchRow,
+    proposal: dict[str, Any], canvas: dict[str, Any],
+) -> str:
+    """delta 批次执行（J10）：剔除后 landed 内容重算指纹校验（fail-closed 兜底）→ 步序列 → 步进
+    runner → :done 事务（baseline bump + 「增量已落地」系统消息 + landing→landed，批末恰一次）。"""
+    body = proposal["body"]
+    assert isinstance(body, dict)
+    operations = list(body.get("operations") or [])
+    removed = {int(i) for i in (proposal.get("adjustments") or [])}
+    remaining = {
+        **body, "operations": [op for i, op in enumerate(operations) if i not in removed]
+    }
+    if proposal_fingerprint(remaining) != batch.content_hash:
+        with gateway_tx(engine, bus) as tx:
+            _fail_close_batch(
+                tx, batch, proposal, reason="delta landed content recompute mismatch"
+            )
+        return "fail_closed"
+
+    with engine.connect() as conn:
+        existing_ids = set(canvas_service.node_ids(conn, canvas["id"]))
+    steps = build_delta_plan(batch.id, operations, removed)
+    ctx = _ExecContext(
+        workspace_id=batch.workspace_id,
+        channel_id=batch.channel_id,
+        canvas=canvas,
+        proposed_by=proposal["proposed_by_member_id"],
+        source_task_id=proposal["source_task_id"],
+        existing_node_ids=existing_ids,
+    )
+    if _run_steps(engine, bus, batch, proposal, ctx, steps, _DELTA_HANDLERS) == "fail_closed":
+        return "fail_closed"
+
+    with gateway_tx(engine, bus) as tx:
+        done_oid = ledger_replay.done_op_id("delta", batch.id)
+        res = service.record(
+            tx.conn, done_oid, "mark_done", {"batch_id": batch.id}, batch_id=batch.id
+        )
+        if res["status"] == "hit":
+            return "landed"  # 并发完成者已收尾
+        assert res["status"] == "new"
+        service.mark_done(tx.conn, batch.id)
+        _bump_and_post_done(tx, batch, canvas)
+        _post_delta_landed_message(tx, batch, proposal, operations, removed)
+        _finish_landed(tx, batch, proposal)
+    return "landed"
+
+
+def _post_delta_landed_message(
+    tx: Any, batch: LandingBatchRow, proposal: dict[str, Any],
+    operations: list[Any], removed: set[int],
+) -> None:
+    """「增量已落地」系统消息（恰一条，:done 事务内，source 线程）：增删摘要 + 剔除数。"""
+    from coagentia_server.messages import service as messages_service
+
+    kept = [op for i, op in enumerate(operations) if i not in removed and isinstance(op, dict)]
+    add_nodes = sum(1 for op in kept if op.get("op") == "add_node")
+    remove_nodes = sum(1 for op in kept if op.get("op") == "remove_node")
+    add_edges = sum(1 for op in kept if op.get("op") == "add_edge")
+    remove_edges = sum(1 for op in kept if op.get("op") == "remove_edge")
+    text = (
+        f"增量已落地（rev.{proposal['revision']}）："
+        f"新增 {add_nodes} 节点 / {add_edges} 边，删除 {remove_nodes} 节点 / {remove_edges} 边。"
+    )
+    if removed:
+        text += f" 已剔除 {len(removed)} 项操作。"
+    source_root = tx.conn.execute(
+        select(_TASK.c.root_message_id).where(_TASK.c.id == proposal["source_task_id"])
+    ).scalar()
+    messages_service.post_system_message(
+        tx,
+        workspace_id=batch.workspace_id,
+        channel_id=batch.channel_id,
+        body=text,
+        thread_root_id=source_root,
+    )
 
 
 def _post_landed_message(
@@ -876,80 +1144,94 @@ def _post_landed_message(
 # ---------------------------------------------------------------- 对账 #4 + 直落扫描
 
 
-def pending_landing_scan(engine: Engine, bus: EventBus) -> dict[str, Any]:
-    """落地待办扫描（hub 启动/周期/事件触发共用；幂等重入安全——record 三态兜）：
-
-    ① proposals status=landing 且 kind=full 且无 decomp 批次 → **直落建批**（confirm 事务原子建批，
-      故无批的 landing 提案只可能来自 J8 直落分支；confirmed_by='auto(channel-policy)'、
-      content_hash=landed_hash=proposal_hash、adjustments 保持 []）+ landing.started；
-    ② kind=decomp 且 running 的批次（含 ① 新建）按 id 序逐个 execute_batch。
-
-    返回 {"created": [...batch_id], "executed": {batch_id: result}}。
-    """
+def _direct_orphan_ids(engine: Engine, proposal_kind: str, batch_kind: str) -> list[str]:
+    """直落孤儿 = status=landing 且给定 kind 且无同 kind 落地批的提案（confirm 事务原子建批，故
+    无批的 landing 提案只可能来自 J8/J10 直落分支）。"""
     with engine.connect() as conn:
-        orphan_rows = conn.execute(
+        return list(conn.execute(
             select(_PROPOSAL.c.id)
             .where(
                 _PROPOSAL.c.status == ProposalStatus.LANDING.value,
-                _PROPOSAL.c.kind == "full",
+                _PROPOSAL.c.kind == proposal_kind,
                 ~select(_BATCH.c.id)
-                .where(
-                    _BATCH.c.kind == LandingBatchKind.DECOMP.value,
-                    _BATCH.c.source_ref == _PROPOSAL.c.id,
-                )
+                .where(_BATCH.c.kind == batch_kind, _BATCH.c.source_ref == _PROPOSAL.c.id)
                 .exists(),
             )
             .order_by(_PROPOSAL.c.id)
-        ).scalars().all()
+        ).scalars())
 
+
+def _create_direct_batch(
+    engine: Engine, bus: EventBus, pid: str, batch_kind: LandingBatchKind
+) -> str | None:
+    """为一个直落孤儿建批（content_hash=landed_hash=proposal_hash、adjustments 保持 []、
+    confirmed_by=auto(channel-policy)）；返回 batch_id 或 None（竞态已被推进/建批）。"""
+    with gateway_tx(engine, bus) as tx:
+        proposal = proposal_domain.fetch_proposal(tx.conn, pid)
+        if proposal is None or proposal["status"] != ProposalStatus.LANDING.value:
+            return None  # 竞态：状态已被推进
+        exists = tx.conn.execute(
+            select(_BATCH.c.id).where(
+                _BATCH.c.kind == batch_kind.value, _BATCH.c.source_ref == pid
+            )
+        ).first()
+        if exists is not None:
+            return None  # 竞态：对手已建批
+        tx.conn.execute(
+            update(_PROPOSAL).where(_PROPOSAL.c.id == pid)
+            .values(landed_hash=proposal["proposal_hash"])
+        )
+        batch = service.create_batch(
+            tx.conn,
+            workspace_id=proposal["workspace_id"],
+            channel_id=proposal["channel_id"],
+            kind=batch_kind,
+            content_hash=proposal["proposal_hash"],
+            source_ref=pid,
+            confirmed_by=AUTO_CONFIRMED_BY,
+        )
+        tx.emit(
+            EventType.LANDING_STARTED, proposal["channel_id"],
+            {"batch": batch.model_dump(mode="json")},
+        )
+        _write_diag(
+            tx.conn, DIAG_STARTED,
+            workspace_id=proposal["workspace_id"], channel_id=proposal["channel_id"],
+            task_id=proposal["source_task_id"], batch_id=batch.id,
+            payload={
+                "batch_id": batch.id, "proposal_id": pid,
+                "landed_hash": proposal["proposal_hash"], "mode": "direct",
+            },
+        )
+        return batch.id
+
+
+def pending_landing_scan(engine: Engine, bus: EventBus) -> dict[str, Any]:
+    """落地待办扫描（hub 启动/周期/事件触发共用；幂等重入安全——record 三态兜）：
+
+    ① 直落孤儿建批：status=landing 且无同 kind 批的 full（→ decomp 批）与 delta（→ delta 批）提案，
+      confirmed_by='auto(channel-policy)'、content_hash=landed_hash=proposal_hash、adjustments=[]；
+    ② kind ∈ {decomp, delta} 且 running 的批次（含 ① 新建）按 id 序 execute_batch（按 kind 分派）。
+
+    返回 {"created": [...batch_id], "executed": {batch_id: result}}。
+    """
     created: list[str] = []
-    for pid in orphan_rows:
-        with gateway_tx(engine, bus) as tx:
-            proposal = proposal_domain.fetch_proposal(tx.conn, pid)
-            if proposal is None or proposal["status"] != ProposalStatus.LANDING.value:
-                continue  # 竞态：状态已被推进
-            exists = tx.conn.execute(
-                select(_BATCH.c.id).where(
-                    _BATCH.c.kind == LandingBatchKind.DECOMP.value,
-                    _BATCH.c.source_ref == pid,
-                )
-            ).first()
-            if exists is not None:
-                continue  # 竞态：对手已建批
-            tx.conn.execute(
-                update(_PROPOSAL)
-                .where(_PROPOSAL.c.id == pid)
-                .values(landed_hash=proposal["proposal_hash"])
-            )
-            batch = service.create_batch(
-                tx.conn,
-                workspace_id=proposal["workspace_id"],
-                channel_id=proposal["channel_id"],
-                kind=LandingBatchKind.DECOMP,
-                content_hash=proposal["proposal_hash"],
-                source_ref=pid,
-                confirmed_by=AUTO_CONFIRMED_BY,
-            )
-            tx.emit(
-                EventType.LANDING_STARTED, proposal["channel_id"],
-                {"batch": batch.model_dump(mode="json")},
-            )
-            _write_diag(
-                tx.conn, DIAG_STARTED,
-                workspace_id=proposal["workspace_id"], channel_id=proposal["channel_id"],
-                task_id=proposal["source_task_id"], batch_id=batch.id,
-                payload={
-                    "batch_id": batch.id, "proposal_id": pid,
-                    "landed_hash": proposal["proposal_hash"], "mode": "direct",
-                },
-            )
-            created.append(batch.id)
+    for pid in _direct_orphan_ids(engine, "full", LandingBatchKind.DECOMP.value):
+        bid = _create_direct_batch(engine, bus, pid, LandingBatchKind.DECOMP)
+        if bid is not None:
+            created.append(bid)
+    for pid in _direct_orphan_ids(engine, "delta", LandingBatchKind.DELTA.value):
+        bid = _create_direct_batch(engine, bus, pid, LandingBatchKind.DELTA)
+        if bid is not None:
+            created.append(bid)
 
     with engine.connect() as conn:
         running = conn.execute(
             select(_BATCH.c.id)
             .where(
-                _BATCH.c.kind == LandingBatchKind.DECOMP.value,
+                _BATCH.c.kind.in_(
+                    [LandingBatchKind.DECOMP.value, LandingBatchKind.DELTA.value]
+                ),
                 _BATCH.c.status == LandingBatchStatus.RUNNING.value,
             )
             .order_by(_BATCH.c.id)
@@ -965,6 +1247,7 @@ __all__ = [
     "AUTO_CONFIRMED_BY",
     "AUTO_MERGE_KEY",
     "LandingOp",
+    "build_delta_plan",
     "build_landing_plan",
     "execute_batch",
     "landed_content",

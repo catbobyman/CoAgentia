@@ -177,7 +177,7 @@ export function TaskHandoffCard({
 export function ThreadPanel({
   task, rootMessageId, channelId, memberById, memberNames, meName, meId, presenceOf, usage,
   heldDrafts, canResolve, onLocateMessage, locateId, onLocateDone, onClose, onSend,
-  onReviewProposal,
+  onReviewProposal, onReviewDelta,
 }: {
   task?: TaskPublic;
   rootMessageId: string;
@@ -196,8 +196,10 @@ export function ThreadPanel({
   onLocateDone?: () => void;
   onClose: () => void;
   onSend: (body: string) => void;
-  /** M6b 提案卡「在画布中审阅」→ 切画布页签(由会话屏传入 setSearch 通道)。 */
-  onReviewProposal?: () => void;
+  /** M6b 提案卡「查看草稿/在画布中审阅」→ 切画布 + 激活草稿层（会话屏传入通道）。 */
+  onReviewProposal?: (proposalId: string) => void;
+  /** M6b delta 卡「审查增量」→ 切画布 + 激活 delta 面板。 */
+  onReviewDelta?: (proposalId: string) => void;
 }) {
   const threadQ = useThread(rootMessageId);
   const detailQ = useTaskDetail(task?.id);
@@ -450,6 +452,7 @@ export function ThreadPanel({
         locateId={locateId}
         onLocateDone={onLocateDone}
         onReviewProposal={onReviewProposal}
+        onReviewDelta={onReviewDelta}
       />
 
       {/* [3b] 本线程内被扣草稿(thread_root_id === rootMessageId)——主流的由会话屏渲染。 */}

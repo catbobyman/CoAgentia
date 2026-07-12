@@ -33,6 +33,7 @@ from coagentia_server.canvas import service as canvas_service
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx, require_workspace
 from coagentia_server.ledger import service
+from coagentia_server.orchestration import delta as delta_domain
 from coagentia_server.orchestration import draft as draft_domain
 from coagentia_server.orchestration import proposal as proposal_domain
 from coagentia_server.routes.serialize import message_public, proposal_public
@@ -172,7 +173,8 @@ def get_proposal(proposal_id: str, tx: Tx = Depends(get_tx)) -> Any:
 def _confirmable_proposal(
     tx: Tx, proposal_id: str, request: Request
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """confirm/reject 共用前置门：404 → Agent 403（O9）→ delta 422 → (proposal, canvas, me)。"""
+    """confirm/reject 共用前置门：404 → Agent 403（O9）→ (proposal, canvas, me)。full 与 delta
+    形态共用本门（J10 起 delta 走同两端点，confirm 内按 kind 分派、reject 语义同 full）。"""
     proposal = proposal_domain.fetch_proposal(tx.conn, proposal_id)
     if proposal is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "提案不存在")
@@ -183,13 +185,6 @@ def _confirmable_proposal(
             rest.ErrorCode.PERMISSION_DENIED,
             "草稿确认/拒绝是人类操作（Agent 结构变更通道 = <control> 提案；直落归频道策略）",
             rule="O9",
-        )
-    if proposal["kind"] == ProposalKind.DELTA.value:
-        raise ApiError(
-            422,
-            rest.ErrorCode.VALIDATION_FAILED,
-            "delta 提案的确认/拒绝随增量变更批次提供（J10）",
-            rule="B§12.4",
         )
     canvas = canvas_service.fetch_canvas_by_channel(tx.conn, proposal["channel_id"])
     assert canvas is not None  # 非 DM 频道建频即有画布；提案只在频道内产生
@@ -240,6 +235,9 @@ def confirm_proposal(
     ):
         return _stale_response(tx, proposal, canvas)
 
+    if proposal["kind"] == ProposalKind.DELTA.value:
+        return _confirm_delta(tx, proposal, canvas, body, me)
+
     if body.removed_ops:
         raise ApiError(
             422,
@@ -281,6 +279,100 @@ def confirm_proposal(
         )
     except draft_domain.StaleTransition:
         fresh = proposal_domain.fetch_proposal(tx.conn, proposal_id)
+        assert fresh is not None
+        return _stale_response(tx, fresh, canvas)
+    return {"batch": batch.model_dump(mode="json"), "proposal": proposal_public(refreshed)}
+
+
+def _confirm_delta(
+    tx: Tx, proposal: dict[str, Any], canvas: dict[str, Any],
+    body: rest.ProposalConfirm, me: dict[str, Any],
+) -> Any:
+    """delta 部分接受确认（拆解设计 §11 / 契约 B §12.4 #3；CAS 三字段已在调用方比对通过）：
+
+    ① adjustments 须空（delta 调整面 = removed_ops）；removed_ops 越界/重复 → 422；全剔除 → 422；
+    ② base 过期（F9）→ 409 DELTA_BASE_MISMATCH + 提案 awaiting→failed + 线程消息 + DELTA_REJECTED
+       （JSONResponse 返回使事务提交）；
+    ③ 剩余 op 集全量重验（validate_delta 现时 env/canvas）：含 NODE_ACTIVE → 422 NODE_ACTIVE，其余
+       → 422 VALIDATION_FAILED（raise 不改状态，人类可再剔再试）；
+    ④ 通过 → delta_confirm_apply（awaiting→landing + delta 批 + DELTA_CONFIRMED/LANDING_STARTED）。
+    """
+    if body.adjustments:
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "delta 提案的调整面 = removed_ops（逐 op 剔除），不接受 adjustments",
+            rule="B§12.4",
+            details={"field": "adjustments"},
+        )
+    del_body = proposal["body"] if isinstance(proposal["body"], dict) else {}
+    operations = del_body.get("operations") or []
+    removed = list(body.removed_ops)
+    if len(set(removed)) != len(removed):
+        raise ApiError(
+            422, rest.ErrorCode.VALIDATION_FAILED, "removed_ops 含重复下标",
+            rule="B§12.4", details={"removed_ops": removed},
+        )
+    if any(i < 0 or i >= len(operations) for i in removed):
+        raise ApiError(
+            422, rest.ErrorCode.VALIDATION_FAILED, "removed_ops 下标越界",
+            rule="B§12.4", details={"removed_ops": removed, "op_count": len(operations)},
+        )
+    removed_set = set(removed)
+    if len([i for i in range(len(operations)) if i not in removed_set]) == 0:
+        raise ApiError(
+            422, rest.ErrorCode.VALIDATION_FAILED, "全部操作已剔除，请改用拒绝",
+            rule="B§12.4", details={"removed_ops": removed},
+        )
+
+    # ② base 过期处置（F9）——JSONResponse 返回使事务提交（提案 failed + 线程消息 + 事件持久）。
+    if proposal["base_hash"] != canvas["baseline_hash"]:
+        try:
+            delta_domain.delta_base_mismatch_fail(tx, proposal=proposal)
+        except draft_domain.StaleTransition:
+            fresh = proposal_domain.fetch_proposal(tx.conn, proposal["id"])
+            assert fresh is not None
+            return _stale_response(tx, fresh, canvas)
+        err = rest.ErrorBody(
+            code=rest.ErrorCode.DELTA_BASE_MISMATCH,
+            message="增量提案基线已过期（画布基线在确认前已推进），请基于最新基线重新生成",
+            rule="F9",
+            details={
+                "expected_base": proposal["base_hash"],
+                "current_baseline_version": canvas["baseline_version"],
+                "current_baseline_hash": canvas["baseline_hash"],
+            },
+        )
+        return JSONResponse(status_code=409, content={"error": err.model_dump()})
+
+    # ③ 剩余 op 集全量重验（现时 env/canvas）。
+    channel = _require_channel(tx, proposal["channel_id"])
+    remaining_body = {
+        **del_body,
+        "operations": [operations[i] for i in range(len(operations)) if i not in removed_set],
+    }
+    errors = delta_domain.validate_delta(tx.conn, channel, canvas, remaining_body)
+    if errors:
+        codes = {e.get("code") for e in errors}
+        if rest.ErrorCode.NODE_ACTIVE.value in codes:
+            raise ApiError(
+                422, rest.ErrorCode.NODE_ACTIVE, "剩余操作删除了进行中/在评审的节点",
+                rule="F10", details={"errors": errors},
+            )
+        raise ApiError(
+            422, rest.ErrorCode.VALIDATION_FAILED, "剔除后的增量未通过校验",
+            rule="B§12.4", details={"errors": errors},
+        )
+
+    # ④ 落账 + 转 landing + 建 delta 批（202；落地属异步执行器）。
+    landed_hash = delta_domain.delta_landed_hash(del_body, removed)
+    try:
+        batch, refreshed = delta_domain.delta_confirm_apply(
+            tx, proposal=proposal, removed_ops=removed,
+            landed_hash=landed_hash, confirmed_by=me["id"],
+        )
+    except draft_domain.StaleTransition:
+        fresh = proposal_domain.fetch_proposal(tx.conn, proposal["id"])
         assert fresh is not None
         return _stale_response(tx, fresh, canvas)
     return {"batch": batch.model_dump(mode="json"), "proposal": proposal_public(refreshed)}

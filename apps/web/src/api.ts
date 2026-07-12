@@ -33,6 +33,8 @@ import type {
   ProjectCreate,
   ProjectPatch,
   ProjectPublic,
+  ProposalConfirm,
+  ProposalConfirmResult,
   ProposalPublic,
   ReminderPublic,
   RestPaths,
@@ -79,17 +81,21 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; rule?: string | null; details?: unknown };
 }
 
-/** 带契约错误码的前端异常:UI 层 catch 后据 code/details 组 toast 文案(纪律:结构化错误上浮)。 */
+/** 带契约错误码的前端异常:UI 层 catch 后据 code/details 组 toast 文案(纪律:结构化错误上浮)。
+ *  `latest` = 少数端点(§5 STALE_CONFIRM 的 `{error, latest}` 双顶层键)在 error 之外并列的最新态载荷,
+ *  由 responseError 从响应体顶层原样带出(草稿确认 409 刷新重审用)。 */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: unknown;
-  constructor(status: number, code: string, message: string, details?: unknown) {
+  readonly latest: unknown;
+  constructor(status: number, code: string, message: string, details?: unknown, latest?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.details = details;
+    this.latest = latest;
   }
 }
 
@@ -119,17 +125,20 @@ async function responseError(r: Response, fallback: string): Promise<ApiError> {
   let code = `HTTP_${r.status}`;
   let message = fallback;
   let details: unknown;
+  let latest: unknown;
   try {
-    const parsed = (await r.json()) as ErrorEnvelope;
+    const parsed = (await r.json()) as ErrorEnvelope & { latest?: unknown };
     if (parsed.error) {
       code = parsed.error.code ?? code;
       message = parsed.error.message ?? message;
       details = parsed.error.details;
     }
+    // STALE_CONFIRM(§5)响应形状 = `{error, latest}` 双顶层键——latest 与 error 并列,带出供刷新重审。
+    latest = parsed.latest;
   } catch {
     // 非 JSON 错误体保留 transport 兜底。
   }
-  return new ApiError(r.status, code, message, details);
+  return new ApiError(r.status, code, message, details, latest);
 }
 
 // home/tree 是 daemon 查询帧代理(契约 D §6),mock 无 response_model → OpenAPI 未定形状;此处窄化为 UI 消费形。
@@ -376,8 +385,17 @@ export const api = {
   // 均走 writeJson 结构化错误上浮，UI 据 code 分派引导弹窗。
   decompose: (channelId: string, body: DecomposeRequest) =>
     writeJson<ProposalPublic>(`/api/channels/${channelId}/decompose`, 'POST', body),
-  // 提案卡渲染源（草稿层归后半）。react-query GET，proposal.updated/draft.* WS 载体刷新。
+  // 提案卡渲染源。react-query GET，proposal.updated/draft.* WS 载体刷新。
   proposal: (proposalId: string) => get<ProposalPublic>(`/api/proposals/${proposalId}`),
+  // 草稿确认 CAS（B §5）：expected 三字段 + adjustments（full 全量草稿）+ removed_ops（delta 部分接受）。
+  // 202 {batch, proposal}；409 STALE_CONFIRM → ApiError.latest 携最新态；409 DELTA_BASE_MISMATCH /
+  // 422 VALIDATION_FAILED·NODE_ACTIVE → code/details 上浮（UI 据 code 分派横幅/就地错误清单）。
+  confirmProposal: (proposalId: string, body: ProposalConfirm) =>
+    writeJson<ProposalConfirmResult>(`/api/proposals/${proposalId}/confirm`, 'POST', body),
+  // 拒绝草稿/delta（B §4.10）：理由可空（发进 source 线程，Orchestrator 可读的纠正信号）→ 提案转
+  // rejected 终态；非 awaiting → 409 STALE_CONFIRM 携最新态（latest）。
+  rejectProposal: (proposalId: string, reason?: string) =>
+    writeJson<ProposalPublic>(`/api/proposals/${proposalId}/reject`, 'POST', { reason: reason ?? null }),
 
   // ---- M5(B-M5-2)模板域(B §4.12/§11.1/§11.2)。列表 GET(builtin 置前，body 全量携带供向导预览)；
   // 存为模板 POST(server 读频道画布快照序列化 TemplateBody，画布无正式节点/有草稿层 → 409

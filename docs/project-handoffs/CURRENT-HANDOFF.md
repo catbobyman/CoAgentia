@@ -4,7 +4,7 @@
 | --- | --- |
 | 更新 | 2026-07-12，**T1（M6a 收口段）完成**：并行审计（8 角度 workflow）→ `/code-review high` 10 findings（1 REFUTED）→ 实机 verify 20/20（`bc70cd5`）→ **10 findings 统一修复 + 14 项回归测试 + 全守门复验 + m6a_verify 复验 20/20 → 收口提交（见 HEAD）**。修复由 Codex 起草、Fable 5 接手对抗审查（10 条全过）+ 修 5 红测试 + 补回归 + 收口。守门新基线 **827/195/pyright0**。 |
 | 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；M5 任务书已移 archive/ |
-| 一句话状态 | **M1–M5 全收口；M6a 全收口（实现+实机 verify 20/20+code-review 10 findings 全修）**。**M6b 进行中（COLLAB-MODEL v2 Fable 单窗编排）**：波 1（J7 ✅，`95d190c`）→ 波 2（J8 ✅，`3a78799`）→ **波 3（J9 ✅ 硬关口通过[Fable 重写 2 blocking：步进原子落地/条件转移] + B-M6-2 前半 ◐）已收口提交（见 HEAD）**；契约 A **v1.0.10** 已落 0009；**接续 = 阶段 3（波 4）：J10 delta+O9 ∥ B-M6-2 后半（owner 指定新窗口执行，入场读本文 + M6-DEV-PLAN 波 4 行 + J9 行架构注记）**。 |
+| 一句话状态 | **M1–M5 全收口；M6a 全收口（实现+实机 verify 20/20+code-review 10 findings 全修）**。**M6b 进行中（COLLAB-MODEL v2 Fable 单窗编排）**：波 1（J7 ✅，`95d190c`）→ 波 2（J8 ✅，`3a78799`）→ 波 3（J9 ✅ 硬关口通过，`832f2dc`）→ **波 4（J10 delta+O9 ✅ ∥ B-M6-2 后半 ✅，双 Opus 子代理并行+Fable 过目集成）已收口提交（见 HEAD）**；契约 A **v1.0.10**；**接续 = 阶段 4（M6 收口）：J11 话术定稿（Fable 亲自）∥ 并行审计（Opus finder）→ J12 实机 verify（=PRD M6 出口，M6-EVIDENCE）→ /code-review high → 里程碑收口**。 |
 | 提交链（M6a） | `d564ebf` 波 1（J3-cal/J0/J1）→ `62939f2` 波 2（J2/J3+补遗）→ `6f6fc93` 波 3（J4/J5/J6/B-M6-1）→ `bc70cd5` 实机 verify+findings 登记 → **code-review 修复收口（见 HEAD）**；中间 `1633ad9` 是独立协作规程文档提交 |
 | 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
 
@@ -16,7 +16,7 @@
 | 分支 / HEAD | `main`；本交接随 M6a code-review 修复收口提交（见 HEAD），前序 HEAD=`bc70cd5` |
 | 提交链（M6a） | `d564ebf` → `62939f2` → `6f6fc93` → `bc70cd5` → 修复收口（见 HEAD）；波 2 后另含 `1633ad9` 文档提交 |
 | 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 并行审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
-| 测试基线 | 后端 **915 passed / 4 skipped**（`uv run pytest -q`，M6b 波 3 起）· web vitest **296** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净（波 1 顺修 M6a 遗留 scratchpad 4 条 lint）· `pnpm gen` 确定 · web build 绿 |
+| 测试基线 | 后端 **936 passed / 4 skipped**（`uv run pytest -q`，M6b 波 4 起）· web vitest **348** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定 · web build 绿 |
 | 契约版本 | A **v1.0.10**（M6b 开工补遗：0009 批次=proposals+agent_role_templates 两张+agents.role_template_key 列，owner 拍板 2026-07-12「方案 A」）· B **v1.4.3** · C **v1.0**（连续零修订至 M6）· D **v1.0.3** · E **v1.4** · **E2 v1.0.1**——B v1.4.2 收 Computer→Project FK 删除门；A v1.0.9/B v1.4.3 收 TemplateNode 与模板实例化交付字段，均为 v1.0.7 连带补遗、非产品意图变更。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
 | 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → 0007 M5 → **0008 M6a（projects + channel_projects + worktrees + tasks 两列）** → **0009 M6b（proposals + agent_role_templates + agents.role_template_key 列，A v1.0.10）** |
 | 实机证据 | **M6a = [M6A-EVIDENCE.md](../verify/M6A-EVIDENCE.md)**（真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库 20/20，`bc70cd5` 收口；修复后复验 20/20）。[Project 设置](../verify/m6a-project-settings.png)、[Diff/verdict](../verify/m6a-diff-verdict.png)、[系统节点](../verify/m6a-system-nodes.png) 是 B-M6-1 屏对照夹具。历史：[M5-EVIDENCE.md](../verify/M5-EVIDENCE.md) 与 [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)。 |

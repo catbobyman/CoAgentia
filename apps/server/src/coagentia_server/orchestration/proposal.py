@@ -18,7 +18,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from coagentia_contracts.constants import SCHEMA_DECOMPOSITION_ERRORS_V1
+from coagentia_contracts.constants import (
+    SCHEMA_DECOMPOSITION_DELTA_V1,
+    SCHEMA_DECOMPOSITION_ERRORS_V1,
+)
 from coagentia_contracts.enums import (
     CardKind,
     ChannelKind,
@@ -38,8 +41,10 @@ from coagentia_contracts.ws import EventType
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Connection
 
+from coagentia_server.canvas import service as canvas_service
 from coagentia_server.db import models
 from coagentia_server.ledger.service import new_ulid, now_iso
+from coagentia_server.orchestration import delta as delta_domain
 from coagentia_server.routes.serialize import proposal_public
 
 _PROPOSAL = models.tbl(models.Proposal)
@@ -659,7 +664,8 @@ def classify_submission(
         )
     ).mappings().first()
     if row is None:
-        return None
+        # 无本作者非终态提案锚于本线程 → J10 delta 入口判定（Agent 在任务线程发 delta control）。
+        return _classify_delta_entry(tx, channel, author_member_id, body, thread_root_id)
     if "<control>" not in body:
         return None  # 作者在 source 线程内但非提案消息（普通讨论）
     proposal = models.row_dict(row)
@@ -675,14 +681,15 @@ def classify_submission(
             ),
         )
 
-    env = _build_env(tx.conn, channel)
+    # 校验按 proposal.kind 路由（delta 走 validate_delta，full 走 validate_proposal）——既有非终态
+    # delta 提案的作者在同线程再发 <control> 时，校验器必须对齐提案形态（J10）。
     parsed, parse_err = parse_control(body)
     if parse_err is not None:
         parsed = None
         errors: list[dict[str, Any]] = [dict(parse_err)]
     else:
         assert parsed is not None
-        errors = [dict(e) for e in validate_proposal(parsed, env)]
+        errors = _validate_by_kind(tx.conn, channel, proposal["kind"], parsed)
 
     if status in (ProposalStatus.DRAFTING, ProposalStatus.VALIDATING, ProposalStatus.REPAIRING):
         # 同 revision：失败进修复循环（配额本 revision），通过同行更新。
@@ -723,6 +730,188 @@ def classify_submission(
     )
 
 
+# ---------------------------------------------------------------- 校验路由（full / delta）
+
+
+def _validate_by_kind(
+    conn: Connection, channel: dict[str, Any], proposal_kind: str, parsed: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """按提案形态路由校验：delta → validate_delta（结果图/base/NODE_ACTIVE），full →
+    validate_proposal。J10 既有非终态 delta 再提交、修复循环续传共用。"""
+    if proposal_kind == ProposalKind.DELTA.value:
+        canvas = canvas_service.fetch_canvas_by_channel(conn, channel["id"])
+        return [dict(e) for e in delta_domain.validate_delta(conn, channel, canvas, parsed)]
+    env = _build_env(conn, channel)
+    return [dict(e) for e in validate_proposal(parsed, env)]
+
+
+# ---------------------------------------------------------------- J10 delta 入口
+
+
+def _is_agent_member(conn: Connection, member_id: str) -> bool:
+    kind = conn.execute(
+        select(_MEMBER.c.kind).where(_MEMBER.c.id == member_id, _MEMBER.c.removed_at.is_(None))
+    ).scalar()
+    return kind == MemberKind.AGENT.value
+
+
+def _task_by_root(
+    conn: Connection, channel_id: str, root_message_id: str
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        select(_TASK).where(
+            _TASK.c.channel_id == channel_id, _TASK.c.root_message_id == root_message_id
+        )
+    ).mappings().first()
+    return dict(row) if row is not None else None
+
+
+def _delta_base_of(parsed: dict[str, Any] | None) -> str | None:
+    b = parsed.get("base") if isinstance(parsed, dict) else None
+    return b if isinstance(b, str) else None
+
+
+def create_delta_proposal(
+    tx: Any,
+    *,
+    proposal_id: str,
+    workspace_id: str,
+    channel_id: str,
+    source_task_id: str,
+    proposed_by: str,
+    body: dict[str, Any],
+    proposal_hash: str,
+    base_hash: str | None,
+    status: ProposalStatus,
+) -> dict[str, Any]:
+    """建 kind=delta 提案行（revision=1）；status=drafting（valid→转 validating→present；
+    invalid→走修复循环）。base_hash = body.base（提案时基线，F9 依据）。"""
+    ts = now_iso()
+    tx.conn.execute(
+        insert(_PROPOSAL).values(
+            id=proposal_id,
+            workspace_id=workspace_id,
+            channel_id=channel_id,
+            source_task_id=source_task_id,
+            kind=ProposalKind.DELTA.value,
+            revision=1,
+            status=status.value,
+            body=body,
+            proposal_hash=proposal_hash,
+            base_hash=base_hash,
+            landed_hash=None,
+            adjustments=[],
+            repair_count=0,
+            proposed_by_member_id=proposed_by,
+            created_at=ts,
+            updated_at=ts,
+        )
+    )
+    proposal = fetch_proposal(tx.conn, proposal_id)
+    assert proposal is not None
+    return proposal
+
+
+def _classify_delta_entry(
+    tx: Any,
+    channel: dict[str, Any],
+    author_member_id: str,
+    body: str,
+    thread_root_id: str,
+) -> SubmissionDecision | None:
+    """J10 delta 入口（拆解设计 §11 / 裁决 #10）：本作者无非终态提案锚于本线程时判定——
+
+      Agent 作者 + 线程根是本频道某任务锚点 + 正文含 <control> + parse 成功 +
+      version==decomposition-delta.v1 → delta 提案（source=线程任务、base=body.base、by=作者）。
+
+    人类作者 / 非任务线程 / 非 delta 版本 / parse 失败 → None（普通消息，现行为不变）。
+    该 source 已有非终态提案（作者/形态不匹配未被 ① 命中）→ 忽略 + 诊断（防部分唯一索引爆炸）。
+    """
+    if not _is_agent_member(tx.conn, author_member_id):
+        return None  # 人类作者发 delta control → 普通消息（人类直接编辑画布，不走 delta，C5）
+    if "<control>" not in body:
+        return None
+    task = _task_by_root(tx.conn, channel["id"], thread_root_id)
+    if task is None:
+        return None  # 非任务线程
+    parsed, parse_err = parse_control(body)
+    if parse_err is not None or not isinstance(parsed, dict):
+        return None  # parse 失败 → 普通消息（非 delta 入口）
+    if parsed.get("version") != SCHEMA_DECOMPOSITION_DELTA_V1:
+        return None  # 非 delta 版本 → 普通消息
+
+    active = active_proposal_for_source(tx.conn, task["id"])
+    if active is not None:
+        return SubmissionDecision(
+            card_kind=None, card_ref=None,
+            _apply=lambda tx: _apply_delta_active_exists(tx, task, active),
+        )
+
+    canvas = canvas_service.fetch_canvas_by_channel(tx.conn, channel["id"])
+    errors = [dict(e) for e in delta_domain.validate_delta(tx.conn, channel, canvas, parsed)]
+    new_id = new_ulid()
+    if errors:
+        return SubmissionDecision(
+            card_kind=None, card_ref=None,
+            _apply=lambda tx: _apply_new_delta_repair(
+                tx, channel, task, author_member_id, body, parsed, errors, new_id
+            ),
+        )
+    new_hash = proposal_fingerprint(parsed)
+    return SubmissionDecision(
+        card_kind=CardKind.PROPOSAL.value, card_ref=new_id,
+        _apply=lambda tx: _apply_new_delta_valid(
+            tx, channel, task, author_member_id, parsed, new_hash, new_id
+        ),
+    )
+
+
+def _apply_new_delta_valid(
+    tx: Any, channel: dict[str, Any], task: dict[str, Any], author: str,
+    parsed: dict[str, Any], new_hash: str, new_id: str,
+) -> list[PendingInject]:
+    """有效 delta → drafting → validating → present（awaiting/DELTA_PROPOSED）或直落 landing。"""
+    proposal = create_delta_proposal(
+        tx, proposal_id=new_id, workspace_id=channel["workspace_id"],
+        channel_id=channel["id"], source_task_id=task["id"], proposed_by=author,
+        body=parsed, proposal_hash=new_hash, base_hash=_delta_base_of(parsed),
+        status=ProposalStatus.DRAFTING,
+    )
+    proposal = _transition(tx, proposal, ProposalStatus.VALIDATING)
+    return _present_or_land(tx, proposal, channel)
+
+
+def _apply_new_delta_repair(
+    tx: Any, channel: dict[str, Any], task: dict[str, Any], author: str,
+    raw_body: str, parsed: dict[str, Any] | None, errors: list[dict[str, Any]], new_id: str,
+) -> list[PendingInject]:
+    """无效 delta → 建行 drafting → 复用 J8 修复循环（同配额/升级/S1 直投，携 delta 错误清单）。"""
+    body = parsed if isinstance(parsed, dict) else {}
+    proposal = create_delta_proposal(
+        tx, proposal_id=new_id, workspace_id=channel["workspace_id"],
+        channel_id=channel["id"], source_task_id=task["id"], proposed_by=author,
+        body=body, proposal_hash=proposal_fingerprint(body), base_hash=_delta_base_of(parsed),
+        status=ProposalStatus.DRAFTING,
+    )
+    return _apply_repair(tx, proposal, channel, raw_body, parsed, errors)
+
+
+def _apply_delta_active_exists(
+    tx: Any, task: dict[str, Any], active: dict[str, Any]
+) -> list[PendingInject]:
+    """source 已有非终态提案 → 忽略新 delta + 诊断留痕（reason=active_proposal_exists）。"""
+    write_diagnostic(
+        tx, DIAG_DUPLICATE_IGNORED,
+        workspace_id=active["workspace_id"], channel_id=active["channel_id"],
+        task_id=task["id"],
+        payload={
+            "source_task_id": task["id"], "active_proposal_id": active["id"],
+            "reason": "active_proposal_exists",
+        },
+    )
+    return []
+
+
 def _final_status_for_mode(channel: dict[str, Any]) -> ProposalStatus:
     mode = channel.get("decomp_mode")
     if mode == DecompMode.DIRECT.value:
@@ -733,12 +922,17 @@ def _final_status_for_mode(channel: dict[str, Any]) -> ProposalStatus:
 def _present_or_land(
     tx: Any, proposal: dict[str, Any], channel: dict[str, Any]
 ) -> list[PendingInject]:
-    """校验通过后的收尾：validating → awaiting_confirm（draft.presented）或 landing（直落）。"""
+    """校验通过后的收尾：validating → awaiting_confirm（present）或 landing（直落）。
+
+    形态感知（J10）：full → draft.presented + DRAFT_PRESENTED；delta → delta.proposed +
+    DELTA_PROPOSED（载荷 ProposalData）。落地时二者同经 landing 分派（landing.py 按 batch.kind）。
+    """
+    is_delta = proposal["kind"] == ProposalKind.DELTA.value
     target = _final_status_for_mode(channel)
     proposal = _transition(tx, proposal, target)
     _emit_proposal_updated(tx, proposal)
     write_diagnostic(
-        tx, DIAG_DRAFTED,
+        tx, delta_domain.DIAG_DELTA_PROPOSED if is_delta else DIAG_DRAFTED,
         workspace_id=proposal["workspace_id"], channel_id=proposal["channel_id"],
         task_id=proposal["source_task_id"],
         payload={
@@ -747,13 +941,19 @@ def _present_or_land(
         },
     )
     if target is ProposalStatus.AWAITING_CONFIRM:
-        _emit_draft_presented(tx, proposal)
-        write_diagnostic(
-            tx, DIAG_DRAFT_PRESENTED,
-            workspace_id=proposal["workspace_id"], channel_id=proposal["channel_id"],
-            task_id=proposal["source_task_id"],
-            payload={"proposal_id": proposal["id"], "revision": proposal["revision"]},
-        )
+        if is_delta:
+            tx.emit(
+                EventType.DELTA_PROPOSED, proposal["channel_id"],
+                {"proposal": proposal_public(proposal)},
+            )
+        else:
+            _emit_draft_presented(tx, proposal)
+            write_diagnostic(
+                tx, DIAG_DRAFT_PRESENTED,
+                workspace_id=proposal["workspace_id"], channel_id=proposal["channel_id"],
+                task_id=proposal["source_task_id"],
+                payload={"proposal_id": proposal["id"], "revision": proposal["revision"]},
+            )
     return []
 
 
@@ -779,7 +979,16 @@ def _insert_revision_row(
     tx: Any, old: dict[str, Any], *, new_id: str, status: ProposalStatus,
     body: dict[str, Any], proposal_hash: str,
 ) -> dict[str, Any]:
-    """插入对话修正的新 revision 行（revision+1、repair_count 归零）；有效/无效版共用。"""
+    """插入对话修正的新 revision 行（revision+1、repair_count 归零）；有效/无效版共用。
+
+    形态承袭（J10）：kind 沿用旧行（delta 对话修正的新行仍 kind=delta）；base_hash 对 delta 取**新
+    body** 的 base（新提案基于新画布基线），full 恒 None。
+    """
+    kind = old["kind"]
+    base_hash: str | None = None
+    if kind == ProposalKind.DELTA.value:
+        b = body.get("base") if isinstance(body, dict) else None
+        base_hash = b if isinstance(b, str) else None
     ts = now_iso()
     tx.conn.execute(
         insert(_PROPOSAL).values(
@@ -787,12 +996,12 @@ def _insert_revision_row(
             workspace_id=old["workspace_id"],
             channel_id=old["channel_id"],
             source_task_id=old["source_task_id"],
-            kind=ProposalKind.FULL.value,
+            kind=kind,
             revision=old["revision"] + 1,
             status=status.value,
             body=body,
             proposal_hash=proposal_hash,
-            base_hash=None,
+            base_hash=base_hash,
             landed_hash=None,
             adjustments=[],
             repair_count=0,
@@ -1011,12 +1220,24 @@ def repairing_reconcile_injects(
     injects: list[PendingInject] = []
     for row in rows:
         proposal = models.row_dict(row)
-        env = Env(
-            node_limit=int(row["decomp_node_limit"] or 12),
-            member_ids=channel_member_ids(conn, proposal["channel_id"]),
-            bound_project_ids=bound_project_ids(conn, proposal["channel_id"]),
-        )
-        errors = [dict(e) for e in validate_proposal(proposal["body"], env)]
+        if proposal["kind"] == ProposalKind.DELTA.value:
+            channel = conn.execute(
+                select(_CHANNEL).where(_CHANNEL.c.id == proposal["channel_id"])
+            ).mappings().first()
+            canvas = canvas_service.fetch_canvas_by_channel(conn, proposal["channel_id"])
+            errors = [
+                dict(e)
+                for e in delta_domain.validate_delta(
+                    conn, dict(channel) if channel is not None else {}, canvas, proposal["body"]
+                )
+            ]
+        else:
+            env = Env(
+                node_limit=int(row["decomp_node_limit"] or 12),
+                member_ids=channel_member_ids(conn, proposal["channel_id"]),
+                bound_project_ids=bound_project_ids(conn, proposal["channel_id"]),
+            )
+            errors = [dict(e) for e in validate_proposal(proposal["body"], env)]
         if not errors:
             continue  # body 现状已合法（罕见）→ 无可重发
         prompt = repair_prompt(

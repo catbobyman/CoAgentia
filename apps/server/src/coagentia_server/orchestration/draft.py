@@ -34,7 +34,7 @@ import copy
 from typing import Any
 
 from coagentia_contracts import rest
-from coagentia_contracts.enums import LandingBatchKind, ProposalStatus
+from coagentia_contracts.enums import LandingBatchKind, ProposalKind, ProposalStatus
 from coagentia_contracts.ws import EventType
 from sqlalchemy import select, update
 from sqlalchemy.engine import Connection
@@ -313,7 +313,9 @@ def reject_proposal(
         select(_TASK).where(_TASK.c.id == rejected["source_task_id"])
     ).mappings().first()
     thread_root = source_task["root_message_id"] if source_task is not None else None
-    body = f"拆解提案（rev.{rejected['revision']}）已被拒绝。"
+    is_delta = rejected["kind"] == ProposalKind.DELTA.value
+    label = "增量提案" if is_delta else "拆解提案"
+    body = f"{label}（rev.{rejected['revision']}）已被拒绝。"
     if reason is not None and reason.strip():
         body += f"\n拒绝理由：{reason.strip()}"
     messages_service.post_system_message(
@@ -324,13 +326,25 @@ def reject_proposal(
         thread_root_id=thread_root,
     )
 
-    tx.emit(EventType.DRAFT_REJECTED, rejected["channel_id"], {"proposal_id": rejected["id"]})
+    # 形态感知（J10）：delta → DELTA_REJECTED（载荷 ProposalData）+ delta.rejected 诊断；
+    # full → DRAFT_REJECTED（ProposalRefData）+ draft.rejected 诊断。
+    if is_delta:
+        from coagentia_server.orchestration import delta as delta_domain
+
+        tx.emit(
+            EventType.DELTA_REJECTED, rejected["channel_id"],
+            {"proposal": proposal_public(rejected)},
+        )
+        diag_type = delta_domain.DIAG_DELTA_REJECTED
+    else:
+        tx.emit(EventType.DRAFT_REJECTED, rejected["channel_id"], {"proposal_id": rejected["id"]})
+        diag_type = DIAG_DRAFT_REJECTED
     tx.emit(
         EventType.PROPOSAL_UPDATED, rejected["channel_id"],
         {"proposal": proposal_public(rejected)},
     )
     proposal_domain.write_diagnostic(
-        tx, DIAG_DRAFT_REJECTED,
+        tx, diag_type,
         workspace_id=rejected["workspace_id"], channel_id=rejected["channel_id"],
         task_id=rejected["source_task_id"],
         payload={

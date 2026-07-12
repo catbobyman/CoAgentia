@@ -32,11 +32,13 @@ function readSummary(body: unknown): {
 }
 
 export function ProposalCard({
-  proposalId, onReviewInCanvas, onViewThread,
+  proposalId, onReviewInCanvas, onReviewDelta, onViewThread,
 }: {
   proposalId: string;
-  /** 「在画布中审阅」→ 切到画布页签（草稿层渲染归后半）。 */
-  onReviewInCanvas?: () => void;
+  /** full 提案「查看草稿」→ 切画布页签 + 激活草稿层（awaiting_confirm）/ 其余可审态「在画布中审阅」。 */
+  onReviewInCanvas?: (proposalId: string) => void;
+  /** delta 提案「审查增量」→ 打开 delta 面板（awaiting_confirm）。 */
+  onReviewDelta?: (proposalId: string) => void;
   /** failed 态「查看线程」→ 打开 source 线程看错误清单系统消息。 */
   onViewThread?: () => void;
 }) {
@@ -55,10 +57,15 @@ export function ProposalCard({
   }
 
   const status = proposal.status ?? 'drafting';
+  const kind = proposal.kind ?? 'full';
   const { mode, nodeCount, edgeCount, summary } = readSummary(proposal.body);
   const shortHash = proposal.proposal_hash.slice(0, 6);
   const isFailed = FAILED.has(status);
   const canReview = !CLOSED_NO_REVIEW.has(status);
+  const awaiting = status === 'awaiting_confirm';
+  // delta 待确认 → 「审查增量」（delta 面板）；full 待确认 → 「查看草稿」（草稿层）；其余可审态 → 「在画布中审阅」。
+  const isReviewDelta = awaiting && kind === 'delta';
+  const reviewLabel = awaiting && kind === 'full' ? '查看草稿' : '在画布中审阅';
 
   return (
     <div
@@ -104,18 +111,29 @@ export function ProposalCard({
         </div>
       )}
 
-      {canReview && onReviewInCanvas && (
+      {isReviewDelta && onReviewDelta ? (
+        <div className="pc-foot">
+          <button
+            type="button"
+            className="pc-review"
+            data-testid="proposal-review-delta"
+            onClick={() => onReviewDelta(proposalId)}
+          >
+            审查增量<ExternalLink />
+          </button>
+        </div>
+      ) : canReview && onReviewInCanvas ? (
         <div className="pc-foot">
           <button
             type="button"
             className="pc-review"
             data-testid="proposal-review"
-            onClick={onReviewInCanvas}
+            onClick={() => onReviewInCanvas(proposalId)}
           >
-            在画布中审阅<ExternalLink />
+            {reviewLabel}<ExternalLink />
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -30,7 +30,8 @@ export interface MessageFlowProps {
   onSelectTask?: (taskId: string) => void;
   onOpenAgent?: (memberId: string) => void; // 点击 Agent 头像/名进入 P6 详情
   // M6b 提案卡入口(可选——未传则卡内隐藏对应入口):
-  onReviewProposal?: () => void; // 「在画布中审阅」→ 切画布页签(草稿层归后半)
+  onReviewProposal?: (proposalId: string) => void; // full「查看草稿/在画布中审阅」→ 切画布 + 激活草稿层
+  onReviewDelta?: (proposalId: string) => void; // delta「审查增量」→ 切画布 + 激活 delta 面板
   onOpenProposalThread?: (message: MessagePublic) => void; // failed 态「查看线程」
 }
 
@@ -52,7 +53,7 @@ export function MessageFlow(props: MessageFlowProps) {
   const {
     messages, memberById, memberNames, meName, presenceOf, taskByRoot, usageByTask,
     lastReadId, selectedTaskId, locateId, onLocateDone, onSelectTask, onOpenAgent,
-    onReviewProposal, onOpenProposalThread,
+    onReviewProposal, onReviewDelta, onOpenProposalThread,
   } = props;
   const lastReadIdx = messages.findIndex((m) => m.id === lastReadId);
 
@@ -156,6 +157,7 @@ export function MessageFlow(props: MessageFlowProps) {
                     <ProposalCard
                       proposalId={m.card_ref!}
                       onReviewInCanvas={onReviewProposal}
+                      onReviewDelta={onReviewDelta}
                       onViewThread={onOpenProposalThread ? () => onOpenProposalThread(m) : undefined}
                     />
                   )}

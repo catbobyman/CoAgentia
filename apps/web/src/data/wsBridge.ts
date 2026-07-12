@@ -10,6 +10,7 @@ import type {
   ChannelsSnapshot,
   Envelope,
   HeldDraftPublic,
+  LandingBatchPublic,
   MemberPublic,
   MessagePublic,
   PresenceEntry,
@@ -316,8 +317,16 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
     // = 校验通过进 awaiting_confirm（草稿层渲染归后半——此处仅刷提案卡态,handler 挂点已就位）。
     // 二者同载 {proposal}，按 proposal.id patch qk.proposal 缓存（未加载则放行不建——提案卡挂载时
     // 由 REST 拉全，同 reminder/held_draft 范式）。消息流内提案卡数据绑定该 query,patch 即刷新。
+    // proposal.updated（生命周期态）/ draft.presented（校验通过进 awaiting_confirm，草稿层渲染源）/
+    // delta.proposed·adjusted·confirmed·rejected（delta 提案生命周期，同载 {proposal}）——全部按
+    // proposal.id patch qk.proposal 缓存（未加载则放行不建，同 reminder/held_draft 范式）。消息流提案卡、
+    // 草稿层、delta 面板均绑定该 query，patch 即刷新。
     case 'proposal.updated':
-    case 'draft.presented': {
+    case 'draft.presented':
+    case 'delta.proposed':
+    case 'delta.adjusted':
+    case 'delta.confirmed':
+    case 'delta.rejected': {
       const { proposal } = data as { proposal: ProposalPublic };
       const key = qk.proposal(proposal.id);
       if (qc.getQueryData<ProposalPublic>(key) === undefined) break;
@@ -325,14 +334,29 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       break;
     }
 
-    // draft.superseded = 对话修正 rev+1，旧提案转 Superseded 终态（新 draft.presented 随后到，
-    // 草稿层替换归后半）。仅载 {proposal_id}，无完整实体——失效该提案 query 让已挂载的提案卡
-    // refetch 到 superseded 终态（未挂载无观察者、不触发请求）。
+    // draft.superseded = 对话修正 rev+1，旧提案转 Superseded 终态（新 draft.presented 随后到，草稿层
+    // 于 WS 同步层切到新 rev——见 data/draftRev）。仅载 {proposal_id}，无完整实体——失效该提案 query
+    // 让已挂载的提案卡/草稿层 refetch 到 superseded 终态（未挂载无观察者、不触发请求）。
     case 'draft.superseded': {
       const { proposal_id } = data as { proposal_id: string };
       void qc.invalidateQueries({ queryKey: qk.proposal(proposal_id) });
       break;
     }
+
+    // ---- M6b 落地事件族（landing.*，契约 C §7）。data 载 { batch: LandingBatchPublic }；事件收尾即
+    // 结构落定——失效该频道画布/任务/主流（新增节点/任务/锚点消息经此收敛，"画布刷新"）。started 不改
+    // 结构（占位提示）故不失效。toast（completed「拆解已落地」/ fail_closed 错误）由 useWsSync 经 store
+    // 信号交 <LandingToaster>（wsBridge 保持纯缓存 patch，无 toast/store 耦合）。
+    case 'landing.completed':
+    case 'landing.fail_closed': {
+      const { batch } = data as { batch: LandingBatchPublic };
+      void qc.invalidateQueries({ queryKey: qk.canvas(batch.channel_id) });
+      void qc.invalidateQueries({ queryKey: qk.tasks(batch.channel_id) });
+      void qc.invalidateQueries({ queryKey: qk.messages(batch.channel_id) });
+      break;
+    }
+    case 'landing.started':
+      break; // 占位提示态，无结构变更（confirm 202 的「落地执行中」toast 已覆盖起步反馈）
 
     default:
       // 未知/未处理事件:忽略(契约 C §3)

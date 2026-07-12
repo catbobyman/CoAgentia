@@ -32,6 +32,8 @@ export function ChannelChatScreen({ search, setSearch }: {
   setSearch: (next: Partial<ChannelSearch>) => void;
 }) {
   const activeChannelId = useUiStore((s) => s.activeChannelId);
+  const setActiveDraft = useUiStore((s) => s.setActiveDraft);
+  const setActiveDelta = useUiStore((s) => s.setActiveDelta);
   const navigate = useNavigate();
   // 「定位到消息」目标(P4 → 会话流):瞬态视图状态,不进深链。
   const [locateId, setLocateId] = useState<string | undefined>();
@@ -88,6 +90,9 @@ export function ChannelChatScreen({ search, setSearch }: {
     void api.sendMessage(channel.id, body, asTask); // 回显靠 WS 广播(契约 C §5)
   };
   const selectTab = (tab: Tab) => setSearch({ tab });
+  // M6b 提案卡入口：full「查看草稿」→ 激活草稿层；delta「审查增量」→ 激活 delta 面板；均切画布页签。
+  const reviewDraft = (proposalId: string) => { setActiveDraft(channel.id, proposalId); setSearch({ tab: 'canvas' }); };
+  const reviewDelta = (proposalId: string) => { setActiveDelta(channel.id, proposalId); setSearch({ tab: 'canvas' }); };
   // 点任务牌 → 打开线程面板(?thread=root),同时高亮(?task=)。再点同一牌关闭。
   const selectTask = (taskId: string) => {
     if (search.task === taskId) {
@@ -139,7 +144,8 @@ export function ChannelChatScreen({ search, setSearch }: {
               onLocateDone={() => setLocateId(undefined)}
               onSelectTask={selectTask}
               onOpenAgent={openAgent}
-              onReviewProposal={() => setSearch({ tab: 'canvas' })}
+              onReviewProposal={reviewDraft}
+              onReviewDelta={reviewDelta}
               onOpenProposalThread={(m) => setSearch({ tab: 'chat', thread: m.thread_root_id ?? m.id })}
             />
             {/* 主流被扣草稿(thread_root_id 为空)——线程内的由 ThreadPanel 渲染。 */}
@@ -210,7 +216,8 @@ export function ChannelChatScreen({ search, setSearch }: {
           onLocateDone={() => setLocateId(undefined)}
           onClose={() => setSearch({ thread: undefined, task: undefined })}
           onSend={(body) => void api.sendMessage(channel.id, body, false)}
-          onReviewProposal={() => setSearch({ tab: 'canvas' })}
+          onReviewProposal={reviewDraft}
+          onReviewDelta={reviewDelta}
         />
       )}
     </div>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 
 import type {
   AgentCreate,
+  CanvasDetail,
   ChannelNotificationSettingPublic,
   ChannelPatch,
   ChannelPublic,
@@ -15,6 +16,7 @@ import type {
   PresenceEntry,
   ProjectCreate,
   ProjectPatch,
+  ProposalPublic,
   ReadPositionPublic,
   TaskPublic,
   TemplateCreate,
@@ -292,6 +294,36 @@ export const useProposal = (proposalId: string | undefined, enabled = true) =>
     queryFn: () => api.proposal(proposalId!),
     enabled: !!proposalId && enabled,
   });
+
+/** 409 STALE_CONFIRM 的 latest 载荷（B §5 ①：`{proposal, baseline_version, baseline_hash}`）→ 刷新
+ *  提案缓存 + 画布基线（草稿层/delta 面板"已刷新最新态，请重审"的收敛源）。返回刷新后的提案（供调用方
+ *  据其新状态决定后续，如已转 rejected/failed）。latest 形状异常 → 原样返回 undefined 不动缓存。 */
+export function refreshProposalFromLatest(
+  qc: QueryClient,
+  channelId: string,
+  latest: unknown,
+): ProposalPublic | undefined {
+  if (!latest || typeof latest !== 'object') return undefined;
+  const l = latest as {
+    proposal?: ProposalPublic;
+    baseline_version?: number;
+    baseline_hash?: string;
+  };
+  const proposal = l.proposal;
+  if (proposal && typeof proposal === 'object' && 'id' in proposal) {
+    qc.setQueryData<ProposalPublic>(qk.proposal(proposal.id), proposal);
+  }
+  if (typeof l.baseline_version === 'number' && typeof l.baseline_hash === 'string') {
+    const version = l.baseline_version;
+    const hash = l.baseline_hash;
+    qc.setQueryData<CanvasDetail>(qk.canvas(channelId), (prev) =>
+      prev
+        ? { ...prev, canvas: { ...prev.canvas, baseline_version: version, baseline_hash: hash } }
+        : prev,
+    );
+  }
+  return proposal;
+}
 
 // P13 创建 Agent（引导链 [创建 Orchestrator] 消费）。成功后失效成员列表让新 Agent 现身（无乐观
 // 更新；MEMBER_CREATED WS 亦反流成员，invalidate 是兜底/收敛，REST 是事实源）。toast/就地错误由

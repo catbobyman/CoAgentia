@@ -16,6 +16,7 @@ from coagentia_contracts import rest
 from coagentia_contracts.enums import (
     CanvasNodeKind,
     ContractKind,
+    MemberKind,
     MessageKind,
     SystemAction,
     SystemNodeStatus,
@@ -73,6 +74,20 @@ def _writable_canvas(tx: Tx, canvas_id: str) -> dict[str, Any]:
     return canvas
 
 
+def _require_human_actor(request: Request, tx: Tx) -> dict[str, Any]:
+    """O9 拦截（裁决 #10）：画布结构写端点（建/删节点、连/断边）对 Agent 主体 403——Agent 结构变更
+    唯一通道 = 消息 <control> delta 提案；人类可直接编辑（C5）。返回人类主体行。"""
+    me = acting_member(request, tx.conn)
+    if me["kind"] == MemberKind.AGENT.value:
+        raise ApiError(
+            403,
+            rest.ErrorCode.PERMISSION_DENIED,
+            "Agent 不可直接修改画布结构（结构变更通道 = <control> delta 提案；人类可直接编辑，C5）",
+            rule="O9",
+        )
+    return me
+
+
 def _emit_baseline(tx: Tx, canvas: dict[str, Any]) -> tuple[int, str]:
     """重算快照 → 变则 bump + emit canvas.baseline_advanced；返回最新 (version, hash)。"""
     version, hash_, changed = canvas_service.advance_baseline(tx, canvas["id"])
@@ -125,7 +140,7 @@ def create_node(
     （system_status=idle）；广播 canvas.node_added → canvas.baseline_advanced。
     """
     canvas = _writable_canvas(tx, canvas_id)
-    me = acting_member(request, tx.conn)
+    me = _require_human_actor(request, tx)  # O9：Agent 结构写 403（结构变更走 delta 提案）
     ts = service.now_iso()
 
     if body.kind == CanvasNodeKind.AGENT:
@@ -353,10 +368,13 @@ def retry_system_node(
 
 
 @router.delete("/canvases/{canvas_id}/nodes/{node_id}", response_model=rest.CanvasMutation)
-def delete_node(canvas_id: str, node_id: str, tx: Tx = Depends(get_tx)) -> Any:
+def delete_node(
+    canvas_id: str, node_id: str, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
     """删节点 = 解除引用**不删任务**（C8）：删关联边（各 emit edge_removed）→ 删节点 →
-    emit node_removed{node_id} → bump + baseline_advanced。"""
+    emit node_removed{node_id} → bump + baseline_advanced。O9：Agent 主体 403。"""
     canvas = _writable_canvas(tx, canvas_id)
+    _require_human_actor(request, tx)
     node = canvas_service.fetch_node(tx.conn, canvas_id, node_id)
     if node is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "画布节点不存在")
@@ -376,11 +394,14 @@ def delete_node(canvas_id: str, node_id: str, tx: Tx = Depends(get_tx)) -> Any:
 @router.post(
     "/canvases/{canvas_id}/edges", response_model=rest.CanvasMutation, status_code=201
 )
-def create_edge(canvas_id: str, body: rest.EdgeCreate, tx: Tx = Depends(get_tx)) -> Any:
+def create_edge(
+    canvas_id: str, body: rest.EdgeCreate, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
     """连边（B §4.9）：校验 from/to 属本画布 → 现有边 + 新边跑 detect_cycle，成环 422
     GRAPH_CYCLE（自环即单节点环）→ SAVEPOINT 插入（triplet 唯一兜底，重复视同幂等回既有边）→
-    emit edge_added → bump + baseline_advanced。"""
+    emit edge_added → bump + baseline_advanced。O9：Agent 主体 403。"""
     canvas = _writable_canvas(tx, canvas_id)
+    _require_human_actor(request, tx)
     ids = set(canvas_service.node_ids(tx.conn, canvas_id))
     for endpoint in (body.from_node_id, body.to_node_id):
         if endpoint not in ids:
@@ -442,9 +463,12 @@ def create_edge(canvas_id: str, body: rest.EdgeCreate, tx: Tx = Depends(get_tx))
 
 
 @router.delete("/canvases/{canvas_id}/edges/{edge_id}", response_model=rest.CanvasMutation)
-def delete_edge(canvas_id: str, edge_id: str, tx: Tx = Depends(get_tx)) -> Any:
-    """删边 → emit edge_removed → bump + baseline_advanced。"""
+def delete_edge(
+    canvas_id: str, edge_id: str, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
+    """删边 → emit edge_removed → bump + baseline_advanced。O9：Agent 主体 403。"""
     canvas = _writable_canvas(tx, canvas_id)
+    _require_human_actor(request, tx)
     edge = canvas_service.fetch_edge(tx.conn, canvas_id, edge_id)
     if edge is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "画布边不存在")

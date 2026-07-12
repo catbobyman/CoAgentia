@@ -100,4 +100,30 @@ describe('ProposalCard', () => {
     expect(await screen.findByText(PROPOSAL_STATUS_WORD['landed']!)).toBeInTheDocument();
     expect(screen.getByTestId('proposal-card')).toHaveAttribute('data-status', 'landed');
   });
+
+  // ---- B-M6-2：入口按 kind/status 分派（full 待确认「查看草稿」/ delta 待确认「审查增量」）
+  it('full 待确认：审阅按钮文案 = 「查看草稿」，点击带 proposalId 回调', async () => {
+    const onReview = vi.fn();
+    renderCard(PROPOSAL, { onReviewInCanvas: onReview });
+    const btn = await screen.findByTestId('proposal-review');
+    expect(btn).toHaveTextContent('查看草稿');
+    fireEvent.click(btn);
+    expect(onReview).toHaveBeenCalledWith('prop_1');
+  });
+
+  it('delta 待确认：显示「审查增量」（proposal-review-delta），点击调 onReviewDelta', async () => {
+    const delta = { ...PROPOSAL, kind: 'delta' as const };
+    vi.mocked(api.proposal).mockResolvedValue(delta);
+    const onDelta = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ProposalCard proposalId={delta.id} onReviewDelta={onDelta} onReviewInCanvas={() => {}} />
+      </QueryClientProvider>,
+    );
+    const btn = await screen.findByTestId('proposal-review-delta');
+    fireEvent.click(btn);
+    expect(onDelta).toHaveBeenCalledWith('prop_1');
+    expect(screen.queryByTestId('proposal-review')).not.toBeInTheDocument();
+  });
 });

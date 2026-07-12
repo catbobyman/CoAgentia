@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { resyncAll } from './queries';
 import { applyEnvelope } from './wsBridge';
 import { maybeDesktopNotify } from './desktopNotify';
+import { landingSignalKind, reconcileActiveDraft } from './wsSideEffects';
 import { connectWs } from '../ws';
 import { useUiStore } from '../lib/store';
 
@@ -15,8 +16,20 @@ export function useWsSync() {
 
   useEffect(() => {
     const cleanup = connectWs({
-      // 先 patch 缓存(事实源),再按频道 mode 决定是否弹桌面通知(纯展示增益,不改缓存)。
-      onEvent: (env) => { applyEnvelope(qc, env); maybeDesktopNotify(qc, env); },
+      // 先 patch 缓存(事实源),再按频道 mode 决定是否弹桌面通知(纯展示增益,不改缓存);
+      // 最后跑 M6b 副作用桥（rev 替换切激活草稿 / 落地事件写 store 信号——本 hook 在 ToastProvider 之外，
+      // 经 store 交 <LandingToaster> 弹 toast）。
+      onEvent: (env) => {
+        applyEnvelope(qc, env);
+        maybeDesktopNotify(qc, env);
+        const store = useUiStore.getState();
+        reconcileActiveDraft(env, qc, {
+          getActiveDraft: (channelId) => store.activeDraft[channelId],
+          setActiveDraft: store.setActiveDraft,
+        });
+        const landing = landingSignalKind(env);
+        if (landing) store.pushLanding(landing, env.channel_id ?? null);
+      },
       onStatus: (status, attempt) => setConnection({ status, attempt }),
       onResync: () => void resyncAll(qc),
     });
