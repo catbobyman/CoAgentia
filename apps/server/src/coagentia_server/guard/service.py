@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from coagentia_contracts.enums import ActivityKind, HeldDraftStatus, MessageKind
+from coagentia_contracts.enums import ActivityKind, HeldDraftStatus
 from coagentia_contracts.ws import EventType
 from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.engine import Connection
@@ -23,14 +23,12 @@ from sqlalchemy.exc import IntegrityError
 from coagentia_server.activity import service as activity_service
 from coagentia_server.db import models
 from coagentia_server.ledger.service import format_iso, new_ulid, now_iso
-from coagentia_server.routes.serialize import held_draft_public, message_public
+from coagentia_server.messages import service as messages_service
+from coagentia_server.routes.serialize import held_draft_public
 
 _MSG = models.tbl(models.Message)
-_MENTION = models.tbl(models.MessageMention)
 _READ = models.tbl(models.ReadPosition)
 _HELD = models.tbl(models.HeldDraft)
-_MEMBER = models.tbl(models.Member)
-_CHANNEL_MEMBER = models.tbl(models.ChannelMember)
 _DIAG = models.tbl(models.DiagnosticEvent)
 
 # guard.*（G6，DIAGNOSTIC_TYPES 权威登记）——server 侧护栏诊断类型（constants.py:80-84）。
@@ -222,45 +220,23 @@ def hold_or_update(
 
 
 def _channel_human_members(conn: Connection, channel_id: str) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        select(_MEMBER.c.id, _MEMBER.c.name).select_from(
-            _CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id)
-        ).where(
-            _CHANNEL_MEMBER.c.channel_id == channel_id,
-            _MEMBER.c.kind == "human",
-            _MEMBER.c.removed_at.is_(None),
-        )
-    ).mappings()
-    return [dict(r) for r in rows]
+    return messages_service.channel_human_members(conn, channel_id)
 
 
 def _post_system_message(
     tx: Any, *, workspace_id: str, channel_id: str, body: str,
     thread_root_id: str | None, mention_member_ids: list[str], created_at: str,
 ) -> str:
-    """插 durable 系统消息（author=NULL, kind=SYSTEM）+ @mention 行 + emit（§8.2 视同唤醒触发）。"""
-    msg_id = new_ulid()
-    tx.conn.execute(
-        insert(_MSG).values(
-            id=msg_id,
-            workspace_id=workspace_id,
-            channel_id=channel_id,
-            thread_root_id=thread_root_id,
-            author_member_id=None,
-            kind=MessageKind.SYSTEM,
-            card_kind=None,
-            card_ref=None,
-            body=body,
-            created_at=created_at,
-        )
+    """兼容 guard 内部调用；实现收敛到中立消息服务。"""
+    return messages_service.post_system_message(
+        tx,
+        workspace_id=workspace_id,
+        channel_id=channel_id,
+        body=body,
+        thread_root_id=thread_root_id,
+        mention_member_ids=mention_member_ids,
+        created_at=created_at,
     )
-    for member_id in mention_member_ids:
-        tx.conn.execute(insert(_MENTION).values(message_id=msg_id, member_id=member_id))
-    msg_row = models.row_dict(
-        tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
-    )
-    tx.emit(EventType.MESSAGE_CREATED, channel_id, {"message": message_public(msg_row)})
-    return msg_id
 
 
 def write_guard_diagnostic(

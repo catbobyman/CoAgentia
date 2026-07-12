@@ -157,6 +157,7 @@ def _worktree(
     project_id: str,
     status: str = "active",
     path: str = WORKTREE_PATH,
+    branch: str | None = None,
     merged_at: str | None = None,
     merge_commit: str | None = None,
 ) -> str:
@@ -168,7 +169,7 @@ def _worktree(
                 workspace_id=env.ws_id,
                 project_id=project_id,
                 task_id=task_id,
-                branch=f"coagentia/task-{task_id}",
+                branch=branch or f"coagentia/task-{task_id}",
                 path=path,
                 status=status,
                 merge_commit=merge_commit,
@@ -177,6 +178,36 @@ def _worktree(
             )
         )
     return worktree_id
+
+
+def _aliased_worktrees(env: Env) -> tuple[str, str, str, str, str]:
+    channel = env.add_channel(kind="channel", name="aliased cleanup")
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+    original_task, _, _ = _task_node(
+        env,
+        channel,
+        canvas,
+        number=1,
+        owner=None,
+        project_id=project,
+        writes_code=True,
+    )
+    alias_task, _, _ = _task_node(
+        env,
+        channel,
+        canvas,
+        number=2,
+        owner=None,
+        project_id=project,
+        writes_code=True,
+    )
+    branch = f"coagentia/task-{original_task}"
+    original_tree = _worktree(
+        env, task_id=original_task, project_id=project, branch=branch
+    )
+    alias_tree = _worktree(env, task_id=alias_task, project_id=project, branch=branch)
+    return channel, original_task, original_tree, alias_tree, branch
 
 
 def _worktree_row(env: Env, task_id: str) -> dict[str, Any] | None:
@@ -442,6 +473,67 @@ def test_cleanup_terminal_and_daemon_noop_converges_cleaned(
         fut = asyncio.run_coroutine_threadsafe(hub.reconcile(conn), hub._loop)
         d.sync()
         fut.result(timeout=5)  # cleaned 不再下发 cleanup
+
+
+def test_cleaned_report_emits_original_and_changed_alias_once(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    client, env, _hub = ctx
+    channel, task_id, original_tree, alias_tree, branch = _aliased_worktrees(env)
+    events: list[Any] = []
+    token = client.app.state.bus.subscribe(events.append)  # type: ignore[union-attr]
+    try:
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            daemon = StubDaemon(ws)
+            daemon.hello([])
+            daemon.recv_hello_ack()
+            cleaned = {
+                "task_id": task_id,
+                "status": "cleaned",
+                "branch": branch,
+                "path": WORKTREE_PATH,
+            }
+            daemon.report("worktree.status", cleaned)
+            daemon.sync()
+            daemon.report("worktree.status", cleaned)
+            daemon.sync()
+    finally:
+        client.app.state.bus.unsubscribe(token)  # type: ignore[union-attr]
+
+    updates = [
+        event
+        for event in events
+        if event.type == EventType.WORKTREE_UPDATED and event.channel_id == channel
+    ]
+    assert [event.data["worktree"]["id"] for event in updates] == [
+        original_tree,
+        alias_tree,
+        original_tree,
+    ]
+
+
+def test_cleanup_convergence_emits_changed_alias_and_is_repeat_noop(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    client, env, hub = ctx
+    channel, task_id, original_tree, alias_tree, _branch = _aliased_worktrees(env)
+    events: list[Any] = []
+    token = client.app.state.bus.subscribe(events.append)  # type: ignore[union-attr]
+    try:
+        hub._converge_worktree_cleaned(task_id, env.comp_id)
+        hub._converge_worktree_cleaned(task_id, env.comp_id)
+    finally:
+        client.app.state.bus.unsubscribe(token)  # type: ignore[union-attr]
+
+    updates = [
+        event
+        for event in events
+        if event.type == EventType.WORKTREE_UPDATED and event.channel_id == channel
+    ]
+    assert [event.data["worktree"]["id"] for event in updates] == [
+        original_tree,
+        alias_tree,
+    ]
 
 
 def test_cleanup_plans_cover_terminal_and_merged_anchors(migrated_engine: Engine) -> None:

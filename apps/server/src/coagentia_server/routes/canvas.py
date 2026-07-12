@@ -5,8 +5,7 @@
 （纪律 7 单一事实源）。每画布结构写在同一 tx 事务内「读基线 → 校验 → 写 → bump」一次完成
 （SQLite 单写者即每库串行）；坐标写（layout PUT）不推进基线（契约 A §6）。
 
-retry（POST /canvas-nodes/{id}/retry）属 M6 系统节点重跑，本里程碑不实现（ENDPOINTS_M3 登记但
-E4 不 serve——一致性测试显式注明为 M6 缺口，M2 C4 先例）。
+M6 补齐系统节点自动执行与 ``POST /canvas-nodes/{id}/retry``；仅 failed 可重试。
 """
 
 from __future__ import annotations
@@ -42,6 +41,7 @@ from coagentia_server.routes.serialize import (
     task_contract_public,
     task_public,
 )
+from coagentia_server.system_nodes import service as system_node_service
 from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["canvas"])
@@ -333,6 +333,20 @@ def patch_node(
     tx.emit(EventType.CANVAS_NODE_UPDATED, canvas["channel_id"], {"node": node_pub})
     version, hash_ = _emit_baseline(tx, canvas)
     return {"baseline_version": version, "baseline_hash": hash_, "node": node_pub}
+
+
+@router.post(
+    "/canvas-nodes/{node_id}/retry",
+    response_model=rest.CanvasNodePublic,
+    status_code=202,
+)
+def retry_system_node(
+    node_id: str, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
+    """仅 failed 系统节点可重试；运行身份先落诊断，提交后 hub 由 node_updated 驱动下发。"""
+    acting_member(request, tx.conn)  # 全员可用（B §4.9，R8 同口径）。
+    node = system_node_service.retry_failed_node(tx, node_id)
+    return canvas_node_public(node)
 
 
 # ---------------------------------------------------------------- 节点：删

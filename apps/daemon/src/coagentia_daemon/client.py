@@ -20,11 +20,13 @@ from coagentia_contracts.daemon import (
     DAEMON_PROTOCOL_V,
     AckResult,
     AgentStatusChangedData,
+    CheckFinishedData,
     DaemonAgentActivityData,
     DaemonHelloAckData,
     DaemonHelloData,
     DiagnosticEventIn,
     FrameKind,
+    GitDiffQuery,
     HomeFileBinaryReply,
     HomeFileQuery,
     HomeFileTextReply,
@@ -45,6 +47,7 @@ from coagentia_contracts.enums import AgentStatus
 from coagentia_daemon import __version__
 from coagentia_daemon.adapter import RuntimeAdapter
 from coagentia_daemon.buffer import TelemetryBuffer
+from coagentia_daemon.checks import CheckRunner
 from coagentia_daemon.git import GitWorktreeManager
 from coagentia_daemon.handlers import HANDLERS
 from coagentia_daemon.paths import DataPaths
@@ -64,6 +67,7 @@ _STATUS_REPLAY_INSTRS = frozenset(
         InstrType.WORKTREE_ENSURE,
         InstrType.WORKTREE_MERGE,
         InstrType.WORKTREE_CLEANUP,
+        InstrType.CHECK_RUN,
     }
 )
 
@@ -113,6 +117,7 @@ class DaemonClient:
 
         self.adapter.bind(self)  # AdapterSink = self
         self.git = GitWorktreeManager(paths)
+        self.checks = CheckRunner()
 
         self._transport: Transport | None = None
         self._send_lock = asyncio.Lock()
@@ -162,6 +167,12 @@ class DaemonClient:
 
     def stop(self) -> None:
         self._stopped = True
+        self.checks.cancel()
+
+    async def shutdown(self) -> None:
+        """同一 event loop 内取消 check 子进程，等待 taskkill/回收完成后再退出。"""
+        self.stop()
+        await self.checks.wait_closed()
 
     # ---------------------------------------------------------------- 一条连接的服务
 
@@ -291,6 +302,10 @@ class DaemonClient:
                 reply = self._home_tree(data)
             elif qtype == QueryType.HOME_FILE:
                 reply = self._home_file(data)
+            elif qtype == QueryType.GIT_DIFF:
+                reply = (
+                    await self.git.diff(GitDiffQuery.model_validate(data))
+                ).model_dump(mode="json")
             else:
                 reply = {"error": "unsupported"}
         except Exception as exc:  # noqa: BLE001
@@ -387,6 +402,11 @@ class DaemonClient:
         """worktree 指令先上报现状，再由 handle_instr 发 ack（同 WS 内有序）。"""
         await self._report_best_effort(ReportType.WORKTREE_STATUS, data)
 
+    async def report_check_finished(self, data: CheckFinishedData) -> None:
+        """check.finished 先持久入缓冲；flush 获 server ack 后才删除。"""
+        self.buffer.append_check(data)
+        self._flush_event.set()
+
     async def _report_best_effort(self, rtype: ReportType, data: Any) -> None:
         """载状态类上报（无 ack）：连接可用即发，断连忽略（重连 hello 全量重报兜底）。"""
         frame = ReportFrame(
@@ -404,6 +424,7 @@ class DaemonClient:
             with contextlib.suppress(TransportClosed):
                 await self._flush_usage()
                 await self._flush_diagnostics()
+                await self._flush_checks()
 
     async def _flush_usage(self) -> None:
         while self.buffer.has_usage():
@@ -426,6 +447,14 @@ class DaemonClient:
             if not ok:
                 return
             self.buffer.ack_diagnostics(len(batch))
+
+    async def _flush_checks(self) -> None:
+        while self.buffer.has_checks():
+            batch = self.buffer.peek_checks(1)
+            ok = await self._report_awaited(ReportType.CHECK_FINISHED, batch[0])
+            if not ok:
+                return
+            self.buffer.ack_checks([batch[0].run_id])
 
     async def _report_awaited(self, rtype: ReportType, data: Any) -> bool:
         """缓冲重传类上报（需 ack）：发帧 → 等 server ack（超时/断连 → False）。"""

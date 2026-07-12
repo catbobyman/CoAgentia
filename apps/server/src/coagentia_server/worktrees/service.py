@@ -11,7 +11,13 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from coagentia_contracts.daemon import WorktreeStatusData
-from coagentia_contracts.enums import CanvasNodeKind, TaskStatus, WorktreeStatus
+from coagentia_contracts.enums import (
+    CanvasNodeKind,
+    SystemAction,
+    SystemNodeStatus,
+    TaskStatus,
+    WorktreeStatus,
+)
 from sqlalchemy import insert, select, update
 from sqlalchemy.engine import Connection
 
@@ -59,6 +65,7 @@ class DirectoryContext:
 @dataclass(frozen=True)
 class StatusResult:
     row: dict[str, Any]
+    alias_rows: tuple[dict[str, Any], ...]
     became_active: bool
     workspace_id: str
     channel_id: str
@@ -137,6 +144,9 @@ def cleanup_plans(
     rows = conn.execute(
         select(
             _WORKTREE.c.task_id,
+            _WORKTREE.c.project_id,
+            _WORKTREE.c.branch,
+            _WORKTREE.c.path,
             _PROJECT.c.computer_id,
             _PROJECT.c.worktree_keep_days,
             _WORKTREE.c.status.label("worktree_status"),
@@ -159,8 +169,33 @@ def cleanup_plans(
         )
         .order_by(_WORKTREE.c.task_id)
     ).mappings()
+    occupied_by_tree: dict[tuple[str, str, str], set[str]] = {}
+    for active in conn.execute(
+        select(
+            _WORKTREE.c.task_id,
+            _WORKTREE.c.project_id,
+            _WORKTREE.c.path,
+            _WORKTREE.c.branch,
+        )
+        .select_from(_WORKTREE.join(_TASK, _TASK.c.id == _WORKTREE.c.task_id))
+        .where(
+            _WORKTREE.c.status.in_(_DIRECTORY_STATUSES),
+            _TASK.c.status.notin_(_TERMINAL_TASK_STATUSES),
+        )
+    ).mappings():
+        key = (active["project_id"], active["path"], active["branch"])
+        occupied_by_tree.setdefault(key, set()).add(active["task_id"])
+    merge_retained = _merge_retained_task_ids(conn)
     plans: list[CleanupPlan] = []
     for row in rows:
+        # 冲突任务的逻辑 Worktree 行复用原任务 path/branch；物理树只由原分支所属任务清理。
+        if row["branch"] != f"coagentia/task-{row['task_id']}":
+            continue
+        tree_key = (row["project_id"], row["path"], row["branch"])
+        if occupied_by_tree.get(tree_key, set()) - {row["task_id"]}:
+            continue  # 同物理树仍有 active/conflicted alias，retention 不得提前拆树。
+        if row["task_id"] in merge_retained:
+            continue  # merge 尚未 success 前，其祖先 worktree 仍是待执行输入。
         if row["worktree_status"] == WorktreeStatus.MERGED.value:
             if row["merged_at"] is None and row["task_status"] not in _TERMINAL_TASK_STATUSES:
                 continue
@@ -175,35 +210,78 @@ def cleanup_plans(
     return plans
 
 
+def _merge_retained_task_ids(conn: Connection) -> set[str]:
+    """返回非 success merge 节点的全部上游任务，避免 retention 抢先拆树。"""
+    retained: set[str] = set()
+    canvas_ids = list(
+        conn.execute(
+            select(_NODE.c.canvas_id)
+            .where(
+                _NODE.c.kind == CanvasNodeKind.SYSTEM.value,
+                _NODE.c.system_action == SystemAction.MERGE.value,
+                _NODE.c.system_status != SystemNodeStatus.SUCCESS.value,
+            )
+            .distinct()
+        ).scalars()
+    )
+    for canvas_id in canvas_ids:
+        nodes = canvas_service.fetch_nodes(conn, canvas_id)
+        by_id = {node["id"]: node for node in nodes}
+        predecessors: dict[str, set[str]] = {node_id: set() for node_id in by_id}
+        for source, target in canvas_service.edge_pairs(conn, canvas_id):
+            predecessors[target].add(source)
+        pending = [
+            node["id"]
+            for node in nodes
+            if node["kind"] == CanvasNodeKind.SYSTEM.value
+            and node["system_action"] == SystemAction.MERGE.value
+            and node["system_status"] != SystemNodeStatus.SUCCESS.value
+        ]
+        seen: set[str] = set()
+        while pending:
+            node_id = pending.pop()
+            for predecessor in predecessors[node_id]:
+                if predecessor in seen:
+                    continue
+                seen.add(predecessor)
+                pending.append(predecessor)
+                task_id = by_id[predecessor]["task_id"]
+                if task_id is not None:
+                    retained.add(task_id)
+    return retained
+
+
 def apply_status(
-    conn: Connection, *, computer_id: str, data: WorktreeStatusData
+    conn: Connection,
+    *,
+    computer_id: str,
+    data: WorktreeStatusData,
+    trusted_running_merge: bool = False,
 ) -> StatusResult | None:
     """校验上报归属并按 task_id upsert；重复 active 不重复触发目录消息。"""
-    task = (
-        conn.execute(
-            select(
-                _TASK.c.workspace_id,
-                _TASK.c.channel_id,
-                _TASK.c.root_message_id,
-                _TASK.c.owner_member_id,
-                _TASK.c.project_id,
-                _TASK.c.status.label("task_status"),
-                _NODE.c.id.label("node_id"),
-            )
-            .select_from(
-                _TASK.join(_NODE, _NODE.c.task_id == _TASK.c.id).join(
-                    _PROJECT, _PROJECT.c.id == _TASK.c.project_id
-                )
-            )
-            .where(
-                _TASK.c.id == data.task_id,
-                _PROJECT.c.computer_id == computer_id,
-                _NODE.c.kind == CanvasNodeKind.AGENT.value,
+    task_stmt = (
+        select(
+            _TASK.c.workspace_id,
+            _TASK.c.channel_id,
+            _TASK.c.root_message_id,
+            _TASK.c.owner_member_id,
+            _TASK.c.project_id,
+            _TASK.c.status.label("task_status"),
+            _NODE.c.id.label("node_id"),
+        )
+        .select_from(
+            _TASK.join(_NODE, _NODE.c.task_id == _TASK.c.id).join(
+                _PROJECT, _PROJECT.c.id == _TASK.c.project_id
             )
         )
-        .mappings()
-        .first()
+        .where(
+            _TASK.c.id == data.task_id,
+            _NODE.c.kind == CanvasNodeKind.AGENT.value,
+        )
     )
+    if not trusted_running_merge:
+        task_stmt = task_stmt.where(_PROJECT.c.computer_id == computer_id)
+    task = conn.execute(task_stmt).mappings().first()
     if task is None or task["project_id"] is None:
         return None
 
@@ -248,6 +326,36 @@ def apply_status(
         conn.execute(update(_WORKTREE).where(_WORKTREE.c.id == worktree_id).values(**values))
 
     row = conn.execute(select(_WORKTREE).where(_WORKTREE.c.id == worktree_id)).mappings().one()
+    alias_rows: tuple[dict[str, Any], ...] = ()
+    if status == WorktreeStatus.CLEANED:
+        # 同物理 path/branch 的冲突任务逻辑行随原树一起收敛 cleaned，不另发 cleanup 指令。
+        alias_ids = list(
+            conn.execute(
+                select(_WORKTREE.c.id)
+                .where(
+                    _WORKTREE.c.id != worktree_id,
+                    _WORKTREE.c.project_id == task["project_id"],
+                    _WORKTREE.c.path == row["path"],
+                    _WORKTREE.c.branch == row["branch"],
+                    _WORKTREE.c.status != WorktreeStatus.CLEANED.value,
+                )
+                .order_by(_WORKTREE.c.id)
+            ).scalars()
+        )
+        if alias_ids:
+            conn.execute(
+                update(_WORKTREE)
+                .where(_WORKTREE.c.id.in_(alias_ids))
+                .values(status=WorktreeStatus.CLEANED, cleaned_at=row["cleaned_at"] or ts)
+            )
+            alias_rows = tuple(
+                dict(alias)
+                for alias in conn.execute(
+                    select(_WORKTREE)
+                    .where(_WORKTREE.c.id.in_(alias_ids))
+                    .order_by(_WORKTREE.c.id)
+                ).mappings()
+            )
     became_active = status == WorktreeStatus.ACTIVE and (
         existing is None
         or existing["status"] != WorktreeStatus.ACTIVE.value
@@ -255,6 +363,7 @@ def apply_status(
     )
     return StatusResult(
         row=dict(row),
+        alias_rows=alias_rows,
         became_active=became_active,
         workspace_id=task["workspace_id"],
         channel_id=task["channel_id"],

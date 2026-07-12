@@ -2,7 +2,7 @@
 // 由类型化深链 ?thread= 驱动(在 ChannelChatScreen 内消费,非顶层路由)。
 // M2 接真:opsbar 的 claim/unclaim/状态流转打真端点;契约/usage 用 useTaskDetail 真数据(成功靠 WS task.updated 回灌,无乐观更新)。
 import { useState } from 'react';
-import { ArrowUp, ChevronDown, CircleAlert, Sparkles, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, CircleAlert, GitBranch, Sparkles, X } from 'lucide-react';
 
 import type {
   ContractKind,
@@ -14,6 +14,7 @@ import type {
   TaskPlanBody,
   TaskPublic,
   TaskStatus,
+  ReviewVerdict,
 } from '@coagentia/contracts-ts';
 import { TASK_TRANSITIONS, UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 
@@ -26,6 +27,8 @@ import { Avatar } from '../components/Avatar';
 import { MessageFlow } from '../components/MessageFlow';
 import { Composer } from '../components/Composer';
 import { HeldDraftList } from './HeldDraftCard';
+import { DiffCard } from '../components/DiffCard';
+import '../components/diff-card.css';
 
 // 契约 kind → 中文短名(§4.6);loop_contract 归 Reminder 上岗流程,不在任务线程契约卡出现。
 const CONTRACT_KIND_LABEL: Record<ContractKind, string> = {
@@ -35,6 +38,10 @@ const CONTRACT_KIND_LABEL: Record<ContractKind, string> = {
 };
 // "让 @Agent 起草"菜单可选 kind——任务域只出 TaskPlan/TaskHandoff(纪律:LoopContract 走 Reminder)。
 const DRAFT_KINDS: ContractKind[] = ['task_plan', 'task_handoff'];
+
+const VERDICT_LABEL: Record<ReviewVerdict, string> = {
+  pass: '通过', downgrade: '降级通过', send_back: '退回重做', needs_human: '需要人类',
+};
 
 /** 按 kind 拆活动契约 / 历史版本(revision 修订链——superseded_at≠null 即历史)。 */
 function splitContracts(contracts: TaskContractPublic[]) {
@@ -124,7 +131,15 @@ export function TaskHandoffCard({
         <span className="m">
           D×{handoff.deliverables?.length ?? 0} · E×{handoff.evidence?.length ?? 0} · by {memberById[contract.created_by_member_id]?.name ?? '—'} · {fmtTime(contract.created_at)}
         </span>
+        {handoff.review_verdict && (
+          <span className="verdict-badge" data-verdict={handoff.review_verdict}>
+            {VERDICT_LABEL[handoff.review_verdict]}
+          </span>
+        )}
       </div>
+      {handoff.review_verdict === 'needs_human' && (
+        <div className="needs-human-banner" role="alert"><CircleAlert />需要人类介入后再继续交付。</div>
+      )}
       <div className="goal"><span className="lb">From → To</span>{fromName} → {toName}</div>
       {!!handoff.deliverables?.length && (
         <>
@@ -322,6 +337,19 @@ export function ThreadPanel({
           </div>
         )}
       </header>
+
+      {task && (task.writes_code || detail?.worktree) && (
+        <section className="delivery-card" aria-label="交付工作树">
+          <div className="delivery-head">
+            <GitBranch />
+            <span className="branch">{detail?.worktree?.branch ?? '等待 worktree 派生'}</span>
+            <span className={`delivery-status ${detail?.worktree?.status ?? 'pending'}`}>
+              {detail?.worktree?.status ?? 'pending'}
+            </span>
+          </div>
+          <DiffCard taskId={task.id} />
+        </section>
+      )}
 
       {/* [2] 契约折叠卡:活动 TaskPlan/TaskHandoff 各一张 + 历史修订折叠 + 起草入口 */}
       <section className="contract">

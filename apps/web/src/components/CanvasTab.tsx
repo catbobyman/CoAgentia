@@ -3,7 +3,7 @@
 // 系统节点(kind=system 菱形)、边(snapshot.edges,箭头 marker)。blocked 徽标由 graph.ts 派生
 // (satisfied=上游 agent 任务 done / system success)。拖拽编辑均走 writeJson、无乐观更新,
 // 命中的节点/边靠 canvas.* WS 反流(wsBridge)。深链 ?node= 高亮/居中,选中回写 ?node=&?task=(双向)。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Background,
@@ -19,7 +19,8 @@ import {
 } from '@xyflow/react';
 import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react';
 import {
-  ChevronDown, CircleAlert, GitMerge, LayoutTemplate, Lock, Play, Plus, Rocket, Save, Terminal, Trash2,
+  ChevronDown, CircleAlert, Eye, GitMerge, LayoutTemplate, Lock, Play, Plus, RefreshCw,
+  Rocket, Save, Terminal, Trash2, Workflow,
 } from 'lucide-react';
 
 import type {
@@ -27,8 +28,10 @@ import type {
   CanvasDetail,
   CanvasNodePublic,
   MemberPublic,
+  MessagePublic,
   NodeCreate,
   PresenceEntry,
+  ProjectPublic,
   SystemAction,
   SystemNodeStatus,
   TaskPlanBody,
@@ -38,7 +41,7 @@ import type {
 } from '@coagentia/contracts-ts';
 
 import type { ChannelSearch } from '../routes/search';
-import { useCanvasSnapshot } from '../data/queries';
+import { useCanvasSnapshot, useProjects, useRetryCanvasNode } from '../data/queries';
 import { deriveCanvasBlocked, wouldCreateCycle } from '../lib/graph';
 import { saveTemplateGate, formalTaskNodes } from '../lib/templates';
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
@@ -106,12 +109,19 @@ export function TaskNodeCard({ data: d }: { data: TaskNodeData }) {
   );
 }
 
-export function SystemNodeCard({ data: d }: { data: SystemNodeData }) {
+export function SystemNodeCard({ data: d, onRetry, onShowOutput, busy = false }: {
+  data: SystemNodeData;
+  onRetry?: () => void;
+  onShowOutput?: () => void;
+  busy?: boolean;
+}) {
   const Icon = d.action === 'merge' ? GitMerge : Terminal;
+  const canShowOutput = d.action === 'check' && (d.status === 'success' || d.status === 'failed');
   return (
     <div
       className={`snode${d.selected ? ' sel' : ''}${d.blocked ? ' blocked' : ''}`}
       style={{ '--st': `var(${SYS_STATUS_VAR[d.status]})` } as unknown as CSSProperties}
+      data-status={d.status}
       data-testid="canvas-snode"
     >
       <div className="srow">
@@ -121,6 +131,16 @@ export function SystemNodeCard({ data: d }: { data: SystemNodeData }) {
           <span className="sst">{d.status}</span>
         </div>
       </div>
+      {(d.status === 'failed' || canShowOutput) && (
+        <div className="sactions nodrag nowheel" onClick={(e) => e.stopPropagation()}>
+          {d.status === 'failed' && onRetry && (
+            <button type="button" disabled={busy} aria-label={`重试 ${d.title}`} title="重试失败节点" onClick={onRetry}><RefreshCw /></button>
+          )}
+          {canShowOutput && onShowOutput && (
+            <button type="button" aria-label={`查看 ${d.title} 输出`} title="查看输出尾" onClick={onShowOutput}><Eye /></button>
+          )}
+        </div>
+      )}
       {d.blocked && (
         <div className="blk" data-testid="node-blocked">
           <Lock />
@@ -130,6 +150,12 @@ export function SystemNodeCard({ data: d }: { data: SystemNodeData }) {
     </div>
   );
 }
+
+const SystemActionsContext = createContext<{
+  retry: (nodeId: string) => void;
+  showOutput: (nodeId: string) => void;
+  retrying: boolean;
+} | null>(null);
 
 // ---- RF 自定义节点(卡外挂左入/右出 Handle;Handle 需 ReactFlow context)
 function TaskNodeView({ data }: NodeProps) {
@@ -141,11 +167,20 @@ function TaskNodeView({ data }: NodeProps) {
     </div>
   );
 }
-function SystemNodeView({ data }: NodeProps) {
+function SystemNodeView({ data, id }: NodeProps) {
+  const actions = useContext(SystemActionsContext);
+  const d = data as unknown as SystemNodeData;
   return (
     <div className="rf-node">
       <Handle type="target" position={Position.Left} />
-      <SystemNodeCard data={data as unknown as SystemNodeData} />
+      <SystemNodeCard
+        data={d}
+        onRetry={d.status === 'failed' && actions ? () => actions.retry(id) : undefined}
+        onShowOutput={d.action === 'check' && (d.status === 'success' || d.status === 'failed') && actions
+          ? () => actions.showOutput(id)
+          : undefined}
+        busy={actions?.retrying}
+      />
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -243,6 +278,7 @@ export interface CanvasTabProps {
   tasks: TaskPublic[];
   members: MemberPublic[];
   presence: PresenceEntry[];
+  messages?: MessagePublic[];
   search: ChannelSearch;
   setSearch: (next: Partial<ChannelSearch>) => void;
 }
@@ -256,10 +292,12 @@ export function CanvasTab(props: CanvasTabProps) {
   );
 }
 
-function CanvasInner({ channelId, tasks, members, presence, search, setSearch }: CanvasTabProps) {
+function CanvasInner({ channelId, tasks, members, presence, messages = [], search, setSearch }: CanvasTabProps) {
   const toast = useToast();
   const rf = useReactFlow();
   const canvasQ = useCanvasSnapshot(channelId);
+  const projectsQ = useProjects();
+  const retryM = useRetryCanvasNode(channelId);
   const detail = canvasQ.data;
   const canvasId = detail?.canvas?.id;
 
@@ -380,6 +418,8 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
   }, [canvasId, nodes, onCanvasError]);
 
   const [newOpen, setNewOpen] = useState(false);
+  const [systemOpen, setSystemOpen] = useState(false);
+  const [outputText, setOutputText] = useState<string | null>(null);
   // 模板▾ 下拉 + 存为模板弹窗 + 向导(B-M5-2)。
   const [tmplMenuOpen, setTmplMenuOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -395,6 +435,22 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
   const selNode = selectedNodeId ? nodeById[selectedNodeId] : undefined;
   const selTask = selNode?.task_id ? taskById[selNode.task_id] : undefined;
   const canForceStart = !!selTask && !!selectedNodeId && model.blocked.has(selectedNodeId);
+  const boundProjects = (projectsQ.data ?? []).filter((p) => p.channel_ids.includes(channelId));
+  const showSystemOutput = useCallback((nodeId: string) => {
+    const hit = [...messages].reverse().find((m) =>
+      m.kind === 'system' && m.body.includes(`node_id: ${nodeId}`),
+    );
+    if (!hit) {
+      toast.push('该节点还没有可查看的输出', { tone: 'error' });
+      return;
+    }
+    setOutputText(hit.body);
+  }, [messages, toast]);
+  const systemActions = useMemo(() => ({
+    retry: (nodeId: string) => retryM.mutate(nodeId),
+    showOutput: showSystemOutput,
+    retrying: retryM.isPending,
+  }), [retryM, showSystemOutput]);
 
   if (canvasQ.isLoading) {
     return <section className="canvastab"><div className="boot">画布加载中…</div></section>;
@@ -411,6 +467,9 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
       <div className="canvasbar">
         <button className="btn btn-secondary" onClick={() => setNewOpen(true)} disabled={!canvasId}>
           <Plus /> 新建 L2 任务
+        </button>
+        <button className="btn btn-ghost" onClick={() => setSystemOpen(true)} disabled={!canvasId}>
+          <Workflow /> 新建系统节点
         </button>
         {/* force-start:仅当选中一个 blocked 的任务节点时点亮 → 二次确认弹层 → POST force-start。 */}
         <button
@@ -473,7 +532,8 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
       </div>
 
       <div className="canvas-flow">
-        <ReactFlow
+        <SystemActionsContext.Provider value={systemActions}>
+          <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
@@ -490,18 +550,23 @@ function CanvasInner({ channelId, tasks, members, presence, search, setSearch }:
           onNodeDragStop={onNodeDragStop}
           fitView
           proOptions={{ hideAttribution: true }}
-        >
-          <Background />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+          >
+            <Background />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        </SystemActionsContext.Provider>
         {(detail.nodes ?? []).length === 0 && (
           <div className="canvas-empty">空画布 · 从上方「新建 L2 任务」起一个节点</div>
         )}
       </div>
 
       {newOpen && canvasId && (
-        <NewNodeModal canvasId={canvasId} onClose={() => setNewOpen(false)} onError={onCanvasError} />
+        <NewNodeModal canvasId={canvasId} projects={boundProjects} onClose={() => setNewOpen(false)} onError={onCanvasError} />
       )}
+      {systemOpen && canvasId && (
+        <SystemNodeModal canvasId={canvasId} onClose={() => setSystemOpen(false)} onError={onCanvasError} />
+      )}
+      {outputText && <SystemOutputModal body={outputText} onClose={() => setOutputText(null)} />}
       {forceTask && <ForceStartModal task={forceTask} onClose={() => setForceTask(null)} />}
       {saveOpen && (
         <SaveTemplateModal
@@ -537,8 +602,9 @@ function splitLines(s: string): string[] {
   return s.split('\n').map((x) => x.trim()).filter((x) => x !== '');
 }
 
-export function NewNodeModal({ canvasId, onClose, onError }: {
+export function NewNodeModal({ canvasId, projects = [], onClose, onError }: {
   canvasId: string;
+  projects?: ProjectPublic[];
   onClose: () => void;
   onError: (e: unknown) => void;
 }) {
@@ -547,10 +613,13 @@ export function NewNodeModal({ canvasId, onClose, onError }: {
   const [acs, setAcs] = useState<AcDraft[]>([{ statement: '', verify_by: 'manual', verify_ref: '' }]);
   const [defaults, setDefaults] = useState('');
   const [oos, setOos] = useState('');
+  const [writesCode, setWritesCode] = useState(false);
+  const [projectId, setProjectId] = useState('');
   const [busy, setBusy] = useState(false);
 
   const filledAcs = acs.filter((a) => a.statement.trim() !== '');
-  const valid = title.trim() !== '' && goal.trim() !== '' && filledAcs.length > 0;
+  const valid = title.trim() !== '' && goal.trim() !== '' && filledAcs.length > 0
+    && (!writesCode || projectId !== '');
 
   const patchAc = (i: number, patch: Partial<AcDraft>) =>
     setAcs((prev) => prev.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
@@ -576,7 +645,10 @@ export function NewNodeModal({ canvasId, onClose, onError }: {
       ...(defaultsArr.length ? { defaults_decided: defaultsArr } : {}),
       ...(oosArr.length ? { out_of_scope: oosArr } : {}),
     };
-    const body: NodeCreate = { kind: 'agent', title: title.trim(), task_plan: plan };
+    const body: NodeCreate = {
+      kind: 'agent', title: title.trim(), task_plan: plan,
+      ...(writesCode ? { writes_code: true, project_id: projectId } : {}),
+    };
     try {
       await api.createCanvasNode(canvasId, body); // 成功靠 canvas.node_added WS 反流,无乐观更新
       onClose();
@@ -600,6 +672,20 @@ export function NewNodeModal({ canvasId, onClose, onError }: {
           <span className="lb">目标 (goal)</span>
           <div className="inp"><input className="val" value={goal} placeholder="这个任务要达成什么" onChange={(e) => setGoal(e.target.value)} /></div>
         </div>
+        <div className="code-task-row">
+          <div><b>代码任务</b><span>激活后在独立 worktree 中交付</span></div>
+          <button type="button" role="switch" aria-label="代码任务" aria-checked={writesCode} className={`cs-toggle${writesCode ? ' on' : ''}`} onClick={() => { setWritesCode((v) => !v); setProjectId(''); }}><span className="knob" /></button>
+        </div>
+        {writesCode && (
+          <div className="field">
+            <label className="lb" htmlFor="code-project">绑定 Project</label>
+            <select id="code-project" className="csel project-pick" aria-label="绑定 Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">选择当前频道 Project</option>
+              {projects.map((p) => <option value={p.id} key={p.id}>{p.name} · {p.repo_path}</option>)}
+            </select>
+            {projects.length === 0 && <div className="nmnote project-note">请先在频道设置绑定 Project。</div>}
+          </div>
+        )}
 
         <div className="field">
           <div className="aclbrow">
@@ -643,6 +729,65 @@ export function NewNodeModal({ canvasId, onClose, onError }: {
           <button className="btn btn-ghost" onClick={onClose}>取消</button>
           <button className="btn btn-primary" disabled={busy || !valid} onClick={() => void submit()}>创建</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function SystemNodeModal({ canvasId, onClose, onError }: {
+  canvasId: string;
+  onClose: () => void;
+  onError: (e: unknown) => void;
+}) {
+  const [action, setAction] = useState<SystemAction>('merge');
+  const [command, setCommand] = useState('');
+  const [busy, setBusy] = useState(false);
+  const valid = action === 'merge' || command.trim() !== '';
+  const submit = async () => {
+    if (!valid) return;
+    setBusy(true);
+    const body: NodeCreate = action === 'merge'
+      ? { kind: 'system', title: 'Merge', system_action: 'merge' }
+      : { kind: 'system', title: 'Check', system_action: 'check', command: command.trim() };
+    try {
+      await api.createCanvasNode(canvasId, body);
+      onClose();
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="modal system-node-modal" role="dialog" aria-label="新建系统节点" onClick={(e) => e.stopPropagation()}>
+        <div className="mtitle">新建系统节点</div>
+        <div className="system-action-seg" role="radiogroup" aria-label="系统动作">
+          <button type="button" role="radio" aria-checked={action === 'merge'} className={action === 'merge' ? 'active' : ''} onClick={() => setAction('merge')}><GitMerge />Merge</button>
+          <button type="button" role="radio" aria-checked={action === 'check'} className={action === 'check' ? 'active' : ''} onClick={() => setAction('check')}><Terminal />Check</button>
+        </div>
+        {action === 'check' && (
+          <div className="field">
+            <label className="lb" htmlFor="check-command">Check 命令</label>
+            <div className="inp"><input id="check-command" className="val mono" aria-label="Check 命令" value={command} onChange={(e) => setCommand(e.target.value)} /></div>
+          </div>
+        )}
+        <div className="ops">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>取消</button>
+          <button type="button" className="btn btn-primary" disabled={!valid || busy} onClick={() => void submit()}>创建系统节点</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SystemOutputModal({ body, onClose }: { body: string; onClose: () => void }) {
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="modal system-output-modal" role="dialog" aria-label="系统节点输出" onClick={(e) => e.stopPropagation()}>
+        <div className="mtitle">Check 输出尾</div>
+        <pre>{body}</pre>
+        <div className="ops"><button type="button" className="btn btn-primary" onClick={onClose}>关闭</button></div>
       </div>
     </div>
   );

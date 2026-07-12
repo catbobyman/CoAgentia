@@ -1,7 +1,7 @@
 # CODEX-CONTEXT —— 交接任务的完整项目上下文
 
 > **读者**：接手本仓库开发任务的 AI 工程师（Codex CLI / Claude Code 会话通用，文件名是历史沿革）。本文自足——假设你没有任何先前会话记忆，所有内部术语在此解码。读完本文再按 §4 阅读顺序进入具体任务;多模型分工与交接点见 [COLLAB-MODEL.md](COLLAB-MODEL.md)。
-> **维护**：本文描述的是 2026-07-11（M6 立项、HEAD `562af66`）时点的事实；动态进度以 [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) 与 [M6-DEV-PLAN.md](M6-DEV-PLAN.md) 为准。
+> **维护**：本文已更新到 2026-07-11 **M6a 波 3 实现与守门完成、停在实机 verify 前**的事实；动态进度与提交号以 [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) 与 [M6-DEV-PLAN.md](M6-DEV-PLAN.md) 为准。
 
 ---
 
@@ -89,7 +89,7 @@ D:\Project4work\Agenthub_7_8\
 │   │   │   ├── orchestration\      ← M6b 主战场（现为空占位包）
 │   │   │   ├── computers\hub.py    ← daemon 网关（连接/投递/唤醒/对账/后台扫描，~千行核心）
 │   │   │   └── ws\ events\         ← 浏览器 WS 广播
-│   │   └── migrations\versions\    ← Alembic 0001–0007（M6 建 0008/0009）
+│   │   └── migrations\versions\    ← Alembic 0001–0008（M6a 已建 0008；M6b 才建 0009）
 │   ├── apps\daemon\                ← daemon（适配器 adapters/claude_code.py + codex.py、探测 probe.py、MCP 工具 mcp.py）
 │   ├── apps\web\                   ← React 前端（screens/components/lib；lib 内有与 py 内核镜像的 graph.ts/cron.ts 等）
 │   ├── apps\mock-server\           ← 形状 mock（显式开启才用；**形状源非逻辑源**）
@@ -118,9 +118,9 @@ D:\Project4work\Agenthub_7_8\
 
 ## 5. 当前状态（2026-07-11）
 
-- **M1–M5 全收口** = PRD M5 出口达成；**M6a 波 1 已提交，波 2 J2/J3 与模板补遗守门全绿、待单提交**。契约现版：A v1.0.9 / B v1.4.3 / D v1.0.3；C/E/E2 零修订。A/B 三次连带补遗均已由 owner 批准并同步 header/变更记录。
-- git：`main` @ `d564ebf`，波 2 工作树待提交，**无 remote**。
-- 最新守门基线（**只增不减**）：后端 `uv run pytest -q` = **772 passed / 4 skipped**；前端 vitest = **175**；pyright **0 错**（并入 `pnpm typecheck`）；ruff 干净；`pnpm gen` 双跑确定；web build 绿。
+- **M1–M5 全收口** = PRD M5 出口达成；**M6a 波 1–3 实现均已完成并通过守门，当前按指令停在「M6a 实机 verify」这一行前**。J0–J6/B-M6-1 均已实现，§9a 仅 #11 真机场景未勾；M6b 未开工。契约现版：A v1.0.9 / B v1.4.3 / D v1.0.3；C/E/E2 零修订。A/B 三次连带补遗均已由 owner 批准并同步 header/变更记录。
+- git：`main`；波 3 前的实际 HEAD=`1633ad9`（独立协作规程文档提交），M6a 实现波次为 `d564ebf`（波 1）→ `62939f2`（波 2）→ 波 3 本提交（见 HEAD），**无 remote**。
+- 最新守门基线（**只增不减**）：后端 `uv run pytest -q` = **813 passed / 4 skipped**；前端 vitest = **194**；pyright **0 错**（并入 `pnpm typecheck`）；ruff 干净；`pnpm gen` 确定；web build 绿。波 3 两项独立审计 Medium（JSONL 原子替换、cleaned alias WS 事件）均修复并复核关闭，无剩余 High/Medium。
 - owner 已拍板的 M6 方向（**已拍板勿再问**）：①交付链先行（M6a=FR-10 → M6b=FR-9）②worktree 工作目录=消息注入（适配器零修订）③挂账三件全收（评审结论枚举/模板 PATCH·DELETE/fail-closed 复核）④合并=`--no-ff`。
 
 ## 6. 工程纪律（历次里程碑沉淀，违反=返工）
@@ -147,8 +147,8 @@ D:\Project4work\Agenthub_7_8\
 
 ```bash
 cd /d/Project4work/Agenthub_7_8/coagentia
-uv run pytest -q                    # 712+/4 skipped 起点
-pnpm -F @coagentia/web test         # 175 起点
+uv run pytest -q                    # 当前 813/4 skipped；M6 起点 712/4
+pnpm -F @coagentia/web test         # 当前 194；M6 起点 175
 pnpm typecheck                      # pyright 0 + 双 tsc
 uv run ruff check .
 pnpm gen                            # 之后 git diff 须为空
@@ -163,7 +163,7 @@ pnpm -F @coagentia/web build
 | 坑 | 结论 |
 | --- | --- |
 | win32 子进程 | 杀进程用 `taskkill /F /T`（terminate 杀不干净进程树）；子进程 stdout **必须显式 utf-8 decode**（默认 gbk 会崩）——git 输出同样适用 |
-| win32 git | 路径给正斜杠或原生反斜杠都可，但**锁文件/占用**会让 `worktree remove` 失败——M6 开工第一件事就是实测校准（J3-cal），结论写 `scratchpad/GIT-CALIBRATION.md` |
+| win32 git | 路径给正斜杠或原生反斜杠都可，但**锁文件/占用**会让 `worktree remove` 失败；J3-cal 已用 scratch repo 10/10 实测，权威结论见 `scratchpad/GIT-CALIBRATION.md` |
 | 真 claude CLI | stream-json 必须带 `--verbose`；必须持续排空 stderr（否则管道塞死） |
 | 真 codex CLI | `codex app-server` JSON-RPC 长驻；win32 用 codex.cmd；协议真值在 `scratchpad/CODEX-CALIBRATION.md`（若已清理，重跑 `codex app-server generate-json-schema`） |
 | SQLite | 须 ≥3.35（RETURNING）；FTS 键于 rowid（VACUUM 会失同步——已知观察项勿"顺手修"） |

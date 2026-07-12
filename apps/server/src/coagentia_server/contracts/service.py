@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from coagentia_contracts.constants import HANDOFF_REQUIRED_FIELDS
-from coagentia_contracts.enums import ContractKind
+from coagentia_contracts.enums import ContractKind, ReviewVerdict
 from sqlalchemy import insert, select, update
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
@@ -106,6 +106,26 @@ def submit_contract(
     raise AssertionError("unreachable")  # pragma: no cover
 
 
+def should_notify_needs_human(conn: Connection, row: dict[str, Any]) -> bool:
+    """仅新建或内容真实变化的 needs_human handoff 触发一次喊人。"""
+    if row["kind"] != ContractKind.TASK_HANDOFF:
+        return False
+    body = row.get("body")
+    if not isinstance(body, dict) or body.get("review_verdict") != ReviewVerdict.NEEDS_HUMAN:
+        return False
+    prior_body = conn.execute(
+        select(_TC.c.body)
+        .where(
+            _TC.c.task_id == row["task_id"],
+            _TC.c.kind == ContractKind.TASK_HANDOFF,
+            _TC.c.revision < row["revision"],
+        )
+        .order_by(_TC.c.revision.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return prior_body != body
+
+
 # ---------------------------------------------------------------- T7 校验读
 
 
@@ -128,5 +148,6 @@ __all__ = [
     "active_contract",
     "active_contracts",
     "active_handoff_missing",
+    "should_notify_needs_human",
     "submit_contract",
 ]

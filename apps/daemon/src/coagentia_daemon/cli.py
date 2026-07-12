@@ -71,10 +71,17 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--server-url 与 --api-key 必填")
     _install_win32_loop_policy()
     client = build_client(args.server_url, args.api_key, data_root=args.data_root)
+
+    async def run_client() -> None:
+        try:
+            await client.run()
+        finally:
+            await asyncio.shield(client.shutdown())
+
     try:
-        asyncio.run(client.run())
+        asyncio.run(run_client())
     except KeyboardInterrupt:
-        client.stop()
+        pass
     return 0
 
 

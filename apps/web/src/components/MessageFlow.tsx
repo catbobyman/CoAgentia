@@ -1,5 +1,6 @@
 // 消息流(设计稿 [E])。折叠头、日期分隔、未读线、系统消息、行内任务牌、附件卡 —— 从 App.tsx 抽出。
 import { useEffect } from 'react';
+import { ExternalLink, GitMerge } from 'lucide-react';
 
 import type { MemberPublic, MessagePublic, PresenceEntry, TaskPublic } from '@coagentia/contracts-ts';
 
@@ -24,6 +25,20 @@ export interface MessageFlowProps {
   onLocateDone?: () => void;
   onSelectTask?: (taskId: string) => void;
   onOpenAgent?: (memberId: string) => void; // 点击 Agent 头像/名进入 P6 详情
+}
+
+/** J5 冲突锚点正文的稳定段：`冲突文件:` 后连续 `- path` 行；遇到其他正文立即停止。 */
+export function parseConflictFiles(body: string): string[] {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === '冲突文件:');
+  if (start < 0) return [];
+  const files: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = /^\s*-\s+(.+?)\s*$/.exec(line);
+    if (!match) break;
+    files.push(match[1]!);
+  }
+  return files;
 }
 
 export function MessageFlow(props: MessageFlowProps) {
@@ -64,6 +79,7 @@ export function MessageFlow(props: MessageFlowProps) {
         const usage = task ? usageByTask[task.id] : undefined;
         const ownerId = task?.owner_member_id ?? undefined;
         const owner = ownerId ? memberById[ownerId] : undefined;
+        const conflictFiles = m.kind === 'system' ? parseConflictFiles(m.body) : [];
         return (
           <div key={m.id} id={`msg-${m.id}`}>
             {newDay && <div className="datesep"><span>{date}</span></div>}
@@ -71,9 +87,26 @@ export function MessageFlow(props: MessageFlowProps) {
               <div className="unreadline"><span className="ln" /><span>新消息</span></div>
             )}
             {m.kind === 'system' ? (
-              <div className="sysmsg">
-                <span className="sys">系统</span>
-                <span dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
+              <div className="system-entry">
+                <div className="sysmsg">
+                  <span className="sys">系统</span>
+                  <span dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
+                </div>
+                {task && conflictFiles.length > 0 ? (
+                  <div className="conflict-task-card">
+                    <div className="conflict-title"><GitMerge /><span>冲突文件 · {conflictFiles.length}</span></div>
+                    <ul>{conflictFiles.map((path) => <li key={path}>{path}</li>)}</ul>
+                    <button type="button" aria-label={`打开冲突任务 #${task.number}`} onClick={() => onSelectTask?.(task.id)}>
+                      <span>#{task.number} {task.title}</span><ExternalLink />
+                    </button>
+                  </div>
+                ) : task ? (
+                  <TaskChip
+                    task={task} owner={owner} usage={usage}
+                    selected={selectedTaskId === task.id}
+                    onClick={() => onSelectTask?.(task.id)}
+                  />
+                ) : null}
               </div>
             ) : (
               <div className={`msg${cont ? ' cont' : ''}`}>

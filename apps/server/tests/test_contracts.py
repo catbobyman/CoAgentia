@@ -12,10 +12,14 @@ from typing import Any
 
 import pytest
 from coagentia_contracts import rest
+from coagentia_contracts.enums import ReviewVerdict
+from coagentia_contracts.ws import EventType
 from coagentia_server.computers import DaemonOffline
 from coagentia_server.db import models
+from coagentia_server.events import PendingEvent
+from coagentia_server.ledger import service as ledger_service
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 
@@ -81,8 +85,9 @@ def _handoff_body(
     to_member: str,
     deliverables: list[dict[str, Any]] | None = None,
     evidence: list[dict[str, Any]] | None = None,
+    review_verdict: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    body = {
         "from_member": from_member,
         "to_member": to_member,
         "deliverables": deliverables or [],
@@ -90,6 +95,33 @@ def _handoff_body(
         "open_risks": [],
         "verify_plan": "复核方式：按验收标准逐条跑一遍命令",
     }
+    if review_verdict is not None:
+        body["review_verdict"] = review_verdict
+    return body
+
+
+def _add_channel_human(engine: Engine, *, workspace_id: str, channel_id: str, name: str) -> str:
+    member_id = ledger_service.new_ulid()
+    with engine.begin() as conn:
+        conn.execute(
+            insert(models.Member.__table__).values(
+                id=member_id,
+                workspace_id=workspace_id,
+                kind="human",
+                name=name,
+                role="member",
+                removed_at=None,
+                created_at=ledger_service.now_iso(),
+            )
+        )
+        conn.execute(
+            insert(models.ChannelMember.__table__).values(
+                channel_id=channel_id,
+                member_id=member_id,
+                joined_at=ledger_service.now_iso(),
+            )
+        )
+    return member_id
 
 
 def _set_status(client: TestClient, task_id: str, to: str, headers: dict[str, str] | None = None):
@@ -135,6 +167,177 @@ def test_submit_and_revision_chain(server_client: TestClient) -> None:
     assert len(superseded) == 1
     assert superseded[0]["id"] == c1["id"]
     assert superseded[0]["revision"] == 1
+
+
+@pytest.mark.parametrize("verdict", [item.value for item in ReviewVerdict])
+def test_handoff_review_verdict_roundtrips_on_submit_and_revision(
+    server_client: TestClient, seeded_engine: Engine, verdict: str
+) -> None:
+    """B §12.10：四值经真提交、修订、REST 回读与 JSON 列持久化均原样保留。"""
+    build = _channel(server_client, BUILD)
+    task = _new_task(server_client, build["id"], f"verdict-{verdict}")
+    owner = _member(server_client, "Memcyo")
+    pat = _member(server_client, "Pat")
+    body = _handoff_body(
+        from_member=pat["id"], to_member=owner["id"], review_verdict=verdict
+    )
+
+    first = server_client.post(
+        f"/api/tasks/{task['id']}/contracts", json={"kind": "task_handoff", "body": body}
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["body"]["review_verdict"] == verdict
+
+    revised_body = {**body, "verify_plan": f"{body['verify_plan']}（修订）"}
+    revised = server_client.post(
+        f"/api/tasks/{task['id']}/contracts",
+        json={"kind": "task_handoff", "body": revised_body},
+    )
+    assert revised.status_code == 201, revised.text
+    assert revised.json()["revision"] == 2
+    assert revised.json()["body"]["review_verdict"] == verdict
+
+    rows = server_client.get(f"/api/tasks/{task['id']}/contracts").json()
+    assert [row["body"]["review_verdict"] for row in rows] == [verdict, verdict]
+    with seeded_engine.connect() as conn:
+        stored = list(
+            conn.execute(
+                select(models.TaskContract.__table__.c.body)
+                .where(models.TaskContract.__table__.c.task_id == task["id"])
+                .order_by(models.TaskContract.__table__.c.revision)
+            ).scalars()
+        )
+    assert [item["review_verdict"] for item in stored] == [verdict, verdict]
+
+
+def test_handoff_review_verdict_missing_and_legacy_json_remain_readable(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """可选字段向后兼容：缺省提交为 null；旧 JSON 完全缺键时读取与 T7 消费均不崩。"""
+    build = _channel(server_client, BUILD)
+    task = _new_task(server_client, build["id"], "legacy-handoff")
+    owner = _member(server_client, "Memcyo")
+    pat = _member(server_client, "Pat")
+    complete = _handoff_body(
+        from_member=pat["id"],
+        to_member=owner["id"],
+        deliverables=[{"path": "D:/artifact.txt", "kind": "file"}],
+        evidence=[{"type": "test", "ref": "pytest -q", "conclusion": "passed"}],
+    )
+    posted = server_client.post(
+        f"/api/tasks/{task['id']}/contracts",
+        json={"kind": "task_handoff", "body": complete},
+    )
+    assert posted.status_code == 201, posted.text
+    assert posted.json()["body"]["review_verdict"] is None
+
+    legacy_body = dict(posted.json()["body"])
+    legacy_body.pop("review_verdict")
+    with seeded_engine.begin() as conn:
+        conn.execute(
+            update(models.TaskContract.__table__)
+            .where(models.TaskContract.__table__.c.id == posted.json()["id"])
+            .values(body=legacy_body)
+        )
+    active = server_client.get(f"/api/tasks/{task['id']}/contracts").json()[0]
+    assert "review_verdict" not in active["body"]
+    # L2 的 T7 门仍只检查 deliverables/evidence，旧 handoff 可正常消费。
+    assert server_client.patch(f"/api/tasks/{task['id']}", json={"level": "l2"}).status_code == 200
+    assert _set_status(server_client, task["id"], "in_progress").status_code == 200
+    assert _set_status(server_client, task["id"], "in_review").status_code == 200
+
+
+def test_needs_human_notifies_all_channel_humans_once_per_material_revision(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """needs_human 落任务线程系统消息、仅 @人类并广播；相同重试不重复喊人。"""
+    build = _channel(server_client, BUILD)
+    task = _new_task(server_client, build["id"], "需要架构裁决")
+    owner = _member(server_client, "Memcyo")
+    pat = _member(server_client, "Pat")
+    zoe = _add_channel_human(
+        seeded_engine,
+        workspace_id=task["workspace_id"],
+        channel_id=build["id"],
+        name="Zoe",
+    )
+    body = _handoff_body(
+        from_member=pat["id"],
+        to_member=owner["id"],
+        review_verdict=ReviewVerdict.NEEDS_HUMAN.value,
+    )
+    events: list[PendingEvent] = []
+    server_client.app.state.bus.subscribe(events.append)
+
+    first = server_client.post(
+        f"/api/tasks/{task['id']}/contracts", json={"kind": "task_handoff", "body": body}
+    )
+    assert first.status_code == 201, first.text
+
+    msg = models.Message.__table__
+    mention = models.MessageMention.__table__
+
+    def notices() -> list[dict[str, Any]]:
+        with seeded_engine.connect() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    select(msg).where(
+                        msg.c.thread_root_id == task["root_message_id"],
+                        msg.c.kind == "system",
+                        msg.c.body.like("评审需人裁决：%"),
+                    )
+                ).mappings()
+            ]
+
+    first_notices = notices()
+    assert len(first_notices) == 1
+    assert f"task #{task['number']}" in first_notices[0]["body"]
+    assert task["title"] in first_notices[0]["body"]
+    assert "review_verdict=needs_human" in first_notices[0]["body"]
+    with seeded_engine.connect() as conn:
+        mention_ids = set(
+            conn.execute(
+                select(mention.c.member_id).where(mention.c.message_id == first_notices[0]["id"])
+            ).scalars()
+        )
+        agent_mentions = conn.execute(
+            select(func.count())
+            .select_from(
+                mention.join(
+                    models.Member.__table__, mention.c.member_id == models.Member.__table__.c.id
+                )
+            )
+            .where(
+                mention.c.message_id == first_notices[0]["id"],
+                models.Member.__table__.c.kind == "agent",
+            )
+        ).scalar_one()
+    assert mention_ids == {owner["id"], zoe}
+    assert agent_mentions == 0
+    broadcasts = [
+        event
+        for event in events
+        if event.type is EventType.MESSAGE_CREATED
+        and event.data["message"]["id"] == first_notices[0]["id"]
+    ]
+    assert len(broadcasts) == 1
+
+    # 客户端丢响应后按同 payload 重试：虽形成既有修订链，但不重复喊人。
+    duplicate = server_client.post(
+        f"/api/tasks/{task['id']}/contracts", json={"kind": "task_handoff", "body": body}
+    )
+    assert duplicate.status_code == 201 and duplicate.json()["revision"] == 2
+    assert len(notices()) == 1
+
+    # 真正修改 handoff 后仍为 needs_human：这是新裁决请求，应再落一次通知。
+    changed = {**body, "open_risks": ["需要 owner 在两个方案间拍板"]}
+    revision = server_client.post(
+        f"/api/tasks/{task['id']}/contracts",
+        json={"kind": "task_handoff", "body": changed},
+    )
+    assert revision.status_code == 201 and revision.json()["revision"] == 3
+    assert len(notices()) == 2
 
 
 def test_task_detail_reflects_active_contracts(server_client: TestClient) -> None:

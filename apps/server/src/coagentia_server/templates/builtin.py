@@ -3,8 +3,8 @@
 工程三角 = **6 节点线性 DAG**：需求框定 → 评审门 → 实现契约 → TDD 实现 → 独立验收 → 人类终审；
 **4 角色占位**：产品负责人 / 实现工程师（doer，③④）/ 评审工程师（checker，②⑤）/ 人类负责人。
 
-checker ≠ doer 与「通过 / 降级 / 退回 / 需人裁决」评审结论都以 `roles.description` + `briefing`
-**话术承载**——FR-7.5 评审结论枚举 schema 化归 M6（owner 拍板 2026-07-11，裁决 2），本里程碑不做。
+checker ≠ doer 由 `roles.description` + `briefing` 话术承载；评审节点明确引导在 TaskHandoff
+结构化填写 `review_verdict` 四值（契约 B §12.10）。
 
 用 contracts 的 `TemplateBody`/`TaskPlanBody` 构造（形状单源在 contracts 包，纪律 7；server 侧只填
 内容，避免改 contracts 触发 `pnpm gen` churn）。启动 upsert 见 `templates.service.upsert_builtin_
@@ -36,8 +36,11 @@ _ROLE_DOER = "实现工程师"
 _ROLE_CHECKER = "评审工程师"
 _ROLE_HUMAN = "人类负责人"
 
-# 评审结论四态话术（FR-7.5 枚举归 M6，此处以自然语言承载于 description/briefing）。
-_REVIEW_VERDICTS = "通过 / 降级 / 退回 / 需人裁决"
+# 评审结论四态：值必须与 ReviewVerdict 契约逐字一致。
+_REVIEW_VERDICTS = (
+    "pass（通过） / downgrade（降级通过） / send_back（退回重做） / needs_human（需人裁决）"
+)
+_REVIEW_GUIDANCE = f"在 TaskHandoff 中结构化填写 review_verdict={_REVIEW_VERDICTS}"
 
 
 def _skeleton(
@@ -80,9 +83,9 @@ def build_triangle_body() -> TemplateBody:
             plan_skeleton=_skeleton(
                 "对需求框定独立把关并给出评审结论",
                 "ac-gate",
-                f"评审结论用 {_REVIEW_VERDICTS} 话术明确表述",
+                _REVIEW_GUIDANCE,
                 VerifyBy.MANUAL,
-                "评审记录含四态结论之一",
+                f"评审记录含 review_verdict，值为 {_REVIEW_VERDICTS} 之一",
             ),
         ),
         TemplateNode(
@@ -116,9 +119,9 @@ def build_triangle_body() -> TemplateBody:
             plan_skeleton=_skeleton(
                 "独立复核交付是否满足实现契约验收标准（checker ≠ doer）",
                 "ac-accept",
-                f"逐条核对验收标准并给出 {_REVIEW_VERDICTS} 结论",
+                f"逐条核对验收标准；{_REVIEW_GUIDANCE}",
                 VerifyBy.MANUAL,
-                "独立验收记录逐条比对验收标准",
+                f"独立验收记录逐条比对验收标准并含 review_verdict={_REVIEW_VERDICTS}",
             ),
         ),
         TemplateNode(
@@ -154,8 +157,8 @@ def build_triangle_body() -> TemplateBody:
         TemplateRole(
             placeholder=_ROLE_CHECKER,
             description=(
-                "独立评审，checker ≠ doer（评审者不得是实现者）；评审结论用 "
-                f"{_REVIEW_VERDICTS} 话术承载（FR-7.5 结论枚举归 M6）。"
+                "独立评审，checker ≠ doer（评审者不得是实现者）；"
+                f"{_REVIEW_GUIDANCE}。"
             ),
         ),
         TemplateRole(
@@ -166,6 +169,6 @@ def build_triangle_body() -> TemplateBody:
     briefing = (
         "本频道由「工程三角」模板实例化：产品负责人框定需求 → 评审门把关 → 实现工程师立契约并 "
         "TDD 实现 → 评审工程师独立验收 → 人类终审。评审与实现默认异 runtime 互审（checker ≠ "
-        f"doer）；评审结论用 {_REVIEW_VERDICTS} 话术承载。"
+        f"doer）；评审门与独立验收均须{_REVIEW_GUIDANCE}。"
     )
     return TemplateBody(nodes=nodes, edges=edges, roles=roles, briefing=briefing)

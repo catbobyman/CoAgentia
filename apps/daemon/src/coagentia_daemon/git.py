@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Literal
 
 from coagentia_contracts.daemon import (
+    DiffFile,
+    DiffPayload,
+    GitDiffQuery,
     WorktreeCleanupData,
     WorktreeEnsureData,
     WorktreeMergeData,
@@ -28,6 +31,8 @@ from coagentia_contracts.daemon import (
 from coagentia_daemon.paths import DataPaths
 
 GIT_TIMEOUT_SEC = 60.0
+DIFF_MAX_FILES = 200
+DIFF_MAX_PATCH_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +60,33 @@ class WorktreeSafetyError(RuntimeError):
 ProcessRunner = Callable[[Sequence[str], float], Awaitable[GitResult]]
 
 
+async def _await_uninterruptibly(awaitable: Awaitable[None]) -> None:
+    """完成 Git 恢复临界区；调用方随后重抛最初的 CancelledError。"""
+    cleanup = asyncio.ensure_future(awaitable)
+    current = asyncio.current_task()
+    if current is not None:
+        while current.cancelling():
+            current.uncancel()
+    while not cleanup.done():
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            if current is not None:
+                while current.cancelling():
+                    current.uncancel()
+    cleanup.result()
+
+
+async def _terminate_and_drain(
+    proc: asyncio.subprocess.Process,
+    communication: asyncio.Task[tuple[bytes, bytes]],
+) -> None:
+    await _kill_process_tree(proc)
+    out_raw, err_raw = await communication
+    out_raw.decode("utf-8", errors="replace")
+    err_raw.decode("utf-8", errors="replace")
+
+
 async def run_process(argv: Sequence[str], timeout_sec: float = GIT_TIMEOUT_SEC) -> GitResult:
     """直启短命令；超时只终止本次启动的进程树。"""
     args = tuple(str(arg) for arg in argv)
@@ -68,11 +100,24 @@ async def run_process(argv: Sequence[str], timeout_sec: float = GIT_TIMEOUT_SEC)
         stderr=asyncio.subprocess.PIPE,
         env=env,
     )
+    communication = asyncio.create_task(proc.communicate())
     try:
-        out_raw, err_raw = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        out_raw, err_raw = await asyncio.wait_for(
+            asyncio.shield(communication), timeout=timeout_sec
+        )
     except TimeoutError as exc:
-        await _kill_process_tree(proc)
-        raise TimeoutError(f"子进程超时（{timeout_sec:g}s）：{args[0]}") from exc
+        timeout_error = TimeoutError(f"子进程超时（{timeout_sec:g}s）：{args[0]}")
+        try:
+            await _terminate_and_drain(proc, communication)
+        except Exception as cleanup_error:
+            timeout_error.add_note(f"子进程超时清理失败：{cleanup_error!r}")
+        raise timeout_error from exc
+    except asyncio.CancelledError as cancelled:
+        try:
+            await _await_uninterruptibly(_terminate_and_drain(proc, communication))
+        except Exception as cleanup_error:
+            cancelled.add_note(f"子进程取消清理失败：{cleanup_error!r}")
+        raise
     return GitResult(
         argv=args,
         returncode=proc.returncode or 0,
@@ -143,6 +188,20 @@ class _WorktreeEntry:
     path: Path
     branch: str | None
     locked: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _DiffMeta:
+    path: str
+    status: Literal["added", "modified", "deleted", "renamed"]
+    old_path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _DiffCount:
+    additions: int
+    deletions: int
+    binary: bool
 
 
 class GitWorktreeManager:
@@ -303,17 +362,17 @@ class GitWorktreeManager:
                 raise GitCommandError(abort, "恢复上次未完成 merge 时 abort 失败")
             if (await self._git(repo, "rev-parse", "HEAD")).stdout.strip() != main_head:
                 raise WorktreeSafetyError("恢复上次未完成 merge 后主干 HEAD 改变")
-            if not conflict_files:
-                raise WorktreeSafetyError("已恢复未完成 merge，但未检测到内容冲突")
-            status = _status(
-                data.task_id,
-                "conflicted",
-                data.branch,
-                target,
-                conflict_files=conflict_files,
-            )
-            self._remember(data.task_id, repo, status)
-            return WorktreeOperation(True, status)
+            if conflict_files:
+                status = _status(
+                    data.task_id,
+                    "conflicted",
+                    data.branch,
+                    target,
+                    conflict_files=conflict_files,
+                )
+                self._remember(data.task_id, repo, status)
+                return WorktreeOperation(True, status)
+            # clean merge 在 commit 前崩溃：abort 回到前态后，同一次重放继续执行。
 
         ancestor = await self._git(
             repo, "merge-base", "--is-ancestor", data.branch, "HEAD", check=False
@@ -337,16 +396,35 @@ class GitWorktreeManager:
         before_status = (
             await self._git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
         ).stdout
-        result = await self._git(
-            repo,
-            "merge",
-            "--no-ff",
-            "-m",
-            data.message,
-            "--",
-            data.branch,
-            check=False,
-        )
+        if before_status:
+            raise WorktreeSafetyError("主工作区存在未提交更改，拒绝 merge")
+        try:
+            result = await self._git(
+                repo,
+                "merge",
+                "--no-ff",
+                "-m",
+                data.message,
+                "--",
+                data.branch,
+                check=False,
+            )
+        except asyncio.CancelledError as interrupted:
+            try:
+                await _await_uninterruptibly(
+                    self._restore_cancelled_merge(repo, main_head, before_status)
+                )
+            except Exception as recovery_error:
+                interrupted.add_note(f"merge 中断恢复失败：{recovery_error!r}")
+            raise
+        except TimeoutError as interrupted:
+            try:
+                await asyncio.shield(
+                    self._restore_cancelled_merge(repo, main_head, before_status)
+                )
+            except Exception as recovery_error:
+                interrupted.add_note(f"merge 超时恢复失败：{recovery_error!r}")
+            raise
         if result.returncode == 0:
             merge_commit = (await self._git(repo, "rev-parse", "HEAD")).stdout.strip()
             parents = (
@@ -392,6 +470,127 @@ class GitWorktreeManager:
         )
         self._remember(data.task_id, repo, status)
         return WorktreeOperation(True, status)
+
+    async def _restore_cancelled_merge(
+        self, repo: Path, main_head: str, before_status: str
+    ) -> None:
+        merge_head = await self._git(
+            repo, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False
+        )
+        if merge_head.returncode == 0:
+            restored = await self._git(repo, "merge", "--abort", check=False)
+        else:
+            restored = await self._git(repo, "reset", "--hard", main_head, check=False)
+        if restored.returncode != 0:
+            raise GitCommandError(restored, "取消 merge 后恢复主工作区失败")
+        restored_head = (await self._git(repo, "rev-parse", "HEAD")).stdout.strip()
+        restored_status = (
+            await self._git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+        ).stdout
+        if restored_head != main_head or restored_status != before_status:
+            raise WorktreeSafetyError("取消 merge 后主工作区未恢复到合并前状态")
+
+    async def diff(
+        self,
+        data: GitDiffQuery,
+        *,
+        max_files: int = DIFF_MAX_FILES,
+        max_patch_bytes: int = DIFF_MAX_PATCH_BYTES,
+    ) -> DiffPayload:
+        """读取任务分支相对主干的逐文件 diff（契约 D §6）。"""
+        if max_files < 0 or max_patch_bytes < 0:
+            raise ValueError("Diff 截断上限不得为负数")
+        repo = await self._validate_repo(data.repo_path)
+        branch = f"coagentia/task-{data.task_id}"
+        await self._validate_branch(repo, branch)
+        target = self.paths.worktree_path(data.project_id, data.task_id).resolve()
+        self._assert_managed_target(target, data.task_id)
+        registered = _entry_at(await self._worktree_entries(repo), target)
+        if registered is not None and _short_branch(registered.branch) != branch:
+            raise WorktreeSafetyError("任务 worktree 登记分支与约定不一致")
+
+        if data.base is None:
+            base_commit = (await self._git(repo, "rev-parse", "HEAD")).stdout.strip()
+            branch_name = (await self._git(repo, "branch", "--show-current")).stdout.strip()
+            base_ref = branch_name or base_commit
+        else:
+            base_ref = data.base
+            base_commit = await self._resolve_commit(repo, data.base)
+        head_ref = branch
+        head_commit = await self._resolve_commit(repo, f"refs/heads/{branch}")
+
+        name_status = await self._git(
+            repo,
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            "--no-ext-diff",
+            base_commit,
+            head_commit,
+            "--",
+        )
+        numstat = await self._git(
+            repo,
+            "diff",
+            "--numstat",
+            "-z",
+            "--find-renames",
+            "--no-ext-diff",
+            base_commit,
+            head_commit,
+            "--",
+        )
+        metadata = _parse_name_status_z(name_status.stdout)
+        counts = _parse_numstat_z(numstat.stdout)
+        total_additions = sum(item.additions for item in counts.values())
+        total_deletions = sum(item.deletions for item in counts.values())
+
+        files: list[DiffFile] = []
+        for item in metadata[:max_files]:
+            key = (item.old_path, item.path)
+            count = counts.get(key)
+            if count is None:
+                raise WorktreeSafetyError(f"Diff 元数据与 numstat 不一致：{item.path}")
+            patch = ""
+            patch_truncated = False
+            if not count.binary:
+                pathspecs = [item.path]
+                if item.old_path is not None:
+                    pathspecs.insert(0, item.old_path)
+                patch_result = await self._git(
+                    repo,
+                    "diff",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "--find-renames",
+                    base_commit,
+                    head_commit,
+                    "--",
+                    *pathspecs,
+                )
+                patch, patch_truncated = _truncate_utf8(
+                    patch_result.stdout, max_patch_bytes
+                )
+            files.append(
+                DiffFile(
+                    path=item.path,
+                    status=item.status,
+                    old_path=item.old_path,
+                    additions=count.additions,
+                    deletions=count.deletions,
+                    patch=patch,
+                    patch_truncated=patch_truncated,
+                )
+            )
+        return DiffPayload(
+            base_ref=base_ref,
+            head_ref=head_ref,
+            files=files,
+            total_additions=total_additions,
+            total_deletions=total_deletions,
+            files_truncated=len(metadata) > max_files,
+        )
 
     async def _git(
         self,
@@ -457,6 +656,19 @@ class GitWorktreeManager:
             if len(parts) >= 3 and branch_head in parts[2:]:
                 return parts[0]
         return None
+
+    async def _resolve_commit(self, repo: Path, ref: str) -> str:
+        result = await self._git(
+            repo,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            f"{ref}^{{commit}}",
+            check=False,
+        )
+        if result.returncode != 0:
+            raise GitCommandError(result, f"Diff ref 不存在：{ref}")
+        return result.stdout.strip()
 
     def _task_candidates(self, task_id: str) -> list[Path]:
         if not self.paths.worktrees_dir.is_dir():
@@ -541,6 +753,83 @@ def _short_branch(branch_ref: str | None) -> str | None:
     return branch_ref[len(prefix) :] if branch_ref.startswith(prefix) else branch_ref
 
 
+def _parse_name_status_z(
+    raw: str,
+) -> list[_DiffMeta]:
+    tokens = raw.split("\0")
+    if tokens and tokens[-1] == "":
+        tokens.pop()
+    result: list[_DiffMeta] = []
+    index = 0
+    while index < len(tokens):
+        code = tokens[index]
+        index += 1
+        if not code:
+            raise WorktreeSafetyError("git diff --name-status 出现空状态")
+        kind = code[0]
+        if kind == "R":
+            if index + 1 >= len(tokens):
+                raise WorktreeSafetyError("git diff rename 记录不完整")
+            old_path, path = tokens[index], tokens[index + 1]
+            index += 2
+            result.append(_DiffMeta(path=path, old_path=old_path, status="renamed"))
+            continue
+        if index >= len(tokens):
+            raise WorktreeSafetyError("git diff name-status 记录不完整")
+        path = tokens[index]
+        index += 1
+        status: Literal["added", "modified", "deleted", "renamed"]
+        if kind == "A":
+            status = "added"
+        elif kind == "D":
+            status = "deleted"
+        elif kind in {"M", "T"}:
+            status = "modified"
+        else:
+            raise WorktreeSafetyError(f"不支持的 git diff 状态：{code}")
+        result.append(_DiffMeta(path=path, status=status))
+    return result
+
+
+def _parse_numstat_z(raw: str) -> dict[tuple[str | None, str], _DiffCount]:
+    tokens = raw.split("\0")
+    if tokens and tokens[-1] == "":
+        tokens.pop()
+    result: dict[tuple[str | None, str], _DiffCount] = {}
+    index = 0
+    while index < len(tokens):
+        fields = tokens[index].split("\t", 2)
+        index += 1
+        if len(fields) != 3:
+            raise WorktreeSafetyError("git diff --numstat 记录不完整")
+        additions_raw, deletions_raw, path = fields
+        old_path: str | None = None
+        if path == "":
+            if index + 1 >= len(tokens):
+                raise WorktreeSafetyError("git diff rename numstat 记录不完整")
+            old_path, path = tokens[index], tokens[index + 1]
+            index += 2
+        binary = additions_raw == "-" or deletions_raw == "-"
+        try:
+            additions = 0 if binary else int(additions_raw)
+            deletions = 0 if binary else int(deletions_raw)
+        except ValueError as exc:
+            raise WorktreeSafetyError("git diff numstat 计数不是整数") from exc
+        result[(old_path, path)] = _DiffCount(
+            additions=additions,
+            deletions=deletions,
+            binary=binary,
+        )
+    return result
+
+
+def _truncate_utf8(value: str, max_bytes: int) -> tuple[str, bool]:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value, False
+    return encoded[:max_bytes].decode("utf-8", errors="ignore"), True
+
+
 def _lexists(path: Path) -> bool:
     return os.path.lexists(path)
 
@@ -559,6 +848,8 @@ def _remove_managed_tree(path: Path) -> None:
 
 
 __all__ = [
+    "DIFF_MAX_FILES",
+    "DIFF_MAX_PATCH_BYTES",
     "GIT_TIMEOUT_SEC",
     "GitCommandError",
     "GitResult",

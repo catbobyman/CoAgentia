@@ -10,6 +10,7 @@ import type { ChannelPatch, ChannelPublic, NotificationMode } from '@coagentia/c
 import { usePatchChannel, usePutNotificationSetting } from '../data/queries';
 import { useToast } from './Toast';
 import { ApiError } from '../api';
+import { ProjectSettingsSection } from './ProjectSettingsSection';
 import './channel-settings.css';
 
 // 数字列 → 输入串（null/undefined = 继承工作区默认 → 空串）。
@@ -29,10 +30,11 @@ const NOTIFY_OPTS: { mode: NotificationMode; label: string; hint: string }[] = [
   { mode: 'mute', label: '静音', hint: '不点亮徽标、不推送（未读事实仍保留）' },
 ];
 
-export function ChannelSettingsModal({ channel, meId, currentMode, onClose }: {
+export function ChannelSettingsModal({ channel, meId, currentMode, canManageProjects = true, onClose }: {
   channel: ChannelPublic;
   meId: string | undefined;
   currentMode: NotificationMode;
+  canManageProjects?: boolean;
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -151,6 +153,10 @@ export function ChannelSettingsModal({ channel, meId, currentMode, onClose }: {
               </div>
             </div>
           </div>
+        )}
+
+        {!isDm && (
+          <ProjectSettingsSection channelId={channel.id} canManage={canManageProjects} />
         )}
 
         {/* 提醒阈值 */}

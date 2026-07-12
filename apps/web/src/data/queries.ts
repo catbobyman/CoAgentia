@@ -12,6 +12,8 @@ import type {
   MessagePublic,
   NotificationMode,
   PresenceEntry,
+  ProjectCreate,
+  ProjectPatch,
   ReadPositionPublic,
   TaskPublic,
   TemplateCreate,
@@ -220,6 +222,14 @@ export const useTaskDetail = (taskId: string | undefined) =>
     enabled: !!taskId,
   });
 
+export const useTaskDiff = (taskId: string | undefined, enabled = true) =>
+  useQuery({
+    queryKey: qk.taskDiff(taskId ?? '_'),
+    queryFn: () => api.taskDiff(taskId!),
+    enabled: !!taskId && enabled,
+    retry: false,
+  });
+
 export const useChannelFiles = (channelId: string | undefined) =>
   useQuery({
     queryKey: qk.channelFiles(channelId ?? '_'),
@@ -234,6 +244,55 @@ export const useCanvasSnapshot = (channelId: string | undefined) =>
     queryFn: () => api.canvasSnapshot(channelId!),
     enabled: !!channelId,
   });
+
+// ---- M6a Project 工作区级读写。绑定/解绑后 ProjectPublic.channel_ids 是唯一收敛读面。
+export const useProjects = (enabled = true) =>
+  useQuery({ queryKey: qk.projects(), queryFn: () => api.projects(), enabled });
+
+function useProjectMutation<A>(call: (arg: A) => Promise<unknown>, success: string) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: call,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.projects() });
+      toast.push(success, { tone: 'success' });
+    },
+    onError: (e: unknown) =>
+      toast.push(e instanceof ApiError ? e.message : 'Project 操作失败', { tone: 'error' }),
+  });
+}
+
+export const useCreateProject = () =>
+  useProjectMutation<ProjectCreate>((body) => api.createProject(body), 'Project 已创建');
+export const usePatchProject = () =>
+  useProjectMutation<{ projectId: string; patch: ProjectPatch }>(
+    ({ projectId, patch }) => api.patchProject(projectId, patch),
+    'Project 已更新',
+  );
+export const useDeleteProject = () =>
+  useProjectMutation<string>((projectId) => api.deleteProject(projectId), 'Project 已删除');
+export const useBindProject = () =>
+  useProjectMutation<{ channelId: string; projectId: string }>(
+    ({ channelId, projectId }) => api.bindProject(channelId, projectId),
+    'Project 已绑定',
+  );
+export const useUnbindProject = () =>
+  useProjectMutation<{ channelId: string; projectId: string }>(
+    ({ channelId, projectId }) => api.unbindProject(channelId, projectId),
+    'Project 已解除绑定',
+  );
+
+export const useRetryCanvasNode = (channelId: string) => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (nodeId: string) => api.retryCanvasNode(nodeId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.canvas(channelId) }),
+    onError: (e: unknown) =>
+      toast.push(e instanceof ApiError ? e.message : '系统节点重试失败', { tone: 'error' }),
+  });
+};
 
 // ---- M4b HeldDraft(被扣草稿,B §4.14)。列表 GET 现行被扣(默认活动态 held/reevaluating);三键写路径不做乐观更新,
 // 靠成功响应体 held_draft(或 409 HELD_DRAFT_RESOLVED 的 error.details.held_draft)按 id 就地替换缓存,

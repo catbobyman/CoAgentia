@@ -96,6 +96,16 @@ body { background: var(--bg); font-family: var(--font-sans); color: var(--text);
 
 .sysmsg { border-left: 3px solid var(--warning); padding: 2px 0 2px 12px; margin: 2px 0 2px 36px; font-size: 13px; color: var(--text-secondary); max-width: 560px; }
 .sysmsg .sys { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-right: 8px; }
+.system-entry > .taskchip { margin-left: 36px; }
+.conflict-task-card { max-width: 560px; margin: 6px 0 8px 36px; border: 1px solid var(--danger); border-radius: var(--radius-s); background: var(--surface-2); overflow: hidden; }
+.conflict-title { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--danger); font-size: 12px; font-weight: 500; border-bottom: 1px solid var(--border); }
+.conflict-title svg.lucide { width: 14px; height: 14px; }
+.conflict-task-card ul { list-style: none; padding: 6px 10px; }
+.conflict-task-card li { font-family: var(--font-mono); font-size: 11px; line-height: 1.7; color: var(--text-secondary); overflow-wrap: anywhere; }
+.conflict-task-card li::before { content: "- "; color: var(--danger); }
+.conflict-task-card button { width: 100%; min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 10px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text); font-size: 12px; cursor: pointer; text-align: left; }
+.conflict-task-card button:hover { background: var(--surface-hover); }
+.conflict-task-card button svg.lucide { width: 13px; height: 13px; flex: none; }
 
 .unreadline { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
 .unreadline .ln { flex: 1; height: 1px; background: var(--danger); }
@@ -196,6 +206,12 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .contract .chd { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .contract .chd b { font-size: 13px; font-weight: 500; color: var(--text); }
 .contract .chd .m { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); flex: 1; }
+.verdict-badge { font-family: var(--font-mono); font-size: 10px; padding: 2px 7px; border: 1px solid var(--border-strong); border-radius: var(--radius-s); color: var(--text-secondary); flex: none; }
+.verdict-badge[data-verdict="pass"] { border-color: var(--success); color: var(--success); }
+.verdict-badge[data-verdict="downgrade"] { border-color: var(--warning); color: var(--warning); }
+.verdict-badge[data-verdict="send_back"], .verdict-badge[data-verdict="needs_human"] { border-color: var(--danger); color: var(--danger); }
+.needs-human-banner { display: flex; align-items: center; gap: 7px; padding: 8px 10px; color: var(--danger); background: var(--danger-bg); border-bottom: 1px solid var(--danger); font-size: 12px; }
+.needs-human-banner svg.lucide { width: 14px; height: 14px; flex: none; }
 .contract .goal { padding: 10px 12px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
 .contract .goal .lb, .contract .aclb { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 4px; }
 .contract .aclb { padding: 10px 12px 0; }

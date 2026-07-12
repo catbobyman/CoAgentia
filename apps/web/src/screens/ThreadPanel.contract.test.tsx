@@ -108,9 +108,9 @@ const HANDOFF_ACTIVE: TaskContractPublic = {
   workspace_id: 'ws_1',
 };
 
-function renderPanel(contracts: TaskContractPublic[]) {
+function renderPanel(contracts: TaskContractPublic[], detailOver: Partial<TaskDetail> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  const detail: TaskDetail = { task: TASK, usage: {}, contracts };
+  const detail: TaskDetail = { task: TASK, usage: {}, contracts, ...detailOver };
   qc.setQueryData(qk.taskDetail(TASK.id), detail);
   qc.setQueryData(qk.thread(TASK.root_message_id), []);
 
@@ -186,5 +186,35 @@ describe('ThreadPanel 契约卡(M3 B-M3-1 真渲染)', () => {
     expect(screen.getByText('@Pat · TaskHandoff')).toBeInTheDocument();
     // owner(human)不该出现在起草候选里。
     expect(screen.queryByText(/@Memcyo/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['pass', '通过'],
+    ['downgrade', '降级通过'],
+    ['send_back', '退回重做'],
+    ['needs_human', '需要人类'],
+  ] as const)('review_verdict=%s 显示结构化徽标', (verdict, label) => {
+    renderPanel([{
+      ...HANDOFF_ACTIVE,
+      id: `handoff_${verdict}`,
+      body: { ...HANDOFF_BODY, review_verdict: verdict },
+    }]);
+    expect(screen.getByText(label)).toHaveAttribute('data-verdict', verdict);
+    if (verdict === 'needs_human') {
+      expect(screen.getByRole('alert')).toHaveTextContent('需要人类介入');
+    }
+  });
+
+  it('TaskDetail.worktree 渲染交付徽标与 Diff 入口', () => {
+    renderPanel([], {
+      worktree: {
+        id: 'wt_1', workspace_id: 'ws_1', project_id: 'project_1', task_id: TASK.id,
+        branch: 'coagentia/task-task_1', path: 'D:/worktrees/project_1/task_1', status: 'active',
+        created_at: '2026-07-11T00:00:00Z',
+      },
+    });
+    expect(screen.getByLabelText('交付工作树')).toHaveTextContent('coagentia/task-task_1');
+    expect(screen.getByText('active')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Diff/ })).toBeInTheDocument();
   });
 });

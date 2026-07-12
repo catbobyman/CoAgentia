@@ -132,12 +132,14 @@
   flex-direction: column;
   gap: 6px;
   transition: box-shadow var(--t-mid), opacity var(--t-mid), border-color var(--t-mid);
+  min-height: 100px;
 }
 .snode.sel {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), var(--glow-accent);
 }
 .snode.blocked { opacity: .75; }
+.snode[data-status="failed"] { border-bottom-color: var(--danger); }
 .snode .srow { display: flex; align-items: center; gap: 10px; }
 .snode .diamond {
   width: 26px; height: 26px; flex: none;
@@ -152,6 +154,11 @@
 .snode .sst { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
 .snode .blk { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--warning); }
 .snode .blk svg { width: 12px; height: 12px; flex: none; }
+.snode .sactions { display: flex; justify-content: flex-end; gap: 4px; border-top: 1px solid var(--border); padding-top: 5px; }
+.snode .sactions button { width: 24px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-s); color: var(--text-secondary); background: transparent; cursor: pointer; }
+.snode .sactions button:hover:not(:disabled) { color: var(--accent); background: var(--surface-hover); }
+.snode .sactions button:disabled { opacity: .45; cursor: default; }
+.snode .sactions button svg.lucide { width: 13px; height: 13px; }
 
 /* 新建节点弹层里 verify 行:方式下拉 + verify_ref 输入并排 */
 .cvby { display: flex; gap: 8px; align-items: stretch; }
@@ -195,3 +202,26 @@
   outline: none;
 }
 .nodemodal .nmta:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--focus-ring); }
+.code-task-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; margin-bottom: 14px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.code-task-row > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.code-task-row b { font-size: 13px; font-weight: 500; }
+.code-task-row span { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.code-task-row .cs-toggle { width: 38px; height: 22px; border-radius: var(--radius-round); background: var(--surface-1); border: 1px solid var(--border-strong); position: relative; cursor: pointer; flex: none; padding: 0; }
+.code-task-row .cs-toggle .knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: var(--radius-round); background: var(--text-muted); transition: all var(--t-fast) var(--ease); }
+.code-task-row .cs-toggle.on { background: var(--accent-subtle); border-color: var(--accent); }
+.code-task-row .cs-toggle.on .knob { left: 18px; background: var(--accent); }
+.nodemodal .project-pick { width: 100%; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); color: var(--text); padding: 0 8px; }
+.nodemodal .project-note { margin: 6px 0 0; color: var(--warning); }
+
+.system-node-modal { width: 440px; }
+.system-action-seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border-strong); border-radius: var(--radius-s); overflow: hidden; margin-bottom: 16px; }
+.system-action-seg button { height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; }
+.system-action-seg button + button { border-left: 1px solid var(--border-strong); }
+.system-action-seg button.active { color: var(--accent); background: var(--accent-subtle); }
+.system-action-seg button svg.lucide { width: 15px; height: 15px; }
+.system-output-modal { width: min(680px, calc(100vw - 32px)); }
+.system-output-modal pre { max-height: 50dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: #0D0E0C; border: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; line-height: 1.6; color: var(--text-secondary); }
+
+@media (max-width: 720px) {
+  .canvasbar { height: auto; min-height: 44px; flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
+}

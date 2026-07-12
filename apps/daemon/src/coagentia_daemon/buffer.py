@@ -1,16 +1,21 @@
 """遥测缓冲（契约 D §7 缓冲纪律 / §9.1 daemon/buffer/）：需 ack 类上报的离线落盘 + 重传。
 
-两条独立缓冲：
+三条独立缓冲：
 - diagnostics.jsonl：重复可容忍（铁律 5），无客户端主键，ack 后按已发条数移除；
 - usage.jsonl：以适配器 ULID 主键，exactly-once 去重根基；ack 后按 id 集合移除。
+- check-finished.jsonl：以 run_id 自然键去重；server 落终态并 ack 后移除。
 
 环形上限（constants.BUFFER_*）：溢出丢最旧并追加一条 daemon.buffer_overflow 诊断（丢弃计数可见）。
-落盘跨 daemon 重启：append 增量写、ack/溢出重写全量。重传**不虚增**——ULID 落盘后不再生成。
+落盘跨 daemon 重启：每次变更以同目录临时文件原子重写。重传**不虚增**——ULID 落盘后不再生成。
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from coagentia_contracts.constants import (
@@ -19,6 +24,7 @@ from coagentia_contracts.constants import (
 )
 from coagentia_contracts.daemon import (
     BufferedCounts,
+    CheckFinishedData,
     DiagnosticEventIn,
     TokenUsageEventIn,
 )
@@ -30,7 +36,7 @@ _OVERFLOW_TYPE = "daemon.buffer_overflow"
 
 
 class TelemetryBuffer:
-    """diagnostics / usage 双缓冲，JSONL 落盘（契约 D §7/§9.1）。"""
+    """diagnostics / usage / check.finished 三缓冲 JSONL 落盘。"""
 
     def __init__(
         self,
@@ -44,6 +50,7 @@ class TelemetryBuffer:
         self._usage_max = usage_max
         self._diag: list[dict[str, Any]] = []
         self._usage: list[dict[str, Any]] = []
+        self._checks: list[dict[str, Any]] = []
         self._dropped_diag = 0
         self._dropped_usage = 0
         self._load()
@@ -51,23 +58,31 @@ class TelemetryBuffer:
     # ---------------------------------------------------------------- 落盘装载/重写
 
     @property
-    def _diag_path(self) -> Any:
+    def _diag_path(self) -> Path:
         return self._paths.buffer_dir / "diagnostics.jsonl"
 
     @property
-    def _usage_path(self) -> Any:
+    def _usage_path(self) -> Path:
         return self._paths.buffer_dir / "usage.jsonl"
+
+    @property
+    def _check_path(self) -> Path:
+        return self._paths.buffer_dir / "check-finished.jsonl"
 
     def _load(self) -> None:
         self._paths.buffer_dir.mkdir(parents=True, exist_ok=True)
         self._diag = _read_jsonl(self._diag_path)
         self._usage = _read_jsonl(self._usage_path)
+        self._checks = _read_jsonl(self._check_path)
 
     def _rewrite_diag(self) -> None:
         _write_jsonl(self._diag_path, self._diag)
 
     def _rewrite_usage(self) -> None:
         _write_jsonl(self._usage_path, self._usage)
+
+    def _rewrite_checks(self) -> None:
+        _write_jsonl(self._check_path, self._checks)
 
     # ---------------------------------------------------------------- 追加（含溢出处置）
 
@@ -89,6 +104,17 @@ class TelemetryBuffer:
             # usage 溢出计入 diagnostics 缓冲（成本口径尽量不丢，但仍留痕）。
             self._append_overflow_marker("usage", self._dropped_usage)
         self._rewrite_usage()
+
+    def append_check(self, event: CheckFinishedData) -> None:
+        """check.finished 以 run_id 去重落盘；未 ack 前重启仍可原样重传。"""
+        row = event.model_dump(mode="json")
+        for index, current in enumerate(self._checks):
+            if current.get("run_id") == event.run_id:
+                self._checks[index] = row
+                self._rewrite_checks()
+                return
+        self._checks.append(row)
+        self._rewrite_checks()
 
     def _append_overflow_marker(self, buffer_name: str, dropped_total: int) -> None:
         """溢出留痕：追加一条 daemon.buffer_overflow 诊断（不再触发二次溢出判定）。"""
@@ -124,6 +150,20 @@ class TelemetryBuffer:
         self._usage = [e for e in self._usage if e.get("id") not in drop]
         self._rewrite_usage()
 
+    def peek_checks(self, n: int) -> list[CheckFinishedData]:
+        return [CheckFinishedData.model_validate(e) for e in self._checks[:n]]
+
+    def ack_checks(self, run_ids: list[str]) -> None:
+        if not run_ids:
+            return
+        drop = set(run_ids)
+        self._checks = [e for e in self._checks if e.get("run_id") not in drop]
+        self._rewrite_checks()
+
+    def find_check(self, run_id: str) -> CheckFinishedData | None:
+        row = next((e for e in self._checks if e.get("run_id") == run_id), None)
+        return CheckFinishedData.model_validate(row) if row is not None else None
+
     def counts(self) -> BufferedCounts:
         return BufferedCounts(diagnostics=len(self._diag), usage=len(self._usage))
 
@@ -133,8 +173,11 @@ class TelemetryBuffer:
     def has_usage(self) -> bool:
         return bool(self._usage)
 
+    def has_checks(self) -> bool:
+        return bool(self._checks)
 
-def _read_jsonl(path: Any) -> list[dict[str, Any]]:
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     out: list[dict[str, Any]] = []
@@ -149,8 +192,26 @@ def _read_jsonl(path: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _write_jsonl(path: Any, rows: list[dict[str, Any]]) -> None:
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    """先持久化同目录临时文件，再原子替换正式 JSONL。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
+    fd, temp_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
     )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            for row in rows:
+                stream.write(json.dumps(row, ensure_ascii=False) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, path)
+    except BaseException:
+        # fdopen 可能在进入 with 前失败；已关闭 fd 会安全命中 suppress。
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            temp_path.unlink()
+        raise

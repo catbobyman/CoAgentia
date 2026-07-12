@@ -136,6 +136,16 @@
 - **收口基线**：后端 **712 passed / 4 skipped**（672 → +40）、web vitest **175**（142 → +33）、pyright 0、ruff 干净、`pnpm gen` 确定、双侧 build 绿。
 - **M5 里程碑收口**（§9a+§9b 出口清单全绿）；M5-HANDOFF 移入 archive/。**M1–M5 全收口，无待收口里程碑，接续 = M6（未立项）**。
 
+## 13. M6a Project 与交付链（实现波次完成，实机 verify 待执行）
+
+- **契约与补遗**：M6 立项落 A v1.0.7/B v1.4/D v1.0.3；owner 随实现批准三组连带补遗并同步两文档 header/变更记录：A **v1.0.8**（`worktrees.merge_commit`、`ProjectPublic.channel_ids`）+ B **v1.4.1**（Project 精确请求/响应）；B **v1.4.2**（COMPUTER_HAS_PROJECTS，错误码 29，Agent→Project 固定删除门序）；A **v1.0.9** + B **v1.4.3**（TemplateNode 保存/实例化贯通 `writes_code/project_id`）。C v1.0、E v1.4、E2 v1.0.1 零修订。
+- **波 1 地基**（`d564ebf`）：J3-cal 用脚本生成 scratch git repo 完成 win32 worktree/merge/diff/冲突/编码/锁与占用探针 **10/10**，结论归 `scratchpad/GIT-CALIBRATION.md`；J0 contracts/mock/conformance/gen 同步；J1 `0008_m6a` 一次建 projects/channel_projects/worktrees（含 merge_commit）并给 tasks 加两列，从零与 M5 增量升级双路绿。守门 **724/4 skipped + web 175**。
+- **波 2 执行域**（`62939f2`）：J2 Project CRUD/频道绑定/`channel_ids`/repo 校验/Computer 引用门与频道级联；J3 writes_code 激活派生 worktree、ensure/cleanup 幂等、状态回流、对账 #5、keep_days 清理与绝对路径消息注入；模板补遗经 create_node 链原样落任务行，目标频道绑定在副作用前复核。守门 **772/4 skipped + web 175**，独立审计无 High/Medium。
+- **波 3 交付面**（本提交见 HEAD）：J4 daemon `git.diff` + REST 代理 + TaskDetail.worktree，覆盖增删改/重命名/二进制/三级截断/cleaned/404/503/超时；J5 check/merge 自动触发、仅 failed retry、DAG 序 `merge --no-ff`、成功持久 `merge_commit`、冲突任务派回、取消/超时恢复与保留期收敛；J6 review_verdict 四值、needs_human @人类、builtin 话术与中立消息查询；B-M6-1 完成 Project 设置、Diff 卡、系统节点/Retry、verdict、冲突卡及 worktree WS 更新。
+- **审计与界面证据**：并行审计发现的两项 Medium 已闭合：daemon JSONL 改同目录临时文件 `flush+fsync+os.replace`，撕裂/replace 失败可恢复；同物理树 alias cleaned 会在 report/converge 两路径广播 fresh rows，重复 cleaned 不重复 alias。复核后无剩余 High/Medium。B-M6-1 在 1440×900/390×844 屏对照无横向溢出、console 0，三张 `docs/verify/m6a-*.png` **仅是 UI 对照，不是 M6a 真机证据**。
+- **波 3 守门**：后端 **813 passed / 4 skipped**，web **194**，pyright 0、双 tsc、ruff、`pnpm gen` 后零 unstaged diff、web build 全绿。M6-HANDOFF §9a #1–#10/#12 已勾。
+- **明确停点**：依 owner 本轮指令，停在 §9a #11「M6a 真机场景」这一行前；`M6A-EVIDENCE.md` 未创建，实机 verify 与 code-review 均未执行。M6b 的 orchestration/proposals/0009 未触碰。
+
 ## 已失效结论
 
 | 历史表述 | 当前结论 |
@@ -150,12 +160,13 @@
 | `428 passed` + vitest 23 是最新基线 | **M3b 收口后为 `483 passed, 3 skipped` + vitest 76**（M3 里程碑完成） |
 | 接续 = 块 M3b 画布与 gating | M3 里程碑已收口；接续 = M4（已收口，§10+§11） |
 | `483`/`572`/`672 passed` 是最新基线 | **M5 里程碑收口后为 `712 passed, 4 skipped` + vitest 175** |
-| 接续 = M5（模板与向导）/ M5b 待开工 | **M5 里程碑已收口（§12 = PRD M5 出口达成，`bef88eb`）；接续 = M6（未立项）** |
+| 接续 = M5（模板与向导）/ M5b 待开工 | **M5 里程碑已收口（§12 = PRD M5 出口达成，`bef88eb`）；M6 已立项，M6a 实现波次完成并停在真机 verify 前（§13）** |
+| `712`/`772 passed` + vitest `175` 是最新基线，或 M6a 波 2 待提交 | **M6a 波 3 实现守门后为 `813 passed, 4 skipped` + vitest `194`；波 2 已提交 `62939f2`，当前停在 M6a 实机 verify 前** |
 
 ## 当前接续任务
 
-1. **M6a 波 2 J2/J3 已完成并通过守门（2026-07-11，待波 2 单提交）**：Project CRUD/频道绑定、Computer→Project 引用门、worktree ensure/cleanup/状态回流/对账 #5/keep_days/绝对路径注入均接真。owner 授权补遗 B **v1.4.2**（COMPUTER_HAS_PROJECTS，错误码 29）与 A **v1.0.9**/B **v1.4.3**（TemplateNode 保存/实例化贯通 writes_code/project_id）已同步外部契约 header/变更记录、contracts/mock/生成物与真 server；独立审计无 High/Medium。波 2 全守门 = 后端 **772/4 skipped**、web **175**、typecheck/ruff/gen/build 全绿。
-2. **M6 已立项并完成 M6a 波 1 守门（2026-07-11，`d564ebf`）**：立项契约 A v1.0.7/B v1.4/D v1.0.3 后，开工审计发现 B §12.8/D §7 要求持久 merge_commit 而 A 无落点；owner 授权补遗 A **v1.0.8**（worktrees.merge_commit + ProjectPublic.channel_ids）/ B **v1.4.1**（Project 请求/响应精确形状），header 与变更记录同步。J3-cal scratch git 10/10；J0 contracts/mock/conformance focused 135 绿、gen 二次确定；J1 0008 三表+tasks 两列从零/历史 M5 schema 切片增量双路绿。波 1 全守门 = 后端 **724/4 skipped**、web **175**、typecheck/ruff/gen/build 全绿；C·E·E2 继续零修订/零新工具。
+1. **M6a 波 1–3 实现已完成并通过守门（2026-07-11，本提交见 HEAD）**：J0–J6/B-M6-1 全部完成，后端 **813/4 skipped**、web **194**、typecheck/ruff/gen/build 全绿，独立复核无剩余 High/Medium。下一步只做 scratch repo 真机全链 verify；code-review 另行安排。M6b 未开工。
+2. **M6a 前序实现提交**：`d564ebf` 波 1（git 校准 10/10、契约、0008）→ `62939f2` 波 2（Project/worktree 生命周期与 owner 授权补遗）；其后 `1633ad9` 是独立协作规程文档提交。外部契约当前 A **v1.0.9**/B **v1.4.3**/D **v1.0.3**，C·E·E2 零修订；完整实现与风险记录见 §13。
 3. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。M5-HANDOFF 已移 archive/。
 4. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 5. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。

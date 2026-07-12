@@ -155,6 +155,7 @@ export function ChannelChatScreen({ search, setSearch }: {
             tasks={tasks}
             members={members}
             presence={presenceQ.data ?? []}
+            messages={messages}
             search={search}
             setSearch={setSearch}
           />
@@ -183,6 +184,7 @@ export function ChannelChatScreen({ search, setSearch }: {
           channel={channel}
           meId={me?.id}
           currentMode={notifyModeOf(snap, channel.id)}
+          canManageProjects={me?.role === 'owner' || me?.role === 'admin'}
           onClose={() => setSettingsOpen(false)}
         />
       )}

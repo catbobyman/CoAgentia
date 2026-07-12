@@ -1,10 +1,11 @@
-# CoAgentia 当前交接（M5 收口 · **M6a 波 2 守门全绿**）
+# CoAgentia 当前交接（M5 收口 · **M6a 波 3 实现与守门全绿，实机 verify 待执行**）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-11，**M6a 波 2 J2/J3 已完成，正式守门全绿，待波 2 单提交**。J2 同步 owner 补遗 B **v1.4.2**：新增 COMPUTER_HAS_PROJECTS（错误码 29）并闭合 Computer/Project FK 删除门与频道绑定级联。J3 daemon 全套 **116 passed / 4 skipped**；Project+worktree+gating+canvas+daemon 关键组合 **175 passed / 4 skipped**。owner 批准的模板连带补遗已按 A **v1.0.9** / B **v1.4.3** 落地：保存/实例化贯通 writes_code/project_id，聚焦联跑 **179 passed**、独立审计无 High/Medium。波 2 全量 = 后端 **772 passed / 4 skipped**、web **175**，typecheck/ruff/gen/build 全绿。 |
+| 更新 | 2026-07-11，**M6a 波 1–3 实现均已完成并通过正式守门，按 owner 指令停在「M6a 实机 verify」这一行前**。波 3 完成 J4 Diff、J5 check/merge/retry/冲突派回、J6 verdict/needs_human 与 B-M6-1；merge 成功持久 `worktrees.merge_commit`。两项独立审计 Medium（daemon JSONL 原子落盘、cleaned alias WS 广播）已修复并复核关闭，无剩余 High/Medium。全量 = 后端 **813 passed / 4 skipped**、web **194**，typecheck/ruff/gen/build 全绿。 |
 | 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；M5 任务书已移 archive/ |
-| 一句话状态 | **M1–M5 全收口；M6a 波 1 已提交；波 2 J2/J3 与补遗已全绿，正收口单提交**。下一步按波次进入 J4–J6/B-M6-1；实机 verify 与 code-review 仍未开始。 |
+| 一句话状态 | **M1–M5 全收口；M6a J0–J6/B-M6-1 实现完成，下一步只执行 M6a 真机全链 verify**。verify 与 code-review 均未执行，M6b 未开工。 |
+| 提交链（M6a 实现波次） | `d564ebf` 波 1（J3-cal/J0/J1）→ `62939f2` 波 2（J2/J3+补遗）→ 波 3 本提交（见 HEAD，J4/J5/J6/B-M6-1）；中间 `1633ad9` 是独立协作规程文档提交，不属于实现波次 |
 | 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
 
 ## 1. 当前状态
@@ -12,12 +13,13 @@
 | 项 | 状态 |
 | --- | --- |
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
-| 分支 / HEAD | `main` / `d564ebf M6a wave 1`；波 2 守门全绿待提交 |
+| 分支 / HEAD | `main`；本交接随波 3 单提交，前序实际 HEAD=`1633ad9 docs: establish M6 tri-model collaboration protocol` |
+| 提交链（M6a 实现波次） | `d564ebf` → `62939f2` → 波 3 本提交（见 HEAD）；完整 git 历史在波 2 后另含 `1633ad9` 文档提交 |
 | 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 并行审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
-| 测试基线 | 后端 **772 passed / 4 skipped**（`uv run pytest -q`）· web vitest **175** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定 · web build 绿 |
+| 测试基线 | 后端 **813 passed / 4 skipped**（`uv run pytest -q`）· web vitest **194** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定 · web build 绿 |
 | 契约版本 | A **v1.0.9** · B **v1.4.3** · C **v1.0**（连续零修订至 M6）· D **v1.0.3** · E **v1.4** · **E2 v1.0.1**——B v1.4.2 收 Computer→Project FK 删除门；A v1.0.9/B v1.4.3 收 TemplateNode 与模板实例化交付字段，均为 v1.0.7 连带补遗、非产品意图变更。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
-| 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → **0007 M5（templates + channel_notification_settings）**；**templates 表 M5b 已全 serve**（存为模板/列表/实例化落地批消费），channel_notification_settings 已全 serve |
-| 实机证据 | [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md)（**M5b/M5 出口**：codex 真机 PONG / e2e 12/12 全管道到人类终审 done / 5 前端截图 / console 0 / §5b code-review）· [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)（M5a）；此前各批同目录 |
+| 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → 0007 M5 → **0008 M6a（projects + channel_projects + worktrees + tasks 两列）**；0009 仅属 M6b，尚未创建 |
+| 实机证据 | 最新已收口证据仍为 [M5-EVIDENCE.md](../verify/M5-EVIDENCE.md) 与 [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)。M6a 的 [Project 设置](../verify/m6a-project-settings.png)、[Diff/verdict](../verify/m6a-diff-verdict.png)、[系统节点](../verify/m6a-system-nodes.png) 是 B-M6-1 屏对照夹具，**不是 M6a 真机 verify 证据**；`M6A-EVIDENCE.md` 尚未创建。 |
 
 ## 2. 里程碑总览（详情 = PROJECT-RECORD 对应节）
 
@@ -32,6 +34,7 @@
 | **M4b freshness 与 HeldDraft** | **PRD M4 出口**：held 场景卡片可见+放行 1 分钟交付 / 三键 / G4 超时自愈 / G5 升级喊人（实机 38/38） | **`1052ee6`（§11）** |
 | **M5a 第二 runtime 与配置面** | Codex 适配器真机对话跑通 + 通知设置 mute 门 + cron cadence + 技能白名单 UI + P12 阈值（REST 9/9 + codex PONG） | **`da6833a`** |
 | **M5b 模板与向导** | **PRD M5 出口**：工程三角向导实例化（实现=Codex、评审=Claude）→ briefing 开工 → 全管道到人类终审 done（e2e 12/12 + 5 截图 + code-review 6 CONFIRMED 全修） | **`bef88eb`（本文）** |
+| **M6a Project 与交付链（实现波次）** | Project/worktree/Diff/check/merge/冲突派回/verdict/B-M6-1 已实现；全量守门绿，**真机 verify 与 code-review 待执行** | `d564ebf` → `62939f2` → 波 3 本提交（见 HEAD） |
 
 ## 3. 系统当前能力面（一览）
 
@@ -44,11 +47,11 @@
 - **freshness 护栏与 HeldDraft**（M4b）：**freshness 门**（guard/service.py 判定单源——scope=线程/主流未读、仅 Agent 主体过门、幂等 hit 优先于门；扣草稿建/刷新 held 单活动行 SAVEPOINT 兜并发再扣，202 不落库）；**三键人类干预** / **G4 超时自愈** / **G5 升级喊人** / GC 豁免活动 held 附件；前端 HeldDraftCard。
 - **第二 runtime 与配置面**（M5a）：**Codex 适配器**（`adapters/codex.py` CodexProcess 驱动 codex app-server 长驻 JSON-RPC；`claude_code.py::_new_process` 按 `boot.runtime` 分派、管理器 runtime 无关共用 on_exit 熔断；CODEX_HOME 隔离 + config.toml 注入 MCP + auth.json mtime 新鲜度物化；`probe_codex` 冷探 model/list+skills/list；护栏/任务/契约/usage 对 codex 全语义生效）；**每频道通知设置**（`GET/PUT /channels/{id}/notification-setting` 人类自治/Agent 403/dm 422/**原子 upsert**；mute 门单源 `activity/service.muted_members`，dm/held_escalation 不过门=必达；ChannelsSnapshot 扩字段）；**cron cadence**（`reminders/cron.py`+`cadence.py` 手写 5 段无依赖、Vixie 日∨周并集、validate 可满足性探测拒 impossible、next_after UTC 严格比较兜 DST fold、8 年上限 + 塌缩 next-fire）；**技能白名单 UI**（候选池 = `detected_runtimes[].skills`，claude 扫 `~/.claude/skills/`(跳 symlink)、codex 走 skills/list——两 runtime 均有池）；**频道设置弹窗四组**（P12 阈值收编）+ cron 人读预览 + 通知徽标。
 - **模板与向导**（M5b）：**模板域**（`templates/service.py` 存为模板读画布快照序列化 TemplateBody[仅 task 节点/占位 owner 去重/plan_skeleton 带走/pos 不入/node key `n{idx}`]、`validate_template_body` 单执法点[无环+引用一致]、列表 builtin 置前、`upsert_builtin_templates` 启动幂等；**工程三角 builtin** = `templates/builtin.py` 6 节点线性 DAG[需求框定→评审门→实现契约→TDD 实现→独立验收→人类终审] + 4 角色占位[checker≠doer 话术] + briefing + 每节点 plan_skeleton）；**实例化事务器**（`routes/templates.py` POST instantiate：role_mapping 全覆盖 422 + 未知成员 422 + 无画布 404 全前置于**幂等 reserve-before**[record 先于副作用、req_hash 折 template_id、并发同键不重复落地批]；`templates/service.instantiate_template` 单事务：落地批 kind=tmpl → 逐节点 create_node 全链[`tmpl:<batch_id>:<node_key>` 幂等/分层布局 `_layout_positions`] → 连边[无环兜底+triplet SAVEPOINT] → briefing @映射角色[唤醒] → baseline bump → mark_done；重放 reconstruct 由 `ledger.batch_node_task_ids` 按 seq 保序派生；**blocked-gating 天然生效**——落地边即入 derive_blocked）；**向导三步 B-M5-2**（选模板[卡+DAG 缩略图]→角色映射[同 runtime 互审 warning=`lib/templates.classifyRole` **仅按占位名判定**]→预览→实例化跳画布；`SetupChecklist 003` 接真；幂等键每次提交作废重置 + `crypto.randomUUID` 兜底）。
-- **M6a 交付地基（波 2）**：Project CRUD/频道绑定与 `channel_ids` 派生；Computer 删除按 Agent→Project 固定门序；writes_code 画布任务激活后由 server/daemon 幂等派生短路径 worktree，状态回流、对账 #5、keep_days 清理与绝对路径消息注入已接真；模板保存/实例化按 A v1.0.9/B v1.4.3 原样贯通 `writes_code/project_id` 并在副作用前复核目标频道绑定。
+- **M6a Project 与交付链（波 1–3 实现完成）**：Project CRUD/频道绑定与 `channel_ids` 派生；Computer 删除按 Agent→Project 固定门序；writes_code 任务激活后幂等派生短路径 worktree，状态回流、对账 #5、keep_days 清理、绝对路径消息注入及模板字段贯通；daemon `git.diff` 与 REST Diff 代理；check/merge 系统节点自动触发、仅 failed retry、DAG 序 `merge --no-ff`、成功持久 `merge_commit`、冲突自动建任务派回；review_verdict 四值与 needs_human @人类；前端 Project/Diff/系统节点/verdict/冲突卡及 `worktree.updated` 实时面。真机全链尚待 verify。
 
-## 4. 接续 = M6（**已立项 2026-07-11，M6a 波 2 收口中**）
+## 4. 接续 = M6（**M6a 实现波次完成，停在实机 verify 前**）
 
-**任务书 = [M6-HANDOFF.md](M6-HANDOFF.md)**。块 a 波 1：**J3-cal/J0/J1 ✅（`d564ebf`）**；波 2：**J2/J3 ✅，A v1.0.9/B v1.4.3 模板补遗已消费，正式守门全绿，待单提交**。下一步只进块 a 波 3（J4/J5/J6/B-M6-1）；拆解流程的实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`（M6b 尚未开工，勿动 orchestration/）。
+**任务书 = [M6-HANDOFF.md](M6-HANDOFF.md)**。块 a 波 1：**J3-cal/J0/J1 ✅（`d564ebf`）**；波 2：**J2/J3+授权补遗 ✅（`62939f2`）**；波 3：**J4/J5/J6/B-M6-1 ✅（本提交见 HEAD）**。§9a #1–#10/#12 已勾，#11 真机场景留空。下一步只做 M6a scratch repo 真机全链与证据归档；code-review 另行安排。拆解流程的实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`，**M6b 尚未开工，勿动 orchestration/、proposals 或 0009**。
 
 ## 5. M5 挂账（非阻塞，勿当漏项重新发明）
 
@@ -62,9 +65,8 @@
 | 凭证物化目录权限 | codex CODEX_HOME 父目录未 chmod 0700（NFR5 单机单用户信任模型内，多用户非目标 PRD §9） | 已接受 |
 | cron 描述文案双处 | `daemon/mcp.py` 与 server 校验两处 cron 描述，未来语法扩展易漂移 | 顺手小批 |
 | ChannelsSnapshot 通知行无分页 | 本人非默认通知行全量返回（单人类频道数小） | 观察项 |
-| held 系统消息骨架 / human_members DRY | 承接 M4b #8/#9（非 bug） | 顺手小批 |
+| held 系统消息骨架 / human_members DRY | J6 已抽中立 `messages/service.py` 供 guard 与 needs_human 共用；hub 内局部查询仍是性能/清理观察项，held 消息骨架未扩界 | 部分收敛/观察项 |
 | hub usage.batch N+1 / search 双扫 | 承接 M2 挂账（性能小批） | 独立小批 |
-| held 系统消息骨架 / human_members 跨模块重复（M4b 评审 #8/#9） | DRY 债非 bug，消除需抽中立共享模块触及承重 reminder/silence 路径 | 顺手小批 |
 | held 卡「重评估中…」显示边角 | 升级态 held 行倒计时显示（正常 G4 翻转才准） | 观察项 |
 | `task #n` refs 无 UI 消费面 / P11·P3 看板双实现抽 `<TaskBoard>` | M2 观察 | 顺手评估 |
 | messages_fts 键于 rowid（VACUUM 失同步）/ OAuth 冷启动复验 | M3/M1 结构性观察 | 观察项/择机 |
@@ -81,8 +83,8 @@
 ## 7. 守门命令（全绿才算收口）
 
 ```
-uv run pytest -q                    # 712 passed / 4 skipped 基线，零回归
-pnpm -F @coagentia/web test         # vitest 175 基线，只增不减
+uv run pytest -q                    # 当前 813 passed / 4 skipped；M6 起点 712/4
+pnpm -F @coagentia/web test         # 当前 vitest 194；M6 起点 175
 pnpm typecheck                      # 含 pyright（0 错，新债即红）+ 双 tsc
 uv run ruff check .
 pnpm gen                            # 后 git diff 应为空（生成物确定性）
@@ -96,4 +98,5 @@ pnpm -F @coagentia/web build
 - **迁移纪律**：新迁移按批次显式点名建表（勿 metadata.create_all 全集——坑1）；给既有表加索引/约束须 `if_not_exists`。
 - **纪律 8（图算法单源）**：改动无环/blocked 语义必须同步 `kernel/graph.py` + `lib/graph.ts` + `golden/graph.json` 三处，两侧靠同一判例集守门。
 - **gating 语义要点**（M3b code-review 教训）：「gating 作用于投递层」= 唤醒触发 **和** 投递批双面——held 消息须从投递批剔除且 read_position 水位不越过它，否则被兄弟消息顺带消费；M4 freshness/held 若挂同一投递层，沿用 `_filter_gated` 范式。
+- **M6a 波 3 剩余风险（非当前阻断）**：TerminateProcess/断电仍可能越过进程内 merge/check 恢复窗口，尚无持久 in-flight journal/Job Object；未做完整 server+Hub 销毁重建的重启测试；跨物理机器迁移 Project 的旧树清理不在 Windows 单机 MVP 范围。留给真机 verify/code-review 继续观察，不扩契约或 schema。
 - 实机验证起的 server/浏览器/daemon-sim 进程结束前应关闭（8799 等端口）。

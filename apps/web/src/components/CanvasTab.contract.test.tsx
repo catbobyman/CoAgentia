@@ -12,7 +12,7 @@ vi.mock('../api', async (importOriginal) => {
   };
 });
 
-import type { NodeCreate, TaskPlanBody } from '@coagentia/contracts-ts';
+import type { NodeCreate, ProjectPublic, TaskPlanBody } from '@coagentia/contracts-ts';
 
 import { api } from '../api';
 import { NewNodeModal } from './CanvasTab';
@@ -84,5 +84,33 @@ describe('NewNodeModal 补契约(手填多 AC)', () => {
     await waitFor(() => expect(api.createCanvasNode).toHaveBeenCalledTimes(1));
     const [, body] = vi.mocked(api.createCanvasNode).mock.calls[0] as [string, NodeCreate];
     expect((body.task_plan as TaskPlanBody).acceptance_criteria).toHaveLength(1);
+  });
+
+  it('代码任务必须选当前频道已绑定 Project，并原样提交两字段', async () => {
+    vi.mocked(api.createCanvasNode).mockReset().mockResolvedValue({} as never);
+    const projects: ProjectPublic[] = [{
+      id: 'project_1', workspace_id: 'ws_1', computer_id: 'computer_1', name: 'Alpha',
+      repo_path: 'D:/repos/alpha', channel_ids: ['ch_1'], created_at: '2026-07-11T00:00:00Z',
+    }];
+    render(
+      <NewNodeModal
+        canvasId="cv_1" projects={projects} onClose={vi.fn()} onError={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('switch', { name: '代码任务' }));
+    fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: '实现 Alpha' } });
+    fireEvent.change(screen.getByPlaceholderText('这个任务要达成什么'), { target: { value: '完成实现' } });
+    fireEvent.change(screen.getByPlaceholderText('验收判据 1'), { target: { value: '测试通过' } });
+    const create = screen.getByRole('button', { name: '创建' });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByRole('combobox', { name: '绑定 Project' }), {
+      target: { value: projects[0]!.id },
+    });
+    expect(create).toBeEnabled();
+    fireEvent.click(create);
+    await waitFor(() => expect(api.createCanvasNode).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.createCanvasNode).mock.calls[0]?.[1]).toMatchObject({
+      kind: 'agent', writes_code: true, project_id: projects[0]!.id,
+    });
   });
 });

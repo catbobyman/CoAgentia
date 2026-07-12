@@ -4,6 +4,8 @@ import type {
   AgentSkillPublic,
   CanvasDetail,
   CanvasMutation,
+  CanvasNodePublic,
+  ChannelProjectPublic,
   ChannelNotificationSettingPublic,
   ChannelPatch,
   ChannelPublic,
@@ -12,6 +14,7 @@ import type {
   ComputerPublic,
   ContractDraftRequest,
   DiagnosticEventPublic,
+  DiffPayload,
   EdgeCreate,
   HeldDraftPublic,
   HeldDraftReleaseResponse,
@@ -25,6 +28,9 @@ import type {
   NodePatch,
   NotificationMode,
   PresenceSnapshot,
+  ProjectCreate,
+  ProjectPatch,
+  ProjectPublic,
   ReminderPublic,
   RestPaths,
   SearchResponse,
@@ -98,24 +104,29 @@ async function writeJson<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!r.ok) {
-    let code = `HTTP_${r.status}`;
-    let message = `${method} ${path} -> ${r.status}`;
-    let details: unknown;
-    try {
-      const parsed = (await r.json()) as ErrorEnvelope;
-      if (parsed.error) {
-        code = parsed.error.code ?? code;
-        message = parsed.error.message ?? message;
-        details = parsed.error.details;
-      }
-    } catch {
-      // 非 JSON 错误体:保留默认 code/message
-    }
-    throw new ApiError(r.status, code, message, details);
+    throw await responseError(r, `${method} ${path} -> ${r.status}`);
   }
   // 204/空体容错(某些 done/unclaim 端点可能无 body)。
   const text = await r.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** GET/写请求共用的契约错误解析；Diff 依赖 status/code 区分无树 404 与 daemon 503。 */
+async function responseError(r: Response, fallback: string): Promise<ApiError> {
+  let code = `HTTP_${r.status}`;
+  let message = fallback;
+  let details: unknown;
+  try {
+    const parsed = (await r.json()) as ErrorEnvelope;
+    if (parsed.error) {
+      code = parsed.error.code ?? code;
+      message = parsed.error.message ?? message;
+      details = parsed.error.details;
+    }
+  } catch {
+    // 非 JSON 错误体保留 transport 兜底。
+  }
+  return new ApiError(r.status, code, message, details);
 }
 
 // home/tree 是 daemon 查询帧代理(契约 D §6),mock 无 response_model → OpenAPI 未定形状;此处窄化为 UI 消费形。
@@ -131,7 +142,7 @@ export interface HomeTree {
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`);
-  if (!r.ok) throw new Error(`${path} -> ${r.status}`);
+  if (!r.ok) throw await responseError(r, `${path} -> ${r.status}`);
   return (await r.json()) as T;
 }
 
@@ -140,8 +151,23 @@ export const api = {
   channels: () => get<ChannelsSnapshot>('/api/channels'),
   members: () => get<MemberPublic[]>('/api/members'),
   presence: () => get<PresenceSnapshot>('/api/presence'),
-  messages: (channelId: string) =>
-    get<MessagesPage>(`/api/channels/${channelId}/messages?limit=200`),
+  // check/merge 输出与冲突锚点都是普通系统消息。只取最旧首页会在频道 >200 条后让最新留痕
+  // 从 Canvas/冲突卡消失，故沿 tasks 同款游标护栏翻全（升序拼接，WS 后续继续 append）。
+  messages: async (channelId: string): Promise<MessagesPage> => {
+    const items: MessagePublic[] = [];
+    let after: string | null | undefined;
+    for (let page = 0; page < 40; page += 1) {
+      const qs = new URLSearchParams({ limit: '200' });
+      if (after) qs.set('after', after);
+      const batch = await get<MessagesPage>(
+        `/api/channels/${channelId}/messages?${qs.toString()}`,
+      );
+      items.push(...(batch.items as MessagePublic[]));
+      after = batch.next_cursor;
+      if (!after) break;
+    }
+    return { items, next_cursor: null } as MessagesPage;
+  },
   // 跟进游标翻完全部页——server 升序分页默认 50/页,只取首页会让第 51+ 个(最新)任务
   // 从看板/任务牌/计数整体消失(M2 二轮 review)。页数设护栏防异常游标死循环。
   tasks: async (channelId: string): Promise<TaskPublic[]> => {
@@ -201,6 +227,8 @@ export const api = {
     writeJson<void>(`/api/canvases/${canvasId}/edges/${edgeId}`, 'DELETE'),
   putCanvasLayout: (canvasId: string, body: LayoutPut) =>
     writeJson<CanvasMutation>(`/api/canvases/${canvasId}/layout`, 'PUT', body),
+  retryCanvasNode: (nodeId: string) =>
+    writeJson<CanvasNodePublic>(`/api/canvas-nodes/${nodeId}/retry`, 'POST'),
 
   // ---- M2 文件 / 搜索 / 活动(B §9.6 / §4.6-4.8)
   channelFiles: (channelId: string, after?: string) =>
@@ -314,6 +342,22 @@ export const api = {
       'PUT',
       { mode },
     ),
+
+  // ---- M6a Project 域与 Diff 卡。ProjectPublic.channel_ids 是绑定关系的唯一前端读面。
+  projects: () => get<ProjectPublic[]>('/api/projects'),
+  createProject: (body: ProjectCreate) =>
+    writeJson<ProjectPublic>('/api/projects', 'POST', body),
+  patchProject: (projectId: string, patch: ProjectPatch) =>
+    writeJson<ProjectPublic>(`/api/projects/${projectId}`, 'PATCH', patch),
+  deleteProject: (projectId: string) =>
+    writeJson<void>(`/api/projects/${projectId}`, 'DELETE'),
+  bindProject: (channelId: string, projectId: string) =>
+    writeJson<ChannelProjectPublic>(`/api/channels/${channelId}/projects`, 'POST', {
+      project_id: projectId,
+    }),
+  unbindProject: (channelId: string, projectId: string) =>
+    writeJson<void>(`/api/channels/${channelId}/projects/${projectId}`, 'DELETE'),
+  taskDiff: (taskId: string) => get<DiffPayload>(`/api/tasks/${taskId}/diff`),
 
   // ---- M5(B-M5-2)模板域(B §4.12/§11.1/§11.2)。列表 GET(builtin 置前，body 全量携带供向导预览)；
   // 存为模板 POST(server 读频道画布快照序列化 TemplateBody，画布无正式节点/有草稿层 → 409

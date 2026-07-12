@@ -15,6 +15,7 @@ from coagentia_contracts.daemon import (
     AgentBoot,
     AgentRefData,
     AgentWakeData,
+    CheckRunData,
     FrameError,
     InstrType,
     MessageDeliverData,
@@ -123,6 +124,18 @@ async def _worktree_merge(client: DaemonClient, data: dict[str, Any]) -> Handler
     return (AckResult.DONE if operation.changed else AckResult.NOOP, _OK)
 
 
+async def _check_run(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
+    run = CheckRunData.model_validate(data)
+    buffered = client.buffer.find_check(run.run_id)
+    if buffered is not None:
+        await client.report_check_finished(buffered)
+        return (AckResult.NOOP, _OK)
+    started, known = client.checks.start(run, client.report_check_finished)
+    if known is not None:
+        await client.report_check_finished(known)
+    return (AckResult.DONE if started else AckResult.NOOP, _OK)
+
+
 async def _unsupported(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
     return (
         AckResult.FAILED,
@@ -144,6 +157,7 @@ HANDLERS: dict[InstrType, Handler] = {
     InstrType.WORKTREE_ENSURE: _worktree_ensure,
     InstrType.WORKTREE_MERGE: _worktree_merge,
     InstrType.WORKTREE_CLEANUP: _worktree_cleanup,
+    InstrType.CHECK_RUN: _check_run,
     # 后续波次 / M7：
     InstrType.PREVIEW_START: _unsupported,
     InstrType.PREVIEW_STOP: _unsupported,

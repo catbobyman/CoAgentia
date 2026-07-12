@@ -178,6 +178,18 @@ def blocked_task_ids(conn: Connection) -> set[str]:
     return blocked
 
 
+def blocked_node_ids(conn: Connection, canvas_id: str) -> set[str]:
+    """单画布全部 blocked 节点；系统节点触发器与 retry 共用既有 satisfied 语义。"""
+    nodes = fetch_nodes(conn, canvas_id)
+    if not nodes:
+        return set()
+    return derive_blocked(
+        [n["id"] for n in nodes],
+        edge_pairs(conn, canvas_id),
+        _satisfied_nodes(conn, nodes),
+    )
+
+
 def is_task_blocked(conn: Connection, task_id: str) -> bool:
     """单任务 blocked 判定（裁决 2）：**只算该任务所在画布**，不扫全库（投递热路径省 I/O）。
 
@@ -311,6 +323,7 @@ def delete_edge(conn: Connection, edge_id: str) -> None:
 __all__ = [
     "advance_baseline",
     "blocked_task_ids",
+    "blocked_node_ids",
     "compute_hash",
     "delete_edge",
     "delete_node",

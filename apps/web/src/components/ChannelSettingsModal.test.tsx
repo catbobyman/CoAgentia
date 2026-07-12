@@ -1,4 +1,4 @@
-// P12 频道级设置弹窗(M5 B-M5-1):四组 + 通知 mode 即点即存 + 阈值差异化保存 + DM 无通知组。
+// P12 频道级设置弹窗:基础四组 + M6a Project 组 + 通知 mode 即点即存。
 // 照 RemindersTab.test.tsx 的 QueryClient seed + vi.mock('../api') 范式。
 // 运行:pnpm -F @coagentia/web test
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,7 +9,10 @@ vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>();
   return {
     ...actual,
-    api: { ...actual.api, patchChannel: vi.fn(), putNotificationSetting: vi.fn() },
+    api: {
+      ...actual.api,
+      patchChannel: vi.fn(), putNotificationSetting: vi.fn(), projects: vi.fn(), computers: vi.fn(),
+    },
   };
 });
 
@@ -57,13 +60,18 @@ function renderModal(opts: { channel?: ChannelPublic; currentMode?: 'all' | 'men
   return { qc, onClose };
 }
 
-describe('ChannelSettingsModal 四组', () => {
-  beforeEach(() => vi.clearAllMocks()); // 模块级 vi.fn() 跨用例累计,逐例清零后再断言调用
+describe('ChannelSettingsModal 五组', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.projects).mockResolvedValue([]);
+    vi.mocked(api.computers).mockResolvedValue([]);
+  });
 
-  it('渲染基本/通知/提醒/护栏四组', () => {
+  it('渲染基本/通知/Project/提醒/护栏五组', () => {
     renderModal();
     expect(screen.getByText('基本')).toBeInTheDocument();
     expect(screen.getByText('通知')).toBeInTheDocument();
+    expect(screen.getByText('Project')).toBeInTheDocument();
     expect(screen.getByText('提醒阈值')).toBeInTheDocument();
     expect(screen.getByText('护栏阈值')).toBeInTheDocument();
   });
@@ -72,6 +80,7 @@ describe('ChannelSettingsModal 四组', () => {
     renderModal({ channel: channelOf({ kind: 'dm', name: 'Hank' }) });
     expect(screen.getByText('基本')).toBeInTheDocument();
     expect(screen.queryByText('通知')).not.toBeInTheDocument();
+    expect(screen.queryByText('Project')).not.toBeInTheDocument();
   });
 
   it('通知 mode 即点即存(putNotificationSetting)', async () => {

@@ -42,14 +42,14 @@
 | # | 模块 | 状态 | 提交 | 备注 |
 | --- | --- | --- | --- | --- |
 | J3-cal | git 实操 A 级实测校准 → `scratchpad/GIT-CALIBRATION.md`（win32 worktree/merge/diff/冲突行为与坑清单） | ✅ | `d564ebf` | 10/10 探针绿；见 §3 校准结论 |
-| J0 | 契约登记（ENDPOINTS_M6/Project·Worktree·Diff·Proposal 模型/Task 系扩字段/ReviewVerdict/错误码目录/ws 预留族核对/D 新帧/mock/conformance） | ✅ | `d564ebf` + 波 2 待提交 | 首轮 A v1.0.8/B v1.4.1；波 2 补 B v1.4.2/错误码 29 与 A v1.0.9/B v1.4.3 TemplateNode 交付字段，两项均经 owner 授权 |
+| J0 | 契约登记（ENDPOINTS_M6/Project·Worktree·Diff·Proposal 模型/Task 系扩字段/ReviewVerdict/错误码目录/ws 预留族核对/D 新帧/mock/conformance） | ✅ | `d564ebf` + `62939f2` | 首轮 A v1.0.8/B v1.4.1；波 2 补 B v1.4.2/错误码 29 与 A v1.0.9/B v1.4.3 TemplateNode 交付字段，两项均经 owner 授权 |
 | J1 | 0008 迁移（projects+channel_projects+worktrees 三表 + tasks 两列）+ models ORM + M6A_TABLES | ✅ | `d564ebf` | 含 merge_commit；从零+历史 M5 schema 切片增量双路绿 |
-| J2 | Project 域（CRUD/admin 门/repo_path 校验/PROJECT_IN_USE/频道绑定/channel_ids 派生） | ✅ | 波 2 待提交 | B v1.4.2/COMPUTER_HAS_PROJECTS 补遗已同步；Project+Computer+频道级联聚焦 42 绿 |
-| J3 | worktree 生命周期（daemon git.py+ensure/cleanup 处理器+status 上报；server 激活联动+对账 #5+keep_days 清理调度+工作目录消息注入） | ✅ | 波 2 待提交 | daemon 116/4 skipped；J2+J3 关键组合 175/4 skipped；A v1.0.9/B v1.4.3 模板入口补遗已贯通，模板/契约联跑 179 绿、独立审计无 High/Medium；波 2 全量 772/4 skipped |
-| J4 | Diff 链路（daemon git.diff 查询帧 DiffPayload + GET /tasks/{id}/diff 代理 + TaskDetail.worktree 派生） | ⬜ | — | 块 a 波 3 |
-| J5 | 系统节点执行与合并链（自动触发器/check.run·check.finished/retry 仅 failed/merge DAG 序 --no-ff/冲突自动建任务派回/全留痕） | ⬜ | — | 块 a 波 3 |
-| J6 | 评审结论枚举（review_verdict 四值/needs_human @人类/builtin 评审话术更新/human_members DRY 顺路评估） | ⬜ | — | 块 a 波 3 |
-| B-M6-1 | 前端：频道设置 Project 组+Project CRUD 弹窗/Diff 卡/系统节点形态+Retry/verdict 徽标/冲突卡/wsBridge worktree.updated | ⬜ | — | 块 a 波 3 |
+| J2 | Project 域（CRUD/admin 门/repo_path 校验/PROJECT_IN_USE/频道绑定/channel_ids 派生） | ✅ | `62939f2` | B v1.4.2/COMPUTER_HAS_PROJECTS 补遗已同步；Project+Computer+频道级联聚焦 42 绿 |
+| J3 | worktree 生命周期（daemon git.py+ensure/cleanup 处理器+status 上报；server 激活联动+对账 #5+keep_days 清理调度+工作目录消息注入） | ✅ | `62939f2` | daemon 116/4 skipped；J2+J3 关键组合 175/4 skipped；A v1.0.9/B v1.4.3 模板入口补遗已贯通，模板/契约联跑 179 绿、独立审计无 High/Medium；波 2 全量 772/4 skipped |
+| J4 | Diff 链路（daemon git.diff 查询帧 DiffPayload + GET /tasks/{id}/diff 代理 + TaskDetail.worktree 派生） | ✅ | 波 3 本提交（见 HEAD） | 增删改/重命名/二进制与三级截断、无树 404/离线 503/超时及 cleaned 分支均有回归；daemon JSONL 缓冲经同目录临时文件+fsync+原子替换加固 |
+| J5 | 系统节点执行与合并链（自动触发器/check.run·check.finished/retry 仅 failed/merge DAG 序 --no-ff/冲突自动建任务派回/全留痕） | ✅ | 波 3 本提交（见 HEAD） | check/merge/retry/冲突任务全链接真；成功持久 `merge_commit`；取消/超时恢复主干，cleaned alias WS 广播与 keep_days 祖先保护经专项审计 |
+| J6 | 评审结论枚举（review_verdict 四值/needs_human @人类/builtin 评审话术更新/human_members DRY 顺路评估） | ✅ | 波 3 本提交（见 HEAD） | 四值与缺省兼容、needs_human @频道人类、builtin upsert 绿；中立 `messages/service.py` 复用人类成员查询 |
+| B-M6-1 | 前端：频道设置 Project 组+Project CRUD 弹窗/Diff 卡/系统节点形态+Retry/verdict 徽标/冲突卡/wsBridge worktree.updated | ✅ | 波 3 本提交（见 HEAD） | 31 文件/194 测试；1440×900 与 390×844 屏对照无溢出、console 0；三张截图仅作 UI 对照，不冒充实机 verify 证据 |
 | — | **M6a 实机 verify** → `docs/verify/M6A-EVIDENCE.md`（§9a #11 场景+截图） | ⬜ | — | 块 a 出口 |
 | — | /code-review high（块 a） | ⬜ | — | 块 a 收口 |
 | J7 | 同构校验内核（kernel decomposition：V1–V14+`<control>` 解析+指纹；lib/decomposition.ts 镜像；golden/decomposition.json 双跑） | ⬜ | — | 块 b 波 1 |
@@ -64,8 +64,8 @@
 ## 2. 守门命令（波间与收口；全绿才算过门）
 
 ```
-uv run pytest -q                    # 712 passed / 4 skipped 起点基线，只增不减
-pnpm -F @coagentia/web test         # vitest 175 起点基线
+uv run pytest -q                    # 当前 813 passed / 4 skipped（M6 起点 712/4），只增不减
+pnpm -F @coagentia/web test         # 当前 vitest 194（M6 起点 175），只增不减
 pnpm typecheck                      # pyright 0 + 双 tsc
 uv run ruff check .
 pnpm gen                            # 后 git diff 应为空（生成物确定性）
@@ -90,4 +90,5 @@ pnpm -F @coagentia/web build
 | 波次 | 后端 | web | 其余守门 | 结论 |
 | --- | --- | --- | --- | --- |
 | 波 1 | 724 passed / 4 skipped | 175 passed | typecheck/ruff/gen/build 绿 | `d564ebf` |
-| 波 2 | 772 passed / 4 skipped | 175 passed | typecheck/ruff/gen 双跑/build 绿；模板补遗独立审计无 High/Medium | ✅ 待单提交 |
+| 波 2 | 772 passed / 4 skipped | 175 passed | typecheck/ruff/gen 双跑/build 绿；模板补遗独立审计无 High/Medium | `62939f2` |
+| 波 3 | 813 passed / 4 skipped | 194 passed | typecheck/ruff/gen 确定/build 绿；两项 Medium 修复后独立复核无 High/Medium；UI 双视口无溢出、console 0 | ✅ 波 3 本提交（见 HEAD） |

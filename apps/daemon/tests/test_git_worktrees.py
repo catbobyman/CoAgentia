@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -11,7 +14,7 @@ from coagentia_contracts.daemon import (
     WorktreeEnsureData,
     WorktreeMergeData,
 )
-from coagentia_daemon.git import GitCommandError, GitWorktreeManager
+from coagentia_daemon.git import GitCommandError, GitWorktreeManager, run_process
 from coagentia_daemon.paths import DataPaths
 from coagentia_daemon.util import new_ulid
 
@@ -65,6 +68,43 @@ def _ensure_data(repo: Path, *, task_id: str, project_id: str) -> WorktreeEnsure
         repo_path=str(repo),
         branch=f"coagentia/task-{task_id}",
     )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows taskkill /F /T 实机路径")
+@pytest.mark.asyncio
+async def test_git_runner_cancellation_kills_process_tree(tmp_path: Path) -> None:
+    pid_path = tmp_path / "git-runner-child.pid"
+    script = (
+        "import os,subprocess,sys,time; "
+        f"p=subprocess.Popen([{sys.executable!r},'-c','import time; time.sleep(30)']); "
+        f"open({str(pid_path)!r},'w').write(str(p.pid)); time.sleep(30)"
+    )
+    running = asyncio.create_task(run_process([sys.executable, "-c", script], 60))
+    deadline = time.monotonic() + 5
+    while not pid_path.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.02)
+    assert pid_path.exists(), "git runner 子进程未写出 pid"
+    child_pid = int(pid_path.read_text(encoding="utf-8"))
+
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(running, timeout=8)
+    probe = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            f"if (Get-Process -Id {child_pid} -ErrorAction SilentlyContinue) {{ exit 0 }} "
+            "else { exit 1 }",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+        check=False,
+    )
+    assert probe.returncode == 1, f"git runner child pid {child_pid} 仍存活"
 
 
 @pytest.mark.asyncio
@@ -221,6 +261,120 @@ async def test_merge_creates_no_ff_commit_and_is_idempotent(tmp_path: Path) -> N
     assert len(parents) == 3  # commit + 两个 parent，证明不是 fast-forward。
     assert first.status.merge_commit == parents[0]
     assert (repo / "中文交付.txt").read_text(encoding="utf-8") == "done\n"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows hook + taskkill 实机路径")
+@pytest.mark.asyncio
+async def test_cancelled_merge_restores_clean_main_and_replays(tmp_path: Path) -> None:
+    repo = _scratch_repo(tmp_path)
+    manager, paths = _manager(tmp_path)
+    task_id = new_ulid()
+    project_id = new_ulid()
+    ensure = _ensure_data(repo, task_id=task_id, project_id=project_id)
+    await manager.ensure(ensure)
+    target = paths.worktree_path(project_id, task_id).resolve()
+    (target / "cancelled.txt").write_text("branch\n", encoding="utf-8")
+    _git(target, "add", "--", "cancelled.txt")
+    _git(target, "commit", "-m", "blocked merge branch")
+    merge = WorktreeMergeData(
+        task_id=task_id,
+        project_id=project_id,
+        repo_path=str(repo),
+        branch=ensure.branch,
+        message=f"Merge task {task_id}",
+    )
+    before_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    hook = repo / ".git" / "hooks" / "pre-merge-commit"
+    hook.write_text(
+        "#!/bin/sh\nprintf started > .git/hook-started\nwhile :; do :; done\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+
+    running = asyncio.create_task(manager.merge(merge))
+    marker = repo / ".git" / "hook-started"
+    deadline = time.monotonic() + 8
+    while not marker.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.02)
+    assert marker.exists(), "pre-merge-commit hook 未启动"
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(running, timeout=12)
+
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == before_head
+    assert _git(repo, "status", "--porcelain=v1", "-z").stdout == ""
+    assert _git(repo, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False).returncode != 0
+    hook.unlink()
+    replay = await GitWorktreeManager(paths).merge(merge)
+    assert replay.status is not None and replay.status.status == "merged"
+    assert (repo / "cancelled.txt").read_text(encoding="utf-8") == "branch\n"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows hook + taskkill 实机路径")
+@pytest.mark.asyncio
+async def test_timed_out_merge_restores_clean_main_and_replays(tmp_path: Path) -> None:
+    repo = _scratch_repo(tmp_path)
+    manager, paths = _manager(tmp_path)
+    task_id = new_ulid()
+    project_id = new_ulid()
+    ensure = _ensure_data(repo, task_id=task_id, project_id=project_id)
+    await manager.ensure(ensure)
+    target = paths.worktree_path(project_id, task_id).resolve()
+    (target / "timeout.txt").write_text("branch\n", encoding="utf-8")
+    _git(target, "add", "--", "timeout.txt")
+    _git(target, "commit", "-m", "timed out merge branch")
+    merge = WorktreeMergeData(
+        task_id=task_id,
+        project_id=project_id,
+        repo_path=str(repo),
+        branch=ensure.branch,
+        message=f"Merge task {task_id}",
+    )
+    before_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    hook = repo / ".git" / "hooks" / "pre-merge-commit"
+    hook.write_text("#!/bin/sh\nwhile :; do :; done\n", encoding="utf-8")
+    hook.chmod(0o755)
+
+    with pytest.raises(TimeoutError):
+        await GitWorktreeManager(paths, timeout_sec=0.3).merge(merge)
+
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == before_head
+    assert _git(repo, "status", "--porcelain=v1", "-z").stdout == ""
+    assert _git(repo, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False).returncode != 0
+    hook.unlink()
+    replay = await GitWorktreeManager(paths).merge(merge)
+    assert replay.status is not None and replay.status.status == "merged"
+
+
+@pytest.mark.asyncio
+async def test_clean_unfinished_merge_replays_to_success(tmp_path: Path) -> None:
+    repo = _scratch_repo(tmp_path)
+    manager, paths = _manager(tmp_path)
+    task_id = new_ulid()
+    project_id = new_ulid()
+    ensure = _ensure_data(repo, task_id=task_id, project_id=project_id)
+    await manager.ensure(ensure)
+    target = paths.worktree_path(project_id, task_id).resolve()
+    (target / "unfinished.txt").write_text("branch\n", encoding="utf-8")
+    _git(target, "add", "--", "unfinished.txt")
+    _git(target, "commit", "-m", "unfinished clean merge")
+    merge = WorktreeMergeData(
+        task_id=task_id,
+        project_id=project_id,
+        repo_path=str(repo),
+        branch=ensure.branch,
+        message=f"Merge task {task_id}",
+    )
+    _git(repo, "merge", "--no-ff", "--no-commit", ensure.branch)
+    assert _git(repo, "diff", "--name-only", "--diff-filter=U").stdout == ""
+    assert _git(repo, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
+
+    replay = await GitWorktreeManager(paths).merge(merge)
+
+    assert replay.status is not None and replay.status.status == "merged"
+    assert _git(repo, "status", "--porcelain=v1", "-z").stdout == ""
+    parents = _git(repo, "rev-list", "--parents", "-n", "1", "HEAD").stdout.split()
+    assert len(parents) == 3
 
 
 @pytest.mark.asyncio

@@ -18,7 +18,7 @@ from coagentia_contracts.entities import (
     TemplateNode,
     TemplateRole,
 )
-from coagentia_contracts.enums import LandingBatchStatus
+from coagentia_contracts.enums import LandingBatchStatus, ReviewVerdict
 from coagentia_server.api import ApiError
 from coagentia_server.canvas import service as canvas_service
 from coagentia_server.db import models
@@ -420,6 +420,22 @@ def test_builtin_body_passes_validation() -> None:
     assert len(body.nodes) == 6
     assert len({r.placeholder for r in body.roles}) == 4
     assert all(n.plan_skeleton is not None for n in body.nodes)
+    verdict_tokens = {item.value for item in ReviewVerdict}
+    for node_key in ("review_gate", "acceptance"):
+        node = next(node for node in body.nodes if node.key == node_key)
+        assert node.plan_skeleton is not None
+        wording = " ".join(
+            [
+                node.plan_skeleton.goal,
+                *(criterion.statement for criterion in node.plan_skeleton.acceptance_criteria),
+                *(criterion.verify_ref for criterion in node.plan_skeleton.acceptance_criteria),
+            ]
+        )
+        assert "review_verdict" in wording
+        assert all(token in wording for token in verdict_tokens)
+    checker = next(role for role in body.roles if role.placeholder == "评审工程师")
+    assert "review_verdict" in checker.description
+    assert "review_verdict" in body.briefing
 
 
 # ---------------------------------------------------------------- builtin upsert 幂等 / 列表
@@ -428,6 +444,13 @@ def test_builtin_body_passes_validation() -> None:
 def test_builtin_upsert_idempotent(seeded_engine: Engine) -> None:
     """启动 upsert 幂等：连调两次 → 该 workspace 恰一 builtin 行（重启不重复）。"""
     templates_service.upsert_builtin_templates(seeded_engine)
+    with seeded_engine.connect() as conn:
+        first_body = conn.execute(
+            select(_TEMPLATE.c.body).where(
+                _TEMPLATE.c.name == builtin.BUILTIN_TRIANGLE_NAME,
+                _TEMPLATE.c.builtin == 1,
+            )
+        ).scalar_one()
     templates_service.upsert_builtin_templates(seeded_engine)
     with seeded_engine.connect() as conn:
         rows = list(
@@ -438,7 +461,14 @@ def test_builtin_upsert_idempotent(seeded_engine: Engine) -> None:
                 )
             ).mappings()
         )
+        second_body = conn.execute(
+            select(_TEMPLATE.c.body).where(
+                _TEMPLATE.c.name == builtin.BUILTIN_TRIANGLE_NAME,
+                _TEMPLATE.c.builtin == 1,
+            )
+        ).scalar_one()
     assert len(rows) == 1
+    assert first_body == second_body == builtin.build_triangle_body().model_dump(mode="json")
     tpl = entities.TemplatePublic.model_validate(dict(rows[0]))
     assert tpl.builtin is True and len(tpl.body.nodes) == 6
     assert all(node.writes_code is False for node in tpl.body.nodes)

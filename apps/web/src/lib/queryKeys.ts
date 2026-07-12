@@ -16,6 +16,7 @@ export const qk = {
   homeTree: (memberId: string) => ['homeTree', memberId] as const,
   // ---- M2
   taskDetail: (taskId: string) => ['taskDetail', taskId] as const,
+  taskDiff: (taskId: string) => ['taskDiff', taskId] as const,
   channelFiles: (channelId: string) => ['channelFiles', channelId] as const,
   // ---- M3b 画布:按 channel 存快照;WS canvas.* 事件载 canvas_id,桥接内按 canvas.id 反查该键。
   canvas: (channelId: string) => ['canvas', channelId] as const,
@@ -25,4 +26,6 @@ export const qk = {
   heldDrafts: (channelId: string) => ['heldDrafts', channelId] as const,
   // ---- M5b 模板:工作区级列表(无频道维度);模板 CRUD 零 WS 事件(裁决 #7),写后 invalidate 收敛。
   templates: () => ['templates'] as const,
+  // ---- M6a Project：工作区级小表；频道绑定关系由 ProjectPublic.channel_ids 派生。
+  projects: () => ['projects'] as const,
 };

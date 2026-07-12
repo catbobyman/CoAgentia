@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from coagentia_contracts import constants, entities, rest
+from coagentia_contracts import constants, daemon, entities, rest
 from coagentia_contracts.enums import (
     ChannelKind,
     MemberKind,
@@ -26,8 +26,14 @@ from coagentia_server.api import ApiError
 from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx
+from coagentia_server.messages import service as messages_service
 from coagentia_server.routes._pagination import keyset_page
-from coagentia_server.routes.serialize import message_public, task_contract_public, task_public
+from coagentia_server.routes.serialize import (
+    message_public,
+    task_contract_public,
+    task_public,
+    worktree_public,
+)
 from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -38,6 +44,8 @@ _CHANNEL = models.tbl(models.Channel)
 _MSG = models.tbl(models.Message)
 _MEMBER = models.tbl(models.Member)
 _TUE = models.tbl(models.TokenUsageEvent)
+_PROJECT = models.tbl(models.Project)
+_WORKTREE = models.tbl(models.Worktree)
 
 
 def _require_task(tx: Tx, task_id: str) -> dict[str, Any]:
@@ -386,6 +394,11 @@ def list_tasks(
 def get_task_detail(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
     task = _require_task(tx, task_id)
     contracts = contracts_service.active_contracts(tx.conn, task_id)
+    worktree = (
+        tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id))
+        .mappings()
+        .first()
+    )
     agg = tx.conn.execute(
         select(
             func.coalesce(func.sum(_TUE.c.input_tokens), 0),
@@ -405,7 +418,54 @@ def get_task_detail(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
             "cache_write_tokens": agg[3],
             "events": agg[4],
         },
+        "worktree": worktree_public(dict(worktree)) if worktree is not None else None,
     }
+
+
+@router.get("/tasks/{task_id}/diff", response_model=daemon.DiffPayload)
+def get_task_diff(
+    task_id: str,
+    request: Request,
+    tx: Tx = Depends(get_tx),
+    base: str | None = None,
+) -> Any:
+    """同一 worktree 的 Git diff 只读代理（契约 B §12.7 / D §6）。"""
+    task = _require_task(tx, task_id)
+    row = (
+        tx.conn.execute(
+            select(_WORKTREE, _PROJECT.c.repo_path, _PROJECT.c.computer_id)
+            .select_from(_WORKTREE.join(_PROJECT, _WORKTREE.c.project_id == _PROJECT.c.id))
+            .where(
+                _WORKTREE.c.task_id == task_id,
+                _WORKTREE.c.project_id == task["project_id"],
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "任务尚无可用 worktree")
+
+    from coagentia_server.computers import DaemonOffline
+
+    query = daemon.GitDiffQuery(
+        project_id=row["project_id"],
+        repo_path=row["repo_path"],
+        task_id=task_id,
+        base=base,
+    )
+    try:
+        payload = request.app.state.daemon_hub.query_git_diff(
+            computer_id=row["computer_id"], query=query
+        )
+    except DaemonOffline as exc:
+        message = "daemon 离线，无法读取 Diff"
+        if "git.diff 查询失败" in str(exc):
+            message = str(exc)
+        elif "超时" in str(exc):
+            message = "daemon query timeout，无法读取 Diff"
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, message) from exc
+    return daemon.DiffPayload.model_validate(payload)
 
 
 @router.patch("/tasks/{task_id}", response_model=entities.TaskPublic)
@@ -529,6 +589,21 @@ def submit_task_contract(
         else tasks_service.EventType.TASK_CONTRACT_CREATED
     )
     tx.emit(event_type, task["channel_id"], {"contract": pub})
+    if contracts_service.should_notify_needs_human(tx.conn, row):
+        humans = messages_service.channel_human_members(tx.conn, task["channel_id"])
+        mentions = " ".join(f"@{human['name']}" for human in humans)
+        suffix = f"：{mentions}" if mentions else "。"
+        messages_service.post_system_message(
+            tx,
+            workspace_id=task["workspace_id"],
+            channel_id=task["channel_id"],
+            thread_root_id=task["root_message_id"],
+            body=(
+                f"评审需人裁决：task #{task['number']}「{task['title']}」的 TaskHandoff "
+                f"已标记 review_verdict=needs_human，请频道人类成员裁决{suffix}"
+            ),
+            mention_member_ids=[human["id"] for human in humans],
+        )
     return pub
 
 

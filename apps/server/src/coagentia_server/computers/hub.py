@@ -35,11 +35,13 @@ from coagentia_contracts.daemon import (
     AgentStartData,
     AgentStatusChangedData,
     AgentWakeData,
+    CheckFinishedData,
     DaemonAgentActivityData,
     DaemonHelloAckData,
     DaemonHelloData,
     DiagnosticsBatchData,
     FrameKind,
+    GitDiffQuery,
     HomeFileQuery,
     HomeTreeQuery,
     InjectSource,
@@ -95,6 +97,7 @@ from coagentia_server.routes.serialize import (
     reminder_public,
     worktree_public,
 )
+from coagentia_server.system_nodes import service as system_node_service
 from coagentia_server.tasks import silence as silence_logic
 from coagentia_server.worktrees import service as worktree_service
 
@@ -199,6 +202,8 @@ class DaemonHub:
         self._bg: list[asyncio.Task] = []
         self._activity_last: dict[str, float] = {}
         self._worktree_locks: dict[str, asyncio.Lock] = {}
+        self._system_node_locks: dict[str, asyncio.Lock] = {}
+        self._system_pending: dict[str, tuple[tuple[str, str], str]] = {}
 
     # ---------------------------------------------------------------- lifespan 装配
 
@@ -245,6 +250,9 @@ class DaemonHub:
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_worktrees(channel_id)
                 )
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_system_nodes(channel_id)
+                )
             if event.type == EventType.TASK_UPDATED and task.get("writes_code"):
                 if task.get("id") and change.get("kind") in {
                     TaskEventKind.CLAIM.value,
@@ -264,6 +272,9 @@ class DaemonHub:
             if channel_id:
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_worktrees(channel_id)
+                )
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_system_nodes(channel_id)
                 )
 
     def _spawn(self, coro: Any) -> None:
@@ -336,6 +347,12 @@ class DaemonHub:
 
     def _register_hello(self, conn: DaemonConnection, hello: DaemonHelloData) -> None:
         """更新 computers 行 + 广播 computer.connected/updated（契约 D §4.1）。"""
+        # 新连接可能来自 daemon 进程重启：解除该机器已 ack 的运行记忆，由 running 事实重派同自然键。
+        self._system_pending = {
+            node_id: pending
+            for node_id, pending in self._system_pending.items()
+            if pending[1] != conn.computer_id
+        }
         conn.present = {a.agent_member_id: a.status.value for a in hello.agents}
         with gateway_tx(self._engine, self._bus) as tx:
             tx.conn.execute(
@@ -449,45 +466,109 @@ class DaemonHub:
             await self._ack(conn, frame_id, AckResult.DONE)
         elif rtype == ReportType.WORKTREE_STATUS:
             self._report_worktree_status(conn, WorktreeStatusData.model_validate(data))
-        # hello（重复）/ M6/M7 上报：M1 忽略
+        elif rtype == ReportType.CHECK_FINISHED:
+            self._report_check_finished(conn, CheckFinishedData.model_validate(data))
+            await self._ack(conn, frame_id, AckResult.DONE)
+        # hello（重复）/ M7 上报：忽略
 
     def _report_worktree_status(
         self, conn: DaemonConnection, data: WorktreeStatusData
     ) -> None:
         """worktree.status：按 task_id 持久状态、广播；首次 active 落 durable 目录消息。"""
+        if data.status == "merged" and not data.merge_commit:
+            with gateway_tx(self._engine, self._bus) as tx:
+                merge_node_ids = system_node_service.pending_merge_node_ids(
+                    tx.conn,
+                    data.task_id,
+                    computer_id=conn.computer_id,
+                    branch=data.branch,
+                    path=data.path,
+                )
+                for node_id in merge_node_ids:
+                    system_node_service.fail_dispatch(
+                        tx,
+                        node_id=node_id,
+                        action=InstrType.WORKTREE_MERGE.value,
+                        task_id=data.task_id,
+                        reason="daemon merged 上报缺 merge_commit",
+                    )
+            for node_id in merge_node_ids:
+                self._system_pending.pop(node_id, None)
+            return
+        continue_channels: set[str] = set()
         with gateway_tx(self._engine, self._bus) as tx:
+            merge_node_ids = (
+                system_node_service.pending_merge_node_ids(
+                    tx.conn,
+                    data.task_id,
+                    computer_id=conn.computer_id,
+                    branch=data.branch,
+                    path=data.path,
+                )
+                if data.status in {"merged", "conflicted"}
+                else []
+            )
             result = worktree_service.apply_status(
-                tx.conn, computer_id=conn.computer_id, data=data
+                tx.conn,
+                computer_id=conn.computer_id,
+                data=data,
+                trusted_running_merge=bool(merge_node_ids),
             )
             if result is None:
                 return  # 非本机 Project/非画布任务的越界上报不污染事实源
-            tx.emit(
-                EventType.WORKTREE_UPDATED,
-                result.channel_id,
-                {"worktree": worktree_public(result.row)},
-            )
+            for updated_row in (result.row, *result.alias_rows):
+                tx.emit(
+                    EventType.WORKTREE_UPDATED,
+                    result.channel_id,
+                    {"worktree": worktree_public(updated_row)},
+                )
+            if merge_node_ids:
+                continue_channels = system_node_service.apply_merge_result(
+                    tx,
+                    node_ids=merge_node_ids,
+                    data=data,
+                    worktree_row=result.row,
+                )
             if not result.became_active or result.task_status in {
                 TaskStatus.DONE.value,
                 TaskStatus.CLOSED.value,
             }:
-                return
-            mention_ids: tuple[str, ...] = ()
-            if result.owner_member_id is not None:
-                is_agent = tx.conn.execute(
-                    select(_AGENT.c.member_id).where(
-                        _AGENT.c.member_id == result.owner_member_id
-                    )
-                ).first()
-                if is_agent is not None:
-                    mention_ids = (result.owner_member_id,)
-            self._post_system_message(
-                tx,
-                workspace_id=result.workspace_id,
-                channel_id=result.channel_id,
-                thread_root_id=result.root_message_id,
-                mention_member_ids=mention_ids,
-                body=worktree_service.directory_message(result.row["path"]),
+                pass
+            else:
+                mention_ids: tuple[str, ...] = ()
+                if result.owner_member_id is not None:
+                    is_agent = tx.conn.execute(
+                        select(_AGENT.c.member_id).where(
+                            _AGENT.c.member_id == result.owner_member_id
+                        )
+                    ).first()
+                    if is_agent is not None:
+                        mention_ids = (result.owner_member_id,)
+                self._post_system_message(
+                    tx,
+                    workspace_id=result.workspace_id,
+                    channel_id=result.channel_id,
+                    thread_root_id=result.root_message_id,
+                    mention_member_ids=mention_ids,
+                    body=worktree_service.directory_message(result.row["path"]),
+                )
+        for channel_id in continue_channels:
+            self._spawn(self._scan_channel_system_nodes(channel_id))
+        for node_id in merge_node_ids:
+            self._system_pending.pop(node_id, None)
+
+    def _report_check_finished(
+        self, conn: DaemonConnection, data: CheckFinishedData
+    ) -> None:
+        continue_channel: str | None
+        with gateway_tx(self._engine, self._bus) as tx:
+            handled, continue_channel = system_node_service.complete_check(
+                tx, computer_id=conn.computer_id, data=data
             )
+        if handled:
+            self._system_pending.pop(data.node_id, None)
+        if continue_channel is not None:
+            self._spawn(self._scan_channel_system_nodes(continue_channel))
 
     def _report_status_changed(self, conn: DaemonConnection, d: AgentStatusChangedData) -> None:
         """agents.status 的唯一写入方（契约 D §7）+ 广播 presence.changed。"""
@@ -1103,11 +1184,79 @@ class DaemonHub:
                 ),
             )
             if result is not None:
-                tx.emit(
-                    EventType.WORKTREE_UPDATED,
-                    result.channel_id,
-                    {"worktree": worktree_public(result.row)},
+                for updated_row in (result.row, *result.alias_rows):
+                    tx.emit(
+                        EventType.WORKTREE_UPDATED,
+                        result.channel_id,
+                        {"worktree": worktree_public(updated_row)},
+                    )
+
+    # ---------------------------------------------------------------- 系统节点执行（M6a J5）
+
+    def _system_node_lock(self, node_id: str) -> asyncio.Lock:
+        lock = self._system_node_locks.get(node_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._system_node_locks[node_id] = lock
+        return lock
+
+    async def _scan_channel_system_nodes(self, channel_id: str) -> None:
+        with self._engine.connect() as c:
+            node_ids = system_node_service.candidate_node_ids(c, channel_id=channel_id)
+        for node_id in node_ids:
+            await self._drive_system_node(node_id)
+
+    async def _scan_workspace_system_nodes(self, workspace_id: str) -> None:
+        with self._engine.connect() as c:
+            node_ids = system_node_service.candidate_node_ids(c, workspace_id=workspace_id)
+        for node_id in node_ids:
+            await self._drive_system_node(node_id)
+
+    async def _drive_system_node(self, node_id: str) -> None:
+        """节点级串行重读：重复 bus/对账不会重复下发同一未决步骤。"""
+        async with self._system_node_lock(node_id):
+            with gateway_tx(self._engine, self._bus) as tx:
+                dispatch = system_node_service.prepare_dispatch(tx, node_id)
+            if dispatch is None:
+                return
+            conn = self._conns.get(dispatch.computer_id)
+            if conn is None:
+                return  # running + diagnostic 是事实源，重连对账复用同 run_id/步骤。
+            if isinstance(dispatch, system_node_service.CheckDispatch):
+                instruction = InstrType.CHECK_RUN
+                task_id = None
+                lock_key = f"project:{dispatch.data.project_id}"
+                identity = (instruction.value, dispatch.data.run_id)
+            else:
+                instruction = InstrType.WORKTREE_MERGE
+                task_id = dispatch.data.task_id
+                lock_key = f"project:{dispatch.data.project_id}"
+                identity = (instruction.value, dispatch.data.task_id)
+            pending = self._system_pending.get(node_id)
+            if pending is not None and pending[0] == identity:
+                return
+            self._system_pending[node_id] = (identity, dispatch.computer_id)
+            try:
+                ack = await self.send_instr(
+                    conn,
+                    lock_key,
+                    instruction,
+                    dispatch.data,
                 )
+            except DaemonOffline:
+                self._system_pending.pop(node_id, None)
+                return
+            if ack is not None and ack.result == AckResult.FAILED:
+                self._system_pending.pop(node_id, None)
+                error = ack.error.model_dump(mode="json") if ack.error is not None else None
+                with gateway_tx(self._engine, self._bus) as tx:
+                    system_node_service.fail_dispatch(
+                        tx,
+                        node_id=node_id,
+                        action=instruction.value,
+                        task_id=task_id,
+                        reason=f"daemon 指令失败：{error}",
+                    )
 
     async def _notify_active_task_owner(self, task_id: str) -> None:
         """树先于 owner 就绪时，assign/claim 后补一条且只补一条 durable 目录消息。"""
@@ -1287,6 +1436,8 @@ class DaemonHub:
                 MessageDeliverData(agent_member_id=aid, channel_id=channel_id, messages=messages),
                 deliver_meta=meta,
             )
+        # 系统节点无独立 outbox：idle/running + agent.command 运行身份由同一对账恢复。
+        await self._scan_workspace_system_nodes(conn.workspace_id)
 
     def _backlog_trigger(
         self, c: Connection, backlog: list[dict[str, Any]], channel: dict[str, Any], agent_id: str
@@ -1628,6 +1779,18 @@ class DaemonHub:
                 conn, QueryType.HOME_FILE, HomeFileQuery(agent_member_id=agent_id, path=path)
             )
         )
+
+    def query_git_diff(
+        self, *, computer_id: str, query: GitDiffQuery
+    ) -> dict[str, Any]:
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            raise DaemonOffline("daemon 离线")
+        reply = self._run_sync(self.send_query(conn, QueryType.GIT_DIFF, query))
+        error = reply.get("error")
+        if isinstance(error, str):
+            raise DaemonOffline(f"git.diff 查询失败: {error}")
+        return reply
 
     def _require_conn_for_agent(self, agent_id: str) -> tuple[DaemonConnection, dict[str, Any]]:
         with self._engine.connect() as c:

@@ -16,6 +16,8 @@ import type {
   ReadPositionPublic,
   ReminderPublic,
   TaskPublic,
+  TaskDetail,
+  WorktreeUpdatedData,
 } from '@coagentia/contracts-ts';
 
 import { qk } from '../lib/queryKeys';
@@ -71,6 +73,18 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
         next[i] = task;
         return next;
       });
+      break;
+    }
+
+    case 'worktree.updated': {
+      const { worktree } = data as WorktreeUpdatedData;
+      const key = qk.taskDetail(worktree.task_id);
+      // TaskDetail 还未加载时不造不完整缓存；打开线程时由 REST 拉全。
+      if (qc.getQueryData<TaskDetail>(key) !== undefined) {
+        qc.setQueryData<TaskDetail>(key, (prev) => (prev ? { ...prev, worktree } : prev));
+      }
+      // 分支状态/HEAD 变化会改变 Diff；已有观察者立即失效，未打开时不额外请求。
+      void qc.invalidateQueries({ queryKey: qk.taskDiff(worktree.task_id) });
       break;
     }
 

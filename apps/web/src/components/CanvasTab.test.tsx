@@ -1,12 +1,20 @@
 // P2 画布单测:图模型 join + blocked 派生、节点卡 blocked 徽标渲染、连边成环红色预判。
 // 不整体渲染 ReactFlow(happy-dom 无布局测量)——测纯函数 buildCanvasModel/planEdgeConnect 与
 // 脱离 RF context 的展示卡 TaskNodeCard/SystemNodeCard。运行:pnpm -F @coagentia/web test
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api')>();
+  return { ...actual, api: { ...actual.api, createCanvasNode: vi.fn() } };
+});
 
 import type { CanvasDetail, MemberPublic, PresenceEntry, TaskPublic } from '@coagentia/contracts-ts';
 
+import { api } from '../api';
+
 import {
+  SystemNodeModal,
   SystemNodeCard,
   TaskNodeCard,
   buildCanvasModel,
@@ -108,6 +116,46 @@ describe('节点卡渲染', () => {
     expect(screen.getByTestId('canvas-snode')).toBeInTheDocument();
     expect(screen.getByText('Merge')).toBeInTheDocument();
     expect(screen.getByText('running')).toBeInTheDocument();
+  });
+
+  it('仅 failed 系统节点显示 Retry；check 终态提供输出入口', () => {
+    const retry = vi.fn();
+    const output = vi.fn();
+    const { rerender } = render(
+      <SystemNodeCard
+        data={{ kind: 'system', action: 'check', status: 'failed', title: 'Check', blocked: false, selected: false }}
+        onRetry={retry} onShowOutput={output}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '重试 Check' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看 Check 输出' }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(output).toHaveBeenCalledOnce();
+
+    rerender(
+      <SystemNodeCard
+        data={{ kind: 'system', action: 'check', status: 'success', title: 'Check', blocked: false, selected: false }}
+        onRetry={retry} onShowOutput={output}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /重试/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看 Check 输出' })).toBeInTheDocument();
+  });
+});
+
+describe('SystemNodeModal', () => {
+  it('check 未填 command 禁止提交，填写后创建 system/check 节点', async () => {
+    vi.mocked(api.createCanvasNode).mockResolvedValue({} as never);
+    render(<SystemNodeModal canvasId="cv_1" onClose={vi.fn()} onError={vi.fn()} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Check' }));
+    const create = screen.getByRole('button', { name: '创建系统节点' });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Check 命令'), { target: { value: 'pnpm test' } });
+    expect(create).toBeEnabled();
+    fireEvent.click(create);
+    await waitFor(() => expect(api.createCanvasNode).toHaveBeenCalledWith('cv_1', {
+      kind: 'system', title: 'Check', system_action: 'check', command: 'pnpm test',
+    }));
   });
 });
 
