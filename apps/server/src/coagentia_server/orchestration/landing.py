@@ -1023,17 +1023,37 @@ def _apply_delta_remove_edge(tx: Any, ctx: _ExecContext, op: LandingOp) -> dict[
 
 def _apply_delta_remove_node(tx: Any, ctx: _ExecContext, op: LandingOp) -> dict[str, Any]:
     """删除现画布节点（解除引用不删任务，同 C8）：执行期复核目标非活动（in_progress/in_review 或
-    running system → _NodeBecameActive 整批 fail-closed）；目标已消失 → 幂等无操作。级联删边。"""
+    running system → _NodeBecameActive 整批 fail-closed）；目标已消失 → 幂等无操作。级联删边。
+
+    **TOCTOU 收口（code-review 修复）**：活动复核不能在 delete 之前用 autocommit 读——pysqlite 下
+    该 SELECT 不持写锁、不建快照，与随后的 delete DML 之间可被并发 REST claim（task todo→
+    in_progress，不受落地期系统节点抑制约束）插入，逃逸复核删掉活动节点。改为「先删（取写锁）→
+    锁内重验 → 活动则 raise 回滚整步」：delete 取写锁后，重读 task 状态既能看见在我们获锁前已提交的
+    claim（→ 检出活动 raise），又能挡住获锁后才来的 claim（阻塞至本步提交/回滚）。system 节点侧不需
+    此加固（落地期 _channel_landing_in_progress 抑制其 idle→running 认领，无并发翻转面）。"""
     node_id = op.spec["node_id"]
     node = canvas_service.fetch_node(tx.conn, ctx.canvas["id"], node_id)
     if node is None:
         return {"op": "remove_node", "node_id": node_id, "removed": False}
-    if _node_active_at_exec(tx.conn, node):
+    is_agent = node["kind"] == CanvasNodeKind.AGENT.value
+    # system 节点：抑制保证无并发翻转，pre-check 即权威（且不删活动系统节点）。
+    if not is_agent and _node_active_at_exec(tx.conn, node):
         raise _NodeBecameActive(node_id)
+    # 删边 + 删节点（首个 DML 取写锁，建本事务快照）。
     for edge in canvas_service.incident_edges(tx.conn, ctx.canvas["id"], node_id):
         canvas_service.delete_edge(tx.conn, edge["id"])
         tx.emit(EventType.CANVAS_EDGE_REMOVED, ctx.channel_id, {"edge_id": edge["id"]})
     canvas_service.delete_node(tx.conn, node_id)
+    # 锁内重验 agent 任务状态：并发 claim 若在获锁前提交 → 此读检出活动 → raise 回滚整步（含上面的
+    # 删除，无残留）；获锁后的 claim 被阻塞，不可能越过。
+    if is_agent:
+        tid = node.get("task_id")
+        if tid is not None:
+            status = tx.conn.execute(
+                select(_TASK.c.status).where(_TASK.c.id == tid)
+            ).scalar()
+            if status in (TaskStatus.IN_PROGRESS.value, TaskStatus.IN_REVIEW.value):
+                raise _NodeBecameActive(node_id)
     tx.emit(EventType.CANVAS_NODE_REMOVED, ctx.channel_id, {"node_id": node_id})
     return {"op": "remove_node", "node_id": node_id, "removed": True}
 

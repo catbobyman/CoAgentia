@@ -257,7 +257,10 @@ def validate_proposal(body: object, env: Env) -> list[ValidationError]:
     if "mode" not in body:
         errors.append(_err(
             CODE_FIELD_INVALID, "$.mode", "mode 为必填项（decompose 或 single_task）"))
-    elif mode not in _MODES:
+    elif not (_is_str(mode) and mode in _MODES):
+        # 先 _is_str 守卫再成员测试：list/dict 等 unhashable 值 `in frozenset` 会抛 TypeError，
+        # 与 TS 镜像（`!isStr(mode) || !MODES.has(mode)`）分歧并使服务端 500（畸形提案本应进修复
+        # 循环而非崩溃）。同款守卫见 kind/verify_by/system_action（纪律 8 三处对齐）。
         errors.append(_err(
             CODE_FIELD_INVALID, "$.mode", "mode 必须为 'decompose' 或 'single_task'"))
 
@@ -285,7 +288,8 @@ def validate_proposal(body: object, env: Env) -> list[ValidationError]:
     node_list: list = nodes if nodes_is_list else []
 
     # -- V6 节点数（decompose 2..node_limit；single_task 恰 1 且 edges 必空）
-    if nodes_is_list and mode in _MODES:
+    # _is_str 守卫（同 TS lib line 258 `isStr(mode) && MODES.has(mode)`）防 unhashable in 崩溃。
+    if nodes_is_list and _is_str(mode) and mode in _MODES:
         n = len(node_list)
         if mode == "single_task":
             if n != 1:
@@ -365,7 +369,7 @@ def validate_proposal(body: object, env: Env) -> list[ValidationError]:
 
         # V4 kind（默认 agent）
         kind = node.get("kind", "agent")
-        kind_valid = kind in _KINDS
+        kind_valid = _is_str(kind) and kind in _KINDS  # _is_str 守卫防 unhashable in 崩溃
         if "kind" in node and not kind_valid:
             errors.append(_err(
                 CODE_FIELD_INVALID, f"{base}.kind", "kind 必须为 'agent' 或 'system'"))
@@ -557,7 +561,8 @@ def _validate_agent_plan(node: dict, base: str, errors: list[ValidationError]) -
             if "statement" not in ac or not _is_str(ac.get("statement")):
                 errors.append(_err(
                     CODE_AC_INVALID, f"{apath}.statement", "statement 为必填字符串"))
-            if ac.get("verify_by") not in _VERIFY_BY:
+            vb = ac.get("verify_by")
+            if not (_is_str(vb) and vb in _VERIFY_BY):  # _is_str 守卫防 unhashable in 崩溃
                 errors.append(_err(
                     CODE_AC_INVALID, f"{apath}.verify_by",
                     "verify_by 必须为 command / inspect / manual 之一",
@@ -585,7 +590,7 @@ def _validate_agent_plan(node: dict, base: str, errors: list[ValidationError]) -
 def _validate_system_node(node: dict, base: str, errors: list[ValidationError]) -> None:
     """V14：system 节点 system_action 合法、check 必有 command、禁 task_plan/suggested_owner。"""
     action = node.get("system_action")
-    if action not in _SYSTEM_ACTIONS:
+    if not (_is_str(action) and action in _SYSTEM_ACTIONS):  # _is_str 守卫防 unhashable in 崩溃
         errors.append(_err(
             CODE_SYSTEM_NODE_INVALID, f"{base}.system_action",
             "system 节点的 system_action 必须为 'merge' 或 'check'",

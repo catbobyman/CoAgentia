@@ -3368,5 +3368,254 @@
       ]
     },
     "hash": "f6d2e8fc5ec637429afa878833f8fdd605c529fa4729b1c30618de4c62d0ca4f"
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v_unhashable_mode_list",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": [
+        "decompose"
+      ],
+      "summary": "两节点拆解",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "g",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "g",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.mode",
+        "message": "mode 必须为 'decompose' 或 'single_task'"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v_unhashable_kind_dict",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "两节点拆解",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现",
+          "kind": {
+            "x": 1
+          },
+          "task_plan": {
+            "goal": "g",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "g",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[0].kind",
+        "message": "kind 必须为 'agent' 或 'system'"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v_unhashable_verify_by_list",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "两节点拆解",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "g",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪",
+                "verify_by": [
+                  "command"
+                ],
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "g",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "AC_INVALID",
+        "path": "$.nodes[0].task_plan.acceptance_criteria[0].verify_by",
+        "message": "verify_by 必须为 command / inspect / manual 之一"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v_unhashable_system_action_list",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "两节点拆解",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "g",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "合并",
+          "kind": "system",
+          "system_action": [
+            "merge"
+          ]
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "SYSTEM_NODE_INVALID",
+        "path": "$.nodes[1].system_action",
+        "message": "system 节点的 system_action 必须为 'merge' 或 'check'"
+      }
+    ]
   }
 ]

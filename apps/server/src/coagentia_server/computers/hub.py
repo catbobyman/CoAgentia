@@ -299,9 +299,14 @@ class DaemonHub:
         if event.type == EventType.LANDING_STARTED:
             loop.call_soon_threadsafe(self._spawn, self._run_landing_scan())
             return
-        # 落地收尾/停批 → 补一次系统节点扫描：落地期认领抑制（system_nodes._channel_landing_
-        # in_progress）会吞掉步事务触发的扫描,批终态后在此接续,防 idle merge/check 悬置到周期兜底。
-        if event.type in {EventType.LANDING_COMPLETED, EventType.LANDING_FAIL_CLOSED}:
+        # 落地**完成** → 补一次系统节点扫描：落地期认领抑制（system_nodes._channel_landing_
+        # in_progress）会吞掉步事务触发的扫描,批 :done 后接续,防 idle merge/check 悬置到周期兜底。
+        # **仅 LANDING_COMPLETED，不含 fail_closed**（code-review 修复）：fail_closed 的画布是**截断
+        # 前缀**（delta 先删后加、remove 步已提交而重建的 add 步未跑），此时重扫会让某上游被删空的
+        # merge 在**不完整祖先集**上被空成功进不可 retry 的 SUCCESS——J9/落地期抑制专门封死的窗口经
+        # 部分提交前缀重开。fail-closed 已需人类处置告警,截断图的系统节点驱动交人类 settle 后再放行
+        # （周期 reconcile 亦不动 fail_closed 批），不自动在降级态上叠加非幂等终态。
+        if event.type == EventType.LANDING_COMPLETED:
             channel_id = event.channel_id
             if channel_id:
                 loop.call_soon_threadsafe(

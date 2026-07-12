@@ -633,6 +633,8 @@ def maybe_trigger_t1(
     非 DM）天然挡住。挂接点 = persist_message mention 处理后。返回待投递 inject（best-effort）。"""
     if thread_root_id is not None:
         return []  # 线程内消息不触发（source 须为顶级消息转任务）
+    if not mentioned:
+        return []  # 短路（code-review 效率修复）：无 @mention 不可能 @Orchestrator，免跑三表联查
     if channel["kind"] == ChannelKind.DM.value or channel.get("archived_at"):
         return []  # DM 不承载任务（TASK_IN_DM）/ 归档频道不建
     orchestrator = find_orchestrator(tx.conn, channel["id"])
@@ -713,6 +715,9 @@ def classify_submission(
     """
     if thread_root_id is None:
         return None  # 提案在 source 任务线程内提交（非顶级）
+    if "<control>" not in body:
+        return None  # 短路（code-review 效率修复）：所有决策分支都要 <control>，无控制块的线程
+        # 回复不必先跑提案 join + delta 入口的 _is_agent_member/_task_by_root 查询。
     # ① + ②：作者是某非终态提案的 proposed_by，且该提案 source 任务锚点 == 本消息线程根。
     row = tx.conn.execute(
         select(_PROPOSAL)
@@ -1056,10 +1061,16 @@ def _apply_success_same(
         # 竞败降级（SM-F1）：phase1 读到的状态已被并发推进（confirm/supersede/…）——按重复提交
         # 忽略留痕，不以过期读改写状态机。首个条件 UPDATE 即本事务写锁获取点，之后不再有竞态面。
         return _apply_duplicate_ignored(tx, proposal, reason="concurrent_state_change")
+    # 同 revision 成功更新：body/proposal_hash 整体替换；**delta 一并刷新 base_hash**（code-review
+    # 修复）——base_hash 是 F9 依据（create_delta_proposal 不变式 base_hash=body.base），漏刷则修复
+    # 循环里 Agent 按 hint 改对 base 后同 revision 更新仍留旧错 base_hash，confirm 期 _confirm_delta
+    # 以陈旧 base_hash 比当前基线误判过期 → 合法提案永被 DELTA_BASE_MISMATCH 打回（对称于
+    # _insert_revision_row rev+1 路径已正确重算 base_hash）。full 提案 base_hash 恒 None，赋值无害。
+    values: dict[str, Any] = {"body": parsed, "proposal_hash": new_hash}
+    if proposal["kind"] == ProposalKind.DELTA.value:
+        values["base_hash"] = _delta_base_of(parsed)
     tx.conn.execute(
-        update(_PROPOSAL).where(_PROPOSAL.c.id == proposal["id"]).values(
-            body=parsed, proposal_hash=new_hash
-        )
+        update(_PROPOSAL).where(_PROPOSAL.c.id == proposal["id"]).values(**values)
     )
     refreshed = fetch_proposal(tx.conn, proposal["id"])
     assert refreshed is not None

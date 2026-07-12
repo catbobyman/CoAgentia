@@ -12,6 +12,7 @@ from typing import Any
 from coagentia_contracts import entities, rest
 from coagentia_contracts.constants import OPID_REST_IDEMPOTENCY
 from coagentia_contracts.entities import TemplateBody
+from coagentia_contracts.enums import MemberKind
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy import select
@@ -141,6 +142,17 @@ def instantiate_template(
     WS 事件（复用 message/task/canvas 事件）。
     """
     me = acting_member(request, tx.conn)
+    # O9 一致性（code-review 修复）：实例化落地整张任务/节点/边 DAG = 画布结构写，与 canvas.py
+    # create_node/edge 同性质，故对 Agent 主体 403 rule=O9（Agent 结构变更唯一通道 = <control>
+    # delta 提案；实例化是人类向导动作 C5，浏览器 owner 不受影响）。template 注册管理（create/
+    # patch/delete）不写画布结构，非 O9 面，门维持现状。
+    if me["kind"] == MemberKind.AGENT.value:
+        raise ApiError(
+            403,
+            rest.ErrorCode.PERMISSION_DENIED,
+            "模板实例化是人类操作（Agent 结构变更通道 = <control> delta 提案）",
+            rule="O9",
+        )
     template = templates_service.fetch_template(tx.conn, template_id)
     if template is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "模板不存在")

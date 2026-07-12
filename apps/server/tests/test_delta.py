@@ -1092,3 +1092,108 @@ def test_o9_patch_node_agent_403_and_layout_identity(server_client: TestClient) 
                             json={"positions": [{"node_id": node_id, "x": 5, "y": 7}]},
                             headers=headers)
     assert lay.status_code == 200, lay.text
+
+
+# ====================================================== code-review 修复回归（阶段 4 收口）
+
+
+def test_delta_same_revision_refreshes_base_hash(migrated_engine: Engine) -> None:
+    """CR-0（major）：delta 修复循环里 Agent 改对 base 后同 revision 成功更新 → base_hash 一并刷新
+    （否则 confirm 期以陈旧 base_hash 误判过期，合法提案永被 DELTA_BASE_MISMATCH 打回）。"""
+    ids = _seed(migrated_engine)
+    a, _ = _add_node(migrated_engine, ids, "A")
+    good_base = _sync_baseline(migrated_engine, ids)
+    channel = _channel_dict(migrated_engine, ids["channel"])
+    root = ids["root_msg"]
+
+    # 首版错 base（H0=空快照，非当前 good_base）→ 建 repairing 行，base_hash 固化为错值。
+    from coagentia_contracts.kernel.fingerprint import fingerprint as _fp
+    wrong_base = _fp({"nodes": [], "edges": []})
+    bad = _delta_body(wrong_base, [_add_node_op("N1", "跟进")])
+    with _tx(migrated_engine) as tx:
+        dec = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(bad), thread_root_id=root)
+        assert dec is not None
+        dec.apply(tx)
+    pid = _proposal_id_for(migrated_engine, ids["task"])
+    row = _proposal_row(migrated_engine, pid)
+    assert row["status"] == "repairing" and row["base_hash"] == wrong_base
+
+    # 同线程重发正确 base（good_base）修正版 → 同 revision 成功 → base_hash 必刷新为 good_base。
+    fixed = _delta_body(good_base, [_add_node_op("N1", "跟进")])
+    with _tx(migrated_engine) as tx:
+        dec = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(fixed), thread_root_id=root)
+        assert dec is not None
+        dec.apply(tx)
+    row = _proposal_row(migrated_engine, pid)
+    assert row["status"] == "awaiting_confirm"
+    assert row["base_hash"] == good_base  # 刷新到位（修复前会留 wrong_base）
+
+
+def test_o9_template_instantiate_agent_403(server_client: TestClient) -> None:
+    """CR-3（major）：模板实例化=画布结构写，对 Agent 主体 403 rule=O9（人类向导不受影响）。"""
+    engine: Engine = server_client.app.state.engine  # type: ignore[attr-defined]
+    ids = _seed(engine)
+    headers = _agent_headers(server_client, engine, ids)
+    # 存在性无所谓——门在 fetch 之前，用任意模板 id 即可验门（Agent 恒 403 先于 404）。
+    r = server_client.post("/api/templates/01JJJJJJJJJJJJJJJJJJJJJJJJ/instantiate",
+                           json={"channel_id": ids["channel"], "role_mapping": {}}, headers=headers)
+    assert r.status_code == 403, r.text
+    assert rest.ErrorResponse.model_validate(r.json()).error.rule == "O9"
+
+
+def test_kernel_unhashable_enum_no_crash(migrated_engine: Engine) -> None:
+    """CR-4（major）：畸形提案（枚举字段取 unhashable 值）经 classify → validate_proposal
+    不再抛 TypeError（500），走修复循环——与 TS 镜像双跑一致（golden v_unhashable_* 判例锁定）。"""
+    ids = _seed(migrated_engine)
+    channel = _channel_dict(migrated_engine, ids["channel"])
+    # decompose 建 source 任务 + drafting 提案。
+    src = ids["task"]
+    root = ids["root_msg"]
+    # 先建一个 drafting 提案（走 initiate 语义的最小替身：直接插）。
+    from coagentia_server.ledger.service import new_ulid, now_iso
+    pid = new_ulid()
+    with migrated_engine.begin() as c:
+        c.execute(insert(_PROPOSAL).values(
+            id=pid, workspace_id=ids["ws"], channel_id=ids["channel"], source_task_id=src,
+            kind="full", revision=1, status="drafting", body={},
+            proposal_hash="0" * 64, base_hash=None, landed_hash=None, adjustments=[],
+            repair_count=0, proposed_by_member_id=ids["orch"],
+            created_at=now_iso(), updated_at=now_iso()))
+    bad_body = {
+        "version": "coagentia.decomposition.v1", "source": src, "mode": ["list-not-str"],
+        "summary": "s", "nodes": [
+            {"temp_id": "N1", "title": "t", "kind": "agent",
+             "task_plan": {"version": "coagentia.task-plan.v1", "goal": "g",
+                           "acceptance_criteria": [{"id": "a", "statement": "s",
+                                                    "verify_by": ["l"], "verify_ref": "r"}]}}],
+    }
+    with _tx(migrated_engine) as tx:
+        dec = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(bad_body), thread_root_id=root)
+        assert dec is not None  # 未崩溃
+        dec.apply(tx)  # 走修复循环（validate 返回结构化错误，非抛异常）
+    assert _proposal_row(migrated_engine, pid)["status"] == "repairing"
+
+
+def test_delta_remove_node_toctou_conditional(migrated_engine: Engine) -> None:
+    """CR-1（minor）：remove_node 落地时若目标 agent 任务已转 in_progress（并发 claim）→ 锁内重验
+    检出 → _NodeBecameActive fail-closed（不删活动节点）。此处以执行前已 in_progress 验锁内复核。"""
+    ids = _seed(migrated_engine, decomp_mode="direct")
+    x, xt = _add_node(migrated_engine, ids, "X", status="in_progress")  # 目标任务活动
+    base = _sync_baseline(migrated_engine, ids)
+    body = _delta_body(base, [{"op": "remove_node", "node_id": x}])
+    _insert_delta(migrated_engine, ids, body, status="landing")
+    bus, _ = _bus()
+    result = landing_domain.pending_landing_scan(migrated_engine, bus)
+    bid = result["created"][0]
+    assert result["executed"][bid] == "fail_closed"  # 活动节点不删，整批 fail-closed
+    # X 仍在（未被删）。
+    with migrated_engine.connect() as c:
+        assert c.execute(
+            select(func.count()).select_from(_NODE).where(_NODE.c.id == x)
+        ).scalar_one() == 1

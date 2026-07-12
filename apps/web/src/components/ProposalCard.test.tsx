@@ -126,4 +126,28 @@ describe('ProposalCard', () => {
     expect(onDelta).toHaveBeenCalledWith('prop_1');
     expect(screen.queryByTestId('proposal-review')).not.toBeInTheDocument();
   });
+
+  it('delta 卡指标行读 operations 统计 +新增/−删除（code-review 修复：非套 full 的 0 节点）', async () => {
+    const delta = {
+      ...PROPOSAL, kind: 'delta' as const,
+      body: {
+        version: 'coagentia.decomposition-delta.v1', base: 'b', reason: 'r',
+        operations: [
+          { op: 'add_node', node: { temp_id: 'N1', title: 't' } },
+          { op: 'add_edge', from: 'a', to: 'N1' },
+          { op: 'remove_node', node_id: 'x' },
+        ],
+      },
+    };
+    vi.mocked(api.proposal).mockResolvedValue(delta as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ProposalCard proposalId={delta.id} onReviewDelta={() => {}} onReviewInCanvas={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByTestId('proposal-mode')).toHaveTextContent('增量');
+    expect(screen.getByTestId('delta-add')).toHaveTextContent('+2 新增');
+    expect(screen.getByTestId('delta-remove')).toHaveTextContent('1 删除');
+  });
 });

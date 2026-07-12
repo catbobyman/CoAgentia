@@ -10,6 +10,7 @@ import type { ProposalPublic } from '@coagentia/contracts-ts';
 
 import { PROPOSAL_STATUS_VAR, PROPOSAL_STATUS_WORD } from '../lib/uiMaps';
 import { useProposal } from '../data/queries';
+import { readDeltaOps } from '../lib/deltaOps';
 import './proposal-card.css';
 
 const MODE_WORD: Record<string, string> = { decompose: '拆解', single_task: '单任务' };
@@ -58,7 +59,13 @@ export function ProposalCard({
 
   const status = proposal.status ?? 'drafting';
   const kind = proposal.kind ?? 'full';
+  const isDelta = kind === 'delta';
   const { mode, nodeCount, edgeCount, summary } = readSummary(proposal.body);
+  // delta 形态 body 无 full 的 mode/nodes/edges——用 readDeltaOps 统计增删（code-review 修复：
+  // 否则 delta 卡恒显 0 节点/依赖 0/模式 —，指标行对用户无意义）。
+  const deltaOps = isDelta ? readDeltaOps(proposal.body) : [];
+  const deltaAdd = deltaOps.filter((o) => o.kind === 'add').length;
+  const deltaRemove = deltaOps.filter((o) => o.kind === 'remove').length;
   const shortHash = proposal.proposal_hash.slice(0, 6);
   const isFailed = FAILED.has(status);
   const canReview = !CLOSED_NO_REVIEW.has(status);
@@ -92,11 +99,21 @@ export function ProposalCard({
       {summary && <div className="pc-summary">{summary}</div>}
 
       <div className="pc-metrics">
-        <span className="pc-metric" data-testid="proposal-mode">
-          <Layers />{MODE_WORD[mode] ?? (mode || '—')}
-        </span>
-        <span className="pc-metric">{nodeCount} 节点</span>
-        <span className="pc-metric"><GitBranch />依赖 {edgeCount}</span>
+        {isDelta ? (
+          <>
+            <span className="pc-metric" data-testid="proposal-mode"><Layers />增量</span>
+            <span className="pc-metric" data-testid="delta-add">+{deltaAdd} 新增</span>
+            <span className="pc-metric" data-testid="delta-remove"><GitBranch />−{deltaRemove} 删除</span>
+          </>
+        ) : (
+          <>
+            <span className="pc-metric" data-testid="proposal-mode">
+              <Layers />{MODE_WORD[mode] ?? (mode || '—')}
+            </span>
+            <span className="pc-metric">{nodeCount} 节点</span>
+            <span className="pc-metric"><GitBranch />依赖 {edgeCount}</span>
+          </>
+        )}
         <span className="pc-hash" title={`指纹 ${proposal.proposal_hash}`}>#{shortHash}</span>
       </div>
 
