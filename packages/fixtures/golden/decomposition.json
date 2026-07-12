@@ -1,0 +1,3372 @@
+[
+  {
+    "fn": "validate_proposal",
+    "name": "green_decompose_full",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": []
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "green_single_task",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "single_task",
+      "summary": "改一个文案，单任务足矣",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "改文案",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "改文案目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        }
+      ]
+    },
+    "errors": []
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "green_system_merge_node",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "实现 + 合并系统节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "M1n",
+          "title": "合并",
+          "kind": "system",
+          "system_action": "merge"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "M1n"
+        }
+      ],
+      "merge_plan": "按序合并"
+    },
+    "errors": []
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v2_bad_version",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v2",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "BAD_VERSION",
+        "path": "$.version",
+        "message": "version 必须为 'coagentia.decomposition.v1'"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v3_top_alias_tasks",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check",
+      "tasks": []
+    },
+    "errors": [
+      {
+        "code": "UNKNOWN_FIELD",
+        "path": "$.tasks",
+        "message": "未知字段 'tasks'（提案 schema 不接受额外字段）",
+        "hint": "是否想用 'nodes'？"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v3_node_alias_owner",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1",
+          "owner": "M1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "UNKNOWN_FIELD",
+        "path": "$.nodes[0].owner",
+        "message": "未知字段 'owner'（提案 schema 不接受额外字段）",
+        "hint": "是否想用 'suggested_owner'？"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v3_unknown_no_alias",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check",
+      "estimate": 5
+    },
+    "errors": [
+      {
+        "code": "UNKNOWN_FIELD",
+        "path": "$.estimate",
+        "message": "未知字段 'estimate'（提案 schema 不接受额外字段）"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_temp_id_pattern",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N 1!",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[0].temp_id",
+        "message": "temp_id 须匹配 ^[A-Za-z0-9_-]{1,32}$"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_title_too_long",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[0].title",
+        "message": "title 长度须为 1..80 字"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_mode_enum",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "auto",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.mode",
+        "message": "mode 必须为 'decompose' 或 'single_task'"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v6_decompose_over_limit",
+    "env": {
+      "node_limit": 3,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "节点1",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "节点1目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          }
+        },
+        {
+          "temp_id": "N2",
+          "title": "节点2",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "节点2目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          }
+        },
+        {
+          "temp_id": "N3",
+          "title": "节点3",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "节点3目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          }
+        },
+        {
+          "temp_id": "N4",
+          "title": "节点4",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "节点4目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          }
+        }
+      ],
+      "edges": []
+    },
+    "errors": [
+      {
+        "code": "NODE_COUNT",
+        "path": "$.nodes",
+        "message": "decompose 模式节点数须为 2..3，实际 4 个"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v6_single_task_with_edges",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "single_task",
+      "summary": "改一个文案，单任务足矣",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "改文案",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "改文案目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N1"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "NODE_COUNT",
+        "path": "$.edges",
+        "message": "single_task 模式不得声明依赖边"
+      },
+      {
+        "code": "EDGE_SELF",
+        "path": "$.edges[0]",
+        "message": "禁止自环（from 与 to 同为 'N1'）"
+      },
+      {
+        "code": "GRAPH_CYCLE",
+        "path": "$.edges",
+        "message": "提案图存在环：N1"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v6_single_task_two_nodes",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "single_task",
+      "summary": "改一个文案，单任务足矣",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "甲",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "甲目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          }
+        },
+        {
+          "temp_id": "N2",
+          "title": "乙",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "乙目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "NODE_COUNT",
+        "path": "$.nodes",
+        "message": "single_task 模式须恰好 1 个节点，实际 2 个"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v7_dup_id",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N1",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "DUP_ID",
+        "path": "$.nodes[1].temp_id",
+        "message": "temp_id 'N1' 重复（提案内须唯一）"
+      },
+      {
+        "code": "EDGE_UNKNOWN_NODE",
+        "path": "$.edges[0].to",
+        "message": "边引用了不存在的节点 'N2'",
+        "hint": "现有 temp_id：N1、N3；是否想引用 'N1'？"
+      },
+      {
+        "code": "EDGE_UNKNOWN_NODE",
+        "path": "$.edges[1].from",
+        "message": "边引用了不存在的节点 'N2'",
+        "hint": "现有 temp_id：N1、N3；是否想引用 'N1'？"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v7_dup_title",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "DUP_TITLE",
+        "path": "$.nodes[1].title",
+        "message": "title '实现登录' 重复（提案内须唯一）"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v8_edge_dangling",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N9"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "EDGE_UNKNOWN_NODE",
+        "path": "$.edges[0].to",
+        "message": "边引用了不存在的节点 'N9'",
+        "hint": "现有 temp_id：N1、N2、N3；是否想引用 'N1'？"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v8_edge_self_loop",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N1"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "EDGE_SELF",
+        "path": "$.edges[0]",
+        "message": "禁止自环（from 与 to 同为 'N1'）"
+      },
+      {
+        "code": "GRAPH_CYCLE",
+        "path": "$.edges",
+        "message": "提案图存在环：N1"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v9_graph_cycle",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        },
+        {
+          "from": "N3",
+          "to": "N1"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "GRAPH_CYCLE",
+        "path": "$.edges",
+        "message": "提案图存在环：N1 → N2 → N3"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v10_plan_missing",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "PLAN_MISSING",
+        "path": "$.nodes[1].task_plan",
+        "message": "agent 节点必须包含 task_plan"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v10_ac_invalid_verify_by",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "eyeball",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "AC_INVALID",
+        "path": "$.nodes[1].task_plan.acceptance_criteria[0].verify_by",
+        "message": "verify_by 必须为 command / inspect / manual 之一"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v10_ac_empty",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": []
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "AC_INVALID",
+        "path": "$.nodes[1].task_plan.acceptance_criteria",
+        "message": "task_plan 须至少包含 1 条验收标准"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v11_owner_not_member",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M9"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "OWNER_NOT_MEMBER",
+        "path": "$.nodes[1].suggested_owner",
+        "message": "suggested_owner 'M9' 不是本频道成员",
+        "hint": "可置为 null 留待认领，或先邀请该成员入频道"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v12_project_required",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "PROJECT_REQUIRED",
+        "path": "$.nodes[0].project",
+        "message": "writes_code=true 的节点必须指定 project"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v12_project_unbound",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P9"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "PROJECT_UNBOUND",
+        "path": "$.nodes[0].project",
+        "message": "project 'P9' 未绑定本频道",
+        "hint": "先将该 Project 绑定到本频道，或改用已绑定的 Project"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v13_merge_plan_missing",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "MERGE_PLAN_MISSING",
+        "path": "$.merge_plan",
+        "message": "存在 writes_code 节点时 merge_plan 必填"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v14_system_has_task_plan",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test",
+          "task_plan": {
+            "goal": "x",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "SYSTEM_NODE_INVALID",
+        "path": "$.nodes[2].task_plan",
+        "message": "system 节点不得包含 task_plan"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v14_system_bad_action",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "deploy",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "SYSTEM_NODE_INVALID",
+        "path": "$.nodes[2].system_action",
+        "message": "system 节点的 system_action 必须为 'merge' 或 'check'"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v14_check_missing_command",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "SYSTEM_NODE_INVALID",
+        "path": "$.nodes[2].command",
+        "message": "system_action=check 的节点必须提供 command"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v14_agent_has_system_action",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1",
+          "system_action": "merge"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "SYSTEM_NODE_INVALID",
+        "path": "$.nodes[0].system_action",
+        "message": "agent 节点不得声明 system_action"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v3_plan_unknown_field",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ],
+            "estimate": 5
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "UNKNOWN_FIELD",
+        "path": "$.nodes[0].task_plan.estimate",
+        "message": "未知字段 'estimate'（提案 schema 不接受额外字段）"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v3_ac_unknown_field",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest",
+                "note": "补充说明"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "UNKNOWN_FIELD",
+        "path": "$.nodes[0].task_plan.acceptance_criteria[0].note",
+        "message": "未知字段 'note'（提案 schema 不接受额外字段）"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v3_edge_unknown_field",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2",
+          "label": "依赖"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "UNKNOWN_FIELD",
+        "path": "$.edges[0].label",
+        "message": "未知字段 'label'（提案 schema 不接受额外字段）"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v10_ac_missing_statement",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "AC_INVALID",
+        "path": "$.nodes[0].task_plan.acceptance_criteria[0].statement",
+        "message": "statement 为必填字符串"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v10_ac_bare_missing_three",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "verify_by": "command"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "AC_INVALID",
+        "path": "$.nodes[0].task_plan.acceptance_criteria[0].id",
+        "message": "id 为必填字符串"
+      },
+      {
+        "code": "AC_INVALID",
+        "path": "$.nodes[0].task_plan.acceptance_criteria[0].statement",
+        "message": "statement 为必填字符串"
+      },
+      {
+        "code": "AC_INVALID",
+        "path": "$.nodes[0].task_plan.acceptance_criteria[0].verify_ref",
+        "message": "verify_ref 为必填字符串"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_task_plan_version_bad",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ],
+            "version": "coagentia.task-plan.v2"
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[0].task_plan.version",
+        "message": "version 必须为 'coagentia.task-plan.v1'"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_defaults_decided_not_array",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ],
+            "defaults_decided": "全部默认"
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[0].task_plan.defaults_decided",
+        "message": "defaults_decided 必须为字符串数组"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "green_task_plan_full_fields",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ],
+            "version": "coagentia.task-plan.v1",
+            "defaults_decided": [
+              "用 SQLite"
+            ],
+            "out_of_scope": [
+              "不做多机"
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "errors": []
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_title_80_codepoints_emoji_green",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "single_task",
+      "summary": "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss🍅",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲🍅",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "改文案目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        }
+      ]
+    },
+    "errors": []
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_title_81_codepoints_emoji",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "single_task",
+      "summary": "改一个文案，单任务足矣",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲🍅",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "改文案目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[0].title",
+        "message": "title 长度须为 1..80 字"
+      }
+    ]
+  },
+  {
+    "fn": "parse_control",
+    "name": "pc_ok_plain",
+    "text": "这是给人看的正文。\n\n<control>{\"version\": \"coagentia.decomposition.v1\", \"mode\": \"single_task\"}</control>\n",
+    "ok": true,
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "mode": "single_task"
+    }
+  },
+  {
+    "fn": "parse_control",
+    "name": "pc_ok_fenced",
+    "text": "拆解说明：\n\n```json\n<control>{\"version\": \"coagentia.decomposition.v1\", \"mode\": \"single_task\"}</control>\n```\n",
+    "ok": true,
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "mode": "single_task"
+    }
+  },
+  {
+    "fn": "parse_control",
+    "name": "pc_ok_tilde_fenced",
+    "text": "~~~\n<control>{\"version\": \"coagentia.decomposition.v1\", \"mode\": \"single_task\"}</control>\n~~~",
+    "ok": true,
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "mode": "single_task"
+    }
+  },
+  {
+    "fn": "parse_control",
+    "name": "pc_missing",
+    "text": "正文里根本没有控制块。",
+    "ok": false,
+    "error": {
+      "code": "CONTROL_PARSE",
+      "path": "$",
+      "message": "未找到 <control> 控制块；提案正文须恰含一个 <control>{…}</control> 块"
+    }
+  },
+  {
+    "fn": "parse_control",
+    "name": "pc_multiple_inside_outside",
+    "text": "<control>{\"version\": \"coagentia.decomposition.v1\", \"mode\": \"single_task\"}</control>\n```\n<control>{\"version\": \"coagentia.decomposition.v1\", \"mode\": \"single_task\"}</control>\n```",
+    "ok": false,
+    "error": {
+      "code": "CONTROL_PARSE",
+      "path": "$",
+      "message": "发现 2 个 <control> 控制块；恰需一个（围栏内外重复也算多块）"
+    }
+  },
+  {
+    "fn": "parse_control",
+    "name": "pc_bad_json",
+    "text": "<control>{不是合法 JSON,,,}</control>",
+    "ok": false,
+    "error": {
+      "code": "CONTROL_PARSE",
+      "path": "$",
+      "message": "<control> 控制块内不是合法 JSON"
+    }
+  },
+  {
+    "fn": "parse_control",
+    "name": "pc_not_object",
+    "text": "<control>[1, 2, 3]</control>",
+    "ok": false,
+    "error": {
+      "code": "CONTROL_PARSE",
+      "path": "$",
+      "message": "<control> 控制块必须是 JSON 对象"
+    }
+  },
+  {
+    "fn": "proposal_fingerprint",
+    "name": "fp_clean",
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "hash": "4df5f312cdfa81ffe8b829eb284894969bf9d6ca61cd1c6eb1d93181e23c1f14"
+  },
+  {
+    "fn": "proposal_fingerprint",
+    "name": "fp_strips_system_fields",
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        },
+        {
+          "from": "N2",
+          "to": "N3"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check",
+      "revision": 3,
+      "proposed_by": "M1",
+      "proposed_at": "2026-07-12T00:00:00.000Z"
+    },
+    "hash": "4df5f312cdfa81ffe8b829eb284894969bf9d6ca61cd1c6eb1d93181e23c1f14"
+  },
+  {
+    "fn": "proposal_fingerprint",
+    "name": "fp_order_invariant",
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "把登录拆成实现/评审/校验三节点",
+      "nodes": [
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": "pnpm test"
+        },
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "writes_code": true,
+          "project": "P1"
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N2",
+          "to": "N3"
+        },
+        {
+          "from": "N1",
+          "to": "N2"
+        }
+      ],
+      "merge_plan": "N1 完成后 merge，再 check"
+    },
+    "hash": "4df5f312cdfa81ffe8b829eb284894969bf9d6ca61cd1c6eb1d93181e23c1f14"
+  },
+  {
+    "fn": "proposal_fingerprint",
+    "name": "fp_single_task",
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "single_task",
+      "summary": "改一个文案，单任务足矣",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "改文案",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "改文案目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "可证伪表述",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        }
+      ]
+    },
+    "hash": "f6d2e8fc5ec637429afa878833f8fdd605c529fa4729b1c30618de4c62d0ca4f"
+  }
+]

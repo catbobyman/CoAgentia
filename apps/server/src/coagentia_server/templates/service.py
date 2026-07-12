@@ -35,7 +35,7 @@ from coagentia_contracts.enums import (
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.kernel.graph import detect_cycle
 from coagentia_contracts.ws import EventType
-from sqlalchemy import insert, select, update
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import IntegrityError
 
@@ -289,6 +289,40 @@ def insert_template(
     row = conn.execute(select(_TEMPLATE).where(_TEMPLATE.c.id == tid)).mappings().first()
     assert row is not None
     return dict(row)
+
+
+# ---------------------------------------------------------------- 治理（J11；B §12.11）
+
+
+def update_template_metadata(
+    conn: Connection, template_id: str, *, name: str | None, description: str | None
+) -> dict[str, Any]:
+    """模板元数据 PATCH（B §12.11）：仅更新提供的 name/description（None = 该字段不动），回读整行。
+
+    结构（body）不可改——改结构走「重新存为模板」（B §4.12）；builtin 拦截与 404 由 route 前置。
+    templates 表 name 无唯一约束（工作区级小表），故改名不触约束冲突（重名契约未定义，放行）。
+    """
+    values: dict[str, Any] = {}
+    if name is not None:
+        values["name"] = name
+    if description is not None:
+        values["description"] = description
+    if values:
+        conn.execute(
+            update(_TEMPLATE).where(_TEMPLATE.c.id == template_id).values(**values)
+        )
+    row = conn.execute(select(_TEMPLATE).where(_TEMPLATE.c.id == template_id)).mappings().first()
+    assert row is not None
+    return dict(row)
+
+
+def delete_template(conn: Connection, template_id: str) -> None:
+    """模板 DELETE（B §12.11）：物理删行；builtin 拦截与 404 由 route 前置。
+
+    历史落地批引用不阻删——landing_batches.source_ref 留 id 非 FK（账本自足），删模板后既有落地批
+    仍完整可查，无级联删除。
+    """
+    conn.execute(delete(_TEMPLATE).where(_TEMPLATE.c.id == template_id))
 
 
 # ---------------------------------------------------------------- 实例化事务器（H6；B §11.2）
@@ -750,6 +784,7 @@ def upsert_builtin_templates(engine: Engine) -> None:
 __all__ = [
     "UNCLAIMED_PLACEHOLDER",
     "channel_has_canvas",
+    "delete_template",
     "fetch_template",
     "fetch_templates",
     "has_draft_layer",
@@ -759,6 +794,7 @@ __all__ = [
     "serialize_canvas_to_body",
     "unknown_role_members",
     "unavailable_code_projects",
+    "update_template_metadata",
     "upsert_builtin_templates",
     "validate_template_body",
 ]

@@ -1,6 +1,7 @@
 """M6a 实机 verify 共享装置：临时库迁移+seed、scratch git 仓库、真 uvicorn 子进程、真 daemon-sim。
 
-daemon-sim = 真 DaemonClient（真 websockets + 真心跳 + 真 git.py）+ FakeAdapter（只桩掉 Agent turn）。
+daemon-sim = 真 DaemonClient（真 websockets + 真心跳 + 真 git.py）
++ FakeAdapter（只桩掉 Agent turn）。
 worktree ensure/merge/cleanup/check 全走生产 git.py，对真 scratch 仓库执行真命令。
 """
 
@@ -19,7 +20,7 @@ from coagentia_daemon.buffer import TelemetryBuffer
 from coagentia_daemon.client import DaemonClient
 from coagentia_daemon.paths import DataPaths
 from coagentia_server.db import models
-from coagentia_server.db.engine import make_engine, sqlite_url
+from coagentia_server.db.engine import make_engine
 from coagentia_server.ledger.service import new_ulid, now_iso
 from sqlalchemy import insert
 from sqlalchemy.engine import Engine
@@ -129,7 +130,9 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace", check=False)
     if check and r.returncode != 0:
-        raise AssertionError(f"git {' '.join(args)} failed ({r.returncode}): {r.stdout}\n{r.stderr}")
+        raise AssertionError(
+            f"git {' '.join(args)} failed ({r.returncode}): {r.stdout}\n{r.stderr}"
+        )
     return r
 
 

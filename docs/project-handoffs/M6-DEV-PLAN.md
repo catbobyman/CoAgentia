@@ -52,8 +52,8 @@
 | B-M6-1 | 前端：频道设置 Project 组+Project CRUD 弹窗/Diff 卡/系统节点形态+Retry/verdict 徽标/冲突卡/wsBridge worktree.updated | ✅ | 波 3 本提交（见 HEAD） | 31 文件/194 测试；1440×900 与 390×844 屏对照无溢出、console 0；三张截图仅作 UI 对照，不冒充实机 verify 证据 |
 | — | **M6a 实机 verify** → [`docs/verify/M6A-EVIDENCE.md`](../verify/M6A-EVIDENCE.md)（§9a #11 场景+截图） | ✅ | `bc70cd5` | **真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库端到端 20/20 ALL PASS**（两场景全链）+ 真仓库 5 commit（各含 `--no-ff` merge）+ 4 截图；verify-surfaced 观察 3 条（裸系统节点空成功/冲突任务承 owner/并发写伪锁）已登记 |
 | — | /code-review high（块 a）→ 10 findings 统一修复 | ✅ | 收口提交（见 HEAD） | **8 角度 workflow → 10 findings（1 REFUTED）→ owner 拍板「#1 后台化 Design C/#7 保语义删死代码/其余全修」→ 10 条全落地 + 复验**：#1 daemon worktree 指令后台通道（单车道保序、ack 仍 op 后发、断连不取消仅 shutdown 取消）/#2 ensure 失败诊断归属 owner/channel+DIAGNOSTIC_APPENDED+累计 3 次一次性升级喊人/#3 reconnect 握手复验既有 active 行（revalidation_plans，conflicted 排除；周期对账不复验）/#4 冲突派回任务幂等（同节点未终态同树复用；二次真冲突建新）/#5 GitQueryError→422 透传 git prose（不再误归 503）/#6 CardKind.MERGE_CONFLICT 结构化冲突卡（契约→gen→后端 anchor→前端判定）/#8 diff 单进程全量切分（`_split_diff_sections` fail-closed 守卫）/#9 菱形 merge alias 广播按 worktree_row 去重（进展消息仍 per-node）/#10 fail-closed 注释。**新增回归 14 项**（帧序 drain 辅助/升级一次性含再扫描交互/复验三面+plans 单测/冲突幂等两态/菱形广播/422/card_kind 前后端负例/进程数恒定+切分单测+不串段）；m6a_verify 复验 20/20（4 轮 3 净 1 环境性 REST 超时，probe 既有 DB 锁重试脚手架佐证为环境噪声）+ 修 probe 收尾 suppress(BaseException) |
-| J7 | 同构校验内核（kernel decomposition：V1–V14+`<control>` 解析+指纹；lib/decomposition.ts 镜像；golden/decomposition.json 双跑） | ⬜ | — | 块 b 波 1 |
-| J11 | Orchestrator 角色模板（数据+创建预选+NO_ORCHESTRATOR 引导面）+ 模板 PATCH/DELETE（builtin 409） | ⬜ | — | 块 b 波 1 |
+| J7 | 同构校验内核（kernel decomposition：V1–V14+`<control>` 解析+指纹；lib/decomposition.ts 镜像；golden/decomposition.json 双跑） | ✅ | 波 1 本提交（见 HEAD） | py 权威+ts 镜像+golden 50 判例（validate 5绿/34红 全规则覆盖+parse 7+fp 4）双跑逐字节一致；env=纯参数注入 {node_limit, member_ids, bound_project_ids}，**ref 语义=ULID id 精确匹配**（J8 上下文注入按此供给）；主循环审查追加修复两缺口：①内核严格度补齐至 ≥TaskPlanBody 消费（AC 四字段/深层未知字段全层级执法）②长度语义钉死 Unicode 码点（ts cpLen） |
+| J11 | Orchestrator 角色模板（数据+创建预选+NO_ORCHESTRATOR 引导面）+ 模板 PATCH/DELETE（builtin 409） | ◐ | 波 1 本提交（见 HEAD） | 波 1 骨架完成：治理端点 PATCH/DELETE 逐路径（builtin 409/引用不阻删/门=acting_member 同现状口径）+ `orchestration/role_templates.py` 角色模板数据（§13.1 七条+§12 表原文注入，话术定稿留 TODO 归阶段 4）；**agent_role_templates 建表/upsert/POST /agents 消费随波 2（owner 拍板 A v1.0.10：0009=proposals+agent_role_templates 两张+agents.role_template_key 列）**；前端引导面归 B-M6-2 |
 | J8 | 0009 迁移 + 提案域（8 态状态机/三入口归一/上下文注入/`<control>` 解析挂接/修复循环 S1 直投/Superseded/对账 #6/24h 提醒） | ⬜ | — | 块 b 波 2 |
 | J9 | 草稿确认与落地（confirm CAS/调整重验/adjustments 落账/落地事务 decomp: 幂等/汇总+merge 节点自动追加/直落/**fail-closed 复核必做**/对账 #4/A5） | ⬜ | — | 块 b 波 3 |
 | J10 | delta 增量（base 指纹/结果图重验/NODE_ACTIVE/部分接受 removed_ops/幂等）+ O9 拦截（Agent 结构写 403 rule=O9） | ⬜ | — | 块 b 波 4 |
@@ -64,8 +64,8 @@
 ## 2. 守门命令（波间与收口；全绿才算过门）
 
 ```
-uv run pytest -q                    # 当前 813 passed / 4 skipped（M6 起点 712/4），只增不减
-pnpm -F @coagentia/web test         # 当前 vitest 194（M6 起点 175），只增不减
+uv run pytest -q                    # 当前 864 passed / 4 skipped（M6 起点 712/4），只增不减
+pnpm -F @coagentia/web test         # 当前 vitest 261（M6 起点 175），只增不减
 pnpm typecheck                      # pyright 0 + 双 tsc
 uv run ruff check .
 pnpm gen                            # 后 git diff 应为空（生成物确定性）
@@ -92,3 +92,4 @@ pnpm -F @coagentia/web build
 | 波 1 | 724 passed / 4 skipped | 175 passed | typecheck/ruff/gen/build 绿 | `d564ebf` |
 | 波 2 | 772 passed / 4 skipped | 175 passed | typecheck/ruff/gen 双跑/build 绿；模板补遗独立审计无 High/Medium | `62939f2` |
 | 波 3 | 813 passed / 4 skipped | 194 passed | typecheck/ruff/gen 确定/build 绿；两项 Medium 修复后独立复核无 High/Medium；UI 双视口无溢出、console 0 | ✅ 波 3 本提交（见 HEAD） |
+| **块 b 波 1** | 864 passed / 4 skipped | 261 passed | pyright 0 + 双 tsc / ruff 全绿（顺修 M6a 收口遗留 scratchpad 4 条 lint 恢复基线）/ gen diff 空 / build 绿；主循环逐文件过目 + 追加修复 J7 两缺口后收口 | ✅ 波 1 本提交（见 HEAD） |

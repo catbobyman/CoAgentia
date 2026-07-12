@@ -13,7 +13,7 @@ from coagentia_contracts import entities, rest
 from coagentia_contracts.constants import OPID_REST_IDEMPOTENCY
 from coagentia_contracts.entities import TemplateBody
 from coagentia_contracts.kernel.fingerprint import fingerprint
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy import select
 
 from coagentia_server.api import ApiError
@@ -222,3 +222,63 @@ def instantiate_template(
         batch_id=batch_id,
     )
     return _instantiate_result(batch, task_rows)
+
+
+# ---------------------------------------------------------------- 治理（J11；B §4.12/§12.11）
+#
+# 门同现状模板端点（create/instantiate 皆 acting_member、无 admin 门；B §2 admin 清单未列模板、
+# §4.12 PATCH/DELETE 行亦无 admin 标注——「无特别标注则同现状」）。仅调 acting_member 复用其
+# 身份门（Agent 无效凭证 → 403），不取用返回成员。零新增 WS 事件（模板本体 CRUD 走 REST 拉取，
+# B §11.2 #4 裁决延用）。
+
+
+@router.patch("/templates/{template_id}", response_model=entities.TemplatePublic)
+def patch_template(
+    template_id: str, body: rest.TemplatePatch, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
+    """模板治理 PATCH（B §4.12/§12.11）：仅 name/description 元数据可改（改结构 = 重新存为模板，
+    TemplatePatch 无 body 字段 + extra=forbid，改结构请求被模型 422 拒）。
+
+    builtin → 409 TEMPLATE_BUILTIN_IMMUTABLE；不存在 → 404。name 无唯一约束（templates 工作区级
+    小表，无 name UNIQUE），重名契约未定义按「未列出的不发明」放行——builtin 启动 upsert 幂等键
+    是 (workspace_id, name='工程三角', builtin=1)，用户模板 builtin=0 不落其命名空间，改名不冲突。
+    """
+    acting_member(request, tx.conn)  # 身份门（同 create_template 口径；无 admin 门）
+    template = templates_service.fetch_template(tx.conn, template_id)
+    if template is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "模板不存在")
+    if template["builtin"]:
+        raise ApiError(
+            409,
+            rest.ErrorCode.TEMPLATE_BUILTIN_IMMUTABLE,
+            "builtin 模板不可修改",
+            rule="B§12.11",
+        )
+    row = templates_service.update_template_metadata(
+        tx.conn, template_id, name=body.name, description=body.description
+    )
+    return template_public(row)
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+def delete_template(
+    template_id: str, request: Request, tx: Tx = Depends(get_tx)
+) -> Response:
+    """模板治理 DELETE（B §4.12/§12.11）：builtin → 409 TEMPLATE_BUILTIN_IMMUTABLE；不存在 → 404。
+
+    历史落地批引用**不阻删**（landing_batches.source_ref 留 id 非 FK，账本自足——删模板后既有落地
+    批仍完整可查）。门同现状（acting_member，无 admin 门）。
+    """
+    acting_member(request, tx.conn)  # 身份门（同现状口径）
+    template = templates_service.fetch_template(tx.conn, template_id)
+    if template is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "模板不存在")
+    if template["builtin"]:
+        raise ApiError(
+            409,
+            rest.ErrorCode.TEMPLATE_BUILTIN_IMMUTABLE,
+            "builtin 模板不可删除",
+            rule="B§12.11",
+        )
+    templates_service.delete_template(tx.conn, template_id)
+    return Response(status_code=204)

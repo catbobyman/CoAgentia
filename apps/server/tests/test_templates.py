@@ -1093,3 +1093,123 @@ def test_legacy_template_json_defaults_and_instantiates(
     task = rest.InstantiateResult.model_validate(landed.json()).tasks[0]
     assert task.writes_code is False
     assert task.project_id is None
+
+
+# ---------------------------------------------------------- J11 治理（PATCH/DELETE；B §12.11）
+
+
+def _user_template(client: TestClient) -> dict[str, Any]:
+    """建一个用户模板（builtin=False）供治理端点逐路径用。"""
+    build = _build_channel(client)
+    canvas_id = _canvas_id(client, build)
+    _agent_node(client, canvas_id, "治理用节点")
+    r = _post_template(client, build["id"])
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_patch_template_metadata(server_client: TestClient) -> None:
+    """PATCH 改 name/description 元数据成功 → 200 回更新行；body 结构不变；GET 列表见新值。"""
+    tpl = _user_template(server_client)
+    r = server_client.patch(
+        f"/api/templates/{tpl['id']}", json={"name": "改名后", "description": "新说明"}
+    )
+    assert r.status_code == 200, r.text
+    updated = entities.TemplatePublic.model_validate(r.json())
+    assert updated.name == "改名后"
+    assert updated.description == "新说明"
+    # 仅元数据改：body 结构原样保留。
+    assert updated.body == entities.TemplatePublic.model_validate(tpl).body
+    listed = next(t for t in server_client.get("/api/templates").json() if t["id"] == tpl["id"])
+    assert listed["name"] == "改名后" and listed["description"] == "新说明"
+
+
+def test_patch_template_partial_leaves_other_field(server_client: TestClient) -> None:
+    """PATCH 只给 name → description 不动（None 不覆盖）。"""
+    tpl = _user_template(server_client)
+    original_desc = tpl["description"]
+    r = server_client.patch(f"/api/templates/{tpl['id']}", json={"name": "仅改名"})
+    assert r.status_code == 200, r.text
+    updated = entities.TemplatePublic.model_validate(r.json())
+    assert updated.name == "仅改名"
+    assert updated.description == original_desc
+
+
+def test_patch_template_body_structure_rejected(server_client: TestClient) -> None:
+    """尝试改 body 结构被模型拒（TemplatePatch 无 body 字段 + extra=forbid → 422）。"""
+    tpl = _user_template(server_client)
+    r = server_client.patch(
+        f"/api/templates/{tpl['id']}",
+        json={"body": {"nodes": [], "edges": [], "roles": [], "briefing": ""}},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_patch_builtin_409(server_client: TestClient) -> None:
+    """PATCH builtin（工程三角）→ 409 TEMPLATE_BUILTIN_IMMUTABLE，未被改。"""
+    tri = next(t for t in server_client.get("/api/templates").json() if t["builtin"])
+    r = server_client.patch(f"/api/templates/{tri['id']}", json={"name": "改不动"})
+    assert r.status_code == 409, r.text
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.TEMPLATE_BUILTIN_IMMUTABLE
+    tri2 = next(t for t in server_client.get("/api/templates").json() if t["builtin"])
+    assert tri2["name"] == builtin.BUILTIN_TRIANGLE_NAME
+
+
+def test_patch_template_not_found_404(server_client: TestClient) -> None:
+    """PATCH 未知 template_id → 404 NOT_FOUND。"""
+    r = server_client.patch("/api/templates/01K0NOPE000000000000000000", json={"name": "x"})
+    assert r.status_code == 404, r.text
+    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
+
+
+def test_delete_template_then_gone(server_client: TestClient) -> None:
+    """DELETE 用户模板 → 204，列表消失。"""
+    tpl = _user_template(server_client)
+    r = server_client.delete(f"/api/templates/{tpl['id']}")
+    assert r.status_code == 204, r.text
+    listed = server_client.get("/api/templates").json()
+    assert all(t["id"] != tpl["id"] for t in listed)
+
+
+def test_delete_builtin_409(server_client: TestClient) -> None:
+    """DELETE builtin → 409 TEMPLATE_BUILTIN_IMMUTABLE，列表仍含工程三角。"""
+    tri = next(t for t in server_client.get("/api/templates").json() if t["builtin"])
+    r = server_client.delete(f"/api/templates/{tri['id']}")
+    assert r.status_code == 409, r.text
+    err = rest.ErrorResponse.model_validate(r.json())
+    assert err.error.code is rest.ErrorCode.TEMPLATE_BUILTIN_IMMUTABLE
+    assert any(t["builtin"] for t in server_client.get("/api/templates").json())
+
+
+def test_delete_template_not_found_404(server_client: TestClient) -> None:
+    """DELETE 未知 template_id → 404 NOT_FOUND。"""
+    r = server_client.delete("/api/templates/01K0NOPE000000000000000000")
+    assert r.status_code == 404, r.text
+    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
+
+
+def test_delete_template_with_landing_batch_reference_allowed(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """存在历史 landing_batches 引用（source_ref=模板 id）仍可删（source_ref 非 FK，账本自足）；
+    删后落地批仍完整可查、source_ref 保留原模板 id（非级联删）。"""
+    tpl = _two_node_template(server_client, seeded_engine)
+    research = _research_channel(server_client)
+    rin = _member(server_client, "Rin")
+    landed = _instantiate(
+        server_client, tpl["id"], research["id"], {"producer": rin["id"], "consumer": None}
+    )
+    assert landed.status_code == 201, landed.text
+    batch_id = rest.InstantiateResult.model_validate(landed.json()).batch.id
+
+    r = server_client.delete(f"/api/templates/{tpl['id']}")
+    assert r.status_code == 204, r.text  # 有落地批引用其 id 仍可删
+    assert all(t["id"] != tpl["id"] for t in server_client.get("/api/templates").json())
+
+    with seeded_engine.connect() as conn:
+        batch = conn.execute(
+            select(_BATCH.c.id, _BATCH.c.source_ref).where(_BATCH.c.id == batch_id)
+        ).first()
+    assert batch is not None  # 落地批未被级联删
+    assert batch[1] == tpl["id"]  # source_ref 保留原模板 id（非 FK）

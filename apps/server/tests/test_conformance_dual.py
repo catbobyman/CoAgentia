@@ -576,6 +576,21 @@ def test_templates_h6_endpoints_served(server_client: TestClient) -> None:
     assert not missing, f"H6 模板端点未 serve: {missing}"
 
 
+# J11 模板治理 PATCH/DELETE：真 server 独有业务（builtin 409/404/重名放行）见 test_templates.py；
+# 此处只对账真 server serve（mock 同形状由 test_mock_covers_m6_endpoints 守——ENDPOINTS_M6 已含）。
+_TEMPLATES_GOVERNANCE = [
+    ("PATCH", "/templates/{template_id}"),
+    ("DELETE", "/templates/{template_id}"),
+]
+
+
+def test_templates_governance_endpoints_served(server_client: TestClient) -> None:
+    """J11 模板治理 PATCH/DELETE 真 server serve（目录 ↔ 实 serve 对账）。"""
+    served = _served(server_client)
+    missing = [(m, p) for m, p in _TEMPLATES_GOVERNANCE if (m, _norm(p)) not in served]
+    assert not missing, f"J11 模板治理端点未 serve: {missing}"
+
+
 def test_instantiate_result_shape(dual: DualClient) -> None:
     """POST /templates/{id}/instantiate（B §11.2）：builtin 工程三角全角色映射 → InstantiateResult
     形状零偏差（mock 回落地批 + 空任务形状；真 server 单事务落地批 + 逐节点任务）。"""

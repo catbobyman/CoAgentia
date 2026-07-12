@@ -1,0 +1,140 @@
+"""Orchestrator 内置角色模板数据（03-接入架构建议 §3.1「Orchestrator = 数据不是代码」）。
+
+判断层接入即一条 builtin 角色模板记录：`description_prefill` + 拆解章节 prompt（拆解设计 §13.1
+七条骨架）+ 规模判断表注入位（§12 四行原文）。daemon/适配器零专属代码——Orchestrator 与任意
+Agent 走同一创建/唤醒/投递路径。
+
+**本文件只做数据**（波 1 骨架）：不建表、不做迁移、不接启动 upsert——`agent_role_templates` 建表 /
+0009 批次归属 / 创建向导预选接线全归**波 2**。笔法照 templates/builtin.py：常量 + 构造函数产出内容，
+`id` 由波 2 的 upsert 落库时赋（同 build_triangle_body 不含 id、insert 时赋 id）。prompt_sections
+定为可序列化 JSON（[{section, text}]），与 AgentRoleTemplateRow.prompt_sections（JsonValue）同形。
+"""
+
+from __future__ import annotations
+
+from typing import cast
+
+from coagentia_contracts.entities import AgentRoleTemplateRow
+from pydantic import JsonValue
+
+# 幂等键与展示字段（波 2 upsert 以 key 为幂等键——key UNIQUE，A/03 §3.1）。
+ORCHESTRATOR_ROLE_KEY = "orchestrator"
+ORCHESTRATOR_ROLE_NAME = "Orchestrator（任务拆解协调者）"
+
+# 拆解 schema 版本串（输出协议第 6 条；与 contracts kernel/golden 单源一致，勿改字面）。
+DECOMPOSITION_SCHEMA_VERSION = "coagentia.decomposition.v1"
+
+# 成员级原创话术（description_prefill 的丰满文案）留 TODO：
+# TODO(J11 阶段 4)：由主循环定稿 description_prefill 为成员级原创话术；当前为功能完整的朴素占位
+# （非空字符串），仅陈述职责与协作路径，不含个性化话术。
+ORCHESTRATOR_DESCRIPTION_PREFILL = (
+    "本频道的任务拆解协调者：@它并给一句话需求，它会把需求拆成可校验、可确认、可恢复的任务 DAG "
+    "提案（判断归模型、控制归引擎）。提案经系统确定性校验、需人类在草稿画布上确认后落地；被校验"
+    "退回时自动按错误清单修复重提。"
+)
+
+# §12 规模判断表四行原文（信号 → 倾向；「宁欠拆不过拆」理由句在第四行）——逐行注入第 1 条。
+# 信号/倾向两列完整保留；长行以隐式字符串拼接换行，运行期值与原文逐字一致。
+_SCALE_TABLE_ROWS = (
+    "- 信号：单一交付物 + 单一技能域 + 一个 Agent 一次会话可完成 → 倾向：single_task。",
+    "- 信号：需要 ≥2 个不同角色/技能域（如实现+评审）；或交付物 ≥2 个独立可验收单元；"
+    "或存在天然串/并行阶段 → 倾向：decompose。",
+    "- 信号：需求含糊、无法列出 ≥3 条可证伪 AC → 倾向：不出提案——先在线程里向需求方提"
+    "澄清问题（这也是合法产出）。",
+    "- 信号：不确定 → 倾向：宁欠拆不过拆，选 single_task。理由：欠拆可用增量变更补节点，"
+    "过拆的回收成本高（Close 一串任务 + 已开工 Agent）。",
+)
+
+
+def build_orchestrator_prompt_sections() -> list[dict[str, str]]:
+    """拆解章节 prompt（拆解设计 §13.1 七条骨架逐条落实）。
+
+    第 1 条的规模判断依据 = §12 规模判断表**四行原文注入**（信号/倾向两列完整保留，含「宁欠拆不过
+    拆」理由句）；第 6 条 = 输出协议（唯一 <control> 块 + schema 版本串）；第 7 条 = 被退回按错误
+    清单修复不辩解。返回 [{section, text}]（可序列化 JSON，与 prompt_sections 字段同形）。
+    """
+    scale_text = (
+        "1. 先判断规模（single_task / decompose / 先澄清），"
+        "依据以下确定性倾向规则（§12 规模判断表）：\n" + "\n".join(_SCALE_TABLE_ROWS)
+    )
+    return [
+        {
+            # 引言：判断归模型、控制归代码。
+            "section": "role",
+            "text": (
+                "你是本频道的协调者（Orchestrator）。收到拆解请求时，把「一句话需求」拆成可执行的"
+                "任务 DAG——判断归你、校验/确认/落地/幂等/留痕归引擎；你只产出提案 JSON，一切由"
+                "代码裁决。"
+            ),
+        },
+        {
+            # 第 1 条：先判断规模，依据 = §12 规模判断表四行原文（信号 → 倾向，含理由句）。
+            "section": "scale_judgment",
+            "text": scale_text,
+        },
+        {
+            # 第 2 条：decompose 时节点数上限与 TaskPlan 骨架（AC 可证伪、禁形容词）。
+            "section": "decompose_nodes",
+            "text": (
+                "2. decompose 时：节点数 2..<上限>（上限由频道配置注入）；每个 agent 节点写 "
+                "TaskPlan 骨架——goal 用用户视角一句话，acceptance_criteria 每条必须可证伪"
+                "（能用命令验证的写 verify_by: command 并给出命令），禁止形容词。"
+            ),
+        },
+        {
+            # 第 3 条：依赖边只画真实时序/数据依赖，能并行不串行。
+            "section": "edges",
+            "text": "3. 依赖边只画真实的时序/数据依赖；能并行的不要串行。",
+        },
+        {
+            # 第 4 条：suggested_owner 从频道成员选、无合适人选置 null。
+            "section": "suggested_owner",
+            "text": "4. suggested_owner 从频道成员里选，说明理由；没有合适人选就置 null。",
+        },
+        {
+            # 第 5 条：会改代码的节点标 writes_code 并指定 project，必给 merge_plan。
+            "section": "writes_code",
+            "text": "5. 会改代码的节点标 writes_code: true 并指定 project；此时必须给 merge_plan。",
+        },
+        {
+            # 第 6 条：输出协议——唯一 <control> 块 + schema 版本串（机读 JSON 只在此块内）。
+            "section": "output_protocol",
+            "text": (
+                "6. 输出协议：正文写给人看的拆解说明；机器可读 JSON 放在唯一的 <control> 块中，"
+                f"schema 为 {DECOMPOSITION_SCHEMA_VERSION}。<control> 块之外不得出现 JSON。"
+            ),
+        },
+        {
+            # 第 7 条：被退回按错误清单修复，不辩解。
+            "section": "repair",
+            "text": "7. 你的提案会被系统校验并需人类确认；被退回时按错误清单逐条修复，不要辩解。",
+        },
+    ]
+
+
+def build_orchestrator_role_template(*, role_template_id: str) -> AgentRoleTemplateRow:
+    """构造 Orchestrator builtin 角色模板行（AgentRoleTemplateRow 同形；接线归波 2）。
+
+    `role_template_id` 由波 2 的 upsert 在落库时赋（同 templates.build_triangle_body 不含 id、insert
+    时赋 id 的笔法）；本函数供波 2 落库与内容不变量单测复用同一份权威内容。key 恒 'orchestrator'、
+    builtin=True。
+    """
+    return AgentRoleTemplateRow(
+        id=role_template_id,
+        key=ORCHESTRATOR_ROLE_KEY,
+        name=ORCHESTRATOR_ROLE_NAME,
+        description_prefill=ORCHESTRATOR_DESCRIPTION_PREFILL,
+        # list[dict[str,str]] 是合法 JSON 值；JsonValue 递归联合下 list 不变，需 cast 显式收窄。
+        prompt_sections=cast(JsonValue, build_orchestrator_prompt_sections()),
+        builtin=True,
+    )
+
+
+__all__ = [
+    "DECOMPOSITION_SCHEMA_VERSION",
+    "ORCHESTRATOR_DESCRIPTION_PREFILL",
+    "ORCHESTRATOR_ROLE_KEY",
+    "ORCHESTRATOR_ROLE_NAME",
+    "build_orchestrator_prompt_sections",
+    "build_orchestrator_role_template",
+]

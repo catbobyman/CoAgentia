@@ -146,7 +146,8 @@ async def find_new_agent_node(rest: Rest, channel_id: str, known_ids: set[str]) 
 
 async def scenario_delivery(rest: Rest, paths, ch: dict, project_id: str, repo: Path,
                             agents: list[str], pengine) -> None:
-    print("\n=== 场景 A：交付链（双并行 → worktree 交付 → merge --no-ff → check 绿）===", flush=True)
+    print("\n=== 场景 A：交付链（双并行 → worktree 交付 → merge --no-ff → check 绿）===",
+          flush=True)
     cid, canvas = ch["channel_id"], ch["canvas_id"]
     na = await make_node(rest, canvas, {"title": "实现 A", "kind": "agent",
                                         "writes_code": True, "project_id": project_id})
