@@ -50,8 +50,8 @@
 | J5 | 系统节点执行与合并链（自动触发器/check.run·check.finished/retry 仅 failed/merge DAG 序 --no-ff/冲突自动建任务派回/全留痕） | ✅ | 波 3 本提交（见 HEAD） | check/merge/retry/冲突任务全链接真；成功持久 `merge_commit`；取消/超时恢复主干，cleaned alias WS 广播与 keep_days 祖先保护经专项审计 |
 | J6 | 评审结论枚举（review_verdict 四值/needs_human @人类/builtin 评审话术更新/human_members DRY 顺路评估） | ✅ | 波 3 本提交（见 HEAD） | 四值与缺省兼容、needs_human @频道人类、builtin upsert 绿；中立 `messages/service.py` 复用人类成员查询 |
 | B-M6-1 | 前端：频道设置 Project 组+Project CRUD 弹窗/Diff 卡/系统节点形态+Retry/verdict 徽标/冲突卡/wsBridge worktree.updated | ✅ | 波 3 本提交（见 HEAD） | 31 文件/194 测试；1440×900 与 390×844 屏对照无溢出、console 0；三张截图仅作 UI 对照，不冒充实机 verify 证据 |
-| — | **M6a 实机 verify** → `docs/verify/M6A-EVIDENCE.md`（§9a #11 场景+截图） | ⬜ | — | 块 a 出口 |
-| — | /code-review high（块 a） | ⬜ | — | 块 a 收口 |
+| — | **M6a 实机 verify** → [`docs/verify/M6A-EVIDENCE.md`](../verify/M6A-EVIDENCE.md)（§9a #11 场景+截图） | ✅ | 待收口提交 | **真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库端到端 20/20 ALL PASS**（两场景全链）+ 真仓库 5 commit（各含 `--no-ff` merge）+ 4 截图；verify-surfaced 观察 3 条（裸系统节点空成功/冲突任务承 owner/并发写伪锁）已登记 |
+| — | /code-review high（块 a） | 🔶 | — | **8 角度 workflow 已跑 → 10 findings 报告**（1 REFUTED）；owner 拍板「先 verify 再统一修全部」→ **修复待执行**（findings 见 CURRENT-HANDOFF §M6a-review） |
 | J7 | 同构校验内核（kernel decomposition：V1–V14+`<control>` 解析+指纹；lib/decomposition.ts 镜像；golden/decomposition.json 双跑） | ⬜ | — | 块 b 波 1 |
 | J11 | Orchestrator 角色模板（数据+创建预选+NO_ORCHESTRATOR 引导面）+ 模板 PATCH/DELETE（builtin 409） | ⬜ | — | 块 b 波 1 |
 | J8 | 0009 迁移 + 提案域（8 态状态机/三入口归一/上下文注入/`<control>` 解析挂接/修复循环 S1 直投/Superseded/对账 #6/24h 提醒） | ⬜ | — | 块 b 波 2 |

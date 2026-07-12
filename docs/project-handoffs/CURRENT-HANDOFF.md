@@ -1,10 +1,10 @@
-# CoAgentia 当前交接（M5 收口 · **M6a 波 3 实现与守门全绿，实机 verify 待执行**）
+# CoAgentia 当前交接（M5 收口 · **M6a 实机 verify 20/20 全绿 + code-review 10 findings，待「统一修复」**）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-11，**M6a 波 1–3 实现均已完成并通过正式守门，按 owner 指令停在「M6a 实机 verify」这一行前**。波 3 完成 J4 Diff、J5 check/merge/retry/冲突派回、J6 verdict/needs_human 与 B-M6-1；merge 成功持久 `worktrees.merge_commit`。两项独立审计 Medium（daemon JSONL 原子落盘、cleaned alias WS 广播）已修复并复核关闭，无剩余 High/Medium。全量 = 后端 **813 passed / 4 skipped**、web **194**，typecheck/ruff/gen/build 全绿。 |
+| 更新 | 2026-07-11，**T1（Fable 5 收口段）进行中**：并行审计（8 角度 workflow）→ **`/code-review high` 10 findings 报告**（§M6a-review，1 REFUTED）→ **M6a 实机 verify 20/20 ALL PASS**（真 uvicorn+真 websockets daemon-sim(真 `git.py`)+真 scratch 仓库端到端两场景全链，[M6A-EVIDENCE](../verify/M6A-EVIDENCE.md)）。**owner 拍板「先 verify 再统一修全部」→ 下一步 = 落地 10 findings 修复 + 复验 + 收口提交**。当前工作树仅新增 docs/verify 证据 + scratchpad 探针，**产品代码未改**，守门基线仍波 3 态（813/194/pyright0）。 |
 | 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；M5 任务书已移 archive/ |
-| 一句话状态 | **M1–M5 全收口；M6a J0–J6/B-M6-1 实现完成，下一步只执行 M6a 真机全链 verify**。verify 与 code-review 均未执行，M6b 未开工。 |
+| 一句话状态 | **M1–M5 全收口；M6a J0–J6/B-M6-1 实现完成 + 实机 verify 20/20 全绿；code-review 10 findings 待统一修复后收口**。M6b 未开工。 |
 | 提交链（M6a 实现波次） | `d564ebf` 波 1（J3-cal/J0/J1）→ `62939f2` 波 2（J2/J3+补遗）→ 波 3 本提交（见 HEAD，J4/J5/J6/B-M6-1）；中间 `1633ad9` 是独立协作规程文档提交，不属于实现波次 |
 | 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
 
@@ -52,6 +52,27 @@
 ## 4. 接续 = M6（**M6a 实现波次完成，停在实机 verify 前**）
 
 **任务书 = [M6-HANDOFF.md](M6-HANDOFF.md)**。块 a 波 1：**J3-cal/J0/J1 ✅（`d564ebf`）**；波 2：**J2/J3+授权补遗 ✅（`62939f2`）**；波 3：**J4/J5/J6/B-M6-1 ✅（本提交见 HEAD）**。§9a #1–#10/#12 已勾，#11 真机场景留空。下一步只做 M6a scratch repo 真机全链与证据归档；code-review 另行安排。拆解流程的实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`，**M6b 尚未开工，勿动 orchestration/、proposals 或 0009**。
+
+## 4a. M6a `/code-review high` findings（10 条，待「统一修复」——owner 拍板 verify 先行）
+
+8 角度 workflow（line-scan/removed-behavior/cross-file/concurrency/reuse/efficiency/altitude/conventions）× ≤6 候选 → 召回偏向 verify → 去重后 10 条（1 条 `_system_pending` pop 被 REFUTED：事务快照保证 `merge_node_ids` 非空时 result 必非空）。按严重度：
+
+| # | 判 | 位置 | 缺陷 |
+| --- | --- | --- | --- |
+| 1 | CONFIRMED | daemon `handlers.py:107`（ensure/merge/cleanup） | worktree 处理器**内联 await 在单 reader 协程**（CHECK_RUN 却后台化）→ 真仓库大 merge（11 串行 git 子进程，各上限 60s）阻塞 PONG 超 `pong_timeout=10s` → **合并中途误判掉线重连** + 该 computer 全帧停摆。修法=仿 `checks.start()` 后台化 worktree 处理器 |
+| 2 | CONFIRMED | server `worktrees/service.py:499` | worktree ensure 持续失败时 `writes_code` 任务消息**无限期扣留**，唯一信号=agent/channel 均 null 且不发 WS 的 diagnostic 行 → Agent 静默永不收工作（需 back-pressure/超时喊人） |
+| 3 | CONFIRMED | server `worktrees/service.py:110`（ensure_plans） | daemon 重启/`prune`/目录丢失后**陈旧 active worktree 行不复验** → 注入不存在目录 + Diff 误 503（单机在范围内） |
+| 4 | CONFIRMED | server `system_nodes/service.py:825`（`_create_conflict_task`） | 冲突任务 retry **非幂等**：二次冲突再建一份任务/节点/worktree 行（同物理树），无去重累积 |
+| 5 | CONFIRMED | server `hub.py:1790` / `routes/tasks.py:461` | 任何 `git.diff` 错误（坏 base ref）**误归 503 DAEMON_OFFLINE**，且用户文案靠子串匹配异常 prose |
+| 6 | CONFIRMED | web `MessageFlow.tsx:31`（parseConflictFiles） | 冲突卡仅按 body 文本判定 → 节点标题恰为 `冲突文件:\n- x` 渲染**假冲突卡**遮真 TaskChip（需结构化 marker） |
+| 7 | PLAUSIBLE | server `hub.py:918`（`_filter_agent_delivery`） | 投递遇首个 gated 即 `continue` → blocked 线程后的**新 @mention 无限扣留**（是防丢消息的权衡，需拍板；顺带 `_filter_gated:887` 已死代码） |
+| 8 | CONFIRMED(效率) | daemon `git.py:561`（diff） | 逐文件 spawn `git diff`（≤200 进程/次）→ 应一次 `git diff` 按 `diff --git` 头切分 |
+| 9 | PLAUSIBLE | server `system_nodes/service.py:351`（apply_merge_result） | 菱形拓扑（一任务是两 merge 节点上游）→ **重复 merge 进展消息/WORKTREE_UPDATED 广播**（需 per-node/commit 去重） |
+| 10 | PLAUSIBLE | server `hub.py:478`（merged 缺 merge_commit 分支） | 该分支 return 前跳过 `apply_status` → worktrees 行不推进（fail-closed 合理，但空 `merge_node_ids` 时静默丢报，需确认不 wedge） |
+
+**未入榜（已登记）**：`_filter_gated` 死代码 / `buffer.py` 缺父目录 fsync（仅 POSIX，win32 无碍） / `_STATUS_REPLAY_INSTRS` 硬编码白名单（当前正确，潜在脆弱） / hub 未迁移到共享 `messages/service.py` 且已丢 mention 去重（潜在，复合 PK 会先报错非渲染重复） / 投递热路径若干 N+1。
+
+**verify-surfaced 补充观察**（M6A-EVIDENCE §4）：**裸系统节点空成功**——per-node REST 建 merge/check 节点时 `CANVAS_NODE_ADDED` 即触发系统节点扫描，此刻无上游边 → 非 blocked → 空 steps `_succeed_merge_node`；真实产品随 landing 批节点+边同事务，但手工建节点+补边路径存此窗口，建议随 M6b 提案落地复核。
 
 ## 5. M5 挂账（非阻塞，勿当漏项重新发明）
 
