@@ -10,3 +10,4 @@ build/
 *.png
 !docs/**/*.png
 .DS_Store
+scratchpad/m6_keep.log
