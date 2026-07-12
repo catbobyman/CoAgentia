@@ -1,124 +1,102 @@
-# CoAgentia 当前交接（**M6 里程碑收口 = PRD M6 出口达成；M1–M6 全完成**）
+# CoAgentia 当前交接（**M6 里程碑收口 = PRD M6 出口达成；M1–M6 全里程碑完成**）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-12，**M6 里程碑整体收口（`d303475`）**：M6b 拆解链全链（波 1–4）+ J11 话术定稿 + 并行审计（5 维,修 7 含 1 blocking）+ **J12 实机 verify 48/48 ALL PASS**（真 uvicorn+真 daemon+真 git，A1–A8 逐条勾销）+ **/code-review high**（8 维 Opus finder→对抗核实→Fable 终裁 13 findings，修 8[3 major]）。COLLAB-MODEL v2 Fable 单窗编排：执行/审计/评审派 Opus 子代理，J9 硬关口/J12 verify/话术定稿/正确性关键修复 Fable 亲做。守门终态 **947/354/pyright0**。 |
-| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD（§14=M6b）；M1–M6 任务书均已移 archive/ |
-| 一句话状态 | **M1–M5 全收口；M6a 全收口（实现+实机 verify 20/20+code-review 10 findings 全修）**。**M6b 进行中（COLLAB-MODEL v2 Fable 单窗编排）**：波 1（J7 ✅，`95d190c`）→ 波 2（J8 ✅，`3a78799`）→ 波 3（J9 ✅ 硬关口通过，`832f2dc`）→ **波 4（J10 delta+O9 ✅ ∥ B-M6-2 后半 ✅，双 Opus 子代理并行+Fable 过目集成）已收口提交（见 HEAD）**；契约 A **v1.0.10**；**M6 里程碑收口 ✅**：阶段 4 = J11 话术定稿 + 并行审计（5 维,修 7 含 1 blocking）+ J12 实机 verify（`818a483`，PRD M6 出口 48/48 ALL PASS，A1–A8 全勾销）+ /code-review high（8 维 Opus finder→对抗核实→Fable 终裁 13 findings，修 8[3 major]）→ 全绿收口。**M1–M6 全收口 = PRD M6 出口达成**。接续 = M7（未开工）。 |
-| 提交链（M6a） | `d564ebf` 波 1（J3-cal/J0/J1）→ `62939f2` 波 2（J2/J3+补遗）→ `6f6fc93` 波 3（J4/J5/J6/B-M6-1）→ `bc70cd5` 实机 verify+findings 登记 → **code-review 修复收口（见 HEAD）**；中间 `1633ad9` 是独立协作规程文档提交 |
-| 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
+| 更新 | 2026-07-12，**M6 里程碑整体收口（HEAD `c37a91f`）**。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘）完成：M6b 波 4（J10 delta+O9 ∥ B-M6-2 后半，双 Opus 子代理并行）→ 阶段 4 并行审计（5 维 finder→Fable 终裁修 7 含 1 blocking）+ J11 话术定稿 → **J12 实机 verify 48/48 ALL PASS**（=PRD M6 出口，A1–A8 逐条勾销）→ **/code-review high**（8 维 finder→对抗核实→Fable 终裁 13 findings 修 8[3 major]）→ 文档终态同步+任务书归档。 |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 [PROJECT-RECORD.md](PROJECT-RECORD.md)（§13=M6a、§14=M6b）；M1–M6 任务书均已移 archive/ |
+| 一句话状态 | **M1–M6 全里程碑收口 = PRD M6 出口达成**。IM 基座→任务域→L2 契约→编排画布+gating→护栏（沉默/freshness/HeldDraft）→双 runtime+配置面→模板向导→Project 交付链（worktree/Diff/merge/check/冲突派回）→**Orchestrator 拆解链**（提案/校验/修复循环/草稿确认/落地/delta/O9）全部落地并经实机 verify。**接续 = M7（未立项）**。 |
+| 守门终态 | 后端 **947 passed / 4 skipped** · web vitest **354** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（golden 54 判例双跑逐字节）· web build 绿 · **工作树干净** |
 
 ## 1. 当前状态
 
 | 项 | 状态 |
 | --- | --- |
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
-| 分支 / HEAD | `main`；本交接随 M6a code-review 修复收口提交（见 HEAD），前序 HEAD=`bc70cd5` |
-| 提交链（M6a） | `d564ebf` → `62939f2` → `6f6fc93` → `bc70cd5` → 修复收口（见 HEAD）；波 2 后另含 `1633ad9` 文档提交 |
-| 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 并行审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
-| 测试基线 | 后端 **947 passed / 4 skipped**（`uv run pytest -q`，M6 里程碑收口）· web vitest **354** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定 · web build 绿 |
-| 契约版本 | A **v1.0.10**（M6b 开工补遗：0009 批次=proposals+agent_role_templates 两张+agents.role_template_key 列，owner 拍板 2026-07-12「方案 A」）· B **v1.4.3** · C **v1.0**（连续零修订至 M6）· D **v1.0.3** · E **v1.4** · **E2 v1.0.1**——B v1.4.2 收 Computer→Project FK 删除门；A v1.0.9/B v1.4.3 收 TemplateNode 与模板实例化交付字段，均为 v1.0.7 连带补遗、非产品意图变更。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
-| 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → 0007 M5 → **0008 M6a（projects + channel_projects + worktrees + tasks 两列）** → **0009 M6b（proposals + agent_role_templates + agents.role_template_key 列，A v1.0.10）** |
-| 实机证据 | **M6a = [M6A-EVIDENCE.md](../verify/M6A-EVIDENCE.md)**（真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库 20/20，`bc70cd5` 收口；修复后复验 20/20）。[Project 设置](../verify/m6a-project-settings.png)、[Diff/verdict](../verify/m6a-diff-verdict.png)、[系统节点](../verify/m6a-system-nodes.png) 是 B-M6-1 屏对照夹具。历史：[M5-EVIDENCE.md](../verify/M5-EVIDENCE.md) 与 [M5A-EVIDENCE.md](../verify/M5A-EVIDENCE.md)。 |
+| 分支 / HEAD | `main`，HEAD = `c37a91f`（M6 收口文档提交），工作树干净 |
+| M6 提交链 | M6a：`d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`(verify 20/20)→`404aaa8`(review 修复)；M6b：`95d190c`(波1 J7+J11 骨架)→`3a78799`(波2 J8)→`832f2dc`(波3 J9 硬关口)→`3d3e12f`(波4 J10∥B-M6-2 后半)→`19fcfb5`(阶段4 审计+J11 定稿)→`818a483`(J12 verify)→`d303475`(code-review 收口)→`c37a91f`(文档) |
+| 契约版本 | A **v1.0.10** · B **v1.4.3** · C **v1.0**（连续零修订至 M6 收口）· D **v1.0.3** · E **v1.4** · E2 **v1.0.1**。**M6 全程连续第四个里程碑零新增 Agent 工具**。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
+| 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → 0007 M5 → 0008 M6a（projects+channel_projects+worktrees+tasks 两列）→ **0009 M6b（proposals[同 source 单一非终态部分唯一索引]+agent_role_templates+agents.role_template_key）** |
+| 实机证据 | **M6 = [M6-EVIDENCE.md](../verify/M6-EVIDENCE.md)**：真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库 **48/48 ALL PASS**（S1 拆解全链/S2 冲突派回/S3 修复循环/S4 A5 崩溃重放/S5 delta+O9/S6 single_task/S7 直落；A1–A8 逐条勾销）+ [results.json](../verify/M6-VERIFY-results.json) + 2 截图（chat 全流程叙事/canvas 落地 DAG）；脚本 = `scratchpad/m6_verify.py`（可重跑）。历史：[M6A-EVIDENCE.md](../verify/M6A-EVIDENCE.md)（20/20）、M5/M5A/M4B/M4A/M3B/M3A/M2 系列。 |
 
 ## 2. 里程碑总览（详情 = PROJECT-RECORD 对应节）
 
 | 里程碑 | 出口 | 收口 |
 | --- | --- | --- |
-| M1 契约+实现+hardening | 真实两 Agent 对话/文件产出/reminder | `f2c993f` 合 main（§2–§5） |
+| M1 契约+实现+hardening | 真实两 Agent 对话/文件产出/reminder | `f2c993f`（§2–§5） |
 | M2 任务与看板 | 番茄钟全流程（人发任务→Agent 认领交付→done） | `6c12b90`+`cdb27db`（§6） |
 | M3a 契约与校验 | L2 契约链路（提交/修订链/request-draft/T7 门/升格） | `d5f092e`（§7） |
 | 挂账三批 | 附件卡数据源 / keyset 分页 / pyright 清零 | `58b89b5`/`9331698`/`0b61669`（§8） |
-| **M3b 画布与 gating** | **PRD M3 出口**：画布建图/成环拒/blocked 推导+投递 gating/force-start/React Flow/FTS trigram | **`080ed44`（§9）** |
-| **M4a 沉默提醒与循环 Reminder** | D5 沉默提醒升级链 + 循环 Reminder/LoopContract 解锁（实机 16/16） | **`01ff2d1`（§10）** |
-| **M4b freshness 与 HeldDraft** | **PRD M4 出口**：held 场景卡片可见+放行 1 分钟交付 / 三键 / G4 超时自愈 / G5 升级喊人（实机 38/38） | **`1052ee6`（§11）** |
-| **M5a 第二 runtime 与配置面** | Codex 适配器真机对话跑通 + 通知设置 mute 门 + cron cadence + 技能白名单 UI + P12 阈值（REST 9/9 + codex PONG） | **`da6833a`** |
-| **M5b 模板与向导** | **PRD M5 出口**：工程三角向导实例化（实现=Codex、评审=Claude）→ briefing 开工 → 全管道到人类终审 done（e2e 12/12 + 5 截图 + code-review 6 CONFIRMED 全修） | **`bef88eb`（本文）** |
-| **M6a Project 与交付链** | Project/worktree/Diff/check/merge/冲突派回/verdict/B-M6-1 + 实机 verify 20/20 + code-review 10 findings 全修 | `d564ebf` → `62939f2` → `6f6fc93` → `bc70cd5` → `404aaa8` |
-| **M6b Orchestrator 拆解链** | **PRD M6 出口**：一句话需求→拆解校验→草稿确认→落地→并行 worktree 交付→合并；冲突派回；delta/O9；实机 verify 48/48 + code-review 13 findings 修 8 | `95d190c`→`3a78799`→`832f2dc`→`3d3e12f`→`19fcfb5`→`818a483`→`d303475`（PROJECT-RECORD §14） |
+| M3b 画布与 gating | **PRD M3 出口**：画布建图/成环拒/blocked 推导+投递 gating/force-start | `080ed44`（§9） |
+| M4a 沉默提醒与循环 Reminder | D5 升级链 + LoopContract（实机 16/16） | `01ff2d1`（§10） |
+| M4b freshness 与 HeldDraft | **PRD M4 出口**（实机 38/38） | `1052ee6`（§11） |
+| M5a 第二 runtime 与配置面 | Codex 适配器真机 + 通知/cron/技能白名单/P12 | `da6833a`（§12） |
+| M5b 模板与向导 | **PRD M5 出口**：工程三角实例化全管道（e2e 12/12） | `bef88eb`（§12） |
+| M6a Project 与交付链 | worktree/Diff/merge --no-ff/check/冲突派回/verdict（实机 20/20 + review 10 全修） | `404aaa8`（§13） |
+| **M6b Orchestrator 拆解链** | **PRD M6 出口**：拆解→校验→草稿确认→落地→并行交付→合并；冲突派回；修复循环；delta/O9（**实机 48/48** + review 13 修 8） | `d303475`（§14） |
 
 ## 3. 系统当前能力面（一览）
 
-- **IM 基座**（M1）：频道/DM/线程/@mention/文件/已读；真 daemon（Claude Code 适配器）双 Agent 对话；WS 事件驱动无刷新。
-- **任务域**（M2）：as_task/convert 建任务、claim/assign/状态机（TASK_TRANSITIONS 单一事实源）、看板 P3/P11、搜索三分组、Activity、daemon MCP 六工具、usage 归属。
-- **L2 契约**（M3a）：TaskPlan/TaskHandoff 提交与修订链、Agent 起草 request-draft S1 直投、T7 流转门（l2→in_review 校验 handoff）、升格 PATCH level l1→l2。
-- **编排画布**（M3b）：每频道画布页签（React Flow）——节点=任务（agent 节点=第三创建途径，建 L2+锚点消息）、边=依赖（写事务拓扑排序防环）、基线快照指纹推进；**blocked 实时推导**（`kernel/graph.py` 权威 + 前端 `lib/graph.ts` 镜像，`golden/graph.json` 双跑对照）；**投递层 gating**（blocked 任务线程消息不唤醒、不入投递批、read_position 水位不越过）；**force-start**（仅人类、双留痕、不改状态、本次放行）；看板 blocked 徽标。
-- **中文检索**（浮动件）：messages_fts trigram（≥3 字 MATCH + <3 字 LIKE 兜底，元字符转义）。
-- **护栏与提醒**（M4a）：**D5 沉默提醒升级链**（tasks/silence.py 防自激 last_activity + hub 后台扫描：三态阈值提醒 Todo→创建者/InProg→owner/InReview→频道人类 → 升级主流消息 + activity silence_escalation → 升级后静默；task_events 纯推导无状态列）；**循环 Reminder**（create_reminder 内联 LoopContract 建即生效 + task_contracts 挂接行 + `interval.next_after` 塌缩式重排防重放风暴）；前端 P6 Reminders 页签 + Activity 置顶。
-- **freshness 护栏与 HeldDraft**（M4b）：**freshness 门**（guard/service.py 判定单源——scope=线程/主流未读、仅 Agent 主体过门、幂等 hit 优先于门；扣草稿建/刷新 held 单活动行 SAVEPOINT 兜并发再扣，202 不落库）；**三键人类干预** / **G4 超时自愈** / **G5 升级喊人** / GC 豁免活动 held 附件；前端 HeldDraftCard。
-- **第二 runtime 与配置面**（M5a）：**Codex 适配器**（`adapters/codex.py` CodexProcess 驱动 codex app-server 长驻 JSON-RPC；`claude_code.py::_new_process` 按 `boot.runtime` 分派、管理器 runtime 无关共用 on_exit 熔断；CODEX_HOME 隔离 + config.toml 注入 MCP + auth.json mtime 新鲜度物化；`probe_codex` 冷探 model/list+skills/list；护栏/任务/契约/usage 对 codex 全语义生效）；**每频道通知设置**（`GET/PUT /channels/{id}/notification-setting` 人类自治/Agent 403/dm 422/**原子 upsert**；mute 门单源 `activity/service.muted_members`，dm/held_escalation 不过门=必达；ChannelsSnapshot 扩字段）；**cron cadence**（`reminders/cron.py`+`cadence.py` 手写 5 段无依赖、Vixie 日∨周并集、validate 可满足性探测拒 impossible、next_after UTC 严格比较兜 DST fold、8 年上限 + 塌缩 next-fire）；**技能白名单 UI**（候选池 = `detected_runtimes[].skills`，claude 扫 `~/.claude/skills/`(跳 symlink)、codex 走 skills/list——两 runtime 均有池）；**频道设置弹窗四组**（P12 阈值收编）+ cron 人读预览 + 通知徽标。
-- **模板与向导**（M5b）：**模板域**（`templates/service.py` 存为模板读画布快照序列化 TemplateBody[仅 task 节点/占位 owner 去重/plan_skeleton 带走/pos 不入/node key `n{idx}`]、`validate_template_body` 单执法点[无环+引用一致]、列表 builtin 置前、`upsert_builtin_templates` 启动幂等；**工程三角 builtin** = `templates/builtin.py` 6 节点线性 DAG[需求框定→评审门→实现契约→TDD 实现→独立验收→人类终审] + 4 角色占位[checker≠doer 话术] + briefing + 每节点 plan_skeleton）；**实例化事务器**（`routes/templates.py` POST instantiate：role_mapping 全覆盖 422 + 未知成员 422 + 无画布 404 全前置于**幂等 reserve-before**[record 先于副作用、req_hash 折 template_id、并发同键不重复落地批]；`templates/service.instantiate_template` 单事务：落地批 kind=tmpl → 逐节点 create_node 全链[`tmpl:<batch_id>:<node_key>` 幂等/分层布局 `_layout_positions`] → 连边[无环兜底+triplet SAVEPOINT] → briefing @映射角色[唤醒] → baseline bump → mark_done；重放 reconstruct 由 `ledger.batch_node_task_ids` 按 seq 保序派生；**blocked-gating 天然生效**——落地边即入 derive_blocked）；**向导三步 B-M5-2**（选模板[卡+DAG 缩略图]→角色映射[同 runtime 互审 warning=`lib/templates.classifyRole` **仅按占位名判定**]→预览→实例化跳画布；`SetupChecklist 003` 接真；幂等键每次提交作废重置 + `crypto.randomUUID` 兜底）。
-- **M6a Project 与交付链（波 1–3 实现完成）**：Project CRUD/频道绑定与 `channel_ids` 派生；Computer 删除按 Agent→Project 固定门序；writes_code 任务激活后幂等派生短路径 worktree，状态回流、对账 #5、keep_days 清理、绝对路径消息注入及模板字段贯通；daemon `git.diff` 与 REST Diff 代理；check/merge 系统节点自动触发、仅 failed retry、DAG 序 `merge --no-ff`、成功持久 `merge_commit`、冲突自动建任务派回；review_verdict 四值与 needs_human @人类；前端 Project/Diff/系统节点/verdict/冲突卡及 `worktree.updated` 实时面。真机全链尚待 verify。
+- **IM 基座**（M1）：频道/DM/线程/@mention/文件/已读；真 daemon（Claude Code 适配器）；WS 事件驱动无刷新。
+- **任务域**（M2）：as_task/convert、claim/assign/状态机（TASK_TRANSITIONS 单源）、看板、搜索、Activity、daemon MCP 六工具、usage 归属。
+- **L2 契约**（M3a）：TaskPlan/TaskHandoff 提交与修订链、request-draft S1 直投、T7 门、升格 l1→l2。
+- **编排画布**（M3b）：React Flow 画布、写事务防环、基线指纹推进；**blocked 实时推导**（kernel/graph.py 权威 + lib/graph.ts 镜像 + golden 双跑）；**投递层 gating**（唤醒+投递批双面）；force-start。
+- **护栏**（M4）：D5 沉默提醒升级链、循环 Reminder 塌缩重排；**freshness 门**+HeldDraft 三键/G4/G5。
+- **双 runtime 与配置面**（M5a）：Codex 适配器（CODEX_HOME 隔离/JSON-RPC）、每频道通知 mute 门、cron cadence、技能白名单、频道设置四组。
+- **模板与向导**（M5b）：存为模板/工程三角 builtin/实例化事务器（tmpl: 幂等 reserve-before）/向导三步。
+- **Project 与交付链**（M6a）：Project CRUD/频道绑定；writes_code 任务激活即幂等派生 worktree（消息注入工作目录）；daemon git.diff+REST Diff 代理；check/merge 系统节点自动触发、DAG 序 `merge --no-ff`、merge_commit 持久、冲突自动建任务派回、仅 failed 可 retry；review_verdict 四值+needs_human @人类；worktree 指令后台通道+reconnect 复验+ensure 失败三次升级。
+- **Orchestrator 拆解链**（M6b，本次收口）：
+  - **同构校验内核**（J7）：`kernel/decomposition.py` V1–V14 全量收集 + `<control>` 解析 + 指纹（py 权威）↔ `lib/decomposition.ts` 镜像 ↔ `golden/decomposition.json` 54 判例双跑逐字节（纪律 8 第三组）；枚举成员测试全部 `_is_str` 守卫（unhashable 值不崩、双侧一致）。
+  - **提案域**（J8）：8 态状态机（`PROPOSAL_TRANSITIONS` 单点 + `_transition` 全面**条件 UPDATE** CAS）；三入口归一（decompose REST/T1 顶级 @Orch/线程 `<control>`）；上下文注入（角色 prompt_sections 从表读 + 成员/Project 清单携 ULID + S1 直投）；修复循环（每 rev 2 轮，错误信封 §6.3 含 hint，第三败 failed @人类）；对话修正 rev+1 + Superseded；对账 #6；24h 提醒纯推导。
+  - **草稿确认与落地**（J9）：confirm CAS（expected 三字段→409 STALE_CONFIRM 携最新态）；调整六 op 服务端权威重验；**202 异步增量落地**——执行器步进原子（每步=节点+其全部入边一个 gateway_tx，封「裸系统节点空成功」窗口），账本逐 op 记行、:done 恰一次（done 标记+baseline bump+已落地消息+landed）；merge 系统节点自动追加（deps=writes_code 前沿）+汇总节点条件追加；直落 auto(channel-policy)；fail-closed 独立连接持久；对账 #4；A5 崩溃重放实证。
+  - **delta 增量与 O9**（J10）：Agent 在任务线程发 `<control>` decomposition-delta.v1 → 五步校验（自身 schema/base=画布基线[hint 携当前基线值，修复循环一轮自愈]/结构应用含 NODE_ACTIVE/结果图无环+上限/新增节点内形=信封+过滤复用 kernel）；confirm 复用同两端点（**部分接受 removed_ops**→delta_landed_hash，剔除清单进线程；F9 base 过期=409+提案 failed+要求重出）；落地共享步进 runner（remove_edge→remove_node[锁内重验防 claim TOCTOU]→add_node+入边→add_edge，op_id=原始下标）；**落地期系统节点认领抑制**（running 批期间不认领 idle 节点，fail-closed 后不重扫）；**O9 门**：canvas 四结构写端点+patch_node+模板 instantiate 对 Agent 403 rule=O9（人类不受限 C5）。
+  - **Orchestrator 角色模板**（J11）：builtin 数据（§13.1 七条+§12 规模表原文+**第 8 条 delta 通道指引**）、启动 upsert、创建预选、NO_ORCHESTRATOR 引导；模板 PATCH/DELETE（builtin 409）。
+  - **前端 B-M6-2**：拆解入口+创建引导链/提案卡（delta 卡读 operations 统计）/草稿层 overlay+确认条防呆（TS 镜像实时校验/CAS/409 latest 刷新/拒绝弹窗）/delta 面板（绿红高亮/逐 op 剔除实时重验[含 running 系统节点 NODE_ACTIVE]/base 横幅）/rev 替换/P12 编排组/wsBridge draft.*·delta.*·landing.* + LandingToaster。
 
-## 4. 接续 = M7（**M1–M6 全收口；M6 = PRD M6 出口达成**）
+## 4. 接续 = M7（未立项）
 
-**M6 里程碑已整体收口**（任务书 = [archive/M6-HANDOFF.md](archive/M6-HANDOFF.md)，已移归档；阶段结论 = [PROJECT-RECORD §14](PROJECT-RECORD.md)）。M6a 交付链 + M6b Orchestrator 拆解链全链落地，实机 verify **48/48 ALL PASS**（[M6-EVIDENCE.md](../verify/M6-EVIDENCE.md)，A1–A8 逐条勾销），code-review high 13 findings 修 8。**接续 = M7（未立项）**——CoAgentia 全部规划里程碑（M1–M6）已完成。M7 立项前复审 [COLLAB-MODEL.md](COLLAB-MODEL.md) 协作模式；拆解流程实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`。
+**CoAgentia 全部规划里程碑（M1–M6）已完成。** M7 候选面（历史挂账+非目标清单，立项时 owner 拍板）：O8 汇总执行期护栏（stall/replan/轮数上限）、FR-11 预览/FR-12 部署链、递归拆解、拆解质量回路（proposal_hash vs landed_hash 差距回流）、worktree 定向 check/行级 Diff 评论、多机/多用户化（跨进程双直落批等单进程假设的解除）。立项流程照 M5/M6 先例：**契约修订落笔先行（纪律 1）→ 任务书两块竖切 → DEV-PLAN 波次表**；协作模式复审 [COLLAB-MODEL.md](COLLAB-MODEL.md)（v2 Fable 单窗编排在 M6b 全程实盘有效）。
 
-## 4a. M6a `/code-review high` findings（10 条，**已全部修复 + 回归复验**，收口提交见 HEAD）
-
-8 角度 workflow → 10 findings（1 REFUTED）→ owner 拍板（#1 后台化 Design C / #7 保语义删死代码 / 其余全修）→ 修复由 Codex 起草、Fable 5 对抗审查通过后收口。修复摘要：
-
-| # | 判 | 修复落地 | 回归 |
-| --- | --- | --- | --- |
-| 1 | CONFIRMED | daemon `client.py`：worktree ensure/merge/cleanup 走后台通道（`_BACKGROUND_INSTRS` 分流 + 单车道 `_worktree_lane` 串行防同仓并发 git）；**ack 仍在 op 完成后发**（status→ack 保序）、异常仍 ack FAILED、**断连不取消在飞任务仅 shutdown 取消**；handlers.py 零改动 | test_worktree_handlers 6 项（reader 不阻塞/硬失败/shutdown 取消等） |
-| 2 | CONFIRMED | hub `_record_worktree_failure`：诊断归属 owner/channel/task + `.returning(seq)` + DIAGNOSTIC_APPENDED 广播；ensure **累计失败 ==3 一次性升级**（频道系统消息+fail_closed activity 喊频道人类） | 归属+WS 断言、3 次升级一次性（含升级消息再扫描交互）、无 owner/cleanup 不升级 |
-| 3 | CONFIRMED | `worktrees/service.revalidation_plans`（仅 active×未终态，**conflicted 排除**防冲突态被覆盖回 active）+ hub `_ensure_worktree(revalidate=)` + `reconcile(revalidate_worktrees=True)` 仅 reconnect 握手传入 | reconnect 下发/周期不下发/conflicted 不复验/plans 单测；测试桩 `drain_revalidation` 辅助 |
-| 4 | CONFIRMED | `_create_conflict_task` 顶部幂等查：本 merge 节点已有未终态同树派回任务则复用；二次真冲突（前次 done）建新 | 重复上报不重建/二次真冲突建新 |
-| 5 | CONFIRMED | hub `GitQueryError`（**不继承 DaemonOffline**）→ routes 422 VALIDATION_FAILED 透传 git prose；DaemonOffline 收敛纯 503 | test_diff_query_failure_is_validation_error |
-| 6 | CONFIRMED | 契约 `CardKind.MERGE_CONFLICT` + `pnpm gen` + `post_system_message(card_kind=)` + 冲突 anchor 落 card_kind + 前端按 `m.card_kind==='merge_conflict'` 判定 | 后端 anchor card_kind 断言 + 前端 fixture + 假冲突卡负例 |
-| 7 | 拍板保留 | 连续前缀投递语义不变（防丢消息权衡）；删死代码 `_filter_gated`，rationale 折进 `_filter_agent_delivery` docstring | 无（死代码删除） |
-| 8 | CONFIRMED(效率) | daemon `git.py::diff` 一次全量 diff + `_split_diff_sections` 按行首 `diff --git ` 切分 + 段数不符 fail-closed | 进程数恒定计数/切分单测/内容行含 diff 头不串段 |
-| 9 | PLAUSIBLE | `apply_merge_result` 传 `reconciled` set：alias 更新+WORKTREE_UPDATED 按 worktree_row.id 整轮去重；进展消息 per-node 保留 | 菱形拓扑广播一次+两条进展消息 |
-| 10 | PLAUSIBLE | merged 缺 merge_commit 分支加 fail-closed 注释（空 merge_node_ids=迟到/重复报静默丢弃不 wedge，行终态另有可达路径） | 仅注释 |
-
-**未入榜（已登记）**：`buffer.py` 缺父目录 fsync（仅 POSIX，win32 无碍） / `_STATUS_REPLAY_INSTRS` 白名单现仅 CHECK_RUN（当前正确，潜在脆弱） / hub 未迁移到共享 `messages/service.py` 且已丢 mention 去重（潜在，复合 PK 会先报错非渲染重复） / 投递热路径若干 N+1。**收口注**：`messages.card_kind` 为 TEXT+CHECK（native_enum=False），fresh `alembic upgrade head` 自带新值；已有持久生产库会拒 `merge_conflict`——本仓无 remote/无持久生产库，可接受。m6a_verify 复验 4 轮 3 净 1 环境性 REST 超时（probe 既有「残留 DB 锁」重试脚手架佐证为环境噪声，失败窗口无本轮新代码参与）。
-
-**verify-surfaced 补充观察**（M6A-EVIDENCE §4）：**裸系统节点空成功**——per-node REST 建 merge/check 节点时 `CANVAS_NODE_ADDED` 即触发系统节点扫描，此刻无上游边 → 非 blocked → 空 steps `_succeed_merge_node`；真实产品随 landing 批节点+边同事务，但手工建节点+补边路径存此窗口，建议随 M6b 提案落地复核。
-
-## 5. M5 挂账（非阻塞，勿当漏项重新发明）
+## 5. 挂账（非阻塞，勿当漏项重新发明；全量见 archive/M6-HANDOFF §8）
 
 | 项 | 说明 | 归属 |
 | --- | --- | --- |
-| **M5b** briefing @全部映射 agent | 含下游 blocked 任务 owner——by-design 唤醒信号；gating 仍护任务线程投递，非有害绕过 | 已接受（code-review PLAUSIBLE） |
-| **M5b** `_layout_positions` 与前端 `TemplateDagThumb` 分层重复 | 两处 Kahn 分层（尺度/用途不同：server 真坐标 vs 前端缩略图），非纪律 8 图算法单源 | 观察项 |
-| **M5b** serialize `_plan_skeleton` N+1 | 存为模板逐 task 节点 active_contract SELECT（稀有路径、节点数小） | 性能小批 |
-| **M5b** 模板 DELETE/PATCH 端点缺 | 列表污染治理（单人类可接受） | M6+ |
-| **M5b** fail-closed 持久性（node-mismatch 分支） | 该分支 M6-only 不可达（fresh batch_id）；ApiError 回滚普通写，mark_fail_closed 若走普通写则不持久，M6 replay 接真前须复核 | M6 前复核 |
-| 凭证物化目录权限 | codex CODEX_HOME 父目录未 chmod 0700（NFR5 单机单用户信任模型内，多用户非目标 PRD §9） | 已接受 |
-| cron 描述文案双处 | `daemon/mcp.py` 与 server 校验两处 cron 描述，未来语法扩展易漂移 | 顺手小批 |
-| ChannelsSnapshot 通知行无分页 | 本人非默认通知行全量返回（单人类频道数小） | 观察项 |
-| held 系统消息骨架 / human_members DRY | J6 已抽中立 `messages/service.py` 供 guard 与 needs_human 共用；hub 内局部查询仍是性能/清理观察项，held 消息骨架未扩界 | 部分收敛/观察项 |
-| hub usage.batch N+1 / search 双扫 | 承接 M2 挂账（性能小批） | 独立小批 |
-| held 卡「重评估中…」显示边角 | 升级态 held 行倒计时显示（正常 G4 翻转才准） | 观察项 |
-| `task #n` refs 无 UI 消费面 / P11·P3 看板双实现抽 `<TaskBoard>` | M2 观察 | 顺手评估 |
-| messages_fts 键于 rowid（VACUUM 失同步）/ OAuth 冷启动复验 | M3/M1 结构性观察 | 观察项/择机 |
-| 模板携带 system 节点 | M6a MVP 模板仍仅承载 task；merge/check 由实例化后在画布手动添加 | 观察项 |
-| 模板实例化 Project 重映射 | MVP 固定复核原 project_id 已绑定目标频道，不提供跨频道重映射面 | 观察项 |
+| **M6b CR-9** | `_post_landed_message` 逐节点 fetch_task/_member_name（N+1，节点数小） | 性能小批 |
+| **M6b CR-10** | proposals 部分唯一索引 sqlite_where 谓词字面量与 ProposalStatus 终态集双源 | 观察项（改终态集须同步；可加断言测试） |
+| **M6b CR-11** | 0009 downgrade batch recreate agents 时 agent_skills FK 处置未测 | 择机（downgrade 罕跑） |
+| **M6b 审计登记** | 跨进程双直落批（`landing_batches` 无 (kind,source_ref) 唯一约束）——单进程 `_landing_lock` 串行化安全，多进程非部署形态 | M7 多机化时收 |
+| **M6b 审计登记** | 注入面 prompt 中和（线程摘要 verbatim 进 Orchestrator 注入体，可被伪 `[system` 操纵——单工作区信任模型内；direct 频道无人类闸放大） | 观察项（多用户化前收） |
+| **M6b 审计登记** | revalidateDelta 客户端为服务端子集（防呆纵深）/ TS applyAdjustments 潜伏守卫（UI 不可达）/ graph.ts UTF-16 码元序（ASCII 值域无差,可复用 fingerprint.ts cmpCodepoint）/ activeDraft·activeDelta 终态悬挂（良性提示条）/ LandingToaster 不分频道 / P12 越界静默 | 前端低危观察项 |
+| M5b 承接 | briefing @全部映射 agent（by-design）/ `_layout_positions` 双实现（尺度不同）/ serialize N+1 | 已接受/观察/性能小批 |
+| M4–M2 承接 | held 卡倒计时边角 / hub usage.batch N+1+search 双扫 / `task #n` refs UI 消费面 / `<TaskBoard>` 抽取 / messages_fts rowid（VACUUM）/ OAuth 冷启动复验 | 观察项/性能小批/择机 |
+| 模板域 | 模板不携 system 节点 / 实例化不提供 Project 跨频道重映射 | MVP 观察项 |
 
 ## 6. 启动方式
 
 **真实开发**：终端 1 `uv run coagentia-server`（8787）；终端 2 `pnpm --filter @coagentia/web dev`（5173，代理 /api→8787）。
-**同源构建**：`pnpm --filter @coagentia/web build` 后 `uv run coagentia-server`，开 `http://127.0.0.1:8787`（自动发现 apps/web/dist；异地部署设 `COAGENTIA_WEB_DIST`）。
+**同源构建**：`pnpm --filter @coagentia/web build` 后 `uv run coagentia-server`，开 `http://127.0.0.1:8787`（自动发现 apps/web/dist；异地设 `COAGENTIA_WEB_DIST`）。
 **Mock**（显式开启才用）：`VITE_API_BASE=http://127.0.0.1:8642` + `VITE_MOCK_MODE=true` + mock-server。
-**隔离实机 verify 范式**：临时库 `COAGENTIA_ALEMBIC_URL` alembic head + seed + 注入测试 key + 独立端口（8799 先例）；参照 M3B-EVIDENCE 与 scratchpad launcher 脚本体例。
+**隔离实机 verify 范式**：`scratchpad/m6_verify.py`（M6 全场景 48 探针，`--keep` 保活可接浏览器截图）；基建 = `m6a_harness.py`+`m6a_appfactory.py`（临时库 alembic head+seed/真 daemon-sim/独立端口/taskkill 杀树）。
 
 ## 7. 守门命令（全绿才算收口）
 
 ```
-uv run pytest -q                    # 当前 813 passed / 4 skipped；M6 起点 712/4
-pnpm -F @coagentia/web test         # 当前 vitest 194；M6 起点 175
+uv run pytest -q                    # 当前 947 passed / 4 skipped（M6 起点 712/4），只增不减
+pnpm -F @coagentia/web test         # 当前 vitest 354（M6 起点 175），只增不减
 pnpm typecheck                      # 含 pyright（0 错，新债即红）+ 双 tsc
 uv run ruff check .
 pnpm gen                            # 后 git diff 应为空（生成物确定性）
 pnpm -F @coagentia/web build
 ```
 
-## 8. 注意事项
+## 8. 注意事项（接手必读）
 
-- **无 git remote**：所有提交仅在本地 main，如需备份/协作须先 `git remote add` 并 push（可选项，owner 决定）。
-- **环境要求**：SQLite ≥ 3.35（RETURNING）；真 claude CLI 踩坑见记忆/PROJECT-RECORD（stream-json `--verbose` 必需、须排空 stderr 等）。
-- **迁移纪律**：新迁移按批次显式点名建表（勿 metadata.create_all 全集——坑1）；给既有表加索引/约束须 `if_not_exists`。
-- **纪律 8（图算法单源）**：改动无环/blocked 语义必须同步 `kernel/graph.py` + `lib/graph.ts` + `golden/graph.json` 三处，两侧靠同一判例集守门。
-- **gating 语义要点**（M3b code-review 教训）：「gating 作用于投递层」= 唤醒触发 **和** 投递批双面——held 消息须从投递批剔除且 read_position 水位不越过它，否则被兄弟消息顺带消费；M4 freshness/held 若挂同一投递层，沿用 `_filter_gated` 范式。
-- **M6a 波 3 剩余风险（非当前阻断）**：TerminateProcess/断电仍可能越过进程内 merge/check 恢复窗口，尚无持久 in-flight journal/Job Object；未做完整 server+Hub 销毁重建的重启测试；跨物理机器迁移 Project 的旧树清理不在 Windows 单机 MVP 范围。留给真机 verify/code-review 继续观察，不扩契约或 schema。
-- 实机验证起的 server/浏览器/daemon-sim 进程结束前应关闭（8799 等端口）。
+- **无 git remote**：所有提交仅在本地 main；备份/协作须先 `git remote add` 并 push（owner 决定）。
+- **环境**：SQLite ≥ 3.35（RETURNING）；win32 真 claude CLI 踩坑（stream-json `--verbose` 必需/排空 stderr/taskkill /F /T 杀树/git stdout 显式 UTF-8）见 PROJECT-RECORD 与 `scratchpad/GIT-CALIBRATION.md`。
+- **迁移纪律**：新迁移按批次显式点名建表（勿 metadata.create_all 全集）；既有表加索引/约束须 `if_not_exists`。
+- **纪律 8（同构内核三组）**：graph / fingerprint / **decomposition**——改语义必须 py 权威+ts 镜像+golden 三处同步，双跑逐字节守门；内核枚举成员测试必须 `_is_str` 守卫（unhashable 防崩 + 双侧一致）。
+- **CAS 纪律（M6 最重要教训，三度印证）**：pysqlite 方言 SELECT 在首个 DML 前跑自动提交（无快照）——「同 tx 读=串行化点」不成立。**凡状态机边写必条件 UPDATE**（WHERE status=起态，竞败 rowcount=0→StaleTransition）；凡 read-then-act（如 remove_node 活动复核）须把复核移到写锁之后（先写取锁→锁内重读→不符回滚）。
+- **落地期系统节点抑制**：running 落地批期间不认领 idle merge/check（`_channel_landing_in_progress`）；**fail-closed 后不自动重扫**（截断前缀图上 merge 会空成功进不可 retry 终态）——只 LANDING_COMPLETED 触发补扫描。
+- **O9 面清单**：canvas create_node/delete_node/create_edge/delete_edge/patch_node + templates instantiate 对 Agent 403 rule=O9；Agent 结构变更唯一通道 = `<control>` full/delta 提案；人类不受限（C5）。新增任何「落画布结构」端点须同口径。
+- **gating 语义**（M3b 教训）：作用于投递层 = 唤醒触发 **和** 投递批双面。
+- **幂等身份纪律**（M5b 教训）：落地批 req_hash 折入 source 身份；重放按构造序（ledger seq），勿按字典序。
+- 实机验证起的 server/浏览器/daemon-sim 进程结束前必杀（taskkill /F /T）。
