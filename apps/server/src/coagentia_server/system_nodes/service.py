@@ -114,13 +114,39 @@ def candidate_node_ids(
     return list(conn.execute(stmt).scalars())
 
 
+def _channel_landing_in_progress(conn: Any, channel_id: str) -> bool:
+    """本频道是否有 running 落地批（decomp/delta）——落地期系统节点认领抑制的判定源。
+
+    并行审计 blocking 修复（阶段 4）：delta 步序先删后加、每步提交即广播,remove 步可把某既有
+    idle merge/check 节点的上游删空;若此刻扫描器认领,空 steps 会 `_succeed_merge_node` 落
+    **不可 retry 的 success 终态**,而后续 add 步才把替换边落上——J9 封死的「裸系统节点空成功」
+    窗口经删除路径重开。判定读最新已提交态:任一 remove 步已提交 ⇒ 建批事务(更早提交)必可见,
+    故对该窗口无过期读活口;批 :done/fail_closed 后抑制自然解除(hub 在 landing.completed/
+    fail_closed 补扫描,不悬空)。decomp 批纯增本无此窗口,一并抑制无害且语义更简单。
+    """
+    _BATCH = models.tbl(models.LandingBatch)
+    row = conn.execute(
+        select(_BATCH.c.id).where(
+            _BATCH.c.channel_id == channel_id,
+            _BATCH.c.status == "running",
+            _BATCH.c.kind.in_(["decomp", "delta"]),
+        ).limit(1)
+    ).first()
+    return row is not None
+
+
 def prepare_dispatch(tx: Any, node_id: str) -> Dispatch | None:
-    """锁内重读节点：idle 非 blocked 原子认领；running 恢复同一执行身份。"""
+    """锁内重读节点：idle 非 blocked 原子认领；running 恢复同一执行身份。
+
+    落地期抑制：本频道有 running 落地批时不认领 idle 节点（见 _channel_landing_in_progress
+    注记）；running 节点的恢复路径不受抑制（已在执行中的不半途而废）。"""
     context = _node_context(tx.conn, node_id)
     if context is None or context["kind"] != CanvasNodeKind.SYSTEM.value:
         return None
     status = context["system_status"]
     if status == SystemNodeStatus.IDLE.value:
+        if _channel_landing_in_progress(tx.conn, context["channel_id"]):
+            return None
         if node_id in canvas_service.blocked_node_ids(tx.conn, context["canvas_id"]):
             return None
         claimed = tx.conn.execute(

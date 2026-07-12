@@ -88,8 +88,29 @@ def test_schema_version_string() -> None:
     assert "coagentia.decomposition.v1" in _sections_text()
 
 
+def test_delta_section_finalized() -> None:
+    """J11 定稿第 8 条（拆解设计 §11/O9）：落地后结构变更唯一通道 = delta 提案。
+
+    钉三点：① delta schema 串与 contracts 常量同值（两处字面量不漂移）；② 指引 O9（不直接改画布）
+    与四 op 目录；③ base 自愈承诺（校验反馈携当前基线值——delta.py DELTA_BASE_MISMATCH hint 兑现）。
+    """
+    from coagentia_contracts.constants import SCHEMA_DECOMPOSITION_DELTA_V1
+
+    assert (
+        role_templates.DECOMPOSITION_DELTA_SCHEMA_VERSION == SCHEMA_DECOMPOSITION_DELTA_V1
+    )
+    section_names = {s["section"] for s in role_templates.build_orchestrator_prompt_sections()}
+    assert "delta_changes" in section_names
+    text = _sections_text()
+    assert "coagentia.decomposition-delta.v1" in text
+    assert "不要直接改画布" in text
+    assert "add_node/remove_node/add_edge/remove_edge" in text
+    assert "校验反馈会携当前基线值" in text
+    assert "先 Close 任务再删" in text
+
+
 def test_description_prefill_non_empty() -> None:
-    """成员级原创话术留 TODO（波 4 定稿），但骨架占位非空。"""
+    """成员级 description_prefill（contracts 常量单源）非空——J11 定稿态。"""
     assert role_templates.ORCHESTRATOR_DESCRIPTION_PREFILL.strip()
 
 

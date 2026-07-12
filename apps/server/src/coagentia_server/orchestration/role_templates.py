@@ -4,10 +4,11 @@
 七条骨架）+ 规模判断表注入位（§12 四行原文）。daemon/适配器零专属代码——Orchestrator 与任意
 Agent 走同一创建/唤醒/投递路径。
 
-**本文件只做数据**（波 1 骨架）：不建表、不做迁移、不接启动 upsert——`agent_role_templates` 建表 /
-0009 批次归属 / 创建向导预选接线全归**波 2**。笔法照 templates/builtin.py：常量 + 构造函数产出内容，
-`id` 由波 2 的 upsert 落库时赋（同 build_triangle_body 不含 id、insert 时赋 id）。prompt_sections
-定为可序列化 JSON（[{section, text}]），与 AgentRoleTemplateRow.prompt_sections（JsonValue）同形。
+**本文件只做数据**：建表随 0009（波 2）、启动 upsert 在 app 装配、创建向导预选在 POST /agents 消费。
+笔法照 templates/builtin.py：常量 + 构造函数产出内容，`id` 由 upsert 落库时赋。prompt_sections 定为
+可序列化 JSON（[{section, text}]），与 AgentRoleTemplateRow.prompt_sections（JsonValue）同形。
+**话术定稿态（J11，阶段 4）**：§13.1 七条 + 第 8 条 delta 通道增补（O9/base 自愈承诺与 delta.py
+的 DELTA_BASE_MISMATCH hint 互为兑现）；真 LLM 试拆解校准随 J12 实机 verify 回写。
 """
 
 from __future__ import annotations
@@ -34,6 +35,9 @@ ORCHESTRATOR_DESCRIPTION_PREFILL = ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFIL
 
 # 拆解 schema 版本串（输出协议第 6 条；与 contracts kernel/golden 单源一致，勿改字面）。
 DECOMPOSITION_SCHEMA_VERSION = "coagentia.decomposition.v1"
+# delta schema 版本串（第 8 条增量通道；与 constants.SCHEMA_DECOMPOSITION_DELTA_V1 同值——此处
+# 保持字面量体例与上行一致，单测钉住两处不漂移）。
+DECOMPOSITION_DELTA_SCHEMA_VERSION = "coagentia.decomposition-delta.v1"
 
 # §12 规模判断表四行原文（信号 → 倾向；「宁欠拆不过拆」理由句在第四行）——逐行注入第 1 条。
 # 信号/倾向两列完整保留；长行以隐式字符串拼接换行，运行期值与原文逐字一致。
@@ -111,6 +115,20 @@ def build_orchestrator_prompt_sections() -> list[dict[str, str]]:
             "section": "repair",
             "text": "7. 你的提案会被系统校验并需人类确认；被退回时按错误清单逐条修复，不要辩解。",
         },
+        {
+            # 第 8 条（J11 定稿增补，拆解设计 §11/O9）：落地后的结构变更唯一通道 = delta 提案。
+            # base 自愈：校验反馈的 DELTA_BASE_MISMATCH hint 携当前基线值（delta.py），修复循环
+            # 一轮即可对齐——话术如实承诺这一点，不要求模型预知基线。
+            "section": "delta_changes",
+            "text": (
+                "8. 落地后如需结构变更（增删节点、改依赖），不要直接改画布——Agent 直接编辑会被"
+                "拒绝（O9）。在原 source 任务线程内发含唯一 <control> 块的增量提案，schema 为 "
+                f"{DECOMPOSITION_DELTA_SCHEMA_VERSION}，字段：version、base（画布当前基线指纹）、"
+                "operations（add_node/remove_node/add_edge/remove_edge，删除引用画布节点 id）、"
+                "reason（变更理由）。base 不确定时照常提交：校验反馈会携当前基线值，按错误清单"
+                "修正一轮即可。删除进行中的节点会被拒（先 Close 任务再删）。"
+            ),
+        },
     ]
 
 
@@ -167,6 +185,7 @@ def upsert_builtin_role_templates(engine: Engine) -> None:
 
 
 __all__ = [
+    "DECOMPOSITION_DELTA_SCHEMA_VERSION",
     "DECOMPOSITION_SCHEMA_VERSION",
     "ORCHESTRATOR_DESCRIPTION_PREFILL",
     "ORCHESTRATOR_ROLE_KEY",

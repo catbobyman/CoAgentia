@@ -310,7 +310,10 @@ def patch_node(
     node = canvas_service.fetch_node(tx.conn, canvas_id, node_id)
     if node is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "画布节点不存在")
-    acting_member(request, tx.conn)  # 身份校验（裁决 7 全员可用，无角色门）
+    # 并行审计修复（阶段 4）：PATCH 面收人类门——command 改写=check 执行内容（daemon 在 repo 内
+    # 跑），Agent 可达即与 O9「Agent 结构变更唯一通道 = <control> delta 提案」口径矛盾；title 面
+    # 同收（C5 画布编辑自 M3 即人类先行，契约 E 注记 Agent 侧画布工具位不开放，无既有合法消费方）。
+    _require_human_actor(request, tx)
     changes = body.model_dump(exclude_unset=True)
 
     if "command" in changes:
@@ -482,10 +485,14 @@ def delete_edge(
 
 
 @router.put("/canvases/{canvas_id}/layout", response_model=rest.CanvasMutation)
-def put_layout(canvas_id: str, body: rest.LayoutPut, tx: Tx = Depends(get_tx)) -> Any:
+def put_layout(
+    canvas_id: str, body: rest.LayoutPut, request: Request, tx: Tx = Depends(get_tx)
+) -> Any:
     """整批坐标覆盖（B §4.9）：pos_x/pos_y 不参与基线快照（契约 A §6）故**不 bump**；
-    只更新本画布内节点、emit canvas.layout_updated；返回 CanvasMutation（基线不变）。"""
+    只更新本画布内节点、emit canvas.layout_updated；返回 CanvasMutation（基线不变）。
+    并行审计修复（阶段 4）：补身份解析与全端点口径一致（纯装饰面，不加人类门）。"""
     canvas = _writable_canvas(tx, canvas_id)
+    acting_member(request, tx.conn)
     ids = set(canvas_service.node_ids(tx.conn, canvas_id))
     applied = [p for p in body.positions if p.node_id in ids]
     for p in applied:

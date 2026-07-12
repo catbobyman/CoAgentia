@@ -73,10 +73,16 @@ export function DeltaPanel({
     return (id: string | undefined) => (id ? m.get(id) ?? id : '—');
   }, [nodes, taskById]);
 
-  // NODE_ACTIVE 集：agent 节点其任务处 in_progress/in_review。
+  // NODE_ACTIVE 集：agent 节点其任务处 in_progress/in_review；**running 系统节点同判**——
+  // 服务端 _node_is_active 口径（并行审计镜像修复：系统节点状态不进结构基线，base 横幅拦不住
+  // 这条,漏判会让确认按钮可点而服务端 422 突袭）。
   const activeNodeIds = useMemo(() => {
     const s = new Set<string>();
     for (const n of nodes) {
+      if (n.kind === 'system') {
+        if (n.system_status === 'running') s.add(n.id);
+        continue;
+      }
       const st = n.task_id ? taskById.get(n.task_id)?.status : undefined;
       if (st && ACTIVE_STATUSES.has(st)) s.add(n.id);
     }

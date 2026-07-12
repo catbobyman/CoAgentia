@@ -96,6 +96,34 @@ describe('DeltaPanel', () => {
     expect(screen.getByTestId('delta-confirm')).not.toBeDisabled();
   });
 
+  it('NODE_ACTIVE：删除 running 系统节点同判（并行审计镜像修复——服务端 _node_is_active 口径）', async () => {
+    // 系统节点状态不进结构基线（base 横幅拦不住），漏判会让按钮可点而服务端 422 突袭。
+    const nodesWithSystem = [
+      ...NODES,
+      { id: 'sys1', canvas_id: 'canvas_1', created_at: 't', kind: 'system', system_action: 'merge', system_status: 'running' },
+    ] as unknown as CanvasNodePublic[];
+    const proposal = {
+      ...DELTA,
+      body: { version: 'coagentia.decomposition-delta.v1', base: 'basehash', operations: [{ op: 'remove_node', node_id: 'sys1' }] },
+    };
+    vi.mocked(api.proposal).mockResolvedValue(proposal as ProposalPublic);
+    vi.mocked(api.channels).mockResolvedValue(SNAP);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(qk.proposal(proposal.id), proposal);
+    qc.setQueryData(qk.channels(), SNAP);
+    render(
+      <QueryClientProvider client={qc}>
+        <ToastProvider>
+          <DeltaPanel channelId="ch_1" proposalId={proposal.id} canvas={CANVAS} nodes={nodesWithSystem} edges={EDGES} tasks={[task('t1', 'done', '需求'), task('t2', 'done', '实现'), task('t3', 'done', '评审')]} members={[]} onClose={vi.fn()} />
+          <Toaster />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId('delta-panel');
+    expect(screen.getByTestId('delta-reval-errors')).toHaveTextContent('进行中');
+    expect(screen.getByTestId('delta-confirm')).toBeDisabled();
+  });
+
   it('全部剔除 → 提示改用拒绝 + 确认 disabled', async () => {
     renderPanel();
     await screen.findByTestId('delta-panel');

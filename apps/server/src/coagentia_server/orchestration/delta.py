@@ -247,12 +247,13 @@ def validate_delta(
     node_by_id, current_edges = _current_canvas_state(conn, canvas)
     current_node_ids = set(node_by_id)
 
-    # -- 2. base 对齐当前基线
+    # -- 2. base 对齐当前基线（hint 携当前基线值——§6.3 hint 义务的关键例：Orchestrator 无画布
+    # 读面，修复循环靠此一轮自愈；角色话术第 8 条如实承诺该反馈）。
     if base_ok and base != canvas["baseline_hash"]:
         errors.append(_err(
             rest.ErrorCode.DELTA_BASE_MISMATCH.value, "$.base",
             "base 与当前画布基线不符（基线已推进）",
-            "请基于最新基线重新生成增量提案",
+            f"当前画布基线：{canvas['baseline_hash']}（据此重出增量提案）",
         ))
 
     # -- 3. 结构应用：逐 op 形状校验 + 引用/存在性；同时累积结果图节点/边集。

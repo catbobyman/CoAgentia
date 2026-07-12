@@ -913,3 +913,182 @@ def test_o9_canvas_writes_agent_403_human_ok(server_client: TestClient) -> None:
     # 人类删边/删节点放行。
     assert server_client.delete(f"/api/canvases/{cv}/edges/{edge_id}").status_code == 200
     assert server_client.delete(f"/api/canvases/{cv}/nodes/{a_id}").status_code == 200
+
+
+# ================================================================ 并行审计修复回归（阶段 4）
+
+
+def test_landing_suppresses_bare_system_node_claim(migrated_engine: Engine) -> None:
+    """幂等 F1（blocking）：running 落地批期间，扫描不认领 idle 系统节点——否则 delta 先删后加的
+    remove 步窗口里，上游被删空的 merge 会被空成功进不可 retry 的 success 终态。批终态后恢复认领
+    （裸空 merge 即空成功——这正是被抑制挡住的那个动作）。"""
+    from coagentia_server.computers.gateway_tx import gateway_tx
+    from coagentia_server.system_nodes import service as system_node_service
+
+    ids = _seed(migrated_engine)
+    merge_id, _ = _add_node(
+        migrated_engine, ids, "M", kind="system",
+        system_action="merge", system_status="idle",
+    )
+    body = _delta_body(_base(migrated_engine, ids), [_add_node_op("N1", "n")])
+    _insert_delta(migrated_engine, ids, body, status="landing")
+    batch_id = new_ulid()
+    with migrated_engine.begin() as c:
+        c.execute(insert(_BATCH).values(
+            id=batch_id, workspace_id=ids["ws"], channel_id=ids["channel"], kind="delta",
+            status="running", content_hash=proposal_fingerprint(body), source_ref="x",
+            confirmed_by="probe", created_at=now_iso(),
+        ))
+
+    bus, _ = _bus()
+    with gateway_tx(migrated_engine, bus) as tx:
+        assert system_node_service.prepare_dispatch(tx, merge_id) is None
+    with migrated_engine.connect() as c:
+        assert c.execute(
+            select(_NODE.c.system_status).where(_NODE.c.id == merge_id)
+        ).scalar_one() == "idle"  # 抑制生效：未被认领/未空成功
+
+    with migrated_engine.begin() as c:  # 批转 done → 抑制解除
+        c.execute(update(_BATCH).where(_BATCH.c.id == batch_id)
+                  .values(status="done", done_at=now_iso()))
+    with gateway_tx(migrated_engine, bus) as tx:
+        system_node_service.prepare_dispatch(tx, merge_id)
+    with migrated_engine.connect() as c:
+        assert c.execute(
+            select(_NODE.c.system_status).where(_NODE.c.id == merge_id)
+        ).scalar_one() == "success"  # 裸 merge 空成功恢复（原语义不变）
+
+
+def test_delta_landed_message_mentions_activated_owner(migrated_engine: Engine) -> None:
+    """门 F2：delta「增量已落地」镜像 decomp §9.3——无上游新增节点 @suggested_owner 唤醒，
+    有上游者仅列名不 @。"""
+    ids = _seed(migrated_engine, decomp_mode="direct")
+    base = _sync_baseline(migrated_engine, ids)
+    op1 = _add_node_op("N1", "激活任务")
+    op1["node"]["suggested_owner"] = ids["orch"]
+    op2 = _add_node_op("N2", "下游任务")
+    op2["node"]["suggested_owner"] = ids["orch"]
+    body = _delta_body(base, [op1, op2, {"op": "add_edge", "from": "N1", "to": "N2"}])
+    _insert_delta(migrated_engine, ids, body, status="landing")
+    bus, _ = _bus()
+    result = landing_domain.pending_landing_scan(migrated_engine, bus)
+    assert list(result["executed"].values()) == ["landed"]
+    with migrated_engine.connect() as c:
+        msg = c.execute(
+            select(_MSG).where(_MSG.c.body.like("增量已落地%"))
+        ).mappings().one()
+        assert "激活任务（已激活，建议认领：@" in msg["body"]
+        assert "下游任务（待上游解锁" in msg["body"]
+        mentions = c.execute(
+            select(func.count()).select_from(models.tbl(models.MessageMention)).where(
+                models.tbl(models.MessageMention).c.message_id == msg["id"])
+        ).scalar_one()
+    assert mentions == 1  # 仅激活节点的建议人被 @
+
+
+def test_transition_cas_stale_raises(migrated_engine: Engine) -> None:
+    """SM-F1：_transition 条件 UPDATE——内存起态过期（对手已推进）→ StaleTransition，DB 不被改写
+    （终态复活/landing 被踩的根修复）。"""
+    ids = _seed(migrated_engine)
+    body = _delta_body(_base(migrated_engine, ids), [_add_node_op("N1", "n")])
+    pid = _insert_delta(migrated_engine, ids, body, status="awaiting_confirm")
+    with migrated_engine.connect() as c:
+        stale = dict(c.execute(select(_PROPOSAL).where(_PROPOSAL.c.id == pid)).mappings().one())
+    with migrated_engine.begin() as c:  # 对手推进：awaiting → landing
+        c.execute(update(_PROPOSAL).where(_PROPOSAL.c.id == pid).values(status="landing"))
+    with _tx(migrated_engine) as tx:
+        with pytest.raises(pd.StaleTransition):
+            pd._transition(tx, stale, pd.ProposalStatus.SUPERSEDED)
+    assert _proposal_row(migrated_engine, pid)["status"] == "landing"  # 未被踩
+
+
+def test_initiate_reuses_landing_proposal(migrated_engine: Engine) -> None:
+    """SM-F1：source 现行提案在 landing → initiate 不 supersede 不建新行，回该行 + inject=None
+    （decompose 202 复用语义）。"""
+    ids = _seed(migrated_engine)
+    body = _delta_body(_base(migrated_engine, ids), [_add_node_op("N1", "n")])
+    pid = _insert_delta(migrated_engine, ids, body, status="landing")
+    with migrated_engine.connect() as c:
+        channel = dict(c.execute(
+            select(models.Channel.__table__).where(
+                models.Channel.__table__.c.id == ids["channel"])
+        ).mappings().one())
+        task = dict(c.execute(select(_TASK).where(_TASK.c.id == ids["task"])).mappings().one())
+    orch_agent = {"member_id": ids["orch"]}
+    with _tx(migrated_engine) as tx:
+        proposal, inject = pd.initiate_proposal(
+            tx, workspace_id=ids["ws"], channel=channel, source_task=task,
+            orchestrator=orch_agent, requester_id=ids["human"],
+        )
+    assert proposal["id"] == pid and inject is None
+    assert _proposal_row(migrated_engine, pid)["status"] == "landing"
+    with migrated_engine.connect() as c:
+        n = c.execute(select(func.count()).select_from(_PROPOSAL).where(
+            _PROPOSAL.c.source_task_id == ids["task"])).scalar_one()
+    assert n == 1  # 未建新行
+
+
+def test_classify_apply_race_degrades_to_ignore(migrated_engine: Engine) -> None:
+    """SM-F1：phase1 定夺（awaiting 对话修正 rev+1）后、apply 前对手推进到 landing →
+    supersede 竞败降级为 duplicate_ignored 留痕，landing 不被踩、不建新 rev。"""
+    ids = _seed(migrated_engine)
+    base = _base(migrated_engine, ids)
+    body = _delta_body(base, [_add_node_op("N1", "n")])
+    pid = _insert_delta(migrated_engine, ids, body, status="awaiting_confirm")
+    with migrated_engine.connect() as c:
+        channel = dict(c.execute(
+            select(models.Channel.__table__).where(
+                models.Channel.__table__.c.id == ids["channel"])
+        ).mappings().one())
+        root = c.execute(select(_TASK.c.root_message_id).where(
+            _TASK.c.id == ids["task"])).scalar_one()
+
+    new_body = _delta_body(base, [_add_node_op("N2", "改一版")])
+    with migrated_engine.connect() as conn:
+        tx_read = _Tx(conn)
+        decision = pd.classify_submission(
+            tx_read, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(new_body), thread_root_id=root,
+        )
+    assert decision is not None
+
+    with migrated_engine.begin() as c:  # 对手在 phase1 与 apply 之间推进：awaiting → landing
+        c.execute(update(_PROPOSAL).where(_PROPOSAL.c.id == pid).values(status="landing"))
+    before = _diag_count(migrated_engine, "proposal.duplicate_ignored")
+    with _tx(migrated_engine) as tx:
+        assert decision.apply(tx) == []
+    assert _proposal_row(migrated_engine, pid)["status"] == "landing"  # 未被 supersede
+    assert _diag_count(migrated_engine, "proposal.duplicate_ignored") == before + 1
+    with migrated_engine.connect() as c:
+        n = c.execute(select(func.count()).select_from(_PROPOSAL).where(
+            _PROPOSAL.c.source_task_id == ids["task"])).scalar_one()
+    assert n == 1  # rev+1 新行未建
+
+
+def test_o9_patch_node_agent_403_and_layout_identity(server_client: TestClient) -> None:
+    """门 F1/F5：patch_node（可改 check command——daemon 在 repo 内执行）对 Agent 403 rule=O9；
+    layout 面 Agent 放行（纯装饰,仅补身份解析）。"""
+    engine: Engine = server_client.app.state.engine  # type: ignore[attr-defined]
+    ids = _seed(engine)
+    headers = _agent_headers(server_client, engine, ids)
+    cv = ids["canvas"]
+    node = server_client.post(
+        f"/api/canvases/{cv}/nodes",
+        json={"title": "检查", "kind": "system", "system_action": "check",
+              "command": "git --version"},
+    )
+    assert node.status_code == 201, node.text
+    node_id = node.json()["node"]["id"]
+
+    r = server_client.patch(f"/api/canvases/{cv}/nodes/{node_id}",
+                            json={"command": "evil"}, headers=headers)
+    assert r.status_code == 403, r.text
+    assert rest.ErrorResponse.model_validate(r.json()).error.rule == "O9"
+    ok = server_client.patch(f"/api/canvases/{cv}/nodes/{node_id}",
+                             json={"command": "git status"})
+    assert ok.status_code == 200, ok.text
+
+    lay = server_client.put(f"/api/canvases/{cv}/layout",
+                            json={"positions": [{"node_id": node_id, "x": 5, "y": 7}]},
+                            headers=headers)
+    assert lay.status_code == 200, lay.text

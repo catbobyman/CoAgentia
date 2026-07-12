@@ -299,6 +299,18 @@ class DaemonHub:
         if event.type == EventType.LANDING_STARTED:
             loop.call_soon_threadsafe(self._spawn, self._run_landing_scan())
             return
+        # 落地收尾/停批 → 补一次系统节点扫描：落地期认领抑制（system_nodes._channel_landing_
+        # in_progress）会吞掉步事务触发的扫描,批终态后在此接续,防 idle merge/check 悬置到周期兜底。
+        if event.type in {EventType.LANDING_COMPLETED, EventType.LANDING_FAIL_CLOSED}:
+            channel_id = event.channel_id
+            if channel_id:
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_system_nodes(channel_id)
+                )
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_worktrees(channel_id)
+                )
+            return
         if event.type == EventType.PROPOSAL_UPDATED:
             proposal = event.data.get("proposal") or {}
             if proposal.get("status") == "landing":

@@ -91,8 +91,17 @@ export function ChannelChatScreen({ search, setSearch }: {
   };
   const selectTab = (tab: Tab) => setSearch({ tab });
   // M6b 提案卡入口：full「查看草稿」→ 激活草稿层；delta「审查增量」→ 激活 delta 面板；均切画布页签。
-  const reviewDraft = (proposalId: string) => { setActiveDraft(channel.id, proposalId); setSearch({ tab: 'canvas' }); };
-  const reviewDelta = (proposalId: string) => { setActiveDelta(channel.id, proposalId); setSearch({ tab: 'canvas' }); };
+  // 二者互斥（并行审计修复）：切页签不卸 store 态,不清对方会双层叠加遮挡（频道内单提案审阅）。
+  const reviewDraft = (proposalId: string) => {
+    setActiveDelta(channel.id, null);
+    setActiveDraft(channel.id, proposalId);
+    setSearch({ tab: 'canvas' });
+  };
+  const reviewDelta = (proposalId: string) => {
+    setActiveDraft(channel.id, null);
+    setActiveDelta(channel.id, proposalId);
+    setSearch({ tab: 'canvas' });
+  };
   // 点任务牌 → 打开线程面板(?thread=root),同时高亮(?task=)。再点同一牌关闭。
   const selectTask = (taskId: string) => {
     if (search.task === taskId) {

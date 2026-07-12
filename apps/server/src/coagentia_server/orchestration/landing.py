@@ -100,6 +100,7 @@ _TASK = models.tbl(models.Task)
 _MSG = models.tbl(models.Message)
 _MEMBER = models.tbl(models.Member)
 _EDGE = models.tbl(models.CanvasEdge)
+_NODE = models.tbl(models.CanvasNode)
 _DIAG = models.tbl(models.DiagnosticEvent)
 
 # 直落批次确认人字面量（契约 A §4.7 confirmed_by；拆解设计 §8.3）。
@@ -468,7 +469,30 @@ def _insert_edge_idempotent(
 ) -> str | None:
     """SAVEPOINT triplet 幂等插边（照 templates._land_edges）：插入成功 emit edge_added 并回
     edge_id，triplet 撞唯一（重放/并发）→ None 不重复 emit。无环兜底不需：新节点与既有画布无
-    交叉边、提案图已过 V9（确认时权威重验），落地连边不可能引入环。"""
+    交叉边、提案图已过 V9（确认时权威重验），落地连边不可能引入环。
+
+    并行审计修复（阶段 4，幂等 F3）：端点先行存在性检查——delta add_edge 的现节点端点可能在
+    confirm→执行窗口被人删除，此前 FK 违例与 triplet 冲突同被 except IntegrityError 吞成
+    「幂等跳过」，静默丢边且掩盖真实构造缺陷。现在：端点缺失 → 诊断留痕 + 语义性跳过（端点已
+    不在，该边本就无处可挂——与 remove 目标消失同款幂等语义）；IntegrityError 收窄为「triplet
+    确已存在」，否则重抛（真错误不合流）。"""
+    present = {
+        row for row in tx.conn.execute(
+            select(_NODE.c.id).where(
+                _NODE.c.canvas_id == ctx.canvas["id"],
+                _NODE.c.id.in_([from_node, to_node]),
+            )
+        ).scalars()
+    }
+    missing = [n for n in (from_node, to_node) if n not in present]
+    if missing:
+        _write_diag(
+            tx.conn, "landing.edge_endpoint_missing",
+            workspace_id=ctx.workspace_id, channel_id=ctx.channel_id,
+            task_id=ctx.source_task_id, batch_id=None,
+            payload={"from": from_node, "to": to_node, "missing": missing},
+        )
+        return None
     edge_id = service.new_ulid()
     try:
         with tx.conn.begin_nested():
@@ -481,6 +505,15 @@ def _insert_edge_idempotent(
                 )
             )
     except IntegrityError:
+        exists = tx.conn.execute(
+            select(_EDGE.c.id).where(
+                _EDGE.c.canvas_id == ctx.canvas["id"],
+                _EDGE.c.from_node_id == from_node,
+                _EDGE.c.to_node_id == to_node,
+            )
+        ).first()
+        if exists is None:  # 非 triplet 冲突（其它完整性错误）——不吞，冒泡定位
+            raise
         return None
     edge_row = models.row_dict(
         tx.conn.execute(select(_EDGE).where(_EDGE.c.id == edge_id)).mappings().first()
@@ -621,13 +654,17 @@ class _ExecContext:
             self.by_temp[temp_id] = payload
 
     def node_id(self, ref: str) -> str:
-        """解析边端点 ref → 落地节点 ULID：新增节点走 by_temp 映射，现画布节点（delta）原样返回。"""
+        """解析边端点 ref → 落地节点 ULID：新增节点走 by_temp 映射，现画布节点（delta）原样返回。
+
+        解析失败抛 _PlanDefect（并行审计修复 F4）：op 序列构造缺陷若抛裸 AssertionError，会被
+        hub _landing_loop 的 suppress(Exception) 吞成 15s 无限重试、批僵死无告警——现在由
+        _run_steps 捕获转 fail-closed（停批+告警持久），符合「损坏须响」纪律。"""
         entry = self.by_temp.get(ref)
         if entry is not None:
             return entry["node_id"]
         if ref in self.existing_node_ids:
             return ref
-        raise AssertionError(f"edge 引用的节点 '{ref}' 尚未落地（op 序列构造缺陷）")
+        raise _PlanDefect(f"edge 引用的节点 '{ref}' 尚未落地（op 序列构造缺陷）")
 
 
 def _fail_close_batch(
@@ -645,7 +682,10 @@ def _fail_close_batch(
         {"batch": fresh_batch.model_dump(mode="json")},
     )
     if proposal is not None and proposal["status"] == ProposalStatus.LANDING.value:
-        failed = proposal_domain._transition(tx, proposal, ProposalStatus.FAILED)
+        try:
+            failed = proposal_domain._transition(tx, proposal, ProposalStatus.FAILED)
+        except proposal_domain.StaleTransition:
+            return  # 竞败：并发对手已推进提案状态（批处置已提交在前，不回滚）
         tx.emit(
             EventType.PROPOSAL_UPDATED, failed["channel_id"],
             {"proposal": proposal_public(failed)},
@@ -680,6 +720,12 @@ class _NodeBecameActive(Exception):
     def __init__(self, node_id: str) -> None:
         super().__init__(node_id)
         self.node_id = node_id
+
+
+class _PlanDefect(Exception):
+    """op 序列构造缺陷（并行审计修复 F4）：边端点解析失败等「不该发生」的内部不一致。中止本步
+    事务并整批 fail-closed——若任其以裸异常冒泡，会被 hub _landing_loop 的 suppress(Exception)
+    吞成每 15s 无限重试、批僵死无告警（违「损坏须响 fail-closed」纪律）。"""
 
 
 def execute_batch(engine: Engine, bus: EventBus, batch_id: str) -> str:
@@ -776,6 +822,11 @@ def _run_steps(
                     tx, batch, proposal, reason=f"node became active: {exc.node_id}"
                 )
             return "fail_closed"
+        except _PlanDefect as exc:
+            # op 序列构造缺陷（F4）：停批告警而非裸异常僵死（步事务已回滚，无残留）。
+            with gateway_tx(engine, bus) as tx:
+                _fail_close_batch(tx, batch, proposal, reason=f"plan defect: {exc}")
+            return "fail_closed"
     return "ok"
 
 
@@ -835,11 +886,15 @@ def _finish_landed(tx: Any, batch: LandingBatchRow, proposal: dict[str, Any]) ->
     fresh = proposal_domain.fetch_proposal(tx.conn, proposal["id"])
     assert fresh is not None
     if fresh["status"] == ProposalStatus.LANDING.value:
-        fresh = proposal_domain._transition(tx, fresh, ProposalStatus.LANDED)
-        tx.emit(
-            EventType.PROPOSAL_UPDATED, fresh["channel_id"],
-            {"proposal": proposal_public(fresh)},
-        )
+        try:
+            fresh = proposal_domain._transition(tx, fresh, ProposalStatus.LANDED)
+        except proposal_domain.StaleTransition:
+            fresh = None  # 竞败：对手已推进（跨进程窗口）——:done 收尾其余部分照常
+        if fresh is not None:
+            tx.emit(
+                EventType.PROPOSAL_UPDATED, fresh["channel_id"],
+                {"proposal": proposal_public(fresh)},
+            )
     done_batch = service._fetch_batch(tx.conn, batch.id)
     assert done_batch is not None
     tx.emit(
@@ -1044,7 +1099,10 @@ def _post_delta_landed_message(
     tx: Any, batch: LandingBatchRow, proposal: dict[str, Any],
     operations: list[Any], removed: set[int],
 ) -> None:
-    """「增量已落地」系统消息（恰一条，:done 事务内，source 线程）：增删摘要 + 剔除数。"""
+    """「增量已落地」系统消息（恰一条，:done 事务内，source 线程）：增删摘要 + 剔除数 +
+    **激活节点唤醒**（并行审计修复，镜像 decomp §9.3 裁量）：新增 agent 节点若在结果图中无上游
+    （= 落地即激活——新增节点的上游只可能来自本 delta 的 add_edge，现边不可能指向新节点）且带
+    suggested_owner，则 @建议人；有上游（blocked）不 @，激活由 gating 推进接管。"""
     from coagentia_server.messages import service as messages_service
 
     kept = [op for i, op in enumerate(operations) if i not in removed and isinstance(op, dict)]
@@ -1058,6 +1116,36 @@ def _post_delta_landed_message(
     )
     if removed:
         text += f" 已剔除 {len(removed)} 项操作。"
+
+    # 激活判定：kept add_edge 的 to 端集合 = 新增节点里有上游者（现节点无从指向新增 temp_id）。
+    has_upstream = {
+        op.get("to") for op in kept if op.get("op") == "add_edge" and isinstance(op.get("to"), str)
+    }
+    mention_ids: list[str] = []
+    lines: list[str] = []
+    for op in kept:
+        if op.get("op") != "add_node" or not isinstance(op.get("node"), dict):
+            continue
+        node = op["node"]
+        title = str(node.get("title") or "").strip() or "增量任务节点"
+        suggested = node.get("suggested_owner")
+        activated = node.get("temp_id") not in has_upstream
+        label = f"- {title}"
+        if isinstance(suggested, str):
+            name = _member_name(tx.conn, suggested)
+            if name is not None:
+                if activated:
+                    label += f"（已激活，建议认领：@{name}）"
+                    if suggested not in mention_ids:
+                        mention_ids.append(suggested)
+                else:
+                    label += f"（待上游解锁，建议认领：{name}）"
+        elif not activated:
+            label += "（待上游解锁）"
+        lines.append(label)
+    if lines:
+        text += "\n" + "\n".join(lines)
+
     source_root = tx.conn.execute(
         select(_TASK.c.root_message_id).where(_TASK.c.id == proposal["source_task_id"])
     ).scalar()
@@ -1067,6 +1155,7 @@ def _post_delta_landed_message(
         channel_id=batch.channel_id,
         body=text,
         thread_root_id=source_root,
+        mention_member_ids=mention_ids,
     )
 
 

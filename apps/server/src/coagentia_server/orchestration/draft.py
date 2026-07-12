@@ -55,14 +55,12 @@ DIAG_DRAFT_REJECTED = "draft.rejected"
 DIAG_LANDING_STARTED = "landing.started"
 
 
-class StaleTransition(Exception):
-    """confirm/reject 条件转移竞败信号（硬关口重写，Fable）：`UPDATE … WHERE status=
-    'awaiting_confirm'` rowcount=0 = 并发对手已推进状态。路由捕获后重取最新态回 409 STALE_CONFIRM。
-
-    为什么必须条件 UPDATE 而非「读态检查 + _transition 无条件写」：pysqlite 方言下 SELECT 在首个
-    DML 前跑在自动提交（无快照），两个并发 confirm 都能以过期读通过 Python 侧检查——无条件写会
-    双双成功 → 双批双落地。WHERE 条件把状态机边（awaiting→landing/rejected）的执法原子化到写锁
-    获取时刻，竞败方 rowcount=0。"""
+# confirm/reject 条件转移竞败信号（硬关口重写，Fable）：语义原注——pysqlite 读自动提交下，
+# 条件 UPDATE 把状态机边（awaiting→landing/rejected）的执法原子化到写锁获取时刻，竞败方
+# rowcount=0，路由捕获后重取最新态回 409 STALE_CONFIRM。并行审计 SM-F1 修复把该纪律普遍化到
+# 全部 _transition 后，类单源迁至 proposal.StaleTransition；此处 re-export 保持既有引用面
+# （routes/delta 均经 draft_domain.StaleTransition 捕获）。
+StaleTransition = proposal_domain.StaleTransition
 
 ADJUSTMENT_OPS: frozenset[str] = frozenset(
     {"add_node", "remove_node", "add_edge", "remove_edge", "edit_node", "edit_merge_plan"}

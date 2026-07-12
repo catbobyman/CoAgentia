@@ -143,6 +143,10 @@ def decompose(
         orchestrator=orchestrator,
         requester_id=me["id"],
     )
+    # inject=None（并行审计 SM-F1/F2 退化路径）：现行提案在 landing / 并发建案竞败——复用现行
+    # 提案 202（请求方由状态知情），不重注入不建新行。
+    if inject is None:
+        return proposal_public(proposal)
     # 上下文注入（strict）：daemon 离线 → 503，异常冒泡回滚（drafting 提案/需求消息均不落库）。
     from coagentia_server.computers import DaemonOffline
 

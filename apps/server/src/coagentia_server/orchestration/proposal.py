@@ -40,6 +40,7 @@ from coagentia_contracts.kernel.decomposition import (
 from coagentia_contracts.ws import EventType
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 
 from coagentia_server.canvas import service as canvas_service
 from coagentia_server.db import models
@@ -258,17 +259,31 @@ def _emit_draft_superseded(tx: Any, proposal: dict[str, Any]) -> None:
 # ---------------------------------------------------------------- 状态迁移（单点执法）
 
 
+class StaleTransition(Exception):
+    """提案状态转移竞败信号（并行审计修复 SM-F1，语义同 draft.StaleTransition——现单源于此，
+    draft 模块 re-export 保持既有引用面）：条件 UPDATE rowcount≠1 = 并发对手已推进状态。
+
+    为什么 _transition 也必须条件 UPDATE（J9 教训的普遍化）：pysqlite 方言下 SELECT 在首个 DML 前
+    跑在自动提交（无快照），classify phase1 的读与 phase2 的写之间、以及跨请求的读-写窗口里，
+    内存 `proposal["status"]` 可以是过期值——无条件 UPDATE 会把终态行写回非终态（终态复活）或把
+    landing 行踩成 superseded（落地被夺/二次落地）。WHERE status=<起态> 把合法边执法原子化到
+    写锁获取时刻，竞败方 rowcount=0。"""
+
+
 def _transition(tx: Any, proposal: dict[str, Any], to_status: ProposalStatus) -> dict[str, Any]:
-    """合法边校验 + UPDATE status/updated_at；返回刷新行。非法边 → ValueError（编码缺陷即抛）。"""
+    """合法边校验 + **条件 UPDATE**（WHERE status=起态）status/updated_at；返回刷新行。
+    非法边 → ValueError（编码缺陷即抛）；竞败（起态已被并发推进）→ StaleTransition。"""
     frm = ProposalStatus(proposal["status"])
     if to_status not in PROPOSAL_TRANSITIONS[frm]:
         raise ValueError(f"非法提案状态迁移 {frm.value} → {to_status.value}")
     now = now_iso()
-    tx.conn.execute(
+    res = tx.conn.execute(
         update(_PROPOSAL)
-        .where(_PROPOSAL.c.id == proposal["id"])
+        .where(_PROPOSAL.c.id == proposal["id"], _PROPOSAL.c.status == frm.value)
         .values(status=to_status.value, updated_at=now)
     )
+    if res.rowcount != 1:
+        raise StaleTransition(proposal["id"])
     refreshed = fetch_proposal(tx.conn, proposal["id"])
     assert refreshed is not None
     return refreshed
@@ -340,10 +355,16 @@ def _supersede(tx: Any, proposal: dict[str, Any]) -> dict[str, Any]:
 
 def supersede_active_proposals(
     tx: Any, source_task_id: str, *, exclude_id: str | None = None
-) -> None:
+) -> bool:
     """把 source 的非终态提案置 superseded（终态）+ draft.superseded + 诊断（§8.2 重触发）。
 
     supersede 先于新提案落库——旧行转终态即移出部分唯一索引，新活动行方可插入。
+    返回是否「遇到 landing 行」（True = 落地执行中不可替换——调用方据此走「复用现行提案」而非
+    建新行；拆解设计 §8.2 landing 不可被 supersede，PROPOSAL_TRANSITIONS[LANDING] 无此边）。
+
+    CAS 语义（并行审计修复 SM-F1）：逐行条件转移，竞败（StaleTransition）→ 重取现势重试
+    （首次 UPDATE 执行后本事务已持写意向锁，第二轮读即权威，循环必收敛）；重取见终态 → 跳过，
+    见 landing → 计入返回值。
     """
     rows = tx.conn.execute(
         select(_PROPOSAL).where(
@@ -351,11 +372,25 @@ def supersede_active_proposals(
             _PROPOSAL.c.status.notin_(_TERMINAL_VALUES),
         )
     ).mappings().all()
+    saw_landing = False
     for row in rows:
         proposal = models.row_dict(row)
         if exclude_id is not None and proposal["id"] == exclude_id:
             continue
-        _supersede(tx, proposal)
+        for _attempt in range(3):
+            if proposal is None or proposal["status"] in _TERMINAL_VALUES:
+                break  # 并发对手已终态化——目标已达
+            if proposal["status"] == ProposalStatus.LANDING.value:
+                saw_landing = True
+                break  # landing 不可 supersede（落地执行中）
+            try:
+                _supersede(tx, proposal)
+                break
+            except StaleTransition:
+                proposal = fetch_proposal(tx.conn, proposal["id"])  # 重取现势再试
+        else:  # pragma: no cover - 写锁下第二轮即权威，理论不可达
+            raise AssertionError(f"supersede 竞态未收敛：{proposal}")
+    return saw_landing
 
 
 # ---------------------------------------------------------------- 上下文注入（§4/§13.2）
@@ -511,17 +546,43 @@ def initiate_proposal(
     source_task: dict[str, Any],
     orchestrator: dict[str, Any],
     requester_id: str | None,
-) -> tuple[dict[str, Any], PendingInject]:
+) -> tuple[dict[str, Any], PendingInject | None]:
     """归一化后的建提案（supersede 旧活动提案 → 建 drafting → 诊断 → emit proposal.updated），
-    返回 (proposal_row, PendingInject)。上下文注入由调用方投递。"""
-    supersede_active_proposals(tx, source_task["id"])
-    proposal = create_drafting_proposal(
-        tx,
-        workspace_id=workspace_id,
-        channel_id=channel["id"],
-        source_task_id=source_task["id"],
-        proposed_by=orchestrator["member_id"],
-    )
+    返回 (proposal_row, PendingInject | None)。上下文注入由调用方投递。
+
+    并行审计修复（SM-F1/F2）两条退化路径均**复用现行提案、不注入**（inject=None，零新错误码）：
+    ① 现行提案在 landing（落地执行中不可替换，§8.2）→ 回该行——请求方 202 看到 landing 态即知
+      「已在落地」；② 建行撞部分唯一索引（并发 decompose 竞败,对手已建活动行）→ SAVEPOINT 回滚
+      后回对手行——两请求语义同为「对本 source 拆解」，赢家提案对双方等效。
+    """
+    saw_landing = supersede_active_proposals(tx, source_task["id"])
+    if saw_landing:
+        active = active_proposal_for_source(tx.conn, source_task["id"])
+        if active is not None:
+            return active, None
+    try:
+        with tx.conn.begin_nested():  # SAVEPOINT：部分唯一索引竞败兜底（并发同 source 建案）
+            proposal = create_drafting_proposal(
+                tx,
+                workspace_id=workspace_id,
+                channel_id=channel["id"],
+                source_task_id=source_task["id"],
+                proposed_by=orchestrator["member_id"],
+            )
+    except IntegrityError:
+        active = active_proposal_for_source(tx.conn, source_task["id"])
+        if active is None:  # 非本索引冲突（防御：其它完整性错误不吞）
+            raise
+        write_diagnostic(
+            tx, DIAG_DUPLICATE_IGNORED,
+            workspace_id=workspace_id, channel_id=channel["id"],
+            task_id=source_task["id"],
+            payload={
+                "active_proposal_id": active["id"], "reason": "concurrent_initiate",
+                "requester": requester_id,
+            },
+        )
+        return active, None
     inj_body = build_injection_body(
         tx.conn, proposal=proposal, source_task=source_task, channel=channel
     )
@@ -609,7 +670,7 @@ def maybe_trigger_t1(
         orchestrator=orchestrator,
         requester_id=author_member_id,
     )
-    return [inject]
+    return [inject] if inject is not None else []  # None=复用现行提案（landing/竞败），不重注入
 
 
 # ---------------------------------------------------------------- 提案消息解析挂接（§5.3/§6/§7）
@@ -866,17 +927,39 @@ def _classify_delta_entry(
     )
 
 
+def _create_delta_row_guarded(
+    tx: Any, channel: dict[str, Any], task: dict[str, Any], author: str,
+    *, new_id: str, body: dict[str, Any], proposal_hash: str, base_hash: str | None,
+) -> dict[str, Any] | None:
+    """SAVEPOINT 建 delta 行（SM-F2）：并发同 source 建案撞部分唯一索引 → 回 None（调用方降级
+    忽略留痕），非本索引冲突重抛。"""
+    try:
+        with tx.conn.begin_nested():
+            return create_delta_proposal(
+                tx, proposal_id=new_id, workspace_id=channel["workspace_id"],
+                channel_id=channel["id"], source_task_id=task["id"], proposed_by=author,
+                body=body, proposal_hash=proposal_hash, base_hash=base_hash,
+                status=ProposalStatus.DRAFTING,
+            )
+    except IntegrityError:
+        if active_proposal_for_source(tx.conn, task["id"]) is None:
+            raise  # 非部分唯一索引冲突（防御：其它完整性错误不吞）
+        return None
+
+
 def _apply_new_delta_valid(
     tx: Any, channel: dict[str, Any], task: dict[str, Any], author: str,
     parsed: dict[str, Any], new_hash: str, new_id: str,
 ) -> list[PendingInject]:
     """有效 delta → drafting → validating → present（awaiting/DELTA_PROPOSED）或直落 landing。"""
-    proposal = create_delta_proposal(
-        tx, proposal_id=new_id, workspace_id=channel["workspace_id"],
-        channel_id=channel["id"], source_task_id=task["id"], proposed_by=author,
-        body=parsed, proposal_hash=new_hash, base_hash=_delta_base_of(parsed),
-        status=ProposalStatus.DRAFTING,
+    proposal = _create_delta_row_guarded(
+        tx, channel, task, author,
+        new_id=new_id, body=parsed, proposal_hash=new_hash, base_hash=_delta_base_of(parsed),
     )
+    if proposal is None:
+        active = active_proposal_for_source(tx.conn, task["id"])
+        assert active is not None
+        return _apply_delta_active_exists(tx, task, active)
     proposal = _transition(tx, proposal, ProposalStatus.VALIDATING)
     return _present_or_land(tx, proposal, channel)
 
@@ -887,12 +970,15 @@ def _apply_new_delta_repair(
 ) -> list[PendingInject]:
     """无效 delta → 建行 drafting → 复用 J8 修复循环（同配额/升级/S1 直投，携 delta 错误清单）。"""
     body = parsed if isinstance(parsed, dict) else {}
-    proposal = create_delta_proposal(
-        tx, proposal_id=new_id, workspace_id=channel["workspace_id"],
-        channel_id=channel["id"], source_task_id=task["id"], proposed_by=author,
-        body=body, proposal_hash=proposal_fingerprint(body), base_hash=_delta_base_of(parsed),
-        status=ProposalStatus.DRAFTING,
+    proposal = _create_delta_row_guarded(
+        tx, channel, task, author,
+        new_id=new_id, body=body, proposal_hash=proposal_fingerprint(body),
+        base_hash=_delta_base_of(parsed),
     )
+    if proposal is None:
+        active = active_proposal_for_source(tx.conn, task["id"])
+        assert active is not None
+        return _apply_delta_active_exists(tx, task, active)
     return _apply_repair(tx, proposal, channel, raw_body, parsed, errors)
 
 
@@ -964,7 +1050,12 @@ def _apply_success_same(
     parsed: dict[str, Any],
     new_hash: str,
 ) -> list[PendingInject]:
-    proposal = _transition(tx, proposal, ProposalStatus.VALIDATING)
+    try:
+        proposal = _transition(tx, proposal, ProposalStatus.VALIDATING)
+    except StaleTransition:
+        # 竞败降级（SM-F1）：phase1 读到的状态已被并发推进（confirm/supersede/…）——按重复提交
+        # 忽略留痕，不以过期读改写状态机。首个条件 UPDATE 即本事务写锁获取点，之后不再有竞态面。
+        return _apply_duplicate_ignored(tx, proposal, reason="concurrent_state_change")
     tx.conn.execute(
         update(_PROPOSAL).where(_PROPOSAL.c.id == proposal["id"]).values(
             body=parsed, proposal_hash=new_hash
@@ -1020,8 +1111,15 @@ def _apply_success_revbump(
     new_hash: str, new_id: str,
 ) -> list[PendingInject]:
     """对话修正 rev+1（有效版）：supersede 旧行（终态 superseded + draft.superseded）→ 插新行
-    revision+1（repair_count 归零）→ 走校验通过收尾。"""
-    _supersede(tx, old)
+    revision+1（repair_count 归零）→ 走校验通过收尾。
+
+    supersede 竞败（SM-F1）→ 按重复提交忽略：旧行已被并发 confirm 推进（landing——落地中不可替换）
+    或已被并发对手终态化；不以过期读为据建新 rev（消息 card_ref 指向未建行,提案卡渲染「不可用」,
+    可接受的罕见竞态残影,远优于把 landing 行踩成 superseded/双落地）。"""
+    try:
+        _supersede(tx, old)
+    except StaleTransition:
+        return _apply_duplicate_ignored(tx, old, reason="concurrent_state_change")
     proposal = _insert_revision_row(
         tx, old, new_id=new_id, status=ProposalStatus.VALIDATING,
         body=parsed, proposal_hash=new_hash,
@@ -1036,8 +1134,11 @@ def _apply_revbump_invalid(
     """对话修正 rev+1（**失败版**，§8.2 + §3）：awaiting_confirm 期收到无效新 <control>——新提案
     无论有效与否都是新 revision。supersede 旧行 → 插新行 revision+1（repair_count=0 配额全新；
     body=parsed 若有、CONTROL_PARSE 则占位 {}）→ 沿合法链 drafting→validating→repairing 走修复
-    循环（attempt 1/2 直投）。"""
-    _supersede(tx, old)
+    循环（attempt 1/2 直投）。supersede 竞败 → 忽略留痕（同 _apply_success_revbump 注记）。"""
+    try:
+        _supersede(tx, old)
+    except StaleTransition:
+        return _apply_duplicate_ignored(tx, old, reason="concurrent_state_change")
     body = parsed if parsed is not None else {}
     proposal = _insert_revision_row(
         tx, old, new_id=new_id, status=ProposalStatus.DRAFTING,
@@ -1109,8 +1210,14 @@ def _apply_repair(
     parsed: dict[str, Any] | None,
     errors: list[dict[str, Any]],
 ) -> list[PendingInject]:
-    """校验失败：配额未尽 → repairing + S1 直投错误清单；已尽（repair_count=2）→ failed + @人类。"""
-    proposal = _transition(tx, proposal, ProposalStatus.VALIDATING)
+    """校验失败：配额未尽 → repairing + S1 直投错误清单；已尽（repair_count=2）→ failed + @人类。
+
+    首个 _transition 竞败（SM-F1，仅 classify 直达路径可竞——rev+1/delta 建行路径进来时新行由
+    本事务插入,无竞态面）→ 按重复提交忽略留痕。"""
+    try:
+        proposal = _transition(tx, proposal, ProposalStatus.VALIDATING)
+    except StaleTransition:
+        return _apply_duplicate_ignored(tx, proposal, reason="concurrent_state_change")
     _store_failed_body(tx, proposal["id"], parsed)
     refreshed = fetch_proposal(tx.conn, proposal["id"])
     assert refreshed is not None
@@ -1224,11 +1331,13 @@ def repairing_reconcile_injects(
             channel = conn.execute(
                 select(_CHANNEL).where(_CHANNEL.c.id == proposal["channel_id"])
             ).mappings().first()
+            if channel is None:
+                continue  # 频道行缺失（FK 下近不可达）——跳过勿以 {} 调校验器（SM-F3）
             canvas = canvas_service.fetch_canvas_by_channel(conn, proposal["channel_id"])
             errors = [
                 dict(e)
                 for e in delta_domain.validate_delta(
-                    conn, dict(channel) if channel is not None else {}, canvas, proposal["body"]
+                    conn, dict(channel), canvas, proposal["body"]
                 )
             ]
         else:
@@ -1342,6 +1451,7 @@ __all__ = [
     "NoOrchestrator",
     "PROPOSAL_TRANSITIONS",
     "PendingInject",
+    "StaleTransition",
     "TERMINAL_STATUSES",
     "active_proposal_for_source",
     "awaiting_confirm_reminder_scan",
