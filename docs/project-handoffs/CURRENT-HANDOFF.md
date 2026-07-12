@@ -1,9 +1,9 @@
-# CoAgentia 当前交接（M5 收口 · **M6a 收口完成：verify 20/20 + code-review 10 findings 全修复验**）
+# CoAgentia 当前交接（**M6 里程碑收口 = PRD M6 出口达成；M1–M6 全完成**）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-12，**T1（M6a 收口段）完成**：并行审计（8 角度 workflow）→ `/code-review high` 10 findings（1 REFUTED）→ 实机 verify 20/20（`bc70cd5`）→ **10 findings 统一修复 + 14 项回归测试 + 全守门复验 + m6a_verify 复验 20/20 → 收口提交（见 HEAD）**。修复由 Codex 起草、Fable 5 接手对抗审查（10 条全过）+ 修 5 红测试 + 补回归 + 收口。守门新基线 **827/195/pyright0**。 |
-| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD；M5 任务书已移 archive/ |
+| 更新 | 2026-07-12，**M6 里程碑整体收口（`d303475`）**：M6b 拆解链全链（波 1–4）+ J11 话术定稿 + 并行审计（5 维,修 7 含 1 blocking）+ **J12 实机 verify 48/48 ALL PASS**（真 uvicorn+真 daemon+真 git，A1–A8 逐条勾销）+ **/code-review high**（8 维 Opus finder→对抗核实→Fable 终裁 13 findings，修 8[3 major]）。COLLAB-MODEL v2 Fable 单窗编排：执行/审计/评审派 Opus 子代理，J9 硬关口/J12 verify/话术定稿/正确性关键修复 Fable 亲做。守门终态 **947/354/pyright0**。 |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 PROJECT-RECORD（§14=M6b）；M1–M6 任务书均已移 archive/ |
 | 一句话状态 | **M1–M5 全收口；M6a 全收口（实现+实机 verify 20/20+code-review 10 findings 全修）**。**M6b 进行中（COLLAB-MODEL v2 Fable 单窗编排）**：波 1（J7 ✅，`95d190c`）→ 波 2（J8 ✅，`3a78799`）→ 波 3（J9 ✅ 硬关口通过，`832f2dc`）→ **波 4（J10 delta+O9 ✅ ∥ B-M6-2 后半 ✅，双 Opus 子代理并行+Fable 过目集成）已收口提交（见 HEAD）**；契约 A **v1.0.10**；**M6 里程碑收口 ✅**：阶段 4 = J11 话术定稿 + 并行审计（5 维,修 7 含 1 blocking）+ J12 实机 verify（`818a483`，PRD M6 出口 48/48 ALL PASS，A1–A8 全勾销）+ /code-review high（8 维 Opus finder→对抗核实→Fable 终裁 13 findings，修 8[3 major]）→ 全绿收口。**M1–M6 全收口 = PRD M6 出口达成**。接续 = M7（未开工）。 |
 | 提交链（M6a） | `d564ebf` 波 1（J3-cal/J0/J1）→ `62939f2` 波 2（J2/J3+补遗）→ `6f6fc93` 波 3（J4/J5/J6/B-M6-1）→ `bc70cd5` 实机 verify+findings 登记 → **code-review 修复收口（见 HEAD）**；中间 `1633ad9` 是独立协作规程文档提交 |
 | 提交链（M5b） | `b4203c4` 波1(H5+B-M5-2) → `12aaac6` 波2(H6) → `42b7b64` 审计修复 → `bb760f0` H7 verify+verify-surfaced 修复 → `bef88eb` code-review 修复 |
@@ -34,7 +34,8 @@
 | **M4b freshness 与 HeldDraft** | **PRD M4 出口**：held 场景卡片可见+放行 1 分钟交付 / 三键 / G4 超时自愈 / G5 升级喊人（实机 38/38） | **`1052ee6`（§11）** |
 | **M5a 第二 runtime 与配置面** | Codex 适配器真机对话跑通 + 通知设置 mute 门 + cron cadence + 技能白名单 UI + P12 阈值（REST 9/9 + codex PONG） | **`da6833a`** |
 | **M5b 模板与向导** | **PRD M5 出口**：工程三角向导实例化（实现=Codex、评审=Claude）→ briefing 开工 → 全管道到人类终审 done（e2e 12/12 + 5 截图 + code-review 6 CONFIRMED 全修） | **`bef88eb`（本文）** |
-| **M6a Project 与交付链** | Project/worktree/Diff/check/merge/冲突派回/verdict/B-M6-1 + 实机 verify 20/20 + code-review 10 findings 全修 | `d564ebf` → `62939f2` → `6f6fc93` → `bc70cd5` → 修复收口（见 HEAD，§4a） |
+| **M6a Project 与交付链** | Project/worktree/Diff/check/merge/冲突派回/verdict/B-M6-1 + 实机 verify 20/20 + code-review 10 findings 全修 | `d564ebf` → `62939f2` → `6f6fc93` → `bc70cd5` → `404aaa8` |
+| **M6b Orchestrator 拆解链** | **PRD M6 出口**：一句话需求→拆解校验→草稿确认→落地→并行 worktree 交付→合并；冲突派回；delta/O9；实机 verify 48/48 + code-review 13 findings 修 8 | `95d190c`→`3a78799`→`832f2dc`→`3d3e12f`→`19fcfb5`→`818a483`→`d303475`（PROJECT-RECORD §14） |
 
 ## 3. 系统当前能力面（一览）
 
@@ -49,9 +50,9 @@
 - **模板与向导**（M5b）：**模板域**（`templates/service.py` 存为模板读画布快照序列化 TemplateBody[仅 task 节点/占位 owner 去重/plan_skeleton 带走/pos 不入/node key `n{idx}`]、`validate_template_body` 单执法点[无环+引用一致]、列表 builtin 置前、`upsert_builtin_templates` 启动幂等；**工程三角 builtin** = `templates/builtin.py` 6 节点线性 DAG[需求框定→评审门→实现契约→TDD 实现→独立验收→人类终审] + 4 角色占位[checker≠doer 话术] + briefing + 每节点 plan_skeleton）；**实例化事务器**（`routes/templates.py` POST instantiate：role_mapping 全覆盖 422 + 未知成员 422 + 无画布 404 全前置于**幂等 reserve-before**[record 先于副作用、req_hash 折 template_id、并发同键不重复落地批]；`templates/service.instantiate_template` 单事务：落地批 kind=tmpl → 逐节点 create_node 全链[`tmpl:<batch_id>:<node_key>` 幂等/分层布局 `_layout_positions`] → 连边[无环兜底+triplet SAVEPOINT] → briefing @映射角色[唤醒] → baseline bump → mark_done；重放 reconstruct 由 `ledger.batch_node_task_ids` 按 seq 保序派生；**blocked-gating 天然生效**——落地边即入 derive_blocked）；**向导三步 B-M5-2**（选模板[卡+DAG 缩略图]→角色映射[同 runtime 互审 warning=`lib/templates.classifyRole` **仅按占位名判定**]→预览→实例化跳画布；`SetupChecklist 003` 接真；幂等键每次提交作废重置 + `crypto.randomUUID` 兜底）。
 - **M6a Project 与交付链（波 1–3 实现完成）**：Project CRUD/频道绑定与 `channel_ids` 派生；Computer 删除按 Agent→Project 固定门序；writes_code 任务激活后幂等派生短路径 worktree，状态回流、对账 #5、keep_days 清理、绝对路径消息注入及模板字段贯通；daemon `git.diff` 与 REST Diff 代理；check/merge 系统节点自动触发、仅 failed retry、DAG 序 `merge --no-ff`、成功持久 `merge_commit`、冲突自动建任务派回；review_verdict 四值与 needs_human @人类；前端 Project/Diff/系统节点/verdict/冲突卡及 `worktree.updated` 实时面。真机全链尚待 verify。
 
-## 4. 接续 = M6b（**M6a 全收口；M6b 未开工**）
+## 4. 接续 = M7（**M1–M6 全收口；M6 = PRD M6 出口达成**）
 
-**任务书 = [M6-HANDOFF.md](M6-HANDOFF.md)**。块 a 全链完成：波 1 `d564ebf` → 波 2 `62939f2` → 波 3 `6f6fc93` → 实机 verify `bc70cd5` → **code-review 10 findings 统一修复收口（见 HEAD）**，§9a 出口清单全勾。接续 = 块 b（J7→J12+B-M6-2），入场提示词 = [COLLAB-MODEL §4a](COLLAB-MODEL.md)（Opus 4.8 执行主力，J9 交 Fable 对抗审查）。拆解流程的实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`，**开工前勿动 orchestration/、proposals 或 0009**。
+**M6 里程碑已整体收口**（任务书 = [archive/M6-HANDOFF.md](archive/M6-HANDOFF.md)，已移归档；阶段结论 = [PROJECT-RECORD §14](PROJECT-RECORD.md)）。M6a 交付链 + M6b Orchestrator 拆解链全链落地，实机 verify **48/48 ALL PASS**（[M6-EVIDENCE.md](../verify/M6-EVIDENCE.md)，A1–A8 逐条勾销），code-review high 13 findings 修 8。**接续 = M7（未立项）**——CoAgentia 全部规划里程碑（M1–M6）已完成。M7 立项前复审 [COLLAB-MODEL.md](COLLAB-MODEL.md) 协作模式；拆解流程实现级权威 = `orchestrator_docs/Orchestrator任务拆解设计.md`。
 
 ## 4a. M6a `/code-review high` findings（10 条，**已全部修复 + 回归复验**，收口提交见 HEAD）
 

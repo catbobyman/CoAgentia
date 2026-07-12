@@ -147,6 +147,20 @@
 - **实机 verify（`bc70cd5`）**：真 uvicorn + 真 websockets daemon-sim（真 `git.py`）+ 真 scratch 仓库端到端 **20/20 ALL PASS**（场景 A 交付链双任务→worktree 交付→merge --no-ff→check 绿→Diff；场景 B 冲突派回→解决→retry 合并成功），证据归 `docs/verify/M6A-EVIDENCE.md` + 4 截图；`/code-review high` 8 角度 workflow → 10 findings（1 REFUTED）登记待修。
 - **code-review 修复收口（T1 终段，Codex 起草 + Fable 5 对抗审查/收口）**：owner 拍板 #1 后台化（Design C 保序）/#7 保连续前缀语义删死代码/其余全修。10 条全落地：daemon worktree 指令后台通道（单车道、ack 仍 op 后发、断连不取消仅 shutdown 取消）、ensure 失败诊断归属+DIAGNOSTIC_APPENDED+累计 3 次一次性升级喊人、reconnect 握手复验 active 行（`revalidation_plans`，conflicted 排除、周期不复验）、冲突派回幂等（未终态同树复用/二次真冲突建新）、`GitQueryError`→422 透传 git prose、`CardKind.MERGE_CONFLICT` 结构化冲突卡全链、diff 单进程切分（fail-closed 守卫）、菱形 merge alias 广播去重（进展消息 per-node）、#10 注释。**#3 复验帧序外溢修 5 个 server 测试**（`drain_revalidation` 桩辅助）+ **新增回归 14 项**；坑：升级系统消息本身经 MESSAGE_CREATED→`_deliver_message` 低延迟扫描会再发一次 ensure，测试须消费。守门新基线 **827/4 skipped + web 195 + pyright 0**；m6a_verify 复验 20/20（4 轮 3 净 1 环境性 REST 超时，probe 既有 DB 锁重试脚手架佐证环境噪声）+ probe 收尾 `suppress(BaseException)` 修假 traceback。M6b 的 orchestration/proposals/0009 未触碰。
 
+## 14. M6b Orchestrator 拆解链（M6 里程碑收口 2026-07-12 = PRD M6 出口达成，`d303475`）
+
+COLLAB-MODEL v2「Fable 单窗编排」：执行/审计/评审派 Opus 子代理，关键关口（J9 硬关口/J12 verify/话术定稿/正确性关键修复）Fable 亲做，code-review 评审面全 Opus、Fable 终裁。
+
+- **契约**：A **v1.0.10**（0009 批次 = proposals + agent_role_templates 两表 + agents.role_template_key 列，owner 2026-07-12 拍板方案 A）。B/C/D/E/E2 零修订。
+- **波 1 内核**（`95d190c`，864/261）：J7 同构校验内核（`kernel/decomposition.py` V1–V14 + `<control>` 解析 + 指纹，`lib/decomposition.ts` 镜像，`golden/decomposition.json` 双跑逐字节）；J11 骨架（模板治理 PATCH/DELETE builtin 409 + 角色模板数据）。主循环追修 J7 两缺口（严格度补齐 ≥TaskPlanBody/码点长度）。
+- **波 2 提案域**（`3a78799`，895/261）：J8 = 0009 迁移（proposals 部分唯一索引 + agent_role_templates + agents 反射式加列）+ 8 态状态机（`PROPOSAL_TRANSITIONS` 单点）+ 三入口归一（decompose REST/T1/线程 `<control>`）+ 上下文注入（S1 直投）+ 修复循环（每 rev 2 轮，第三败升级 @人类）+ Superseded/rev+1 + 对账 #6 + 24h 提醒纯推导。
+- **波 3 确认落地**（`832f2dc`，915/296）：**J9 硬关口**（Fable 亲自逐不变量对抗审查 + 重写 2 blocking）——架构 = 202 异步增量落地：confirm 短事务（CAS→apply_adjustments 六 op→权威重验→落账→建批）→ hub 执行器**步进原子**（每步 = 节点 + 其全部入边一 gateway_tx，封「裸系统节点空成功」窗口）；`_transition`/confirm/reject 条件 UPDATE（pysqlite 读自动提交≠串行化点，防双确认双批）；merge 自动追加 deps=writes_code 前沿；fail-closed 持久性（独立连接 persist）；A5 亲跑。B-M6-2 前半（拆解入口/提案卡/wsBridge）。
+- **波 4 增量**（`3d3e12f`，936/348）：J10 delta（classify 入口/`orchestration/delta.py` 五步校验含信封+过滤复用 kernel/confirm 部分接受 removed_ops/F9 base 过期 409+failed/落地共享步进 runner remove_edge→remove_node[执行期 NODE_ACTIVE 复核]→add_node+入边→add_edge/O9 四端点 Agent 403）∥ B-M6-2 后半（草稿层 overlay+确认条防呆/delta 面板逐 op 剔除/rev 替换/P12 编排组/LandingToaster）。双 Opus 子代理并行、Fable 逐文件过目集成。
+- **阶段 4 并行审计**（`19fcfb5`，943/349）：5 维 Opus finder → Fable 逐条终裁修 7（1 blocking：落地期系统节点认领抑制 `_channel_landing_in_progress`——封 delta remove 先序重开的空成功窗口；SM-F1 `_transition` 全面 CAS 化 + classify 竞败降级 + supersede 遇 landing 跳过 + initiate 复用现行提案；SM-F2 并发建案 SAVEPOINT；门 F1/F5 patch_node/layout；门 F2 delta 落地消息 @激活 owner；镜像 F1 DeltaPanel running 系统节点 + 面板互斥）+ J11 话术定稿（第 8 条 delta 通道，与 DELTA_BASE_MISMATCH hint 互为兑现）。
+- **J12 实机 verify**（`818a483`）= **PRD M6 出口 48/48 ALL PASS**（Fable 亲跑，真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库，REST 扮演 Orch/工人全链走生产码）：S1 拆解全链（A1/A3/A4）/S2 冲突派回（A6）/S3 修复循环（A2）/S4 A5 崩溃重放（落地中 kill→续跑 10 节点无重复无缺失+已落地恰一条）/S5 delta+O9（部分接受/F9）/S6 single_task（A7）/S7 直落（A8）——拆解设计 A1–A8 逐条勾销；真 git log 佐证双 --no-ff merge commit + 冲突解决 retry；证据 = `docs/verify/M6-EVIDENCE.md` + `M6-VERIFY-results.json` + 2 截图。
+- **code-review high 收口**（`d303475`，947/354）：8 维 Opus finder → 对抗核实（默认证伪）→ Fable 终裁 13 findings（12 CONFIRMED/1 REFUTED），修 8——3 major（delta 同 rev base_hash 对称刷新 / 模板 instantiate 补 O9 人类门 / kernel 5 处 unhashable 枚举 `_is_str` 守卫，与 TS 镜像双跑一致）+ 4 minor（remove_node TOCTOU 锁内重验 / fail-closed 不重扫系统节点 / ProposalCard delta 指标 / 短路效率）+ golden +4 判例。3 观察挂账（N+1/索引谓词双源/downgrade FK）登记 M6-HANDOFF §8。
+- **守门终态**：后端 **947 passed / 4 skipped**、web vitest **354**、pyright 0 + 双 tsc、ruff 干净、`pnpm gen` 确定（golden 54 双跑）、web build 绿。关键教训（记忆正文）：pysqlite 读自动提交非串行化点→凡状态机边写必条件 UPDATE（J9/SM-F1 反复印证）；delta 先删后加的步序在 fail-closed 部分提交前缀上会重开系统节点空成功窗口→落地期抑制须覆盖 fail_closed（不重扫）；内核枚举成员测试须 `_is_str` 守卫防 unhashable 崩溃并与 TS 镜像对齐。
+
 ## 已失效结论
 
 | 历史表述 | 当前结论 |
@@ -163,11 +177,13 @@
 | `483`/`572`/`672 passed` 是最新基线 | **M5 里程碑收口后为 `712 passed, 4 skipped` + vitest 175** |
 | 接续 = M5（模板与向导）/ M5b 待开工 | **M5 里程碑已收口（§12 = PRD M5 出口达成，`bef88eb`）；M6 已立项，M6a 实现波次完成并停在真机 verify 前（§13）** |
 | `712`/`772 passed` + vitest `175` 是最新基线，或 M6a 波 2 待提交 | **M6a 波 3 实现守门后为 `813 passed, 4 skipped` + vitest `194`；波 2 已提交 `62939f2`，当前停在 M6a 实机 verify 前** |
+| `813`/`827`/`915`/`936`/`943 passed` 是最新基线，或 M6b/M6 未收口 | **M6 里程碑收口后为 `947 passed, 4 skipped` + vitest `354`（§14 = PRD M6 出口达成，`d303475`）** |
+| 接续 = M6b（M6a 全收口；M6b 未开工）/ M6b 波 X 待提交 | **M6 里程碑已整体收口（§14，实机 verify 48/48 + code-review 13 findings 修 8）；接续 = M7（未立项）** |
 
 ## 当前接续任务
 
-1. **M6a 波 1–3 实现已完成并通过守门（2026-07-11，本提交见 HEAD）**：J0–J6/B-M6-1 全部完成，后端 **813/4 skipped**、web **194**、typecheck/ruff/gen/build 全绿，独立复核无剩余 High/Medium。下一步只做 scratch repo 真机全链 verify；code-review 另行安排。M6b 未开工。
-2. **M6a 前序实现提交**：`d564ebf` 波 1（git 校准 10/10、契约、0008）→ `62939f2` 波 2（Project/worktree 生命周期与 owner 授权补遗）；其后 `1633ad9` 是独立协作规程文档提交。外部契约当前 A **v1.0.9**/B **v1.4.3**/D **v1.0.3**，C·E·E2 零修订；完整实现与风险记录见 §13。
+1. **M1–M6 全里程碑收口（2026-07-12，`d303475` = PRD M6 出口达成）**：M6b 拆解链全链落地 + 实机 verify 48/48 + code-review 收口，见 §14。守门 **947/4 skipped + web 354 + pyright 0**。外部契约 A **v1.0.10**/B v1.4.3/C v1.0/D v1.0.3/E v1.4/E2 v1.0.1。**接续 = M7（未立项）**——CoAgentia 全部规划里程碑（M1–M6）已完成。
+2. **M6 提交链**：M6a `d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`→`404aaa8`；M6b `95d190c`(波1)→`3a78799`(波2)→`832f2dc`(波3)→`3d3e12f`(波4)→`19fcfb5`(阶段4审计+J11)→`818a483`(J12 verify)→`d303475`(code-review 收口)。历史 M6a 细节见 §13。
 3. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。M5-HANDOFF 已移 archive/。
 4. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 5. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。

@@ -5,15 +5,14 @@
 | 文档 | 定位 | 维护规则 |
 |---|---|---|
 | [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) | 当前唯一有效的交接入口 | 每次阶段收口时更新 |
-| [M6-HANDOFF.md](M6-HANDOFF.md) | **M6 Orchestrator 与 Project 任务书（进行中，2026-07-11 立项）** | 收口后移入 archive/ |
-| [M6-DEV-PLAN.md](M6-DEV-PLAN.md) | M6 逐模块执行计划与进度表（**进行中，随模块完成更新**） | 收口后保留只读 |
+| [M6-DEV-PLAN.md](M6-DEV-PLAN.md) | M6 逐模块执行计划与进度表（**已收口，只读**；任务书 = archive/M6-HANDOFF.md） | 阶段记录，收口后保留只读 |
 | [CODEX-CONTEXT.md](CODEX-CONTEXT.md) | **接手任务的 AI 工程师完整项目上下文**（自足：术语解码/架构/纪律/坑清单；Codex CLI / Claude Code 会话通用）；仓库根 `AGENTS.md` 为其精炼版工作规程（Codex CLI 自动加载） | 大版本状态变化时更新时点注记 |
-| [COLLAB-MODEL.md](COLLAB-MODEL.md) | **M6 多模型协作模式 v2「Fable 单窗编排」**（2026-07-12 改制：Fable 主循环编排+终裁,执行与 code-review 评审面全 Opus 子代理;§4 = M6b 唯一入场提示词;v1 切窗口模式已归档 §6） | 阶段推进时核对;M7 立项复审 |
+| [COLLAB-MODEL.md](COLLAB-MODEL.md) | **M6 多模型协作模式 v2「Fable 单窗编排」**（2026-07-12；M6 已按此收口）；M7 立项复审 | 阶段推进时核对;M7 立项复审 |
 | [M2-DEV-PLAN.md](M2-DEV-PLAN.md) / [M3-DEV-PLAN.md](M3-DEV-PLAN.md) / [M4-DEV-PLAN.md](M4-DEV-PLAN.md) / [M5-DEV-PLAN.md](M5-DEV-PLAN.md) | 各里程碑逐模块执行计划与进度表（均收口） | 阶段记录，收口后保留只读 |
 | [PROJECT-RECORD.md](PROJECT-RECORD.md) | 历史阶段、关键结果与过时结论汇总 | 阶段完成后追加，不覆盖历史 |
-| [archive/](archive/) | 原始任务书快照（M1–M5 任务书收口后均移入） | 只读归档，不再维护状态 |
+| [archive/](archive/) | 原始任务书快照（M1–M6 任务书收口后均移入） | 只读归档，不再维护状态 |
 
-> **M1–M5 里程碑任务书均已收口并移入 `archive/`**。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。接续 = **M6（已立项，任务书见上；开工从 M6-DEV-PLAN §0 波次表起步）**。
+> **M1–M6 里程碑任务书均已收口并移入 `archive/`**（M6-HANDOFF 2026-07-12 收口移入）。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。**M1–M6 全里程碑完成 = PRD M6 出口达成；接续 = M7（未立项）**。
 
 ## 原文件迁移表
 
@@ -28,6 +27,7 @@
 | `M3-HANDOFF.md` | [archive/M3-HANDOFF.md](archive/M3-HANDOFF.md) | 已完成，M3 契约与画布任务书（§9a+§9b 全绿 = PRD M3 出口） |
 | `M4-HANDOFF.md` | [archive/M4-HANDOFF.md](archive/M4-HANDOFF.md) | 已完成，M4 护栏与提醒任务书（= PRD M4 出口） |
 | `M5-HANDOFF.md` | [archive/M5-HANDOFF.md](archive/M5-HANDOFF.md) | 已完成，M5 模板与第二 runtime 任务书（= PRD M5 出口） |
+| `M6-HANDOFF.md` | [archive/M6-HANDOFF.md](archive/M6-HANDOFF.md) | 已完成，M6 Orchestrator 与 Project 任务书（= PRD M6 出口，实机 verify 48/48） |
 
 ## 维护约定
 
