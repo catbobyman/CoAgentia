@@ -1,6 +1,6 @@
 # CODEX-CONTEXT —— 交接任务的完整项目上下文
 
-> **读者**：接手本仓库开发任务的 AI 工程师（Codex CLI）。本文自足——假设你没有任何先前会话记忆，所有内部术语在此解码。读完本文再按 §4 阅读顺序进入具体任务。
+> **读者**：接手本仓库开发任务的 AI 工程师（Codex CLI / Claude Code 会话通用，文件名是历史沿革）。本文自足——假设你没有任何先前会话记忆，所有内部术语在此解码。读完本文再按 §4 阅读顺序进入具体任务;多模型分工与交接点见 [COLLAB-MODEL.md](COLLAB-MODEL.md)。
 > **维护**：本文描述的是 2026-07-11（M6 立项、HEAD `562af66`）时点的事实；动态进度以 [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) 与 [M6-DEV-PLAN.md](M6-DEV-PLAN.md) 为准。
 
 ---

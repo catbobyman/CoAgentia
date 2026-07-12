@@ -7,7 +7,8 @@
 | [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) | 当前唯一有效的交接入口 | 每次阶段收口时更新 |
 | [M6-HANDOFF.md](M6-HANDOFF.md) | **M6 Orchestrator 与 Project 任务书（进行中，2026-07-11 立项）** | 收口后移入 archive/ |
 | [M6-DEV-PLAN.md](M6-DEV-PLAN.md) | M6 逐模块执行计划与进度表（**进行中，随模块完成更新**） | 收口后保留只读 |
-| [CODEX-CONTEXT.md](CODEX-CONTEXT.md) | **接手任务的 AI 工程师（Codex）完整项目上下文**（自足：术语解码/架构/纪律/坑清单）；仓库根 `AGENTS.md` 为其精炼版工作规程（Codex CLI 自动加载） | 大版本状态变化时更新时点注记 |
+| [CODEX-CONTEXT.md](CODEX-CONTEXT.md) | **接手任务的 AI 工程师完整项目上下文**（自足：术语解码/架构/纪律/坑清单；Codex CLI / Claude Code 会话通用）；仓库根 `AGENTS.md` 为其精炼版工作规程（Codex CLI 自动加载） | 大版本状态变化时更新时点注记 |
+| [COLLAB-MODEL.md](COLLAB-MODEL.md) | **M6 三模型协作模式**（Codex/Opus 4.8/Fable 5 分工、T0–T5 交接点、五条交接协议、入场提示词模板） | 交接点推进时核对;M7 立项复审 |
 | [M2-DEV-PLAN.md](M2-DEV-PLAN.md) / [M3-DEV-PLAN.md](M3-DEV-PLAN.md) / [M4-DEV-PLAN.md](M4-DEV-PLAN.md) / [M5-DEV-PLAN.md](M5-DEV-PLAN.md) | 各里程碑逐模块执行计划与进度表（均收口） | 阶段记录，收口后保留只读 |
 | [PROJECT-RECORD.md](PROJECT-RECORD.md) | 历史阶段、关键结果与过时结论汇总 | 阶段完成后追加，不覆盖历史 |
 | [archive/](archive/) | 原始任务书快照（M1–M5 任务书收口后均移入） | 只读归档，不再维护状态 |
