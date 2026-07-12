@@ -32,9 +32,15 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m6a_harness as H  # noqa: E402
+from coagentia_contracts.kernel.fingerprint import fingerprint  # noqa: E402
+from coagentia_server.canvas.service import snapshot  # noqa: E402
 from coagentia_server.db import models  # noqa: E402
+from coagentia_server.db.engine import sqlite_url  # noqa: E402
 from coagentia_server.ledger.service import now_iso  # noqa: E402
-from sqlalchemy import insert, select  # noqa: E402
+from sqlalchemy import func, insert, select  # noqa: E402
+
+# 空画布规范快照指纹（契约 A §6：空画布 = 空快照指纹，非空串——CanvasPublic 校验 64-hex）。
+EMPTY_BASELINE_HASH = fingerprint(snapshot([], []))
 
 
 def _free_port() -> int:
@@ -49,7 +55,7 @@ def _free_port() -> int:
 PORT = _free_port()
 SERVER_URL = f"http://127.0.0.1:{PORT}"
 API = f"{SERVER_URL}/api"
-WS_URL = f"ws://127.0.0.1:{PORT}/ws"
+WS_URL = f"ws://127.0.0.1:{PORT}/api/ws"
 
 RESULTS: list[tuple[str, bool, str]] = []
 
@@ -147,7 +153,7 @@ def seed_m6b(engine) -> dict:
             canvas_id = H._nid()
             c.execute(insert(models.Canvas.__table__).values(
                 id=canvas_id, workspace_id=H.WS_ID, channel_id=cid,
-                baseline_hash="", updated_at=now_iso()))
+                baseline_hash=EMPTY_BASELINE_HASH, updated_at=now_iso()))
             ids["channels"][cname] = {"channel_id": cid, "canvas_id": canvas_id}
     return ids
 
@@ -161,7 +167,7 @@ def plan(goal: str) -> dict:
         "goal": goal,
         "acceptance_criteria": [
             {"id": "AC1", "statement": f"{goal}——文件落盘且提交可见",
-             "verify_by": "inspect"},
+             "verify_by": "inspect", "verify_ref": "git log"},
         ],
     }
 
@@ -191,8 +197,8 @@ def full_proposal(source_task_id: str, project_id: str, ada: str, ben: str) -> d
             code_node("N2", "实现贪吃蛇界面层", project_id, ben),
             {"temp_id": "N3", "title": "编写玩法说明文档", "kind": "agent",
              "task_plan": plan("玩法说明文档")},
-            {"temp_id": "M", "kind": "system", "system_action": "merge"},
-            {"temp_id": "C", "kind": "system", "system_action": "check",
+            {"temp_id": "M", "title": "合并分支", "kind": "system", "system_action": "merge"},
+            {"temp_id": "C", "title": "自检命令", "kind": "system", "system_action": "check",
              "command": "git --version"},
         ],
         "edges": [
@@ -258,8 +264,40 @@ async def source_thread_root(rest: Rest, pid: str) -> tuple[str, str]:
     return p["source_task_id"], t["root_message_id"]
 
 
+def _mark_agent_read(channel_id: str, agent_mid: str) -> None:
+    """推进 agent 在本频道的 read_position 至频道最新消息 id（含线程内）——复刻真实语义：
+    Orchestrator 收到上下文注入即「读」了 source 线程摘要（注入体含 [首条]/[讨论]），故其回复的
+    提案消息过 freshness 门；harness REST 直发不经适配器读，故显式对齐（裁决 #12 held 门本身在
+    S5 的「人类插入节点后 delta」等路径仍受检——此处只对提案作者补其已读的注入线程）。"""
+    _READ = models.tbl(models.ReadPosition)
+    _MSG_T = models.tbl(models.Message)
+    engine = H.probe_engine(os.environ["M6A_DB_URL"])
+    try:
+        with engine.begin() as c:
+            latest = c.execute(
+                select(func.max(_MSG_T.c.id)).where(_MSG_T.c.channel_id == channel_id)
+            ).scalar()
+            if latest is None:
+                return
+            existing = c.execute(
+                select(_READ.c.member_id).where(
+                    _READ.c.member_id == agent_mid, _READ.c.channel_id == channel_id)
+            ).first()
+            if existing is None:
+                c.execute(insert(_READ).values(
+                    member_id=agent_mid, channel_id=channel_id,
+                    last_read_message_id=latest, last_read_at=now_iso()))
+            else:
+                c.execute(models.tbl(models.ReadPosition).update().where(
+                    _READ.c.member_id == agent_mid, _READ.c.channel_id == channel_id
+                ).values(last_read_message_id=latest, last_read_at=now_iso()))
+    finally:
+        engine.dispose()
+
+
 async def post_control(rest: Rest, channel_id: str, thread_root: str, agent_mid: str,
                        body: dict, prose: str = "提案如下。") -> dict:
+    _mark_agent_read(channel_id, agent_mid)  # 提案作者已读注入线程（freshness 门语义对齐）
     r = await rest.post(f"/channels/{channel_id}/messages",
                         {"body": control_msg(body, prose), "thread_root_id": thread_root},
                         expect=201, agent=agent_mid)
@@ -267,7 +305,13 @@ async def post_control(rest: Rest, channel_id: str, thread_root: str, agent_mid:
 
 
 async def canvas_state(rest: Rest, channel_id: str) -> dict:
-    return (await rest.get(f"/channels/{channel_id}/canvas", expect=200)).json()
+    """CanvasDetail = {canvas: CanvasPublic, nodes, edges}——扁平化 baseline 到顶层便于调用。"""
+    d = (await rest.get(f"/channels/{channel_id}/canvas", expect=200)).json()
+    return {
+        "baseline_version": d["canvas"]["baseline_version"],
+        "baseline_hash": d["canvas"]["baseline_hash"],
+        "nodes": d["nodes"], "edges": d["edges"],
+    }
 
 
 async def confirm(rest: Rest, pid: str, canvas: dict, proposal: dict,
@@ -341,7 +385,7 @@ async def task_of_node(rest: Rest, node: dict) -> dict:
 async def wait_worktree(rest: Rest, task_id: str, timeout: float = 40.0) -> dict | None:
     async def _w():
         t = (await rest.get(f"/tasks/{task_id}", expect=200)).json()
-        wt = t.get("task", {}).get("worktree")
+        wt = t.get("worktree")  # TaskDetail.worktree 顶层派生字段（A v1.0.7 ④）
         return wt if wt and wt.get("status") == "active" and wt.get("path") else None
     return await poll(_w, timeout=timeout)
 
@@ -433,8 +477,8 @@ async def s1_full_chain(rest: Rest, ids: dict, project_id: str, repo: Path,
 
     merge_node = kinds["merge"][0]
     check_node = kinds["check"][0]
-    ok = await wait_node_status(rest, ch, merge_node["id"], "merged", timeout=90.0)
-    check("S1.12 merge 系统节点自动执行 → merged", ok)
+    ok = await wait_node_status(rest, ch, merge_node["id"], "success", timeout=90.0)
+    check("S1.12 merge 系统节点自动执行 → success（合并成功终态）", ok)
     log = H.git(repo, "log", "--oneline", "--merges").stdout
     check("S1.13 主仓 --no-ff merge 提交 ≥2（两分支各一）", len(log.strip().splitlines()) >= 2,
           log.strip().replace("\n", " | "))
@@ -474,7 +518,7 @@ async def s2_conflict(rest: Rest, ids: dict, project_id: str, repo: Path) -> Non
         "nodes": [
             code_node("A", "分支甲改 conflict.txt", project_id, ada),
             code_node("B", "分支乙改 conflict.txt", project_id, ben),
-            {"temp_id": "M", "kind": "system", "system_action": "merge"},
+            {"temp_id": "M", "title": "合并分支", "kind": "system", "system_action": "merge"},
         ],
         "edges": [{"from": "A", "to": "M"}, {"from": "B", "to": "M"}],
     }
@@ -498,8 +542,8 @@ async def s2_conflict(rest: Rest, ids: dict, project_id: str, repo: Path) -> Non
     await drive_done(rest, tb["id"], ben)
 
     merge_node = kinds["merge"][0]
-    ok = await wait_node_status(rest, ch, merge_node["id"], "conflicted", timeout=90.0)
-    check("S2.3 第二分支合并冲突 → conflicted", ok)
+    ok = await wait_node_status(rest, ch, merge_node["id"], "failed", timeout=90.0)
+    check("S2.3 第二分支合并冲突 → failed（冲突态,仅 failed 可 retry）", ok)
 
     async def _new_node():
         cv = await canvas_state(rest, ch)
@@ -525,9 +569,9 @@ async def s2_conflict(rest: Rest, ids: dict, project_id: str, repo: Path) -> Non
     check("S2.5 冲突分支手工解决并提交", loser is not None)
 
     await drive_done(rest, fix_task["id"], fix_task.get("owner_member_id") or ada)
-    await rest.post(f"/canvas-nodes/{merge_node['id']}/retry", expect=200)
-    ok = await wait_node_status(rest, ch, merge_node["id"], "merged", timeout=90.0)
-    check("S2.6 retry 后合并成功 → merged（merge_commit 持久）", ok)
+    await rest.post(f"/canvas-nodes/{merge_node['id']}/retry", expect=202)
+    ok = await wait_node_status(rest, ch, merge_node["id"], "success", timeout=90.0)
+    check("S2.6 retry 后合并成功 → success（merge_commit 持久）", ok)
 
 
 # ---------------------------------------------------------------- S3 修复循环
@@ -572,7 +616,7 @@ async def s3_repair(rest: Rest, ids: dict) -> None:
     ok = await wait_status(rest, p2["id"], "failed")
     check("S3.3 连续三败 → failed（配额 2 轮穷尽）", ok)
     bodies = await thread_bodies(rest, ch, root2)
-    esc = [b for b in bodies if "Owner" in b or "@" in b and "失败" in b or "人类" in b]
+    esc = [b for b in bodies if "升级人类" in b]
     check("S3.4 升级消息进线程 @人类（附错误清单）", len(esc) >= 1,
           f"threads={len(bodies)}")
 
@@ -605,7 +649,7 @@ async def s4_crash_replay(rest: Rest, ids: dict, server_proc, restart_server) ->
     def _op_count() -> int:
         with pengine.connect() as c:
             return c.execute(
-                select(models.func_count()).select_from(ledger).where(
+                select(func.count()).select_from(ledger).where(
                     ledger.c.batch_id == batch_id)
             ).scalar() or 0
     deadline = time.monotonic() + 30
@@ -655,9 +699,13 @@ async def s5_delta_o9(rest: Rest, ids: dict, s1: dict) -> None:
                         {"kind": "agent", "title": "越权节点"}, agent=orch)
     check("S5.1 Agent 直接建节点 403（O9）", r.status_code == 403
           and r.json().get("error", {}).get("rule") == "O9", f"{r.status_code}")
+    # 连边用真实节点 id（合法 ULID 才抵达 O9 门；随意串会被 FastAPI 层 422 拦在门前）。
+    real_nodes = [n["id"] for n in s1["kinds"]["agent"][:2]]
     r = await rest.post(f"/canvases/{canvas_id}/edges",
-                        {"from_node_id": "x", "to_node_id": "y"}, agent=orch)
-    check("S5.2 Agent 直接连边 403（O9）", r.status_code == 403, f"{r.status_code}")
+                        {"from_node_id": real_nodes[0], "to_node_id": real_nodes[1]},
+                        agent=orch)
+    check("S5.2 Agent 直接连边 403（O9）", r.status_code == 403
+          and r.json().get("error", {}).get("rule") == "O9", f"{r.status_code}")
 
     # delta 提案：base=当前基线；4 op，部分接受剔除后两 op 落地。
     cv = await canvas_state(rest, ch)
@@ -842,7 +890,7 @@ def main() -> int:
     keep = "--keep" in sys.argv
     base = Path(tempfile.mkdtemp(prefix="m6_verify_"))
     db_path = base / "coagentia.db"
-    db_url = H.sqlite_url(db_path)
+    db_url = sqlite_url(db_path)
     data_root = base / "server-data"
     daemon_root = base / "daemon"
     repos_root = base / "repos"
@@ -860,8 +908,10 @@ def main() -> int:
                                    seed_file="conflict.txt", seed_body="base\n"),
     }
 
+    web_dist = Path(__file__).resolve().parents[1] / "apps" / "web" / "dist"
     env = dict(os.environ, M6A_DB_URL=db_url, M6A_DATA_ROOT=str(data_root),
                M6_DAEMON_ROOT=str(daemon_root),
+               COAGENTIA_WEB_DIST=str(web_dist),  # --keep 后浏览器截图同源 SPA
                PYTHONPATH=str(Path(__file__).resolve().parent))
     os.environ["M6A_DB_URL"] = db_url
     os.environ["M6_DAEMON_ROOT"] = str(daemon_root)
