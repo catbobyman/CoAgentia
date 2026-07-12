@@ -19,10 +19,12 @@ from coagentia_contracts.daemon import (
 )
 from coagentia_contracts.enums import (
     CanvasNodeKind,
+    CardKind,
     SystemAction,
     SystemNodeStatus,
     TaskEventKind,
     TaskLevel,
+    TaskStatus,
     WorktreeStatus,
 )
 from coagentia_contracts.ws import EventType
@@ -348,6 +350,7 @@ def apply_merge_result(
 ) -> set[str]:
     """worktree.status 已持久后推进 merge；返回需继续 drive/解锁的频道集合。"""
     channels: set[str] = set()
+    reconciled: set[str] = set()  # #9：同一 worktree_row 的 alias 广播整轮只做一次（菱形拓扑去重）
     for node_id in node_ids:
         context = _node_context(tx.conn, node_id)
         if context is None or context["system_status"] != SystemNodeStatus.RUNNING.value:
@@ -362,7 +365,7 @@ def apply_merge_result(
                     task_id=data.task_id,
                 )
                 continue
-            _merge_step_succeeded(tx, context, data, worktree_row)
+            _merge_step_succeeded(tx, context, data, worktree_row, reconciled)
             try:
                 all_done = all(
                     step.worktree_status == WorktreeStatus.MERGED.value
@@ -705,36 +708,42 @@ def _merge_step_succeeded(
     context: dict[str, Any],
     data: WorktreeStatusData,
     worktree_row: dict[str, Any],
+    reconciled: set[str] | None = None,
 ) -> None:
-    timestamp = worktree_row.get("merged_at") or now_iso()
-    aliases = list(
-        tx.conn.execute(
-            select(_WORKTREE).where(
-                _WORKTREE.c.id != worktree_row["id"],
-                _WORKTREE.c.project_id == worktree_row["project_id"],
-                _WORKTREE.c.path == worktree_row["path"],
-                _WORKTREE.c.branch == worktree_row["branch"],
-            )
-        ).mappings()
-    )
-    for alias in aliases:
-        tx.conn.execute(
-            update(_WORKTREE)
-            .where(_WORKTREE.c.id == alias["id"])
-            .values(
-                status=WorktreeStatus.MERGED.value,
-                merge_commit=data.merge_commit,
-                merged_at=alias["merged_at"] or timestamp,
-            )
+    # #9：alias 更新 + WORKTREE_UPDATED 广播按 worktree_row.id 整轮去重（菱形拓扑下 N 个 merge 节点
+    # 对同一 worktree_row 只广播一次）；进展消息/诊断按 node_id 区分，属设计 per-node，不去重。
+    if reconciled is None or worktree_row["id"] not in reconciled:
+        if reconciled is not None:
+            reconciled.add(worktree_row["id"])
+        timestamp = worktree_row.get("merged_at") or now_iso()
+        aliases = list(
+            tx.conn.execute(
+                select(_WORKTREE).where(
+                    _WORKTREE.c.id != worktree_row["id"],
+                    _WORKTREE.c.project_id == worktree_row["project_id"],
+                    _WORKTREE.c.path == worktree_row["path"],
+                    _WORKTREE.c.branch == worktree_row["branch"],
+                )
+            ).mappings()
         )
-        fresh = tx.conn.execute(
-            select(_WORKTREE).where(_WORKTREE.c.id == alias["id"])
-        ).mappings().one()
-        tx.emit(
-            EventType.WORKTREE_UPDATED,
-            context["channel_id"],
-            {"worktree": worktree_public(dict(fresh))},
-        )
+        for alias in aliases:
+            tx.conn.execute(
+                update(_WORKTREE)
+                .where(_WORKTREE.c.id == alias["id"])
+                .values(
+                    status=WorktreeStatus.MERGED.value,
+                    merge_commit=data.merge_commit,
+                    merged_at=alias["merged_at"] or timestamp,
+                )
+            )
+            fresh = tx.conn.execute(
+                select(_WORKTREE).where(_WORKTREE.c.id == alias["id"])
+            ).mappings().one()
+            tx.emit(
+                EventType.WORKTREE_UPDATED,
+                context["channel_id"],
+                {"worktree": worktree_public(dict(fresh))},
+            )
     post_system_message(
         tx,
         workspace_id=context["workspace_id"],
@@ -829,6 +838,31 @@ def _create_conflict_task(
     worktree_row: dict[str, Any],
     files: list[str],
 ) -> None:
+    # #4 幂等：若本 merge 节点已有未终态的同树「解决冲突」派回任务，复用不重复建（防同一冲突报告
+    # 重复处理累积重复任务/节点/worktree 行）；二次真冲突（前次已 done）无此行 → 正常建新一轮。
+    existing = tx.conn.execute(
+        select(_TASK.c.id)
+        .select_from(
+            _EDGE.join(_NODE, _NODE.c.id == _EDGE.c.from_node_id)
+            .join(_TASK, _TASK.c.id == _NODE.c.task_id)
+            .join(_WORKTREE, _WORKTREE.c.task_id == _TASK.c.id)
+        )
+        .where(
+            _EDGE.c.canvas_id == context["canvas_id"],
+            _EDGE.c.to_node_id == context["id"],
+            _NODE.c.kind == CanvasNodeKind.AGENT.value,
+            _TASK.c.id != data.task_id,
+            _TASK.c.writes_code.is_(True),
+            _TASK.c.status.notin_([TaskStatus.DONE.value, TaskStatus.CLOSED.value]),
+            _WORKTREE.c.project_id == worktree_row["project_id"],
+            _WORKTREE.c.path == worktree_row["path"],
+            _WORKTREE.c.branch == worktree_row["branch"],
+            _WORKTREE.c.status == WorktreeStatus.ACTIVE.value,
+        )
+        .limit(1)
+    ).first()
+    if existing is not None:
+        return
     original = tx.conn.execute(
         select(_TASK).where(_TASK.c.id == data.task_id)
     ).mappings().one()
@@ -856,6 +890,7 @@ def _create_conflict_task(
         channel_id=original["channel_id"],
         thread_root_id=None,
         mention_member_ids=[owner_id] if owner_id is not None else [],
+        card_kind=CardKind.MERGE_CONFLICT,
         body=body,
     )
     task = tasks_service.create_task(

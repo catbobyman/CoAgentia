@@ -136,6 +136,51 @@ def ensure_plans(
     return plans
 
 
+def revalidation_plans(
+    conn: Connection,
+    *,
+    computer_id: str | None = None,
+    task_id: str | None = None,
+) -> list[EnsurePlan]:
+    """reconnect 复验计划（#3）：既有 active worktree 行且任务未终态 → 重下发 ensure（幂等；daemon
+    树在则 noop 上报 active，树没了则 prune 重建）。ensure_plans 因 `_WORKTREE.task_id.is_(None)`
+    排除已有行的 task，故需专用构造器。**仅 active，绝不含 conflicted**：re-ensure 会让 daemon 上报
+    active，apply_status 会把冲突态覆盖回 active（回归）。"""
+    stmt = (
+        select(
+            _WORKTREE.c.task_id,
+            _WORKTREE.c.project_id,
+            _PROJECT.c.computer_id,
+            _PROJECT.c.repo_path,
+            _WORKTREE.c.branch,
+        )
+        .select_from(
+            _WORKTREE.join(_TASK, _TASK.c.id == _WORKTREE.c.task_id).join(
+                _PROJECT, _PROJECT.c.id == _WORKTREE.c.project_id
+            )
+        )
+        .where(
+            _WORKTREE.c.status == WorktreeStatus.ACTIVE.value,
+            _TASK.c.status.notin_(_TERMINAL_TASK_STATUSES),
+        )
+        .order_by(_WORKTREE.c.task_id)
+    )
+    if computer_id is not None:
+        stmt = stmt.where(_PROJECT.c.computer_id == computer_id)
+    if task_id is not None:
+        stmt = stmt.where(_WORKTREE.c.task_id == task_id)
+    return [
+        EnsurePlan(
+            task_id=row["task_id"],
+            project_id=row["project_id"],
+            computer_id=row["computer_id"],
+            repo_path=row["repo_path"],
+            branch=row["branch"],
+        )
+        for row in conn.execute(stmt).mappings()
+    ]
+
+
 def cleanup_plans(
     conn: Connection, *, computer_id: str, now: str | None = None
 ) -> list[CleanupPlan]:
@@ -555,4 +600,5 @@ __all__ = [
     "delivery_waits_for_directory",
     "ensure_plans",
     "inject_directory_context",
+    "revalidation_plans",
 ]

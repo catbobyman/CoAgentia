@@ -79,7 +79,7 @@ export function MessageFlow(props: MessageFlowProps) {
         const usage = task ? usageByTask[task.id] : undefined;
         const ownerId = task?.owner_member_id ?? undefined;
         const owner = ownerId ? memberById[ownerId] : undefined;
-        const conflictFiles = m.kind === 'system' ? parseConflictFiles(m.body) : [];
+        const conflictFiles = m.kind === 'system' && m.card_kind === 'merge_conflict' ? parseConflictFiles(m.body) : [];
         return (
           <div key={m.id} id={`msg-${m.id}`}>
             {newDay && <div className="datesep"><span>{date}</span></div>}
@@ -92,7 +92,7 @@ export function MessageFlow(props: MessageFlowProps) {
                   <span className="sys">系统</span>
                   <span dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
                 </div>
-                {task && conflictFiles.length > 0 ? (
+                {task && m.card_kind === 'merge_conflict' ? (
                   <div className="conflict-task-card">
                     <div className="conflict-title"><GitMerge /><span>冲突文件 · {conflictFiles.length}</span></div>
                     <ul>{conflictFiles.map((path) => <li key={path}>{path}</li>)}</ul>

@@ -446,7 +446,7 @@ def get_task_diff(
     if row is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "任务尚无可用 worktree")
 
-    from coagentia_server.computers import DaemonOffline
+    from coagentia_server.computers import DaemonOffline, GitQueryError
 
     query = daemon.GitDiffQuery(
         project_id=row["project_id"],
@@ -458,13 +458,15 @@ def get_task_diff(
         payload = request.app.state.daemon_hub.query_git_diff(
             computer_id=row["computer_id"], query=query
         )
+    except GitQueryError as exc:
+        # daemon 在线但 git 查询失败（坏 base ref 等）→ 4xx 而非 503；文案透传 git prose（#5）。
+        raise ApiError(
+            422, rest.ErrorCode.VALIDATION_FAILED, str(exc), details={"base": base}
+        ) from exc
     except DaemonOffline as exc:
-        message = "daemon 离线，无法读取 Diff"
-        if "git.diff 查询失败" in str(exc):
-            message = str(exc)
-        elif "超时" in str(exc):
-            message = "daemon query timeout，无法读取 Diff"
-        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, message) from exc
+        raise ApiError(
+            503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线或查询超时，无法读取 Diff"
+        ) from exc
     return daemon.DiffPayload.model_validate(payload)
 
 

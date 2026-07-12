@@ -15,7 +15,7 @@ from coagentia_server.app import create_app
 from coagentia_server.db import models
 from coagentia_server.ledger.service import now_iso
 from coagentia_server.worktrees import service as worktree_service
-from daemon_helpers import AUTH, Env, StubDaemon, nid
+from daemon_helpers import AUTH, Env, StubDaemon, drain_revalidation, nid
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.engine import Engine
@@ -487,6 +487,8 @@ def test_cleaned_report_emits_original_and_changed_alias_once(
             daemon = StubDaemon(ws)
             daemon.hello([])
             daemon.recv_hello_ack()
+            # 握手复验 original+alias 两个 active 行（#3），先消费再走原帧序。
+            drain_revalidation(daemon, count=2)
             cleaned = {
                 "task_id": task_id,
                 "status": "cleaned",
@@ -775,6 +777,7 @@ def test_briefing_delivery_injects_copy_without_mutating_db(
         d = StubDaemon(ws)
         d.hello([(agent, "idle")])
         d.recv_hello_ack()
+        drain_revalidation(d)  # 握手复验既有 active 行（#3），先消费再走原帧序
         deliver = _ack_activation(d, node_id=node_id)
         briefing = next(
             item for item in deliver["data"]["messages"] if item["id"] == briefing_id
@@ -813,19 +816,304 @@ def test_ensure_failed_holds_wake_and_delivery_fail_closed(
         body="工程简报：开始实现。",
         mentions=(agent,),
     )
+    events: list[Any] = []
+    token = client.app.state.bus.subscribe(events.append)  # type: ignore[union-attr]
+    try:
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello([(agent, "idle")])
+            d.recv_hello_ack()
+            ensure = d.recv_instr()
+            assert ensure["type"] == "worktree.ensure"
+            assert ensure["data"]["task_id"] == task_id
+            d.ack(ensure, "failed")  # 无 worktree.status / 无绝对 path
+            d.sync()  # 不得回退成普通 system mention→reminder wake
+            assert _worktree_row(env, task_id) is None
+            assert env.read_position(agent, channel) is None
+            assert _poll(lambda: env.diag_count() == 1)  # 复用既有 agent.command 诊断类型
+    finally:
+        client.app.state.bus.unsubscribe(token)  # type: ignore[union-attr]
+
+    # #2：诊断行归属 owner/channel（人类可循 task/channel 定位），并广播 DIAGNOSTIC_APPENDED。
+    _DIAG = models.tbl(models.DiagnosticEvent)
+    with env.engine.connect() as c:
+        diag = c.execute(select(_DIAG)).mappings().one()
+    assert diag["agent_member_id"] == agent
+    assert diag["channel_id"] == channel
+    assert diag["task_id"] == task_id
+    assert diag["payload"]["instruction"] == "worktree.ensure"
+    assert diag["payload"]["result"] == "failed"
+    appended = [e for e in events if e.type == EventType.DIAGNOSTIC_APPENDED]
+    assert len(appended) == 1
+    assert appended[0].data["agent_member_id"] == agent
+    assert appended[0].data["events"][0]["task_id"] == task_id
+
+
+def test_ensure_failures_escalate_once_at_third_failure(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """#2：worktree ensure 失败达阈值(3) → 一次性升级喊人（频道系统消息 + fail_closed activity）；
+    第 4 次失败不再重复升级（严格 == 阈值）。"""
+    client, env, _hub = ctx
+    agent = env.add_agent("Coder", "idle")
+    channel = env.add_channel(kind="channel", name="build")
+    env.join(channel, agent)
+    env.join(channel, env.owner_id)  # 升级对象=频道人类成员
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+    task_id, _, _ = _task_node(
+        env,
+        channel,
+        canvas,
+        number=1,
+        owner=agent,
+        project_id=project,
+        writes_code=True,
+    )
+    _ACTIVITY = models.tbl(models.ActivityItem)
+
+    def _escalations() -> int:
+        with env.engine.connect() as c:
+            return c.execute(
+                select(func.count())
+                .select_from(_MESSAGE)
+                .where(
+                    _MESSAGE.c.channel_id == channel,
+                    _MESSAGE.c.body.like("%工作区创建失败%"),
+                )
+            ).scalar_one()
+
+    def _fail_once(*, expect_rescan: bool = False) -> None:
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello([(agent, "idle")])
+            d.recv_hello_ack()
+            ensure = d.recv_instr()
+            assert ensure["type"] == "worktree.ensure"
+            d.ack(ensure, "failed")
+            if expect_rescan:
+                # 升级消息本身经 MESSAGE_CREATED → _deliver_message → 低延迟扫描再发一次
+                # ensure；消费并同样 ack failed（诊断 +1，且严格 ==3 不会二次升级）。
+                rescan = d.recv_instr()
+                assert rescan["type"] == "worktree.ensure"
+                d.ack(rescan, "failed")
+            d.sync()
+
+    # 第 3 次失败触发升级（严格 == 阈值）；升级消息触发的再扫描失败(第 4 次)与后续失败不再升级。
+    for expected_diags, expected_escalations, rescan in (
+        (1, 0, False),
+        (2, 0, False),
+        (4, 1, True),
+        (5, 1, False),
+    ):
+        _fail_once(expect_rescan=rescan)
+        assert _poll(lambda n=expected_diags: env.diag_count() == n)
+        assert _escalations() == expected_escalations
+
+    with env.engine.connect() as c:
+        activities = list(
+            c.execute(
+                select(_ACTIVITY)
+                .where(_ACTIVITY.c.kind == "fail_closed", _ACTIVITY.c.task_id == task_id)
+            ).mappings()
+        )
+    assert [a["member_id"] for a in activities] == [env.owner_id]  # 只喊人类、只喊一次
+
+
+def test_ensure_failures_without_owner_do_not_escalate(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """#2 负例：无 owner 的任务 ensure 失败 3 次只积诊断，不升级喊人。"""
+    client, env, _hub = ctx
+    channel = env.add_channel(kind="channel", name="build")
+    env.join(channel, env.owner_id)
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+    _task_node(
+        env,
+        channel,
+        canvas,
+        number=1,
+        owner=None,
+        project_id=project,
+        writes_code=True,
+    )
+
+    for expected in (1, 2, 3):
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello([])
+            d.recv_hello_ack()
+            ensure = d.recv_instr()
+            assert ensure["type"] == "worktree.ensure"
+            d.ack(ensure, "failed")
+            d.sync()
+        assert _poll(lambda n=expected: env.diag_count() == n)
+
+    with env.engine.connect() as c:
+        escalations = c.execute(
+            select(func.count())
+            .select_from(_MESSAGE)
+            .where(
+                _MESSAGE.c.channel_id == channel,
+                _MESSAGE.c.body.like("%工作区创建失败%"),
+            )
+        ).scalar_one()
+    assert escalations == 0
+
+
+def test_cleanup_failures_do_not_escalate(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """#2 负例：cleanup 失败不升级（升级门仅 worktree.ensure）。"""
+    client, env, _hub = ctx
+    agent = env.add_agent("Coder", "idle")
+    channel = env.add_channel(kind="channel", name="build")
+    env.join(channel, agent)
+    env.join(channel, env.owner_id)
+    project = _project(env, channel, keep_days=0)
+    canvas = _canvas(env, channel)
+    task_id, _, _ = _task_node(
+        env,
+        channel,
+        canvas,
+        number=1,
+        owner=agent,
+        project_id=project,
+        writes_code=True,
+        status="done",
+        status_changed_at="2020-01-01T00:00:00.000Z",
+    )
+    _worktree(env, task_id=task_id, project_id=project)
+
+    for expected in (1, 2, 3):
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello([(agent, "idle")])
+            d.recv_hello_ack()
+            cleanup = d.recv_instr()
+            assert cleanup["type"] == "worktree.cleanup"
+            d.ack(cleanup, "failed")
+            d.sync()
+        assert _poll(lambda n=expected: env.diag_count() == n)
+
+    with env.engine.connect() as c:
+        escalations = c.execute(
+            select(func.count())
+            .select_from(_MESSAGE)
+            .where(
+                _MESSAGE.c.channel_id == channel,
+                _MESSAGE.c.body.like("%工作区创建失败%"),
+            )
+        ).scalar_one()
+    assert escalations == 0
+
+
+def test_reconnect_revalidates_active_row_but_periodic_reconcile_does_not(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """#3：reconnect 握手对既有 active 行重下发 ensure（daemon 幂等，树没了则重建）；
+    周期 reconcile（revalidate_worktrees 默认 False）不重下发，避免噪声。"""
+    client, env, hub = ctx
+    channel = env.add_channel(kind="channel", name="build")
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+    task_id, _, _ = _task_node(
+        env,
+        channel,
+        canvas,
+        number=1,
+        owner=None,
+        project_id=project,
+        writes_code=True,
+    )
+    _worktree(env, task_id=task_id, project_id=project)
 
     with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
         d = StubDaemon(ws)
-        d.hello([(agent, "idle")])
+        d.hello([])
         d.recv_hello_ack()
-        ensure = d.recv_instr()
-        assert ensure["type"] == "worktree.ensure"
-        assert ensure["data"]["task_id"] == task_id
-        d.ack(ensure, "failed")  # 无 worktree.status / 无绝对 path
-        d.sync()  # 不得回退成普通 system mention→reminder wake
-        assert _worktree_row(env, task_id) is None
-        assert env.read_position(agent, channel) is None
-        assert env.diag_count() == 1  # 复用既有 agent.command 诊断类型
+        [ensure] = drain_revalidation(d)
+        assert ensure["data"] == {
+            "task_id": task_id,
+            "project_id": project,
+            "repo_path": r"D:\repos\demo",
+            "branch": f"coagentia/task-{task_id}",
+        }
+        # 周期对账（不带复验）：既有行不重下发——sync 直接回 pong 即证无 instr 帧。
+        hub._run_sync(hub.reconcile(hub._conns[env.comp_id]))
+        d.sync()
+
+
+def test_conflicted_row_is_not_revalidated_on_reconnect(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """#3 回归：conflicted 行绝不复验——re-ensure 会让 daemon 报 active，把冲突态覆盖回 active。"""
+    client, env, hub = ctx
+    channel = env.add_channel(kind="channel", name="build")
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+    task_id, _, _ = _task_node(
+        env,
+        channel,
+        canvas,
+        number=1,
+        owner=None,
+        project_id=project,
+        writes_code=True,
+    )
+    _worktree(env, task_id=task_id, project_id=project, status="conflicted")
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([])
+        d.recv_hello_ack()
+        # 显式驱动带复验的 reconcile（阻塞至完成）：conflicted 行若被误复验，ensure 帧
+        # 会先于 pong 到达，下面的 sync 在 recv_pong 处断言失败。
+        hub._run_sync(hub.reconcile(hub._conns[env.comp_id], revalidate_worktrees=True))
+        d.sync()
+
+
+def test_revalidation_plans_only_cover_active_rows_of_live_tasks(
+    migrated_engine: Engine,
+) -> None:
+    """#3 单测：revalidation_plans 仅含 active 行 × 未终态任务；conflicted/merged/终态任务排除。"""
+    env = Env(migrated_engine)
+    channel = env.add_channel(kind="channel", name="build")
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+
+    def seed(number: int, *, task_status: str, tree_status: str) -> str:
+        task_id, _, _ = _task_node(
+            env,
+            channel,
+            canvas,
+            number=number,
+            owner=None,
+            project_id=project,
+            writes_code=True,
+            status=task_status,
+        )
+        _worktree(env, task_id=task_id, project_id=project, status=tree_status)
+        return task_id
+
+    live = seed(1, task_status="todo", tree_status="active")
+    seed(2, task_status="todo", tree_status="conflicted")
+    seed(3, task_status="done", tree_status="active")
+    seed(4, task_status="todo", tree_status="merged")
+
+    with env.engine.connect() as c:
+        plans = worktree_service.revalidation_plans(c, computer_id=env.comp_id)
+        assert [p.task_id for p in plans] == [live]
+        assert plans[0].repo_path == r"D:\repos\demo"
+        assert plans[0].branch == f"coagentia/task-{live}"
+        assert plans[0].computer_id == env.comp_id
+        # task_id 过滤器（hub._ensure_worktree 复验路径用）
+        assert [p.task_id for p in worktree_service.revalidation_plans(c, task_id=live)] == [live]
+        assert worktree_service.revalidation_plans(c, task_id=live[:-2] + "ZZ") == []
+        # 其它 computer 无计划
+        other_rig = "01K5CMPT00000000000000000B"
+        assert worktree_service.revalidation_plans(c, computer_id=other_rig) == []
 
 
 def test_node_create_persists_delivery_fields_and_requires_bound_project(

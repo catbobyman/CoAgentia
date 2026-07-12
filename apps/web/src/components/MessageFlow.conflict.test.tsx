@@ -14,6 +14,7 @@ const TASK: TaskPublic = {
 
 const MESSAGE: MessagePublic = {
   id: 'msg_conflict', workspace_id: 'ws_1', channel_id: 'ch_1', kind: 'system',
+  card_kind: 'merge_conflict', // #6：结构化 marker，前端不再嗅探 body 文本
   body: 'merge 冲突\nnode_id: node_merge\n冲突文件:\n- src/app.ts\n- 中文/配置.json\n双方 Diff: #12 / #15',
   created_at: '2026-07-11T00:00:00Z',
 };
@@ -36,5 +37,17 @@ describe('冲突任务卡', () => {
     expect(screen.getByText('src/app.ts')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /打开冲突任务 #18/ }));
     expect(select).toHaveBeenCalledWith(TASK.id);
+  });
+
+  it('正文貌似冲突清单但无 card_kind → 渲染任务牌而非假冲突卡（#6 负例）', () => {
+    const fake: MessagePublic = { ...MESSAGE, card_kind: undefined };
+    render(
+      <MessageFlow
+        messages={[fake]} memberById={{}} memberNames={[]} meName="Memcyo"
+        presenceOf={() => undefined} taskByRoot={{ [fake.id]: TASK }} usageByTask={{}}
+      />,
+    );
+    expect(screen.queryByText('冲突文件 · 2')).not.toBeInTheDocument();
+    expect(screen.getByText(/#18/)).toBeInTheDocument(); // TaskChip 兜底
   });
 });

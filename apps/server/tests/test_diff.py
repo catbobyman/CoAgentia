@@ -12,7 +12,7 @@ from coagentia_contracts.daemon import DiffPayload
 from coagentia_server.app import create_app
 from coagentia_server.db import models
 from coagentia_server.ledger.service import now_iso
-from daemon_helpers import AUTH, Env, StubDaemon, nid
+from daemon_helpers import AUTH, Env, StubDaemon, drain_revalidation, nid
 from fastapi.testclient import TestClient
 from sqlalchemy import insert
 from sqlalchemy.engine import Engine
@@ -153,6 +153,7 @@ def test_diff_proxies_query_and_task_detail_derives_worktree(
         daemon = StubDaemon(ws)
         daemon.hello([])
         daemon.recv_hello_ack()
+        drain_revalidation(daemon)  # 握手复验既有 active 行（#3），先消费再走原帧序
         thread, box = _bg(
             lambda: client.get(f"/api/tasks/{task_id}/diff", params={"base": "release"})
         )
@@ -199,13 +200,14 @@ def test_diff_query_timeout_is_daemon_offline(
         daemon = StubDaemon(ws)
         daemon.hello([])
         daemon.recv_hello_ack()
+        drain_revalidation(daemon)  # 握手复验既有 active 行（#3），先消费再走原帧序
         response = client.get(f"/api/tasks/{task_id}/diff")
         query = daemon.recv()
 
     assert query["kind"] == "query" and query["type"] == "git.diff"
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "DAEMON_OFFLINE"
-    assert "timeout" in response.json()["error"]["message"].lower()
+    assert "超时" in response.json()["error"]["message"]
 
 
 def test_diff_without_daemon_connection_is_503(
@@ -220,9 +222,10 @@ def test_diff_without_daemon_connection_is_503(
     assert response.json()["error"]["code"] == "DAEMON_OFFLINE"
 
 
-def test_diff_query_failure_uses_existing_daemon_offline_family(
+def test_diff_query_failure_is_validation_error(
     ctx: tuple[TestClient, Env, Any],
 ) -> None:
+    """daemon 在线但 git 查询失败（坏 base ref 等）→ 422 透传 git prose，而非误归 503（#5）。"""
     client, env, _hub = ctx
     task_id, _project_id, _channel_id, _repo_path = _delivery_rows(env)
 
@@ -230,6 +233,7 @@ def test_diff_query_failure_uses_existing_daemon_offline_family(
         daemon = StubDaemon(ws)
         daemon.hello([])
         daemon.recv_hello_ack()
+        drain_revalidation(daemon)  # 握手复验既有 active 行（#3），先消费再走原帧序
         thread, box = _bg(lambda: client.get(f"/api/tasks/{task_id}/diff"))
         query = daemon.recv()
         daemon.reply(query, {"error": "Diff ref 不存在"})
@@ -238,6 +242,6 @@ def test_diff_query_failure_uses_existing_daemon_offline_family(
     assert not thread.is_alive()
     assert "error" not in box
     response = box["response"]
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "DAEMON_OFFLINE"
-    assert response.json()["error"]["message"] == "git.diff 查询失败: Diff ref 不存在"
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert response.json()["error"]["message"] == "Diff ref 不存在"

@@ -1287,7 +1287,7 @@ export interface components {
          * @description 结构化卡片锚点消息（契约 A messages.card_kind；卡片 = 不可变锚点 + 实体状态走 WS）。
          * @enum {string}
          */
-        CardKind: "proposal" | "held_draft" | "deployment" | "fail_closed" | "handoff_delivery";
+        CardKind: "proposal" | "held_draft" | "deployment" | "fail_closed" | "handoff_delivery" | "merge_conflict";
         /** ChannelCreate */
         ChannelCreate: {
             /**

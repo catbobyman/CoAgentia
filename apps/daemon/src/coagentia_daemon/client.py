@@ -62,12 +62,15 @@ _USAGE_BATCH = 500
 _HOME_FILE_MAX = 1024 * 1024  # 契约 D §6：home.file 文本上限 1MB
 _ACTIVITY_PRETHROTTLE = 0.25  # 契约 D §7：daemon 可 ≥250ms 预节流省带宽
 _FRAME_DEDUP_WINDOW = 2048
-_STATUS_REPLAY_INSTRS = frozenset(
+# CHECK_RUN 仍走同步 handler + buffer.find_check 重放（终态缓冲重传），须留在重放白名单。
+_STATUS_REPLAY_INSTRS = frozenset({InstrType.CHECK_RUN})
+# worktree ensure/merge/cleanup 改由后台通道处理（handle_instr 分流），不再经同步 _recent_frame_set
+# 去重门；其重放语义由后台任务的自然键幂等重跑提供（重连原帧重发 → 后台重跑 git op 补报终态）。
+_BACKGROUND_INSTRS = frozenset(
     {
         InstrType.WORKTREE_ENSURE,
         InstrType.WORKTREE_MERGE,
         InstrType.WORKTREE_CLEANUP,
-        InstrType.CHECK_RUN,
     }
 )
 
@@ -118,6 +121,11 @@ class DaemonClient:
         self.adapter.bind(self)  # AdapterSink = self
         self.git = GitWorktreeManager(paths)
         self.checks = CheckRunner()
+        # worktree ensure/merge/cleanup 后台通道（#1：解放 reader，避免大 merge 阻塞 PONG 误重连）。
+        # 键=frame_id 用于在飞去重 + 生命周期；单车道锁串行执行杜绝同仓并发 git。
+        self._worktree_tasks: dict[str, asyncio.Task[None]] = {}
+        self._worktree_lane = asyncio.Lock()
+        self._worktree_closing = False
 
         self._transport: Transport | None = None
         self._send_lock = asyncio.Lock()
@@ -168,11 +176,20 @@ class DaemonClient:
     def stop(self) -> None:
         self._stopped = True
         self.checks.cancel()
+        self._worktree_closing = True
+        for task in tuple(self._worktree_tasks.values()):
+            task.cancel()
 
     async def shutdown(self) -> None:
-        """同一 event loop 内取消 check 子进程，等待 taskkill/回收完成后再退出。"""
+        """同一 event loop 内取消 check 子进程与后台 worktree 任务，等回收完成后再退出。
+
+        断连（_serve finally / run 循环）不取消在飞 worktree 任务——大 merge 应跑完，status/ack
+        失败被 suppress，重连后由自然键幂等重放兜底（同 CheckRunner 跨重连存活）；仅 shutdown 取消。
+        CancelledError 是 BaseException 不被 wrapper 的 except Exception 吞，会穿透至 git.py 的取消
+        恢复（_restore_cancelled_merge 回滚主干 HEAD），故 shutdown 中途取消大 merge 安全。"""
         self.stop()
         await self.checks.wait_closed()
+        await self._wait_worktrees_closed()
 
     # ---------------------------------------------------------------- 一条连接的服务
 
@@ -255,6 +272,11 @@ class DaemonClient:
     async def handle_instr(self, frame: dict[str, Any]) -> None:
         frame_id = frame["frame_id"]
         itype = InstrType(frame["type"])
+        if itype in _BACKGROUND_INSTRS:
+            # worktree 帧后台化：立即返回让 reader 继续处理 PONG 等帧；ack 仍在 op 完成后由后台任务
+            # 发出（保序：handler 先报 worktree.status 再返回 → 任务末尾发 ack），server 零改动。
+            self._spawn_worktree_instr(frame, itype)
+            return
         if frame_id in self._recent_frame_set and itype not in _STATUS_REPLAY_INSTRS:
             # frame_id 短窗去重加速器：原帧重发 → 直接 noop（自然键幂等已保证无副作用）。
             await self._send_ack(frame_id, AckResult.NOOP, None)
@@ -291,6 +313,47 @@ class DaemonClient:
         if error is not None:
             payload["error"] = error.model_dump(mode="json")
         await self._send(payload)
+
+    # -------------------------------------------------------- worktree 后台通道（契约 D §5.3；#1）
+
+    def _spawn_worktree_instr(self, frame: dict[str, Any], itype: InstrType) -> None:
+        """后台起 worktree 指令；同 frame_id 在飞则丢弃（server ack 超时原帧重发 → 去重不补 ack，
+        保序：worktree 帧的 ack 必跟在其 status 之后，完成时唯一一次 ack 解析 server future）。"""
+        frame_id = frame["frame_id"]
+        if self._worktree_closing or frame_id in self._worktree_tasks:
+            return
+        task = asyncio.create_task(self._run_worktree_instr(frame, itype))
+        self._worktree_tasks[frame_id] = task
+        task.add_done_callback(lambda done: self._finish_worktree_task(frame_id, done))
+
+    async def _run_worktree_instr(self, frame: dict[str, Any], itype: InstrType) -> None:
+        frame_id = frame["frame_id"]
+        async with self._worktree_lane:  # 单车道串行，防同仓并发 git 抢锁
+            handler = HANDLERS[itype]
+            try:
+                result, error = await handler(self, frame.get("data") or {})
+            except Exception as exc:  # noqa: BLE001 — 处理器异常收敛为 failed（merge 硬失败仍以 ack FAILED 回流）
+                self._log(f"worktree instr {itype} failed: {exc!r}")
+                from coagentia_contracts.daemon import FrameError
+
+                result, error = AckResult.FAILED, FrameError(code="HANDLER_ERROR", message=str(exc))
+            # handler 内已先发 worktree.status，返回后此处再发 ack —— status→ack 保序不变。
+            with contextlib.suppress(TransportClosed):
+                await self._send_ack(frame_id, result, error)
+                self._remember_frame(frame_id)
+
+    def _finish_worktree_task(self, frame_id: str, task: asyncio.Task[None]) -> None:
+        self._worktree_tasks.pop(frame_id, None)
+        if not task.cancelled():
+            task.exception()  # 取走异常避免后台 Task warning（同 CheckRunner._finish_task）。
+
+    async def _wait_worktrees_closed(self) -> None:
+        self._worktree_closing = True
+        tasks = tuple(self._worktree_tasks.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     # ---------------------------------------------------------------- 查询代理（契约 D §6）
 

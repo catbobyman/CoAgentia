@@ -224,3 +224,88 @@ async def test_git_diff_query_returns_contract_reply_and_errors_like_home_querie
     frame["frame_id"] = new_ulid()
     await client.handle_query(frame)
     assert transport.sent[-1]["data"] == {"error": "diff failed"}
+
+
+def test_split_diff_sections_handles_tricky_shapes() -> None:
+    """#8 单测：切分只认行首字面 `diff --git `；内容行前缀、纯 rename、binary 段均无歧义。"""
+    from coagentia_daemon.git import _split_diff_sections
+
+    raw = (
+        "diff --git a/a.txt b/a.txt\n"
+        "index 0000000..1111111 100644\n"
+        "--- a/a.txt\n"
+        "+++ b/a.txt\n"
+        "@@ -1 +1,2 @@\n"
+        " keep\n"
+        "+diff --git a/fake b/fake\n"  # 内容行：以 '+' 起头，不得开新段
+        "diff --git a/old name.txt b/new name.txt\n"
+        "similarity index 100%\n"
+        "rename from old name.txt\n"
+        "rename to new name.txt\n"
+        "diff --git a/bin.bin b/bin.bin\n"
+        "index 0000000..1111111 100644\n"
+        "Binary files a/bin.bin and b/bin.bin differ\n"
+    )
+    sections = _split_diff_sections(raw)
+    assert len(sections) == 3
+    assert sections[0].endswith("+diff --git a/fake b/fake\n")
+    assert sections[1].startswith("diff --git a/old name.txt b/new name.txt\n")
+    assert "rename to new name.txt" in sections[1]
+    assert sections[2].endswith("differ\n")
+    assert "".join(sections) == raw  # keepends 无损切分
+    assert _split_diff_sections("") == []
+
+
+@pytest.mark.asyncio
+async def test_diff_patch_content_containing_diff_header_does_not_bleed(
+    tmp_path: Path,
+) -> None:
+    """#8 端到端：文件内容行恰为 `diff --git ...` 时，切分不得把相邻文件的 patch 串段。"""
+    manager, repo, task_id, project_id, _branch = await _manager_with_tree(tmp_path)
+    tree = manager.paths.worktree_path(project_id, task_id)
+    (tree / "aa.txt").write_text("diff --git a/x b/x\nnormal\n", encoding="utf-8")
+    (tree / "zz.txt").write_text("tail\n", encoding="utf-8")
+    _git(tree, "add", "-A")
+    _git(tree, "commit", "-m", "tricky content")
+
+    payload = await manager.diff(
+        GitDiffQuery(project_id=project_id, repo_path=str(repo), task_id=task_id)
+    )
+
+    by_path = {item.path: item for item in payload.files}
+    assert "+diff --git a/x b/x" in by_path["aa.txt"].patch
+    assert "tail" not in by_path["aa.txt"].patch
+    assert "+tail" in by_path["zz.txt"].patch
+    assert "diff --git a/x b/x" not in by_path["zz.txt"].patch
+
+
+@pytest.mark.asyncio
+async def test_diff_spawns_constant_process_count_regardless_of_file_count(
+    tmp_path: Path,
+) -> None:
+    """#8 核心回归：diff() 的 git 子进程数与变更文件数无关（旧实现逐文件 spawn ≤200 进程）。"""
+    manager, repo, task_id, project_id, _branch = await _manager_with_tree(tmp_path)
+    tree = manager.paths.worktree_path(project_id, task_id)
+    (tree / "one.txt").write_text("1\n", encoding="utf-8")
+    _git(tree, "add", "-A")
+    _git(tree, "commit", "-m", "one file")
+
+    calls: list[tuple] = []
+    original = manager._git
+
+    async def counting(*args, **kwargs):  # noqa: ANN002, ANN003
+        calls.append(args)
+        return await original(*args, **kwargs)
+
+    manager._git = counting  # type: ignore[method-assign]
+    query = GitDiffQuery(project_id=project_id, repo_path=str(repo), task_id=task_id)
+    await manager.diff(query)
+    single_file_count = len(calls)
+
+    for i in range(7):
+        (tree / f"more-{i}.txt").write_text(f"{i}\n", encoding="utf-8")
+    _git(tree, "add", "-A")
+    _git(tree, "commit", "-m", "seven more files")
+    calls.clear()
+    await manager.diff(query)
+    assert len(calls) == single_file_count  # 子进程数恒定

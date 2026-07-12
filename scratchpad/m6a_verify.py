@@ -300,7 +300,8 @@ async def run(paths, ids: dict, repos: dict, keep: bool, pengine) -> None:
             client.stop()
             await client.shutdown()
             daemon_task.cancel()
-            with __import__("contextlib").suppress(Exception):
+            # CancelledError 是 BaseException，suppress(Exception) 接不住 → 收尾假 traceback。
+            with __import__("contextlib").suppress(BaseException):
                 await daemon_task
 
 

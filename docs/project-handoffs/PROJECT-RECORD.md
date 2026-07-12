@@ -136,7 +136,7 @@
 - **收口基线**：后端 **712 passed / 4 skipped**（672 → +40）、web vitest **175**（142 → +33）、pyright 0、ruff 干净、`pnpm gen` 确定、双侧 build 绿。
 - **M5 里程碑收口**（§9a+§9b 出口清单全绿）；M5-HANDOFF 移入 archive/。**M1–M5 全收口，无待收口里程碑，接续 = M6（未立项）**。
 
-## 13. M6a Project 与交付链（实现波次完成，实机 verify 待执行）
+## 13. M6a Project 与交付链（M6a 全收口 2026-07-12：实现 + 实机 verify 20/20 + code-review 10 findings 全修）
 
 - **契约与补遗**：M6 立项落 A v1.0.7/B v1.4/D v1.0.3；owner 随实现批准三组连带补遗并同步两文档 header/变更记录：A **v1.0.8**（`worktrees.merge_commit`、`ProjectPublic.channel_ids`）+ B **v1.4.1**（Project 精确请求/响应）；B **v1.4.2**（COMPUTER_HAS_PROJECTS，错误码 29，Agent→Project 固定删除门序）；A **v1.0.9** + B **v1.4.3**（TemplateNode 保存/实例化贯通 `writes_code/project_id`）。C v1.0、E v1.4、E2 v1.0.1 零修订。
 - **波 1 地基**（`d564ebf`）：J3-cal 用脚本生成 scratch git repo 完成 win32 worktree/merge/diff/冲突/编码/锁与占用探针 **10/10**，结论归 `scratchpad/GIT-CALIBRATION.md`；J0 contracts/mock/conformance/gen 同步；J1 `0008_m6a` 一次建 projects/channel_projects/worktrees（含 merge_commit）并给 tasks 加两列，从零与 M5 增量升级双路绿。守门 **724/4 skipped + web 175**。
@@ -144,7 +144,8 @@
 - **波 3 交付面**（本提交见 HEAD）：J4 daemon `git.diff` + REST 代理 + TaskDetail.worktree，覆盖增删改/重命名/二进制/三级截断/cleaned/404/503/超时；J5 check/merge 自动触发、仅 failed retry、DAG 序 `merge --no-ff`、成功持久 `merge_commit`、冲突任务派回、取消/超时恢复与保留期收敛；J6 review_verdict 四值、needs_human @人类、builtin 话术与中立消息查询；B-M6-1 完成 Project 设置、Diff 卡、系统节点/Retry、verdict、冲突卡及 worktree WS 更新。
 - **审计与界面证据**：并行审计发现的两项 Medium 已闭合：daemon JSONL 改同目录临时文件 `flush+fsync+os.replace`，撕裂/replace 失败可恢复；同物理树 alias cleaned 会在 report/converge 两路径广播 fresh rows，重复 cleaned 不重复 alias。复核后无剩余 High/Medium。B-M6-1 在 1440×900/390×844 屏对照无横向溢出、console 0，三张 `docs/verify/m6a-*.png` **仅是 UI 对照，不是 M6a 真机证据**。
 - **波 3 守门**：后端 **813 passed / 4 skipped**，web **194**，pyright 0、双 tsc、ruff、`pnpm gen` 后零 unstaged diff、web build 全绿。M6-HANDOFF §9a #1–#10/#12 已勾。
-- **明确停点**：依 owner 本轮指令，停在 §9a #11「M6a 真机场景」这一行前；`M6A-EVIDENCE.md` 未创建，实机 verify 与 code-review 均未执行。M6b 的 orchestration/proposals/0009 未触碰。
+- **实机 verify（`bc70cd5`）**：真 uvicorn + 真 websockets daemon-sim（真 `git.py`）+ 真 scratch 仓库端到端 **20/20 ALL PASS**（场景 A 交付链双任务→worktree 交付→merge --no-ff→check 绿→Diff；场景 B 冲突派回→解决→retry 合并成功），证据归 `docs/verify/M6A-EVIDENCE.md` + 4 截图；`/code-review high` 8 角度 workflow → 10 findings（1 REFUTED）登记待修。
+- **code-review 修复收口（T1 终段，Codex 起草 + Fable 5 对抗审查/收口）**：owner 拍板 #1 后台化（Design C 保序）/#7 保连续前缀语义删死代码/其余全修。10 条全落地：daemon worktree 指令后台通道（单车道、ack 仍 op 后发、断连不取消仅 shutdown 取消）、ensure 失败诊断归属+DIAGNOSTIC_APPENDED+累计 3 次一次性升级喊人、reconnect 握手复验 active 行（`revalidation_plans`，conflicted 排除、周期不复验）、冲突派回幂等（未终态同树复用/二次真冲突建新）、`GitQueryError`→422 透传 git prose、`CardKind.MERGE_CONFLICT` 结构化冲突卡全链、diff 单进程切分（fail-closed 守卫）、菱形 merge alias 广播去重（进展消息 per-node）、#10 注释。**#3 复验帧序外溢修 5 个 server 测试**（`drain_revalidation` 桩辅助）+ **新增回归 14 项**；坑：升级系统消息本身经 MESSAGE_CREATED→`_deliver_message` 低延迟扫描会再发一次 ensure，测试须消费。守门新基线 **827/4 skipped + web 195 + pyright 0**；m6a_verify 复验 20/20（4 轮 3 净 1 环境性 REST 超时，probe 既有 DB 锁重试脚手架佐证环境噪声）+ probe 收尾 `suppress(BaseException)` 修假 traceback。M6b 的 orchestration/proposals/0009 未触碰。
 
 ## 已失效结论
 

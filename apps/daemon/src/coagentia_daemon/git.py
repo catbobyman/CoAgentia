@@ -546,32 +546,35 @@ class GitWorktreeManager:
         total_additions = sum(item.additions for item in counts.values())
         total_deletions = sum(item.deletions for item in counts.values())
 
+        # 一次全量 unified diff → 按 `diff --git ` 头切分逐文件（#8：子进程数塌缩为常数）。
+        # name-status 与本次 patch 用同一 flag 集（--find-renames 等），diffcore 顺序一致，
+        # 故 metadata 与 sections 按位对齐；段数不符则 fail-closed，绝不错配 patch。
+        full_diff = await self._git(
+            repo,
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--find-renames",
+            base_commit,
+            head_commit,
+            "--",
+        )
+        sections = _split_diff_sections(full_diff.stdout)
+        if len(sections) != len(metadata):
+            raise WorktreeSafetyError(
+                f"Diff 段数与 name-status 不一致：{len(sections)} != {len(metadata)}"
+            )
+
         files: list[DiffFile] = []
-        for item in metadata[:max_files]:
+        for item, section in zip(metadata[:max_files], sections[:max_files], strict=False):
             key = (item.old_path, item.path)
             count = counts.get(key)
             if count is None:
                 raise WorktreeSafetyError(f"Diff 元数据与 numstat 不一致：{item.path}")
-            patch = ""
-            patch_truncated = False
-            if not count.binary:
-                pathspecs = [item.path]
-                if item.old_path is not None:
-                    pathspecs.insert(0, item.old_path)
-                patch_result = await self._git(
-                    repo,
-                    "diff",
-                    "--no-color",
-                    "--no-ext-diff",
-                    "--find-renames",
-                    base_commit,
-                    head_commit,
-                    "--",
-                    *pathspecs,
-                )
-                patch, patch_truncated = _truncate_utf8(
-                    patch_result.stdout, max_patch_bytes
-                )
+            if count.binary:
+                patch, patch_truncated = "", False
+            else:
+                patch, patch_truncated = _truncate_utf8(section, max_patch_bytes)
             files.append(
                 DiffFile(
                     path=item.path,
@@ -828,6 +831,27 @@ def _truncate_utf8(value: str, max_bytes: int) -> tuple[str, bool]:
     if len(encoded) <= max_bytes:
         return value, False
     return encoded[:max_bytes].decode("utf-8", errors="ignore"), True
+
+
+def _split_diff_sections(raw: str) -> list[str]:
+    """把全量 unified diff 按每个 `diff --git ` 头切成逐文件段（#8）。
+
+    只有行首字面为 `diff --git `（无 diff 前缀字符）才开新段——真正的内容行恒以 ' '/'+'/'-' 起头，
+    头行（index/---/+++/@@/rename*/Binary files/old mode…）均不以 `diff --git ` 起头，故对含空格/
+    中文的路径也无歧义；keepends 保留精确字节，令下游 UTF-8 字节截断与断言与旧逐文件输出一致。
+    """
+    sections: list[str] = []
+    current: list[str] | None = None
+    for line in raw.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            if current is not None:
+                sections.append("".join(current))
+            current = [line]
+        elif current is not None:
+            current.append(line)
+    if current is not None:
+        sections.append("".join(current))
+    return sections
 
 
 def _lexists(path: Path) -> bool:

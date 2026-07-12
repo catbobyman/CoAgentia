@@ -66,6 +66,7 @@ class CardKind(StrEnum):
     DEPLOYMENT = "deployment"
     FAIL_CLOSED = "fail_closed"
     HANDOFF_DELIVERY = "handoff_delivery"
+    MERGE_CONFLICT = "merge_conflict"
 
 
 class TaskStatus(StrEnum):

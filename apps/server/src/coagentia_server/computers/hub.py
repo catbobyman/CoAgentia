@@ -125,10 +125,17 @@ _DELIVERABLE = {AgentStatus.IDLE.value, AgentStatus.BUSY.value}
 
 _ACTIVITY_THROTTLE_SEC = 0.5  # 契约 D §7：server ≥500ms 节流转发 agent.activity
 _LAST_SEEN_THROTTLE_SEC = 60  # 契约 D §2：last_seen_at 写库节流
+_WORKTREE_ENSURE_ESCALATE_AFTER = 3  # #2：worktree ensure 连续失败达此次数 → 升级喊人（一次性）
 
 
 class DaemonOffline(Exception):
     """无活跃 daemon 连接 / 指令 ack 或 query reply 超时（→ REST 503 DAEMON_OFFLINE）。"""
+
+
+class GitQueryError(Exception):
+    """daemon 在线但 git.diff 查询本身失败（坏 base ref / worktree 安全拒绝 → REST 422
+    VALIDATION_FAILED）。**不继承 DaemonOffline**——二者并列独立，否则 routes 的 except
+    DaemonOffline 会抢先吞掉本类致 422 永不触发（#5）。"""
 
 
 class HeldDraftResolved(Exception):
@@ -309,7 +316,8 @@ class DaemonHub:
             self._register_hello(conn, hello_data)
             await self._send_hello_ack(conn, hello_frame_id)
             self._conns[computer_id] = conn
-            self._spawn_on_conn(conn, self.reconcile(conn))
+            # 握手对账复验既有 active worktree 行（#3）；周期 _reconcile_loop 不复验（避免噪声）。
+            self._spawn_on_conn(conn, self.reconcile(conn, revalidate_worktrees=True))
             await self._reader(conn)
         except WebSocketDisconnect:
             pass
@@ -494,6 +502,10 @@ class DaemonHub:
                     )
             for node_id in merge_node_ids:
                 self._system_pending.pop(node_id, None)
+            # #10 fail-closed：缺 merge_commit 不能标 MERGED（否则 apply_status 误置假终态），
+            # 故跳过 apply_status。merge_node_ids 非空 → fail_dispatch 走人工 retry；空集=迟到/
+            # 重复/跨机越界报（live merge 节点已 SUCCESS/FAILED，worktree 行终态经有效 merged 报或
+            # 任务 DONE/CLOSED→cleanup_plans 独立可达），静默丢弃不 wedge。
             return
         continue_channels: set[str] = set()
         with gateway_tx(self._engine, self._bus) as tx:
@@ -884,33 +896,12 @@ class DaemonHub:
                 await self._deliver_backlog(conn, agent_id, channel_id)
             # idle + 未命中 → 静默积压（不发帧，随下次唤醒随批投递）
 
-    def _filter_gated(
-        self, c: Connection, raw: list[dict[str, Any]]
-    ) -> tuple[list[dict[str, Any]], str | None]:
-        """投递 gating 作用于**投递批**（裁决 2，非仅唤醒触发）：从积压里剔除 blocked 任务线程消息。
-
-        返回 (可投消息, read_position 水位)：gated 消息不投；水位**只推进到首个 gated 之前**——
-        gated 消息及其后留积压、解除阻塞后重评（首条即 gated → 水位 None＝本次不推进）。必须只投
-        连续前缀：daemon 按频道最大 message_id 去重，若越过 held 先投 later，解锁后的早消息会被
-        noop 永久漏投。无 blocked 任务时（绝大多数）仍全投、水位=末条。
-        """
-        deliver: list[dict[str, Any]] = []
-        watermark: str | None = None
-        hit_gated = False
-        for m in raw:
-            if hit_gated:
-                continue
-            if canvas_service.message_delivery_gated(c, m):
-                hit_gated = True
-                continue
-            deliver.append(m)
-            watermark = m["id"]
-        return deliver, watermark
-
     def _filter_agent_delivery(
         self, c: Connection, raw: list[dict[str, Any]], agent_id: str
     ) -> tuple[list[dict[str, Any]], str | None]:
-        """叠加 worktree path fail-closed；被扣消息与其后消息都不得推进水位。"""
+        """gating（blocked 线程）叠加 worktree path fail-closed；只投**连续前缀**，被扣消息与其后
+        消息都不得推进水位。必须只投连续前缀：daemon 按频道最大 message_id 去重，若越过 held 先投
+        later，解锁后的早消息会被 noop 永久漏投——故遇首个 gated/held 即停（#7 权衡：延迟不丢）。"""
         deliver: list[dict[str, Any]] = []
         watermark: str | None = None
         hit_held = False
@@ -1064,8 +1055,14 @@ class DaemonHub:
         for plan in plans:
             await self._ensure_worktree(plan.task_id)
 
-    async def _ensure_worktree(self, task_id: str, *, allow_blocked: bool = False) -> bool:
-        """task 自然键串行重查后 ensure；返回绝对 path 是否已持久。"""
+    async def _ensure_worktree(
+        self, task_id: str, *, allow_blocked: bool = False, revalidate: bool = False
+    ) -> bool:
+        """task 自然键串行重查后 ensure；返回绝对 path 是否已持久。
+
+        revalidate=True（仅 reconnect 握手）：对既有 active 行也重下发 ensure —— daemon 幂等，树在
+        则 noop 上报 active，树没了（重启/prune/丢失）则 prune 重建（#3）。仅 active，不含
+        conflicted：re-ensure 会让 daemon 报 active，apply_status 会把冲突态覆盖回 active。"""
         async with self._worktree_lock(task_id):
             with self._engine.connect() as c:
                 existing = c.execute(
@@ -1074,10 +1071,16 @@ class DaemonHub:
                     )
                 ).first()
                 if existing is not None:
-                    return bool(existing[0]) and existing[1] in {"active", "conflicted"}
-                plans = worktree_service.ensure_plans(
-                    c, task_id=task_id, allow_blocked=allow_blocked
-                )
+                    already = bool(existing[0]) and existing[1] in {"active", "conflicted"}
+                    if not revalidate or existing[1] != "active":
+                        return already
+                    # 复验：既有 active 行 → 用 revalidation_plans 重下发（ensure_plans 会因 task_id
+                    # 非空排除该行，故须专用 plan 构造器）。
+                    plans = worktree_service.revalidation_plans(c, task_id=task_id)
+                else:
+                    plans = worktree_service.ensure_plans(
+                        c, task_id=task_id, allow_blocked=allow_blocked
+                    )
             if not plans:
                 return False
             plan = plans[0]
@@ -1142,24 +1145,108 @@ class DaemonHub:
         instruction: InstrType,
         ack: AckFrame,
     ) -> None:
-        """instr failed 按契约 D §3 写既有 agent.command 诊断；不发明事件/错误码。"""
+        """instr failed 写既有 agent.command 诊断（#2：归属 owner/channel + DIAGNOSTIC_APPENDED 让
+        人类可见）；ensure 累计失败达阈值 → 升级喊人。不发明事件/错误码。"""
         error = ack.error.model_dump(mode="json") if ack.error is not None else None
+        ts = now_iso()
+        payload = {
+            "instruction": instruction.value,
+            "result": AckResult.FAILED.value,
+            "error": error,
+        }
         with gateway_tx(self._engine, self._bus) as tx:
-            tx.conn.execute(
-                insert(_DIAG).values(
-                    workspace_id=conn.workspace_id,
-                    agent_member_id=None,
+            task = tx.conn.execute(
+                select(
+                    _TASK.c.owner_member_id,
+                    _TASK.c.channel_id,
+                    _TASK.c.workspace_id,
+                    _TASK.c.title,
+                ).where(_TASK.c.id == task_id)
+            ).mappings().first()
+            workspace_id = task["workspace_id"] if task else conn.workspace_id
+            owner = task["owner_member_id"] if task else None
+            channel_id = task["channel_id"] if task else None
+            seq = tx.conn.execute(
+                insert(_DIAG)
+                .values(
+                    workspace_id=workspace_id,
+                    agent_member_id=owner,
                     type="agent.command",
-                    channel_id=None,
+                    channel_id=channel_id,
                     task_id=task_id,
                     batch_id=None,
-                    payload={
-                        "instruction": instruction.value,
-                        "result": AckResult.FAILED.value,
-                        "error": error,
-                    },
-                    created_at=now_iso(),
+                    payload=payload,
+                    created_at=ts,
                 )
+                .returning(_DIAG.c.seq)
+            ).scalar_one()
+            if owner is not None:
+                pub = diagnostic_public(
+                    {
+                        "seq": seq,
+                        "workspace_id": workspace_id,
+                        "agent_member_id": owner,
+                        "type": "agent.command",
+                        "channel_id": channel_id,
+                        "task_id": task_id,
+                        "batch_id": None,
+                        "payload": payload,
+                        "created_at": ts,
+                    }
+                )
+                tx.emit(
+                    EventType.DIAGNOSTIC_APPENDED,
+                    None,
+                    {"agent_member_id": owner, "events": [pub]},
+                )
+            # ensure 累计失败达阈值 → 一次性升级喊人（严格 ==，_worktree_lock 串行化计数逐一递增；
+            # 成功不清零：第 3 次失败即升级、之后不再重复）。
+            if instruction == InstrType.WORKTREE_ENSURE and owner is not None and task is not None:
+                fail_count = tx.conn.execute(
+                    select(func.count())
+                    .select_from(_DIAG)
+                    .where(
+                        _DIAG.c.task_id == task_id,
+                        _DIAG.c.type == "agent.command",
+                        func.json_extract(_DIAG.c.payload, "$.instruction")
+                        == InstrType.WORKTREE_ENSURE.value,
+                        func.json_extract(_DIAG.c.payload, "$.result")
+                        == AckResult.FAILED.value,
+                    )
+                ).scalar_one()
+                if fail_count == _WORKTREE_ENSURE_ESCALATE_AFTER:
+                    self._escalate_worktree_failure(tx, dict(task), task_id)
+
+    def _escalate_worktree_failure(self, tx: Any, task: dict[str, Any], task_id: str) -> None:
+        """worktree ensure 连续失败升级：频道主流系统消息 + activity(fail_closed) 给人类（#2）。
+
+        沿用沉默/held 升级"喊人"范式：主流系统消息不落 mention 行，信号靠 activity 置顶。"""
+        humans = self._channel_human_members(tx.conn, task["channel_id"])
+        human_txt = " ".join(f"@{h['name']}" for h in humans)
+        suffix = f"：{human_txt}" if human_txt else "。"
+        body = (
+            f"工作区创建失败：任务「{task['title']}」的 worktree 已累计 "
+            f"{_WORKTREE_ENSURE_ESCALATE_AFTER} 次创建失败，Agent 无法开工，需人类介入{suffix}"
+        )
+        ts = now_iso()
+        msg_id = self._post_system_message(
+            tx,
+            workspace_id=task["workspace_id"],
+            channel_id=task["channel_id"],
+            body=body,
+            thread_root_id=None,
+            created_at=ts,
+        )
+        for h in humans:
+            activity_service.emit_activity(
+                tx,
+                workspace_id=task["workspace_id"],
+                member_id=h["id"],
+                kind=ActivityKind.FAIL_CLOSED.value,
+                channel_id=task["channel_id"],
+                message_id=msg_id,
+                task_id=task_id,
+                created_at=ts,
             )
 
     def _converge_worktree_cleaned(self, task_id: str, computer_id: str) -> None:
@@ -1311,15 +1398,20 @@ class DaemonHub:
 
     # ---------------------------------------------------------------- 对账器（契约 D §4.4）
 
-    async def reconcile(self, conn: DaemonConnection) -> None:
+    async def reconcile(
+        self, conn: DaemonConnection, *, revalidate_worktrees: bool = False
+    ) -> None:
         """重连握手后 + 周期兜底扫描共用（契约 D §4.4）。
 
         M1 规则：#1 presence 纠偏、#2 自动 resume、#3 投递补投、#8 reminder 补触发（#3 特例）。
+        revalidate_worktrees=True 仅由 reconnect 握手传入：对既有 active worktree 行复验（#3 陈旧
+        行复验，避免每次周期扫描重下发噪声）。
         """
         present = dict(conn.present)
         resume_boots: list[AgentBoot] = []
         ensure_task_ids: list[str] = []
         cleanup_task_ids: list[str] = []
+        revalidate_task_ids: list[str] = []
         deliver_plans: list[
             tuple[str, str, list[dict[str, Any]], str | None, WakeReason | None]
         ] = []
@@ -1330,6 +1422,13 @@ class DaemonHub:
                     tx.conn, computer_id=conn.computer_id
                 )
             ]
+            if revalidate_worktrees:
+                revalidate_task_ids = [
+                    plan.task_id
+                    for plan in worktree_service.revalidation_plans(
+                        tx.conn, computer_id=conn.computer_id
+                    )
+                ]
             cleanup_task_ids = [
                 plan.task_id
                 for plan in worktree_service.cleanup_plans(
@@ -1386,6 +1485,9 @@ class DaemonHub:
         # #5 必须先于 wake/deliver：active status 持久绝对 path 后，投递副本才能注入目录。
         for task_id in ensure_task_ids:
             await self._ensure_worktree(task_id)
+        # #3 复验既有 active 行（仅 reconnect 握手）：daemon 幂等，树没了则 prune 重建，须在投递前。
+        for task_id in revalidate_task_ids:
+            await self._ensure_worktree(task_id, revalidate=True)
         for task_id in cleanup_task_ids:
             await self._cleanup_worktree(task_id, conn.computer_id)
         for aid, channel_id, deliver, watermark, reason in deliver_plans:
@@ -1789,7 +1891,8 @@ class DaemonHub:
         reply = self._run_sync(self.send_query(conn, QueryType.GIT_DIFF, query))
         error = reply.get("error")
         if isinstance(error, str):
-            raise DaemonOffline(f"git.diff 查询失败: {error}")
+            # daemon 回帧（在线）只是 git 查询失败（坏 base ref 等）→ 4xx，非 503（#5）。
+            raise GitQueryError(error)
         return reply
 
     def _require_conn_for_agent(self, agent_id: str) -> tuple[DaemonConnection, dict[str, Any]]:

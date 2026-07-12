@@ -379,3 +379,19 @@ class StubDaemon:
         """屏障：ping→pong 往返确保此前所有下行帧与 ack 副作用已被网关顺序处理。"""
         self.ping()
         self.recv_pong()
+
+
+def drain_revalidation(daemon: StubDaemon, *, count: int = 1) -> list[dict[str, Any]]:
+    """消费 reconnect 握手复验下发的 worktree.ensure 并 ack（#3）。
+
+    握手前已 seed 的 active worktree 行会在 reconcile(revalidate_worktrees=True) 里逐行重下发
+    ensure，且严格先于 cleanup/wake/deliver 等后续帧（同一 reconcile 协程顺序 await）；凡此类
+    测试须先消费并 ack 掉这批帧——不 ack 会让 hub 等 ack 直到超时，拖慢并打乱帧序。count=
+    握手时 active 且任务未终态的 worktree 行数。返回帧列表供进一步断言。"""
+    frames: list[dict[str, Any]] = []
+    for _ in range(count):
+        frame = daemon.recv_instr()
+        assert frame["type"] == "worktree.ensure", frame
+        daemon.ack(frame, "done")
+        frames.append(frame)
+    return frames

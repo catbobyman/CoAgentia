@@ -45,6 +45,7 @@ def post_system_message(
     body: str,
     thread_root_id: str | None,
     mention_member_ids: Iterable[str] = (),
+    card_kind: str | None = None,
     created_at: str | None = None,
 ) -> str:
     """写系统消息与 mention 派生行，并登记提交后的 message.created 广播。"""
@@ -58,7 +59,7 @@ def post_system_message(
             thread_root_id=thread_root_id,
             author_member_id=None,
             kind=MessageKind.SYSTEM,
-            card_kind=None,
+            card_kind=card_kind,
             card_ref=None,
             body=body,
             created_at=timestamp,

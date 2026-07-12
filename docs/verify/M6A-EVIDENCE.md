@@ -106,7 +106,14 @@ pnpm gen                         → diff 空
 pnpm -F @coagentia/web build     → 绿（dist 重建供同源截图）
 ```
 
-（`/code-review high` 已于本段前执行，10 findings 待「统一修全部」阶段处理——见 CURRENT-HANDOFF。）
+（`/code-review high` 已于本段前执行，10 findings 于收口提交统一修复——修复摘要见 CURRENT-HANDOFF §4a。）
+
+## 5a. 修复后复验（2026-07-12）
+
+10 findings 修复落地后重跑本探针：**20/20 ALL PASS**（4 轮 3 净 + 1 次环境性 REST 超时于 A4 claim，
+属 Windows SQLite/FS 抖动——probe 自带的「残留 DB 锁」500 重试脚手架即为此类现象而设，失败窗口内
+无本轮修复代码参与）。探针收尾 `suppress(Exception)` 接不住 CancelledError 的假 traceback 已修
+（改 `suppress(BaseException)`）。守门新基线：后端 827 passed / 4 skipped · vitest 195 · pyright 0。
 
 ## 6. 探针脚本（scratchpad，可复跑）
 
