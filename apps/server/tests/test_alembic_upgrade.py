@@ -7,7 +7,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from coagentia_server.db.engine import make_engine
-from coagentia_server.db.models import IMMUTABLE_TABLES, M6A_TABLES
+from coagentia_server.db.models import IMMUTABLE_TABLES, M6A_TABLES, M6B_TABLES
 from sqlalchemy import Column, MetaData, String, Table, inspect, select
 
 # 契约 A §5 M1 首行清单（17 张）。
@@ -27,6 +27,8 @@ M4_EXPECTED_TABLES = {"held_drafts"}
 M5_EXPECTED_TABLES = {"templates", "channel_notification_settings"}
 # 契约 A v1.0.8 §5 M6a 批次（0008；proposals 明确留给 0009）。
 M6A_EXPECTED_TABLES = {"projects", "channel_projects", "worktrees"}
+# 契约 A v1.0.10 §5 M6b 批次（0009：proposals + agent_role_templates 两张 + agents 加列）。
+M6B_EXPECTED_TABLES = {"proposals", "agent_role_templates"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -159,6 +161,8 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
     computers = Table("computers", metadata, Column("id", String(26), primary_key=True))
     channels = Table("channels", metadata, Column("id", String(26), primary_key=True))
     tasks = Table("tasks", metadata, Column("id", String(26), primary_key=True))
+    # agents 是 M1 表（真实 M5 库恒有）；0009 对其加 role_template_key，故此切片须含 agents 桩。
+    agents = Table("agents", metadata, Column("member_id", String(26), primary_key=True))
     alembic_version = Table(
         "alembic_version", metadata, Column("version_num", String(32), primary_key=True)
     )
@@ -170,6 +174,7 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
             conn.execute(computers.insert().values(id="computer"))
             conn.execute(channels.insert().values(id="channel"))
             conn.execute(tasks.insert().values(id="existing-task"))
+            conn.execute(agents.insert().values(member_id="existing-agent"))
             conn.execute(alembic_version.insert().values(version_num="0007_m5"))
     finally:
         engine.dispose()
@@ -178,6 +183,7 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
     engine = make_engine(url=db_url)
     try:
         columns = {c["name"] for c in inspect(engine).get_columns("tasks")}
+        agent_columns = {c["name"] for c in inspect(engine).get_columns("agents")}
         with engine.connect() as conn:
             row = conn.execute(
                 select(tasks.c.id).where(tasks.c.id == "existing-task")
@@ -185,11 +191,16 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
             values = conn.exec_driver_sql(
                 "SELECT project_id, writes_code FROM tasks WHERE id='existing-task'"
             ).one()
+            agent_role = conn.exec_driver_sql(
+                "SELECT role_template_key FROM agents WHERE member_id='existing-agent'"
+            ).one()
     finally:
         engine.dispose()
     assert {"project_id", "writes_code"} <= columns
+    assert "role_template_key" in agent_columns  # 0009 原位补列
     assert row.id == "existing-task"
     assert values == (None, 0)
+    assert agent_role == (None,)  # 既有 agent 行加列默认 NULL，零回归
     assert M6A_EXPECTED_TABLES <= _table_names(db_url)
 
 
@@ -337,6 +348,94 @@ def test_incremental_from_0006_to_head(db_url: str, alembic_cfg: Config) -> None
     assert M6A_EXPECTED_TABLES <= final         # 0008 增量建出 Project/Worktree 三表
 
 
+def test_upgrade_head_creates_m6b_tables_and_agent_column(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """0009 从零建 proposals + agent_role_templates 两张 + agents 加 role_template_key 列。"""
+    assert set(M6B_TABLES) == M6B_EXPECTED_TABLES
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        insp = inspect(engine)
+        proposal_cols = {c["name"] for c in insp.get_columns("proposals")}
+        role_cols = {c["name"] for c in insp.get_columns("agent_role_templates")}
+        agent_cols = {c["name"] for c in insp.get_columns("agents")}
+    finally:
+        engine.dispose()
+    assert M6B_EXPECTED_TABLES <= _table_names(db_url)
+    assert proposal_cols == {
+        "id", "workspace_id", "channel_id", "source_task_id", "kind", "revision",
+        "status", "body", "proposal_hash", "base_hash", "landed_hash", "adjustments",
+        "repair_count", "proposed_by_member_id", "created_at", "updated_at",
+    }
+    assert role_cols == {"id", "key", "name", "description_prefill", "prompt_sections", "builtin"}
+    assert "role_template_key" in agent_cols
+
+
+def test_proposals_active_source_partial_index_enforced(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """部分唯一索引「同 source 单一非终态提案」：第二个非终态提案被拒；终态可共存。"""
+    import pytest as _pytest
+    from sqlalchemy import text as _sql
+    from sqlalchemy.exc import IntegrityError
+
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    seed = (
+        "INSERT INTO workspaces (id, name, slug, created_at) VALUES ('ws','w','w-slug','t')",
+        "INSERT INTO members (id, workspace_id, kind, name, created_at) "
+        "VALUES ('orch','ws','agent','Orch','t')",
+        "INSERT INTO channels (id, workspace_id, kind, created_at) "
+        "VALUES ('ch','ws','channel','t')",
+        "INSERT INTO messages (id, workspace_id, channel_id, body, created_at) "
+        "VALUES ('m1','ws','ch','need','t')",
+        "INSERT INTO tasks (id, workspace_id, channel_id, number, root_message_id, title, "
+        " status, level, created_by_member_id, status_changed_at, created_at) "
+        "VALUES ('tk','ws','ch',1,'m1','T','todo','l1','orch','t','t')",
+    )
+    ins = _sql(
+        "INSERT INTO proposals "
+        "(id, workspace_id, channel_id, source_task_id, kind, revision, status, body, "
+        " proposal_hash, adjustments, repair_count, proposed_by_member_id, created_at, updated_at) "
+        "VALUES (:id, 'ws', 'ch', 'tk', 'full', 1, :status, '{}', '', '[]', 0, 'orch', 't', 't')"
+    )
+    try:
+        with engine.begin() as conn:
+            for stmt in seed:
+                conn.execute(_sql(stmt))
+            conn.execute(ins, {"id": "p1", "status": "drafting"})
+        with engine.begin() as conn:
+            with _pytest.raises(IntegrityError):
+                conn.execute(ins, {"id": "p2", "status": "awaiting_confirm"})
+        with engine.begin() as conn:
+            # 把 p1 置终态后可再建活动提案（终态落在 sqlite_where 外）。
+            conn.execute(_sql("UPDATE proposals SET status='superseded' WHERE id='p1'"))
+            conn.execute(ins, {"id": "p3", "status": "drafting"})
+    finally:
+        engine.dispose()
+
+
+def test_incremental_from_0008_to_head(db_url: str, alembic_cfg: Config) -> None:
+    # 增量路径：先到 0008（M1..M6a 库），再升 head——模拟线上 M6a 库升 M6b。
+    # 注：从零 create_all 读实时 Agent 模型故 agents 在 0001 即带 role_template_key 列；
+    # 「真实旧库无此列 → 加列」的路径由 M5 切片桩测覆盖，本测只守 M6b 表批次不泄漏 + 建齐。
+    command.upgrade(alembic_cfg, "0008_m6a")
+    mid = _table_names(db_url)
+    assert M6A_EXPECTED_TABLES <= mid
+    assert M6B_EXPECTED_TABLES.isdisjoint(mid)  # 0008 不得泄漏建出 M6b 表
+    command.upgrade(alembic_cfg, "head")
+    final = _table_names(db_url)
+    assert M6B_EXPECTED_TABLES <= final
+    engine = make_engine(url=db_url)
+    try:
+        assert "role_template_key" in {
+            c["name"] for c in inspect(engine).get_columns("agents")
+        }
+    finally:
+        engine.dispose()
+
+
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
     command.upgrade(alembic_cfg, "head")
     command.downgrade(alembic_cfg, "base")
@@ -347,4 +446,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     assert M4_EXPECTED_TABLES.isdisjoint(names)
     assert M5_EXPECTED_TABLES.isdisjoint(names)
     assert M6A_EXPECTED_TABLES.isdisjoint(names)
+    assert M6B_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

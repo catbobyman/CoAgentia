@@ -1161,6 +1161,8 @@ export interface components {
             member_id: string;
             /** Model */
             model: string;
+            /** Role Template Key */
+            role_template_key?: string | null;
             runtime: components["schemas"]["Runtime"];
             /** @default offline */
             status: components["schemas"]["AgentStatus"];

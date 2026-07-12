@@ -158,6 +158,21 @@ def create_agent(body: rest.AgentCreate, request: Request, tx: Tx = Depends(get_
     if computer is None:
         raise ApiError(404, rest.ErrorCode.NOT_FOUND, "机器不存在")
 
+    # role_template_key（M6b）：提供了则须为已登记的角色模板 key，否则 422（details 携 key）。
+    # 角色模板是全局字典表（A §4.1），无 workspace 维度；agents.role_template_key 无 FK（可增删）。
+    if body.role_template_key is not None:
+        _ROLE = models.tbl(models.AgentRoleTemplate)
+        known = tx.conn.execute(
+            select(_ROLE.c.key).where(_ROLE.c.key == body.role_template_key)
+        ).first()
+        if known is None:
+            raise ApiError(
+                422,
+                rest.ErrorCode.VALIDATION_FAILED,
+                f"未知的角色模板 key: {body.role_template_key}",
+                details={"role_template_key": body.role_template_key},
+            )
+
     ts = now_iso()
     member_id = new_ulid()
     creator = owner_member(tx.conn)
@@ -182,6 +197,7 @@ def create_agent(body: rest.AgentCreate, request: Request, tx: Tx = Depends(get_
             home_path=f"~/.coagentia/agents/{member_id}",
             status=AgentStatus.OFFLINE,
             created_by_member_id=creator["id"],
+            role_template_key=body.role_template_key,
         )
     )
     member_pub = member_public(_fetch_member(tx, member_id))

@@ -95,6 +95,9 @@ DIAGNOSTIC_TYPES: tuple[str, ...] = (
     "proposal.validation_failed",
     "proposal.repair_attempt",
     "proposal.failed_escalated",
+    # J8 新登记（M6b 波 2；拆解设计 §15 未穷举的两处留痕，命名守 proposal.* 命名空间）：
+    "proposal.duplicate_ignored",  # awaiting_confirm 期重提同指纹 → 忽略不动 revision（§8.2）
+    "proposal.awaiting_reminder_sent",  # awaiting_confirm 超 24h @请求者（F5；防重发推导依据）
     "draft.presented",
     "draft.adjusted",
     "draft.confirmed",

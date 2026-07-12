@@ -19,6 +19,7 @@ import hashlib
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from coagentia_contracts import entities
@@ -87,7 +88,8 @@ from coagentia_server.computers.gateway_tx import gateway_tx
 from coagentia_server.db import models
 from coagentia_server.events import EventBus
 from coagentia_server.guard import service as guard_service
-from coagentia_server.ledger.service import new_ulid, now_iso
+from coagentia_server.ledger.service import format_iso, new_ulid, now_iso
+from coagentia_server.orchestration import proposal as proposal_domain
 from coagentia_server.reminders import cadence as reminder_cadence
 from coagentia_server.routes.serialize import (
     computer_public,
@@ -1412,6 +1414,7 @@ class DaemonHub:
         ensure_task_ids: list[str] = []
         cleanup_task_ids: list[str] = []
         revalidate_task_ids: list[str] = []
+        repair_injects: list[proposal_domain.PendingInject] = []
         deliver_plans: list[
             tuple[str, str, list[dict[str, Any]], str | None, WakeReason | None]
         ] = []
@@ -1437,6 +1440,11 @@ class DaemonHub:
             ]
             agents = self._agents_on_computer(tx.conn, conn.computer_id)
             status_by_id = {a["member_id"]: a["status"] for a in agents}
+            # #6 修复循环续传（契约 D §4.4）：复用本 tx.conn 查本机 repairing 提案并从 body 重算错误
+            # 清单（不另开连接，避 loop 上 SQLite 锁竞争拖慢 ack 触发重发——冲突测教训）。
+            repair_injects = proposal_domain.repairing_reconcile_injects(
+                tx.conn, agent_member_ids={a["member_id"] for a in agents}
+            )
             # #1 presence 纠偏：以 daemon 进程表为准写 agents.status + 广播。
             for a in agents:
                 aid = a["member_id"]
@@ -1540,6 +1548,18 @@ class DaemonHub:
             )
         # 系统节点无独立 outbox：idle/running + agent.command 运行身份由同一对账恢复。
         await self._scan_workspace_system_nodes(conn.workspace_id)
+        # #6 修复循环续传（契约 D §4.4）：repairing 提案完整错误清单 S1 直投重发（全量非增量）。
+        for inj in repair_injects:
+            data = MessageInjectData(
+                agent_member_id=inj.agent_member_id,
+                body=inj.body,
+                source=InjectSource(kind=inj.kind, ref=inj.ref),
+                diagnostic_type="agent.tool_call",
+            )
+            with contextlib.suppress(DaemonOffline):
+                await self.send_instr(
+                    conn, inj.agent_member_id, InstrType.MESSAGE_INJECT, data
+                )
 
     def _backlog_trigger(
         self, c: Connection, backlog: list[dict[str, Any]], channel: dict[str, Any], agent_id: str
@@ -1629,6 +1649,25 @@ class DaemonHub:
             agent_member_id=agent_member_id,
             body=body,
             source=InjectSource(kind=InjectKind.CONTRACT_DRAFT_REQUEST, ref=task_id),
+            diagnostic_type="agent.tool_call",
+        )
+        ack = self._run_sync(
+            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
+        )
+        return ack.result.value
+
+    def inject_orchestrator(
+        self, agent_member_id: str, body: str, *, kind: InjectKind, ref: str | None = None
+    ) -> str:
+        """Orchestrator 定向直投（J8；契约 D §5.2）：上下文注入（kind=SYSTEM）与修复循环错误清单
+        （kind=REPAIR）共用。离线（无活跃 daemon 连接）→ DaemonOffline（decompose 端点收敛 503；
+        修复循环 best-effort 吞，靠对账 #6 续传）。inject 不动 read_positions（S1），与未提交 REST
+        写事务无写锁死锁（同 inject_guard_feedback 裁决 9）。"""
+        conn, _agent = self._require_conn_for_agent(agent_member_id)
+        data = MessageInjectData(
+            agent_member_id=agent_member_id,
+            body=body,
+            source=InjectSource(kind=kind, ref=ref),
             diagnostic_type="agent.tool_call",
         )
         ack = self._run_sync(
@@ -2318,6 +2357,22 @@ class DaemonHub:
                 created_at=ts,
             )
 
+    # ---------------------------------------------------------------- F5 AwaitingConfirm 24h 提醒
+
+    async def run_awaiting_confirm_scan(self) -> int:
+        """F5：awaiting_confirm 超 24h 无人确认 → source 线程系统消息 @提案请求者（拆解设计 §8.1）。
+
+        与 D5 沉默提醒同一后台节奏（silence loop）。防重发纯推导（proposal.awaiting_reminder_sent
+        诊断行，不给 proposals 加列）；判定/副作用在 proposal.awaiting_confirm_reminder_scan。提醒
+        锚点系统消息经 bus MESSAGE_CREATED 驱动投递（@Agent 请求者视同 mention 唤醒），同 D5 同构。
+        """
+        cutoff = format_iso(
+            datetime.now(UTC)
+            - timedelta(hours=proposal_domain.AWAITING_CONFIRM_REMIND_HOURS)
+        )
+        with gateway_tx(self._engine, self._bus) as tx:
+            return proposal_domain.awaiting_confirm_reminder_scan(tx, cutoff_iso=cutoff)
+
     # ---------------------------------------------------------------- 周期后台 loop
 
     async def _reconcile_loop(self) -> None:
@@ -2337,6 +2392,8 @@ class DaemonHub:
             await asyncio.sleep(self.silence_interval)
             with contextlib.suppress(Exception):
                 await self.run_silence_scan()
+            with contextlib.suppress(Exception):
+                await self.run_awaiting_confirm_scan()  # F5：与 D5 沉默提醒同节奏
 
     async def _held_loop(self) -> None:
         while True:

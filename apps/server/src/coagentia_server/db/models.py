@@ -31,6 +31,8 @@ from coagentia_contracts.enums import (
     MemberRole,
     MessageKind,
     NotificationMode,
+    ProposalKind,
+    ProposalStatus,
     ReminderKind,
     ReminderStatus,
     Runtime,
@@ -88,6 +90,9 @@ M4_TABLES: tuple[str, ...] = ("held_drafts",)
 M5_TABLES: tuple[str, ...] = ("templates", "channel_notification_settings")
 # M6a（契约 A v1.0.8 §4.9）：三张交付表一次建齐；tasks 两列由 0008 增量补齐。
 M6A_TABLES: tuple[str, ...] = ("projects", "channel_projects", "worktrees")
+# M6b（契约 A v1.0.10 §4.8/§4.1）：proposals + agent_role_templates 两张新表一次建齐；
+# agents.role_template_key 由 0009 增量补齐（第二例既有表加列，沿 0008 tasks 加列先例）。
+M6B_TABLES: tuple[str, ...] = ("proposals", "agent_role_templates")
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -201,6 +206,8 @@ class Agent(Base):
     home_path: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(_enum(AgentStatus), server_default=text("'offline'"))
     created_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    # v1.0.10（0009 加列）：引用 agent_role_templates.key（无 FK——模板可增删，身份标记不失效）。
+    role_template_key: Mapped[str | None] = mapped_column(Text)
 
 
 class AgentSkill(Base):
@@ -211,6 +218,19 @@ class AgentSkill(Base):
     skill: Mapped[str] = mapped_column(Text)
     granted_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
     granted_at: Mapped[str] = mapped_column(Text)
+
+
+class AgentRoleTemplate(Base):
+    """M6b 内置角色模板（03 §3.1「Orchestrator = 数据不是代码」）——全局字典表，无 workspace_id。"""
+
+    __tablename__ = "agent_role_templates"
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    key: Mapped[str] = mapped_column(Text, unique=True)
+    name: Mapped[str] = mapped_column(Text)
+    description_prefill: Mapped[str] = mapped_column(Text)
+    prompt_sections: Mapped[Any] = mapped_column(JSON)
+    builtin: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
 
 
 # ---------------------------------------------------------------- 4.2 会话面
@@ -685,6 +705,48 @@ class ChannelNotificationSetting(Base):
     mode: Mapped[str] = mapped_column(
         _enum(NotificationMode), server_default=text("'all'")
     )
+
+
+# ---------------------------------------------------------------- 4.8 编排（M6b）
+
+
+class Proposal(Base):
+    """DecompositionProposal 与 delta 的生命周期实体（拆解设计 §3/§5/§11）。
+
+    部分唯一索引「同 source 单一非终态提案」= UNIQUE(source_task_id) WHERE
+    status NOT IN ('landed','superseded','rejected','failed')——SQLite 支持 partial index。
+    """
+
+    __tablename__ = "proposals"
+    __table_args__ = (
+        Index(
+            "uq_proposals_active_source",
+            "source_task_id",
+            unique=True,
+            sqlite_where=text(
+                "status NOT IN ('landed','superseded','rejected','failed')"
+            ),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    channel_id: Mapped[str] = mapped_column(_ULID, ForeignKey("channels.id"))
+    source_task_id: Mapped[str] = mapped_column(_ULID, ForeignKey("tasks.id"))
+    kind: Mapped[str] = mapped_column(_enum(ProposalKind), server_default=text("'full'"))
+    revision: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    status: Mapped[str] = mapped_column(
+        _enum(ProposalStatus), server_default=text("'drafting'")
+    )
+    body: Mapped[Any] = mapped_column(JSON)
+    proposal_hash: Mapped[str] = mapped_column(Text)
+    base_hash: Mapped[str | None] = mapped_column(Text)  # delta 的基线指纹（F9）
+    landed_hash: Mapped[str | None] = mapped_column(Text)
+    adjustments: Mapped[Any] = mapped_column(JSON, server_default=text("'[]'"))
+    repair_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    proposed_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    created_at: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(Text)
 
 
 # ---------------------------------------------------------------- 4.9 Project 与交付链（M6a）

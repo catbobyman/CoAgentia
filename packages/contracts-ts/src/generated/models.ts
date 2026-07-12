@@ -59,6 +59,7 @@ export type Description2 = string;
 export type HomePath1 = string;
 export type MemberId3 = string;
 export type Model3 = string;
+export type RoleTemplateKey1 = string | null;
 /**
  * PRD §4.4 五态；持久化"最后已知态"（契约 A agents 表 / 契约 D §2 级联裁决）。
  */
@@ -81,6 +82,7 @@ export type Description3 = string;
 export type HomePath2 = string;
 export type MemberId4 = string;
 export type Model4 = string;
+export type RoleTemplateKey2 = string | null;
 /**
  * PRD §4.4 五态；持久化"最后已知态"（契约 A agents 表 / 契约 D §2 级联裁决）。
  */
@@ -1485,6 +1487,7 @@ export interface AgentPublic {
   home_path: HomePath1;
   member_id: MemberId3;
   model: Model3;
+  role_template_key?: RoleTemplateKey1;
   runtime: Runtime;
   status?: AgentStatus;
 }
@@ -1517,6 +1520,7 @@ export interface AgentRow {
   home_path: HomePath2;
   member_id: MemberId4;
   model: Model4;
+  role_template_key?: RoleTemplateKey2;
   runtime: Runtime;
   status?: AgentStatus1;
 }

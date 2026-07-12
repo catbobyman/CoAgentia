@@ -424,6 +424,14 @@ def test_mock_covers_m6_endpoints() -> None:
     assert not missing, f"mock 未 serve M6 端点: {missing}"
 
 
+def test_proposal_j8_endpoints_served(server_client: TestClient) -> None:
+    """J8 编排端点（POST /channels/{id}/decompose + GET /proposals/{id}）被真 server serve；
+    confirm/reject 归 J9，本波不实 serve（mock 仍全量覆盖 ENDPOINTS_M6）。"""
+    served = _served(server_client)
+    assert ("POST", _norm("/channels/{channel_id}/decompose")) in served
+    assert ("GET", _norm("/proposals/{proposal_id}")) in served
+
+
 def test_mock_project_diff_proposal_shapes() -> None:
     """J0 只验 OpenAPI 形状；Project 校验、git diff 与提案状态机均不在 mock 实现。"""
     from coagentia_mock.app import app as mock_app

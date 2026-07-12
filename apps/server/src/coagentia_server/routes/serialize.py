@@ -121,3 +121,8 @@ def channel_project_public(row: dict[str, Any]) -> dict[str, Any]:
 
 def worktree_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.WorktreePublic, row)
+
+
+def proposal_public(row: dict[str, Any]) -> dict[str, Any]:
+    """M6b 提案（拆解生命周期）。body/adjustments JSON 列直接透传，即 ProposalPublic。"""
+    return _dump(entities.ProposalPublic, row)

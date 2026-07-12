@@ -22,7 +22,7 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
     }),
     "agents": (entities.AgentRow, {
         "member_id", "computer_id", "runtime", "model", "description", "home_path",
-        "status", "created_by_member_id",
+        "status", "created_by_member_id", "role_template_key",
     }),
     "agent_skills": (entities.AgentSkillRow, {
         "agent_member_id", "skill", "granted_by_member_id", "granted_at",

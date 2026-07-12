@@ -21,6 +21,7 @@ from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, requi
 from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger import service
+from coagentia_server.orchestration import proposal as proposal_domain
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
     file_public,
@@ -261,6 +262,18 @@ def persist_message(
     TaskPublic|None)。post_message 常规发送与 held release「原样发送」（G3）共用同一核心——保「放行
     消息与直接发送零行为差」不变量（附件绑定/建任务/@解析/activity 一致）。"""
     ts = service.now_iso()
+    # 提案消息解析挂接（J8 phase1，裁决 #12）：作者是本频道某非终态提案 proposed_by 且消息在其
+    # source 线程内且正文含 <control> → 校验通过时消息即提案卡（card_kind=PROPOSAL/card_ref=pid
+    # **插入时落列**，消息不可变原则不违背）。freshness 门在前天然生效——held 草稿不落库不到此。
+    submission = proposal_domain.classify_submission(
+        tx,
+        channel=channel,
+        author_member_id=author_member_id,
+        body=body_text,
+        thread_root_id=thread_root_id,
+    )
+    card_kind = submission.card_kind if submission is not None else None
+    card_ref = submission.card_ref if submission is not None else None
     tx.conn.execute(
         insert(_MSG).values(
             id=msg_id,
@@ -269,8 +282,8 @@ def persist_message(
             thread_root_id=thread_root_id,
             author_member_id=author_member_id,
             kind=MessageKind.USER,
-            card_kind=None,
-            card_ref=None,
+            card_kind=card_kind,
+            card_ref=card_ref,
             body=body_text,
             created_at=ts,
         )
@@ -327,6 +340,25 @@ def persist_message(
     tx.emit(EventType.MESSAGE_CREATED, channel["id"], {"message": pub})
     if task_pub is not None:
         tx.emit(EventType.TASK_CREATED, channel["id"], {"task": task_pub})
+
+    # 提案域 phase2（J8）：命中提案提交 → apply（状态机/修复循环/rev+1/直落）；否则顶级 @Orch
+    # → T1 归一 decompose（转任务 + 建提案 + 注入）。inject 经 daemon_hub best-effort 投递（S1 不动
+    # 游标、无写锁死锁；修复循环离线靠对账 #6 续传）。
+    injects: list[proposal_domain.PendingInject] = []
+    if submission is not None:
+        injects += submission.apply(tx)
+    else:
+        injects += proposal_domain.maybe_trigger_t1(
+            tx,
+            channel=channel,
+            author_member_id=author_member_id,
+            message_id=msg_id,
+            body=body_text,
+            thread_root_id=thread_root_id,
+            mentioned=mentioned,
+        )
+    if injects:
+        proposal_domain.flush_injects(tx.request.app.state.daemon_hub, injects)
     return pub, task_pub
 
 

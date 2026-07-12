@@ -138,6 +138,10 @@ class AgentRow(ContractModel):
     home_path: str  # 文件树由 daemon 按需提供，不入库（FR-3.3）
     status: AgentStatus = AgentStatus.OFFLINE  # 最后已知态；Busy 细分只走 WS 不入库
     created_by_member_id: Ulid
+    # v1.0.10（M6b）：创建时随 AgentCreate.role_template_key 持久化（引用 agent_role_templates.key，
+    # 无 FK——模板记录可增删，身份标记不随删失效）。「频道有无 Orchestrator」判定依据（B §4.10
+    # NO_ORCHESTRATOR / 交互 §6.8）= 频道成员中存在 role_template_key='orchestrator' 的 Agent。
+    role_template_key: str | None = None
 
 
 class AgentPublic(AgentRow):

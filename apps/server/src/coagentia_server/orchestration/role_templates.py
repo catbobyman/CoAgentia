@@ -16,6 +16,8 @@ from typing import cast
 
 from coagentia_contracts.entities import AgentRoleTemplateRow
 from pydantic import JsonValue
+from sqlalchemy import insert, select, update
+from sqlalchemy.engine import Engine
 
 # 幂等键与展示字段（波 2 upsert 以 key 为幂等键——key UNIQUE，A/03 §3.1）。
 ORCHESTRATOR_ROLE_KEY = "orchestrator"
@@ -130,6 +132,40 @@ def build_orchestrator_role_template(*, role_template_id: str) -> AgentRoleTempl
     )
 
 
+def upsert_builtin_role_templates(engine: Engine) -> None:
+    """server 启动 upsert 内置 Orchestrator 角色（A §4.1；重启幂等、随版迭代）。
+
+    幂等键 = key='orchestrator'（UNIQUE）：存在则更新 name/description_prefill/prompt_sections
+    （随版本迭代改内容，不走迁移数据行——同 templates.upsert_builtin_templates 体例）；不存在则
+    插入并赋 id。**全局字典表无 workspace_id**，故与 workspace 数无关（空库亦正常执行一次）。
+    权威内容单源 = build_orchestrator_role_template（同一函数供 upsert 落库与内容不变量单测复用）。
+    """
+    # 延迟 import 避免 orchestration 包在 db 层未装配时的环依赖（同 templates.service 体例）。
+    from coagentia_server.db import models
+    from coagentia_server.ledger.service import new_ulid
+
+    role_table = models.tbl(models.AgentRoleTemplate)
+    template = build_orchestrator_role_template(role_template_id=new_ulid())
+    payload = template.model_dump(mode="json")
+    with engine.begin() as conn:
+        existing = conn.execute(
+            select(role_table.c.id).where(role_table.c.key == ORCHESTRATOR_ROLE_KEY)
+        ).scalar()
+        if existing is None:
+            conn.execute(insert(role_table).values(payload))
+        else:
+            conn.execute(
+                update(role_table)
+                .where(role_table.c.id == existing)
+                .values(
+                    name=payload["name"],
+                    description_prefill=payload["description_prefill"],
+                    prompt_sections=payload["prompt_sections"],
+                    builtin=payload["builtin"],
+                )
+            )
+
+
 __all__ = [
     "DECOMPOSITION_SCHEMA_VERSION",
     "ORCHESTRATOR_DESCRIPTION_PREFILL",
@@ -137,4 +173,5 @@ __all__ = [
     "ORCHESTRATOR_ROLE_NAME",
     "build_orchestrator_prompt_sections",
     "build_orchestrator_role_template",
+    "upsert_builtin_role_templates",
 ]
