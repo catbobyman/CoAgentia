@@ -1,22 +1,24 @@
-# CoAgentia 当前交接（**M1–M6 全里程碑完成；M7 已立项待开工**）
+# CoAgentia 当前交接（**M1–M6 全完成；M7a 预览链收口；M7b 部署链待开工**）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-13，**M7 立项完成**：owner 六拍板（PRD M7 原样 = FR-11 预览+FR-12 部署成本+性能小批+预留位审查 / 预览先行两块竖切 / COLLAB-MODEL v2 续用 / **Agent 部署 = trigger_deploy MCP 工具**[零工具连胜止于 M6] / **token 口径 = 新账**）→ 纪律 1 契约先行落笔（**A v1.0.11 / B v1.5[§13 预览与部署规范条文] / D v1.0.4 / E v1.5；C·E2 零修订核对**；含立项核对纠偏：A「部署串行排队」与 B/D「409 不排队」矛盾以 B/D 为准修 A）→ **[M7-HANDOFF.md](M7-HANDOFF.md)**（K 系列任务书：§7 十五裁决/§9 出口清单）+ **[M7-DEV-PLAN.md](M7-DEV-PLAN.md)**（波次表；**K2-cal 长驻 dev server win32 校准先行** = 最大不确定性）。上一轮：M6 复审修复批收口（`d517624`）：/code-review high 二轮（8 维 finder→按域对抗核实→10 findings 全 CONFIRMED 全修 +8 回归；含 3 项不可恢复 wedge[fail_closed 空成功旁路/merged 上报丢弃/reopen-cleaned 投递死锁]、指纹崩溃族、投递前缀门收窄、raw control 泄漏[Playwright 实测发现]）+ 实机 verify 48/48 修后复跑通过 + 浏览器/Playwright E2E（chat/canvas/kanban/conflict/repair/direct 六面、console 零错误）。上一轮：2026-07-12，M6 里程碑整体收口（`c37a91f`）。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘）完成：M6b 波 4（J10 delta+O9 ∥ B-M6-2 后半，双 Opus 子代理并行）→ 阶段 4 并行审计（5 维 finder→Fable 终裁修 7 含 1 blocking）+ J11 话术定稿 → **J12 实机 verify 48/48 ALL PASS**（=PRD M6 出口，A1–A8 逐条勾销）→ **/code-review high**（8 维 finder→对抗核实→Fable 终裁 13 findings 修 8[3 major]）→ 文档终态同步+任务书归档。 |
-| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 [PROJECT-RECORD.md](PROJECT-RECORD.md)（§13=M6a、§14=M6b）；M1–M6 任务书均已移 archive/ |
-| 一句话状态 | **M1–M6 全里程碑收口 = PRD M6 出口达成**。IM 基座→任务域→L2 契约→编排画布+gating→护栏（沉默/freshness/HeldDraft）→双 runtime+配置面→模板向导→Project 交付链（worktree/Diff/merge/check/冲突派回）→**Orchestrator 拆解链**（提案/校验/修复循环/草稿确认/落地/delta/O9）全部落地并经实机 verify。**接续 = M7 已立项（2026-07-13），开工入口 = [M7-HANDOFF.md](M7-HANDOFF.md)**：块 M7a 预览链从 K0 ∥ K1 + **K2-cal 校准**起步（DEV-PLAN §0）；M7 收口 = **MVP 全部规划里程碑（M1–M7）完成**。 |
-| 守门终态 | 后端 **955 passed / 4 skipped** · web vitest **359** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（golden **58** 判例双跑逐字节）· web build 绿 · m6_verify 48/48 修后复跑 · **工作树干净** |
+| 更新 | 2026-07-13，**块 M7a「预览链」全收口**（软断点停船同步）。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘）完成 M7a 全链：**K2-cal win32 长驻子进程校准**（Fable 亲跑 5/5，`scratchpad/PREVIEW-CALIBRATION.md` + DEV-PLAN §3；最关键坑 = **win32 SO_REUSEADDR 同端口双绑不被 OS 拒绝 → daemon 进程内注册表自持端口唯一性**）→ 波1 **K0 契约登记**（ENDPOINTS_M7 7 端点/四模型/trigger_deploy 16/preview.failed 诊断）∥ **K1 0010 迁移**（preview_sessions + 单活跃部分唯一索引，谓词单源）→ 波2 **K2 daemon 预览进程域**（PreviewRunner 长驻/端口注册表/健康-存活并行竞速/杀树无孤儿，Fable 亲审端口释放恰一次逐交错核对）∥ **B-M7-1 前端预览面板**（三态顶条/心跳/并排/wsBridge）→ 波3 **K3 server 预览域**（ensure+touch/CAS 条件 UPDATE/回收三触发/对账 #9，**Fable 亲修 3**：pre-commit 下发竞态→Tx.after_commit 硬保证 / preview.failed 诊断补齐 / test_preview 跨 app 同名冲突）→ **实机 verify 14/14 ALL PASS**（真起 dev server + iframe 真实 HTTP 200 + 端口互异 + idle 回收杀进程 + 坏命令 failed；孤儿 0；`docs/verify/M7-EVIDENCE.md`）→ **/code-review high**（8 维 Opus finder→对抗核实→Fable 终裁，15 findings/7 CONFIRMED 全修：**reconnect fail-close 误杀存活预览+泄漏**→daemon 断连对称杀预览、心跳复活 failed→isActive 守护、idle_min=0 当 30→is not None；Opus 补 5 回归/覆盖测试）。上一轮：M6 复审修复批（`d517624`）、M6 里程碑收口（`c37a91f`）。 |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 [PROJECT-RECORD.md](PROJECT-RECORD.md)（§13=M6a、§14=M6b）；接续入口 = [M7-HANDOFF.md](M7-HANDOFF.md) 块 M7b（K4–K9）+ [M7-DEV-PLAN.md](M7-DEV-PLAN.md) 块 b 波次表 |
+| 一句话状态 | **M1–M6 全 + M7a 预览链收口**。系统现能：任务交付 → **每任务独立预览**（daemon 长驻 dev server / 健康检查 / iframe 真机可达 / 并排多任务 / idle 回收 / 失败日志尾）。**接续 = 块 M7b「部署、成本与收尾」**（K4 部署域+0011 / K5 trigger_deploy 工具 / K6 GET /usage 三层+token_summary 新账 / K7 性能小批四件 / K8 预留位审查文档 / B-M7-2 部署卡+成本面 / **K9 = PRD M7 出口实机 verify = MVP 全里程碑完成**）；波次表 = DEV-PLAN 块 b。 |
+| 守门终态 | 后端 **1006 passed / 4 skipped**（M7a 起点 955，+51）· web vitest **375**（+16）· pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（golden **58** 双跑逐字节）· web build 绿 · **m7a_verify 14/14** · **工作树干净** |
+| ⚠ 待 owner 决（契约级） | code-review 发现 reconnect fail-close 对 running 预览的处置：现修法（daemon 断连即杀预览）契约忠实裁决 #11「fail-close 不自动重拉」、零契约变更、消除泄漏，但**预览不 survive 瞬时 WS jitter**（jitter 即杀，人再点）。若要预览 survive jitter（仅真 daemon 重启才 fail-close），需 **D hello 帧加 per-process boot nonce**（契约级 UX 增强）——本次未做，登记 owner 拍板是否 M7b/M8 收。 |
 
 ## 1. 当前状态
 
 | 项 | 状态 |
 | --- | --- |
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
-| 分支 / HEAD | `main`，HEAD = `c37a91f`（M6 收口文档提交），工作树干净 |
+| 分支 / HEAD | `main`，HEAD = `82ebd1b`（M7a code-review 收口），工作树干净 |
+| M7a 提交链 | `6eb78ff`(波1 K0 契约+K1 迁移+K2-cal)→`9cf4318`(波2 K2 daemon+B-M7-1 前端)→`3812f06`(波3 K3 server+Fable 3 修)→`9a2b17c`(实机 verify 14/14)→**`82ebd1b`(code-review 7 CONFIRMED 全修+5 测试)** |
 | M6 提交链 | M6a：`d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`(verify 20/20)→`404aaa8`(review 修复)；M6b：`95d190c`(波1 J7+J11 骨架)→`3a78799`(波2 J8)→`832f2dc`(波3 J9 硬关口)→`3d3e12f`(波4 J10∥B-M6-2 后半)→`19fcfb5`(阶段4 审计+J11 定稿)→`818a483`(J12 verify)→`d303475`(code-review 收口)→`c37a91f`+`5165808`(文档)→**`d517624`(复审二轮 10 findings 全修)** |
 | 契约版本 | A **v1.0.11** · B **v1.5** · C **v1.0**（连续零修订至 M7 立项，五届核对）· D **v1.0.4** · E **v1.5** · E2 **v1.0.1**（M6/M7 连续零修订核对）。**M7 新增 1 个 Agent 工具 `trigger_deploy`**（R8 通道兑现，owner 拍板——零工具连胜止于 M6 四届）；错误码零新增（仍 29）。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md`（FR-11/FR-12/W4/W7/R8）+ 交互说明 §12 + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
-| 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → 0007 M5 → 0008 M6a（projects+channel_projects+worktrees+tasks 两列）→ **0009 M6b（proposals[同 source 单一非终态部分唯一索引]+agent_role_templates+agents.role_template_key）** |
-| 实机证据 | **M6 = [M6-EVIDENCE.md](../verify/M6-EVIDENCE.md)**：真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库 **48/48 ALL PASS**（S1 拆解全链/S2 冲突派回/S3 修复循环/S4 A5 崩溃重放/S5 delta+O9/S6 single_task/S7 直落；A1–A8 逐条勾销）+ [results.json](../verify/M6-VERIFY-results.json) + 2 截图（chat 全流程叙事/canvas 落地 DAG）；脚本 = `scratchpad/m6_verify.py`（可重跑）。历史：[M6A-EVIDENCE.md](../verify/M6A-EVIDENCE.md)（20/20）、M5/M5A/M4B/M4A/M3B/M3A/M2 系列。 |
+| 建表批次 | …→ 0008 M6a → 0009 M6b → **0010 M7a（preview_sessions[同 task_id 单活跃部分唯一索引，谓词单源 `_PREVIEW_ACTIVE_WHERE`]）**；**待建 0011 M7b（deployments[同 project_id 单一非终态部分唯一索引]，随 K4）** |
+| 实机证据 | **M7a = [M7-EVIDENCE.md](../verify/M7-EVIDENCE.md)**：真 uvicorn+真 daemon-sim（**真 PreviewRunner 起真 dev server 子进程**）+真 scratch 仓库 **14/14 ALL PASS**（交付→预览面板→健康检查→**iframe HTTP 200**→并排端口互异→ensure+touch→idle 回收杀进程→坏命令 failed；孤儿 0）+ [M7A-VERIFY-results.json](../verify/M7A-VERIFY-results.json)；脚本 = `scratchpad/m7a_verify.py`+`m7a_appfactory.py`（可重跑）；浏览器可视 E2E 落 K9。历史：**M6 = [M6-EVIDENCE.md](../verify/M6-EVIDENCE.md)**（48/48）、M6A（20/20）、M5/M4/M3/M2 系列。 |
 
 ## 2. 里程碑总览（详情 = PROJECT-RECORD 对应节）
 
@@ -53,14 +55,17 @@
   - **Orchestrator 角色模板**（J11）：builtin 数据（§13.1 七条+§12 规模表原文+**第 8 条 delta 通道指引**）、启动 upsert、创建预选、NO_ORCHESTRATOR 引导；模板 PATCH/DELETE（builtin 409）。
   - **前端 B-M6-2**：拆解入口+创建引导链/提案卡（delta 卡读 operations 统计）/草稿层 overlay+确认条防呆（TS 镜像实时校验/CAS/409 latest 刷新/拒绝弹窗）/delta 面板（绿红高亮/逐 op 剔除实时重验[含 running 系统节点 NODE_ACTIVE]/base 横幅）/rev 替换/P12 编排组/wsBridge draft.*·delta.*·landing.* + LandingToaster。
 
-## 4. 接续 = M7 已立项（2026-07-13；开工入口 [M7-HANDOFF.md](M7-HANDOFF.md)）
+## 4. 接续 = 块 M7b「部署、成本与收尾」（开工入口 [M7-HANDOFF.md](M7-HANDOFF.md) §4 K4–K9 + [M7-DEV-PLAN.md](M7-DEV-PLAN.md) 块 b 波次表）
 
-**立项三件套已交付**（照 M5/M6 先例：契约先行 → 任务书两块竖切 → DEV-PLAN 波次表）：
+**块 M7a 已收口**（见上表更新行 / M7-EVIDENCE.md）。**块 M7b 未开工**，波次表（DEV-PLAN 块 b）：
 
-- **范围**（owner 拍板 #1/#3）= PRD M7 原样：FR-11 每任务预览 + FR-12 一键部署与成本核算（**新账**口径）+ 性能小批四件（CR-9/usage.batch/serialize/search 双扫收编 K7）+ 多租户/Joint Channel 预留位审查（K8 文档件）。O8/递归拆解/质量回路 = 汇总设计另文，M8 立项动作。
-- **竖切**（拍板 #2）= M7a 预览链先收（K0–K3+B-M7-1；daemon 长驻 dev server = 最大风险面早暴露）→ M7b 部署成本与收尾（K4–K9+B-M7-2；**收口 = PRD M7 出口 = MVP 全里程碑完成**）。
-- **关键裁决**：Agent 部署 = `trigger_deploy` MCP 工具（拍板 #5，E v1.5）；部署 409 不排队 + 两处部分唯一索引兜底（A/B/D 矛盾纠偏，任务书 §7 #7）；预览 POST=ensure+touch+前端心跳（#8）；PORT 环境变量注入（#9）；**部署纠偏 fail-closed 不重跑**（副作用不可重放，#10）。全表 = 任务书 §7 十五裁决。
-- **第一步** = K0 ∥ K1 并行 + **K2-cal 校准最优先**（win32 长驻子进程五组探针 → `scratchpad/PREVIEW-CALIBRATION.md`，未填 K2 不开工——DEV-PLAN §0/§3）。协作模式 = [COLLAB-MODEL.md](COLLAB-MODEL.md) v2 续用（拍板 #4）。
+- **波 1**：K4 = 0011 迁移 + 部署域全链（`POST /projects/{id}/deployments` R8 无角色校验/**409 DEPLOY_IN_PROGRESS 不排队+部分唯一索引兜底**/Idempotency-Key/branch·commit=触发时主干 HEAD/command 快照 → 下发 deploy.run；deploy.log 落盘 `deploy-logs/<id>.log`+chunk_seq 去重+`GET .../log?after=` 翻页；deploy.finished 结果卡 `card_kind=deployment` 发绑定频道；**对账 #10** = queued 安全重发/**running 失进程不重跑 fail-closed @触发者**[副作用不可重放]；ws deploy_log 订阅流照 diagnostic 体例）。
+- **波 2**：K5 `trigger_deploy` 工具（daemon mcp.py +1，照 claim_task 透传体例；E2 零改动核对）∥ K6 成本核算（`GET /usage?level=task|agent|canvas&rollup=` 三层 GROUP BY + tasks_reporting 覆盖率永不折算货币；**token_summary 新账**=上次 success 部署以来 `worktrees.merged_at` 区间任务集纯 SQL 推导快照，task_ids≤50）∥ B-M7-2 前端（部署确认弹窗/409 toast/日志跟随+胶囊/token 小结/画布 usage 汇总条/wsBridge deployment.*）。
+- **波 3**：K7 性能小批四件（CR-9 `_post_landed_message` N+1 / hub usage.batch N+1 / serialize `_plan_skeleton` N+1 / search 双扫——**语义零变更**，行为等价+查询次数断言）∥ K8 预留位审查文档 `docs/M7-RESERVATION-AUDIT.md`（workspace_id 全实体/多机预留/单进程假设盘点，**审查不实施**；把本表「⚠ 待 owner 决」的 reconnect/boot-nonce 与硬崩溃孤儿一并登记）。
+- **K9 = PRD M7 出口实机 verify**（Fable 亲跑）：需求消息 → 拆解 → 执行 → Diff/**预览验收**（含浏览器可视 E2E 截图）→ 合并 → **一键部署（人类点击 + Agent trigger_deploy 双通道，二次触发 409）→ 日志实时滚动 → 结果卡 URL + 新账 token 小结** → 对账 #9/#10 崩溃探针 → `docs/verify/M7-EVIDENCE.md` 块 M7b 填充。**收口 = MVP 全里程碑（M1–M7）完成**。
+- **关键裁决**（任务书 §7 十五裁决权威）：部署 409 不排队（#7）；PORT 注入（#9，M7a 已兑现）；部署 fail-closed 不重跑（#10）；结果卡发全部绑定频道（#13）；verify=scratch 仓库零依赖命令、不真部署外网（#14）；usage 三层读面=端点+部署卡+画布汇总条不做独立页（#15）。
+- **协作**：COLLAB-MODEL v2 续用（K9 verify + 幂等/对账正确性修复 Fable 亲做；K4–K7/B-M7-2/评审 Opus 子代理）。**现有资产盘点见任务书 §3**（deploy-log 缓冲位 D §9.1 已预留/card_kind=deployment 已登记/usage 聚合 SQL 先例 tasks.py:414/mcp claim_task 体例/Idempotency 账本/ws 订阅流骨架——拿来即用勿重复建设）。
+- **M7a 复用锚点给 M7b**：`Tx.after_commit`（deps.py，K4 部署下发同用「提交后下发」硬保证）/ CAS 条件 UPDATE 纪律（deployments 状态推进同口径）/ 实机基建 `m7a_appfactory.py`+`m7a_verify.py`（K9 扩部署探针，deploy_command 用本地脚本输出伪 URL）。
 
 ## 5. 挂账（非阻塞，勿当漏项重新发明；全量见 archive/M6-HANDOFF §8）
 
@@ -86,8 +91,8 @@
 ## 7. 守门命令（全绿才算收口）
 
 ```
-uv run pytest -q                    # 当前 947 passed / 4 skipped（M6 起点 712/4），只增不减
-pnpm -F @coagentia/web test         # 当前 vitest 354（M6 起点 175），只增不减
+uv run pytest -q                    # 当前 1006 passed / 4 skipped（M7a 起点 955/4），只增不减
+pnpm -F @coagentia/web test         # 当前 vitest 375（M7a 起点 359），只增不减
 pnpm typecheck                      # 含 pyright（0 错，新债即红）+ 双 tsc
 uv run ruff check .
 pnpm gen                            # 后 git diff 应为空（生成物确定性）
