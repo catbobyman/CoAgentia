@@ -1,10 +1,10 @@
-# CoAgentia 当前交接（**M6 里程碑收口 = PRD M6 出口达成；M1–M6 全里程碑完成**）
+# CoAgentia 当前交接（**M1–M6 全里程碑完成；M7 已立项待开工**）
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-13，**M6 复审修复批收口（HEAD `d517624`）**：/code-review high 二轮（8 维 finder→按域对抗核实→10 findings 全 CONFIRMED 全修 +8 回归；含 3 项不可恢复 wedge[fail_closed 空成功旁路/merged 上报丢弃/reopen-cleaned 投递死锁]、指纹崩溃族、投递前缀门收窄、raw control 泄漏[Playwright 实测发现]）+ 实机 verify 48/48 修后复跑通过 + 浏览器/Playwright E2E（chat/canvas/kanban/conflict/repair/direct 六面、console 零错误）。上一轮：2026-07-12，M6 里程碑整体收口（`c37a91f`）。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘）完成：M6b 波 4（J10 delta+O9 ∥ B-M6-2 后半，双 Opus 子代理并行）→ 阶段 4 并行审计（5 维 finder→Fable 终裁修 7 含 1 blocking）+ J11 话术定稿 → **J12 实机 verify 48/48 ALL PASS**（=PRD M6 出口，A1–A8 逐条勾销）→ **/code-review high**（8 维 finder→对抗核实→Fable 终裁 13 findings 修 8[3 major]）→ 文档终态同步+任务书归档。 |
+| 更新 | 2026-07-13，**M7 立项完成**：owner 六拍板（PRD M7 原样 = FR-11 预览+FR-12 部署成本+性能小批+预留位审查 / 预览先行两块竖切 / COLLAB-MODEL v2 续用 / **Agent 部署 = trigger_deploy MCP 工具**[零工具连胜止于 M6] / **token 口径 = 新账**）→ 纪律 1 契约先行落笔（**A v1.0.11 / B v1.5[§13 预览与部署规范条文] / D v1.0.4 / E v1.5；C·E2 零修订核对**；含立项核对纠偏：A「部署串行排队」与 B/D「409 不排队」矛盾以 B/D 为准修 A）→ **[M7-HANDOFF.md](M7-HANDOFF.md)**（K 系列任务书：§7 十五裁决/§9 出口清单）+ **[M7-DEV-PLAN.md](M7-DEV-PLAN.md)**（波次表；**K2-cal 长驻 dev server win32 校准先行** = 最大不确定性）。上一轮：M6 复审修复批收口（`d517624`）：/code-review high 二轮（8 维 finder→按域对抗核实→10 findings 全 CONFIRMED 全修 +8 回归；含 3 项不可恢复 wedge[fail_closed 空成功旁路/merged 上报丢弃/reopen-cleaned 投递死锁]、指纹崩溃族、投递前缀门收窄、raw control 泄漏[Playwright 实测发现]）+ 实机 verify 48/48 修后复跑通过 + 浏览器/Playwright E2E（chat/canvas/kanban/conflict/repair/direct 六面、console 零错误）。上一轮：2026-07-12，M6 里程碑整体收口（`c37a91f`）。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘）完成：M6b 波 4（J10 delta+O9 ∥ B-M6-2 后半，双 Opus 子代理并行）→ 阶段 4 并行审计（5 维 finder→Fable 终裁修 7 含 1 blocking）+ J11 话术定稿 → **J12 实机 verify 48/48 ALL PASS**（=PRD M6 出口，A1–A8 逐条勾销）→ **/code-review high**（8 维 finder→对抗核实→Fable 终裁 13 findings 修 8[3 major]）→ 文档终态同步+任务书归档。 |
 | 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 [PROJECT-RECORD.md](PROJECT-RECORD.md)（§13=M6a、§14=M6b）；M1–M6 任务书均已移 archive/ |
-| 一句话状态 | **M1–M6 全里程碑收口 = PRD M6 出口达成**。IM 基座→任务域→L2 契约→编排画布+gating→护栏（沉默/freshness/HeldDraft）→双 runtime+配置面→模板向导→Project 交付链（worktree/Diff/merge/check/冲突派回）→**Orchestrator 拆解链**（提案/校验/修复循环/草稿确认/落地/delta/O9）全部落地并经实机 verify。**接续 = M7（未立项）**。 |
+| 一句话状态 | **M1–M6 全里程碑收口 = PRD M6 出口达成**。IM 基座→任务域→L2 契约→编排画布+gating→护栏（沉默/freshness/HeldDraft）→双 runtime+配置面→模板向导→Project 交付链（worktree/Diff/merge/check/冲突派回）→**Orchestrator 拆解链**（提案/校验/修复循环/草稿确认/落地/delta/O9）全部落地并经实机 verify。**接续 = M7 已立项（2026-07-13），开工入口 = [M7-HANDOFF.md](M7-HANDOFF.md)**：块 M7a 预览链从 K0 ∥ K1 + **K2-cal 校准**起步（DEV-PLAN §0）；M7 收口 = **MVP 全部规划里程碑（M1–M7）完成**。 |
 | 守门终态 | 后端 **955 passed / 4 skipped** · web vitest **359** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（golden **58** 判例双跑逐字节）· web build 绿 · m6_verify 48/48 修后复跑 · **工作树干净** |
 
 ## 1. 当前状态
@@ -14,7 +14,7 @@
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
 | 分支 / HEAD | `main`，HEAD = `c37a91f`（M6 收口文档提交），工作树干净 |
 | M6 提交链 | M6a：`d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`(verify 20/20)→`404aaa8`(review 修复)；M6b：`95d190c`(波1 J7+J11 骨架)→`3a78799`(波2 J8)→`832f2dc`(波3 J9 硬关口)→`3d3e12f`(波4 J10∥B-M6-2 后半)→`19fcfb5`(阶段4 审计+J11 定稿)→`818a483`(J12 verify)→`d303475`(code-review 收口)→`c37a91f`+`5165808`(文档)→**`d517624`(复审二轮 10 findings 全修)** |
-| 契约版本 | A **v1.0.10** · B **v1.4.3** · C **v1.0**（连续零修订至 M6 收口）· D **v1.0.3** · E **v1.4** · E2 **v1.0.1**。**M6 全程连续第四个里程碑零新增 Agent 工具**。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
+| 契约版本 | A **v1.0.11** · B **v1.5** · C **v1.0**（连续零修订至 M7 立项，五届核对）· D **v1.0.4** · E **v1.5** · E2 **v1.0.1**（M6/M7 连续零修订核对）。**M7 新增 1 个 Agent 工具 `trigger_deploy`**（R8 通道兑现，owner 拍板——零工具连胜止于 M6 四届）；错误码零新增（仍 29）。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md`（FR-11/FR-12/W4/W7/R8）+ 交互说明 §12 + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
 | 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → 0007 M5 → 0008 M6a（projects+channel_projects+worktrees+tasks 两列）→ **0009 M6b（proposals[同 source 单一非终态部分唯一索引]+agent_role_templates+agents.role_template_key）** |
 | 实机证据 | **M6 = [M6-EVIDENCE.md](../verify/M6-EVIDENCE.md)**：真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库 **48/48 ALL PASS**（S1 拆解全链/S2 冲突派回/S3 修复循环/S4 A5 崩溃重放/S5 delta+O9/S6 single_task/S7 直落；A1–A8 逐条勾销）+ [results.json](../verify/M6-VERIFY-results.json) + 2 截图（chat 全流程叙事/canvas 落地 DAG）；脚本 = `scratchpad/m6_verify.py`（可重跑）。历史：[M6A-EVIDENCE.md](../verify/M6A-EVIDENCE.md)（20/20）、M5/M5A/M4B/M4A/M3B/M3A/M2 系列。 |
 
@@ -33,6 +33,7 @@
 | M5b 模板与向导 | **PRD M5 出口**：工程三角实例化全管道（e2e 12/12） | `bef88eb`（§12） |
 | M6a Project 与交付链 | worktree/Diff/merge --no-ff/check/冲突派回/verdict（实机 20/20 + review 10 全修） | `404aaa8`（§13） |
 | **M6b Orchestrator 拆解链** | **PRD M6 出口**：拆解→校验→草稿确认→落地→并行交付→合并；冲突派回；修复循环；delta/O9（**实机 48/48** + review 13 修 8） | `d303475`（§14） |
+| **M7 预览、部署与打磨** | **PRD M7 出口**：Diff/**预览验收**→合并→**一键部署 URL+新账成本小结**（FR-11/FR-12+K7 性能小批+K8 预留位审查） | **已立项未开工**（2026-07-13，[M7-HANDOFF](M7-HANDOFF.md)） |
 
 ## 3. 系统当前能力面（一览）
 
@@ -52,22 +53,27 @@
   - **Orchestrator 角色模板**（J11）：builtin 数据（§13.1 七条+§12 规模表原文+**第 8 条 delta 通道指引**）、启动 upsert、创建预选、NO_ORCHESTRATOR 引导；模板 PATCH/DELETE（builtin 409）。
   - **前端 B-M6-2**：拆解入口+创建引导链/提案卡（delta 卡读 operations 统计）/草稿层 overlay+确认条防呆（TS 镜像实时校验/CAS/409 latest 刷新/拒绝弹窗）/delta 面板（绿红高亮/逐 op 剔除实时重验[含 running 系统节点 NODE_ACTIVE]/base 横幅）/rev 替换/P12 编排组/wsBridge draft.*·delta.*·landing.* + LandingToaster。
 
-## 4. 接续 = M7（未立项）
+## 4. 接续 = M7 已立项（2026-07-13；开工入口 [M7-HANDOFF.md](M7-HANDOFF.md)）
 
-**CoAgentia 全部规划里程碑（M1–M6）已完成。** M7 候选面（历史挂账+非目标清单，立项时 owner 拍板）：O8 汇总执行期护栏（stall/replan/轮数上限）、FR-11 预览/FR-12 部署链、递归拆解、拆解质量回路（proposal_hash vs landed_hash 差距回流）、worktree 定向 check/行级 Diff 评论、多机/多用户化（跨进程双直落批等单进程假设的解除）。立项流程照 M5/M6 先例：**契约修订落笔先行（纪律 1）→ 任务书两块竖切 → DEV-PLAN 波次表**；协作模式复审 [COLLAB-MODEL.md](COLLAB-MODEL.md)（v2 Fable 单窗编排在 M6b 全程实盘有效）。
+**立项三件套已交付**（照 M5/M6 先例：契约先行 → 任务书两块竖切 → DEV-PLAN 波次表）：
+
+- **范围**（owner 拍板 #1/#3）= PRD M7 原样：FR-11 每任务预览 + FR-12 一键部署与成本核算（**新账**口径）+ 性能小批四件（CR-9/usage.batch/serialize/search 双扫收编 K7）+ 多租户/Joint Channel 预留位审查（K8 文档件）。O8/递归拆解/质量回路 = 汇总设计另文，M8 立项动作。
+- **竖切**（拍板 #2）= M7a 预览链先收（K0–K3+B-M7-1；daemon 长驻 dev server = 最大风险面早暴露）→ M7b 部署成本与收尾（K4–K9+B-M7-2；**收口 = PRD M7 出口 = MVP 全里程碑完成**）。
+- **关键裁决**：Agent 部署 = `trigger_deploy` MCP 工具（拍板 #5，E v1.5）；部署 409 不排队 + 两处部分唯一索引兜底（A/B/D 矛盾纠偏，任务书 §7 #7）；预览 POST=ensure+touch+前端心跳（#8）；PORT 环境变量注入（#9）；**部署纠偏 fail-closed 不重跑**（副作用不可重放，#10）。全表 = 任务书 §7 十五裁决。
+- **第一步** = K0 ∥ K1 并行 + **K2-cal 校准最优先**（win32 长驻子进程五组探针 → `scratchpad/PREVIEW-CALIBRATION.md`，未填 K2 不开工——DEV-PLAN §0/§3）。协作模式 = [COLLAB-MODEL.md](COLLAB-MODEL.md) v2 续用（拍板 #4）。
 
 ## 5. 挂账（非阻塞，勿当漏项重新发明；全量见 archive/M6-HANDOFF §8）
 
 | 项 | 说明 | 归属 |
 | --- | --- | --- |
-| **M6b CR-9** | `_post_landed_message` 逐节点 fetch_task/_member_name（N+1，节点数小） | 性能小批 |
+| ~~M6b CR-9~~ | ~~`_post_landed_message` 逐节点 fetch_task/_member_name（N+1）~~ | **M7 K7 收**（拍板 #3） |
 | **M6b CR-10** | proposals 部分唯一索引 sqlite_where 谓词字面量与 ProposalStatus 终态集双源 | 观察项（改终态集须同步；可加断言测试） |
 | **M6b CR-11** | 0009 downgrade batch recreate agents 时 agent_skills FK 处置未测 | 择机（downgrade 罕跑） |
 | **M6b 审计登记** | 跨进程双直落批（`landing_batches` 无 (kind,source_ref) 唯一约束）——单进程 `_landing_lock` 串行化安全，多进程非部署形态 | M7 多机化时收 |
 | **M6b 审计登记** | 注入面 prompt 中和（线程摘要 verbatim 进 Orchestrator 注入体，可被伪 `[system` 操纵——单工作区信任模型内；direct 频道无人类闸放大） | 观察项（多用户化前收） |
 | **M6b 审计登记** | revalidateDelta 客户端为服务端子集（防呆纵深）/ TS applyAdjustments 潜伏守卫（UI 不可达）/ graph.ts UTF-16 码元序（ASCII 值域无差,可复用 fingerprint.ts cmpCodepoint）/ activeDraft·activeDelta 终态悬挂（良性提示条）/ LandingToaster 不分频道 / P12 越界静默 | 前端低危观察项 |
-| M5b 承接 | briefing @全部映射 agent（by-design）/ `_layout_positions` 双实现（尺度不同）/ serialize N+1 | 已接受/观察/性能小批 |
-| M4–M2 承接 | held 卡倒计时边角 / hub usage.batch N+1+search 双扫 / `task #n` refs UI 消费面 / `<TaskBoard>` 抽取 / messages_fts rowid（VACUUM）/ OAuth 冷启动复验 | 观察项/性能小批/择机 |
+| M5b 承接 | briefing @全部映射 agent（by-design）/ `_layout_positions` 双实现（尺度不同）/ ~~serialize N+1~~ | 已接受/观察/**serialize N+1 → M7 K7 收** |
+| M4–M2 承接 | held 卡倒计时边角 / ~~hub usage.batch N+1+search 双扫~~（**M7 K7 收**）/ `task #n` refs UI 消费面 / `<TaskBoard>` 抽取 / messages_fts rowid（VACUUM）/ OAuth 冷启动复验 | 观察项/择机 |
 | 模板域 | 模板不携 system 节点 / 实例化不提供 Project 跨频道重映射 | MVP 观察项 |
 
 ## 6. 启动方式
