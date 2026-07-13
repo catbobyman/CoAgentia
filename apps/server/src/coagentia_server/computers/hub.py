@@ -2304,7 +2304,9 @@ class DaemonHub:
             )
         due: list[tuple[str, str, str]] = []
         for row in rows:
-            idle_min = row["preview_idle_min"] or 30
+            # 仅 NULL 用默认 30；显式 0 立即回收，`or 30` 会把 0 误当 30（code-review 修）。
+            configured = row["preview_idle_min"]
+            idle_min = configured if configured is not None else 30
             anchor = row["last_active_at"] or row["started_at"]
             if (now - datetime.fromisoformat(anchor)).total_seconds() > idle_min * 60:
                 due.append((row["computer_id"], row["task_id"], row["id"]))

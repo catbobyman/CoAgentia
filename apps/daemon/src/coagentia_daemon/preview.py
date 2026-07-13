@@ -304,9 +304,11 @@ class PreviewRunner:
     def cancel(self) -> None:
         self._closing = True
 
-    async def wait_closed(self) -> None:
-        """shutdown：逐个 taskkill 所有活跃预览子进程，等 monitor 收敛（K2-cal §3.4）。"""
-        self._closing = True
+    async def _kill_active(self) -> None:
+        """杀所有活跃（starting/running）预览子进程 + 释放端口，等 monitor 收敛（K2-cal §3.4）。
+
+        stopping 标志抢先置位（monitor 见之静默退出不抢报 failed）；端口释放恰一次（终态检查兜底）。
+        """
         monitors: list[asyncio.Task[None]] = []
         for pv in list(self._previews.values()):
             if pv.status in ("starting", "running") and not pv.stopping:
@@ -321,6 +323,22 @@ class PreviewRunner:
                 monitors.append(pv.monitor)
         if monitors:
             await asyncio.gather(*monitors, return_exceptions=True)
+
+    async def recycle_all_active(self) -> None:
+        """**transport 断连时**杀所有活跃预览（不置 _closing，重连后 runner 仍可再起预览）。
+
+        契约裁决 #11 / code-review 修：daemon 与 server 失联后，server 会在重连对账 #9 fail-close
+        活跃预览行（假定「daemon 重启子进程必死」）；但同进程瞬时重连/server 重启时 daemon 未重启、
+        dev server 子进程仍存活——若 daemon 不对称杀掉，进程+端口泄漏至 daemon 关停且 server 侧
+        永标 failed 无回收路径。故断连即杀，使 server fail-close 与事实一致（无孤儿）。
+        与 wait_closed 区别：不置 _closing（shutdown 才终结 runner）。
+        """
+        await self._kill_active()
+
+    async def wait_closed(self) -> None:
+        """shutdown：逐个 taskkill 所有活跃预览子进程，等 monitor 收敛（K2-cal §3.4）。"""
+        self._closing = True
+        await self._kill_active()
 
     # ---------------------------------------------------------------- 内部
 

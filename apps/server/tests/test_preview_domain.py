@@ -450,6 +450,98 @@ def test_failed_frame_after_running_does_not_resurrect_starting(
         assert _preview_row(env, session_id)["status"] == "failed"
 
 
+def test_status_recycled_advances_and_broadcasts(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """preview.status recycled（daemon stop 确认，缺口 #5）：running→recycled CAS 命中一次 →
+    recycled_at 落、广播一条 preview.updated、落 preview.recycled 诊断行；随后重复 recycled 帧 /
+    迟到 failed 帧 CAS(WHERE status in active) rowcount=0 幂等 noop（不重播、不改行）。"""
+    client, env, _hub = ctx
+    channel, task_id, worktree_id = _seed(env)
+    assert worktree_id is not None
+    events: list[Any] = []
+    token = client.app.state.bus.subscribe(events.append)  # type: ignore[union-attr]
+    try:
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello([])
+            d.recv_hello_ack()
+            drain_revalidation(d)
+            session_id = _insert_preview(
+                env, task_id=task_id, worktree_id=worktree_id, status="running"
+            )
+            d.report("preview.status", {"preview_session_id": session_id, "status": "recycled"})
+            d.sync()
+            assert _poll(lambda: _preview_row(env, session_id)["status"] == "recycled")
+            assert _preview_row(env, session_id)["recycled_at"] is not None
+            # 幂等：重复 recycled + 迟到 failed 均落在 CAS 起态门外 → rowcount=0 noop。
+            d.report("preview.status", {"preview_session_id": session_id, "status": "recycled"})
+            d.sync()
+            d.report(
+                "preview.status",
+                {"preview_session_id": session_id, "status": "failed", "log_tail": "late"},
+            )
+            d.sync()
+            row = _preview_row(env, session_id)
+            assert row["status"] == "recycled"  # 终态未被迟到 failed 复活
+            assert row["fail_log_tail"] is None  # 迟到 failed 帧无副作用
+    finally:
+        client.app.state.bus.unsubscribe(token)  # type: ignore[union-attr]
+    updates = [
+        e for e in events if e.type == EventType.PREVIEW_UPDATED and e.channel_id == channel
+    ]
+    assert len(updates) == 1  # 仅首个 recycled 广播，冗余/迟到帧不重播
+    assert updates[0].data["preview"]["status"] == "recycled"
+    # preview.recycled 诊断行（owner=None → 不广播 DIAGNOSTIC_APPENDED）。
+    with env.engine.connect() as c:
+        diag = c.execute(select(_DIAG).where(_DIAG.c.task_id == task_id)).mappings().first()
+    assert diag is not None and diag["type"] == "preview.recycled"
+    assert diag["payload"]["preview_session_id"] == session_id
+
+
+def test_agent_owner_preview_diagnostic_broadcasts(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """FR-11.3（缺口 #6）：预览任务 owner 为 Agent 时，进程状态诊断除落库外还广播
+    DIAGNOSTIC_APPENDED（归属 owner/channel 让人类可循，同 _record_worktree_failure 体例）。
+    running → preview.started 诊断，agent_member_id 正确。"""
+    client, env, _hub = ctx
+    channel, task_id, worktree_id = _seed(env)
+    assert worktree_id is not None
+    # owner 指向 Agent（status=offline：非 _RESUMABLE/_DELIVERABLE → reconcile 不额外下发帧）。
+    agent_id = env.add_agent("Builder", "offline")
+    with env.engine.begin() as c:
+        c.execute(
+            update(_TASK).where(_TASK.c.id == task_id).values(owner_member_id=agent_id)
+        )
+    events: list[Any] = []
+    token = client.app.state.bus.subscribe(events.append)  # type: ignore[union-attr]
+    try:
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello([])
+            d.recv_hello_ack()
+            drain_revalidation(d)
+            session_id = _insert_preview(
+                env, task_id=task_id, worktree_id=worktree_id, status="starting", port=None
+            )
+            d.report(
+                "preview.status",
+                {"preview_session_id": session_id, "status": "running", "port": 5160},
+            )
+            d.sync()
+            assert _poll(lambda: _preview_row(env, session_id)["status"] == "running")
+    finally:
+        client.app.state.bus.unsubscribe(token)  # type: ignore[union-attr]
+    diags = [e for e in events if e.type == EventType.DIAGNOSTIC_APPENDED]
+    assert len(diags) == 1  # Agent owner → 恰一条 DIAGNOSTIC_APPENDED
+    assert diags[0].data["agent_member_id"] == agent_id
+    pub = diags[0].data["events"][0]
+    assert pub["type"] == "preview.started"  # running → preview.started 诊断类型
+    assert pub["agent_member_id"] == agent_id
+    assert pub["payload"]["preview_session_id"] == session_id
+
+
 # ---------------------------------------------------------------- 回收三触发
 
 
@@ -493,6 +585,32 @@ def test_recycle_idle_scan_skips_fresh_preview(ctx: tuple[TestClient, Env, Any])
         _insert_preview(env, task_id=task_id, worktree_id=worktree_id, status="running")
         hub._run_sync(hub._run_preview_recycle_scan())
         d.sync()  # 无 preview.stop 帧
+
+
+def test_idle_recycle_honors_zero_idle_min(ctx: tuple[TestClient, Env, Any]) -> None:
+    """preview_idle_min=0 立即回收（锚定 Fable 修 `or 30`→`is not None`）：与
+    test_recycle_idle_scan_skips_fresh_preview 同构（新鲜 running 预览），仅 idle_min=0 → idle 扫描
+    立即下发 preview.stop。若 `or 30` 未改，0 被误当 30 → 新鲜预览不回收、无 stop 帧、超时失败。"""
+    client, env, hub = ctx
+    _, task_id, worktree_id = _seed(env, preview_idle_min=0)
+    assert worktree_id is not None
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([])
+        d.recv_hello_ack()
+        drain_revalidation(d)
+        # 新鲜 running 预览（last_active_at=now）：idle_min=0 下任何正 idle 即到期。
+        session_id = _insert_preview(
+            env, task_id=task_id, worktree_id=worktree_id, status="running"
+        )
+        fut = asyncio.run_coroutine_threadsafe(
+            hub._run_preview_recycle_scan(), hub._loop
+        )
+        stop = d.recv_instr()
+        assert stop["type"] == "preview.stop"
+        assert stop["data"] == {"preview_session_id": session_id}
+        d.ack(stop, "done")
+        fut.result(timeout=5)
 
 
 def test_recycle_on_task_terminal(ctx: tuple[TestClient, Env, Any]) -> None:

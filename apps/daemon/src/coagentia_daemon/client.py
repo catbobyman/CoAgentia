@@ -170,6 +170,12 @@ class DaemonClient:
                 self.connected.clear()
                 self._transport = None
                 self._fail_pending("connection closed")
+                # 断连即对称杀活跃预览（契约裁决 #11 / code-review 修）：失联后 server 会在重连
+                # 对账 #9 fail-close 活跃预览，daemon 须杀掉对应 dev server 子进程避免进程+端口泄漏
+                # （worktree 幂等复验可保活，预览有状态故断连即回收）。shutdown 由 wait_closed 收。
+                if not self._stopped:
+                    with contextlib.suppress(Exception):
+                        await self.previews.recycle_all_active()
             if self._was_connected:
                 backoff = self._backoff_start  # 成功连过一轮 → 退避复位
             else:

@@ -5,7 +5,7 @@
   P1 交付 → 预览面板打开 → 健康检查 → iframe 真实 HTTP 200（真 http.server 起在 worktree）。
   P2 并排第二任务预览（端口互异，注册表唯一性）。
   P3 ensure+touch 幂等（二次 POST=touch 同会话）。
-  P4 idle 超时自动回收（backdate last_active_at → 回收扫描 → recycled + dev server 被杀端口不可达）。
+  P4 idle 超时自动回收（backdate → 回收扫描 → recycled + dev server 被杀端口不可达）。
   P5 坏 dev_command → failed 携 fail_log_tail。
 
 用法：uv run python scratchpad/m7a_verify.py [--keep]
@@ -30,7 +30,7 @@ import m6a_harness as H  # noqa: E402
 from coagentia_server.db import models  # noqa: E402
 from coagentia_server.db.engine import make_engine  # noqa: E402
 from coagentia_server.ledger.service import format_iso  # noqa: E402
-from sqlalchemy import select, update  # noqa: E402
+from sqlalchemy import update  # noqa: E402
 
 PY = sys.executable
 GOOD_DEV_CMD = f'"{PY}" -m http.server %PORT% --bind 127.0.0.1'
@@ -186,7 +186,8 @@ async def run(ids: dict, repos: dict, keep: bool, db_url: str) -> None:
             t1 = n1["task_id"]
             wt1 = paths.worktree_path(good["id"], t1)
             got = await wait_worktree(rest, t1, timeout=40.0)
-            check("P1.1 writes_code 任务激活联动真 git 派生 worktree", bool(got) and wt1.exists(), wt1.name)
+            check("P1.1 writes_code 任务激活联动真 git 派生 worktree",
+                  bool(got) and wt1.exists(), wt1.name)
 
             r = await rest.post(f"/tasks/{t1}/preview", expect=201)
             check("P1.2 POST /preview = 201 建 starting 会话", r.json()["status"] == "starting")
@@ -196,7 +197,8 @@ async def run(ids: dict, repos: dict, keep: bool, db_url: str) -> None:
             check("P1.3 daemon 真起 dev server → 健康检查 → running 携 port", bool(port1),
                   f"port={port1}")
 
-            ok200 = await poll(lambda: _async_true(iframe_ok(port1)), timeout=15.0) if port1 else False
+            ok200 = (await poll(lambda: _async_true(iframe_ok(port1)), timeout=15.0)
+                     if port1 else False)
             check("P1.4 iframe 数据源真实可达 HTTP 200（真 http.server 在 worktree）", bool(ok200),
                   f"http://127.0.0.1:{port1}/")
 
@@ -205,13 +207,12 @@ async def run(ids: dict, repos: dict, keep: bool, db_url: str) -> None:
                 "title": "预览任务二", "kind": "agent", "writes_code": True,
                 "project_id": good["id"]})
             t2 = n2["task_id"]
-            wt2 = paths.worktree_path(good["id"], t2)
             await wait_worktree(rest, t2, timeout=40.0)
             await rest.post(f"/tasks/{t2}/preview", expect=201)
             row2 = await wait_preview_status(rest, t2, "running", timeout=40.0)
             port2 = row2["port"] if row2 else None
             distinct = bool(port1) and bool(port2) and port1 != port2
-            both200 = bool(port2) and iframe_ok(port1) and iframe_ok(port2)
+            both200 = bool(port2) and iframe_ok(port1) and iframe_ok(port2)  # noqa: E501
             check("P2.1 并排双预览端口互异（注册表唯一性）", distinct, f"{port1} vs {port2}")
             check("P2.2 两预览 iframe 同时 HTTP 200", both200)
 
@@ -231,7 +232,8 @@ async def run(ids: dict, repos: dict, keep: bool, db_url: str) -> None:
             pengine.dispose()
             recy = await wait_preview_status(rest, t1, "recycled", timeout=20.0)
             check("P4.1 idle 超时 → 回收扫描下发 stop → recycled", bool(recy))
-            killed = port1 and await poll(lambda: _async_true(port_unreachable(port1)), timeout=10.0)
+            killed = port1 and await poll(
+                lambda: _async_true(port_unreachable(port1)), timeout=10.0)
             check("P4.2 回收后 dev server 子进程被杀（端口不可达）", bool(killed), f"port={port1}")
 
             # ---- P5：坏 dev_command → failed 携 fail_log_tail ----

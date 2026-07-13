@@ -140,7 +140,13 @@ export function PreviewPanel({ target, onClose }: { target: PreviewTarget; onClo
     const id = setInterval(() => {
       void api
         .startPreview(taskId)
-        .then((s) => qc.setQueryData<PreviewSessionPublic>(qk.preview(taskId), s))
+        .then((s) => {
+          // 心跳只推进存活态：写缓存前复查本地会话仍活跃——防在途心跳（POST 已发出瞬间会话转
+          // failed/recycled）覆盖 daemon 的失败反流、把已死进程重新显示为 running（code-review 修）。
+          const cur = qc.getQueryData<PreviewSessionPublic>(qk.preview(taskId));
+          if (cur && !isActive(cur.status)) return;
+          qc.setQueryData<PreviewSessionPublic>(qk.preview(taskId), s);
+        })
         .catch(() => {});
     }, HEARTBEAT_MS);
     return () => clearInterval(id);

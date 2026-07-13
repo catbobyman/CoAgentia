@@ -231,6 +231,64 @@ async def test_wait_closed_kills_active_preview_no_orphan(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_recycle_all_active_kills_on_disconnect(tmp_path: Path) -> None:
+    """断连回收（裁决 #11 对称杀）：transport 失联 → recycle_all_active 杀所有活跃预览子进程 +
+    释放端口，但**不置 _closing**——重连后 runner 仍可再起新预览（与 wait_closed 终结 runner 区别）。
+
+    锁 Fable #1/#3 修：daemon 不重启（同进程瞬时重连/server 重启）时必须对称杀掉子进程，否则
+    进程+端口泄漏且 server 侧重连 fail-close 永标 failed 无回收路径。
+    """
+    runner = PreviewRunner(health_timeout=15.0, poll_interval=0.1)
+    reports = Reports()
+    data = _start_data(tmp_path)
+    try:
+        started, _ = await runner.start(data, reports.cb)
+        assert started
+        await until(lambda: bool(reports.by_status("running")), timeout=15)
+        port = reports.by_status("running")[-1].port
+        assert port is not None and await asyncio.to_thread(_tcp_reachable, port)
+        # 断连即杀（不置 _closing）：子进程死 → 端口不再可达。
+        await runner.recycle_all_active()
+        await asyncio.sleep(0.5)
+        assert not await asyncio.to_thread(_tcp_reachable, port)
+        assert port not in runner._registry._assigned  # 端口已释放（回注册表可再分配）
+        # 关键区别（vs wait_closed）：_closing 未置 → 重连后仍能起新预览。
+        data2 = _start_data(tmp_path)
+        started2, _ = await runner.start(data2, reports.cb)
+        assert started2  # recycle_all_active 后 runner 未终结，start 成功（非 (False, None)）
+        await until(
+            lambda: any(
+                r.preview_session_id == data2.preview_session_id
+                for r in reports.by_status("running")
+            ),
+            timeout=15,
+        )
+    finally:
+        await runner.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_stop_does_not_report_failed(tmp_path: Path) -> None:
+    """running→stop 不误报 failed（缺口 #7）：stop 抢先置 stopping，monitor 的 proc.wait() 返回后
+    见 stopping 静默退出——收集帧里 status=='failed' 恰 0（recycled 由 stop 直接返回，非 monitor
+    越权补 failed）。"""
+    runner = PreviewRunner(health_timeout=15.0, poll_interval=0.1)
+    reports = Reports()
+    data = _start_data(tmp_path)
+    try:
+        await runner.start(data, reports.cb)
+        await until(lambda: bool(reports.by_status("running")), timeout=15)
+        stopped, st = await runner.stop(data.preview_session_id)
+        assert stopped and st is not None and st.status == "recycled"
+        # stop 内已 await monitor 收敛；再给一拍确保无迟到 failed 帧混入。
+        await asyncio.sleep(0.3)
+        assert reports.by_status("failed") == []  # 关键：stopping 抢占 → 无 failed 误报
+        assert reports.by_status("running")  # 正常态确曾上报（sanity）
+    finally:
+        await runner.wait_closed()
+
+
+@pytest.mark.asyncio
 async def test_preview_start_handler_acks_done_then_natural_key_noop(tmp_path: Path) -> None:
     transport = RecordingTransport()
     client, _adapter, _ = make_client(tmp_path, transport=transport)
