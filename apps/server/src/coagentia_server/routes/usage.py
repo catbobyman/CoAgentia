@@ -67,15 +67,17 @@ def _bucket(conn: Connection, *conds: ColumnElement[bool]) -> UsageBucket:
 def _task_set_report(
     conn: Connection,
     task_rows: list[Any],
-    usage_conds: list[ColumnElement[bool]],
     rollup: bool,
 ) -> tuple[UsageBucket, TasksReporting, list[rest.UsageBreakdownItem] | None]:
-    """任务集口径（agent/canvas 共用）：usage 按 usage_conds 聚合（agent 按 agent_member_id、
-    canvas 按 task_id IN 集）；total = 任务集大小（未上报任务计入分母，W7 诚实覆盖率）；
-    reporting = 任务集中有 ≥1 条 usage 事件的任务数（按 task_id 归属去重）。rollup 时附逐任务明细。
+    """任务集口径（agent/canvas 共用）：usage / reporting / breakdown **全部按同一任务集
+    (task_id IN 集) 聚合**——usage = Σ breakdown、覆盖率 reporting/total 与明细同源（复审
+    CONFIRMED：旧版 agent 层 usage 按 agent_member_id 聚合、覆盖率/明细却按 owner 任务集，
+    二者互不一致——agent 在非自有任务/未归属事件上的花费会让 usage > Σ breakdown）。
+    total = 任务集大小（未上报任务计入分母，W7 诚实覆盖率）；reporting = 任务集中有 ≥1 条 usage
+    事件的任务数（按 task_id 去重）。rollup 时附逐任务明细。
     """
     task_ids = [r[0] for r in task_rows]
-    usage = _bucket(conn, *usage_conds)
+    usage = _bucket(conn, _TUE.c.task_id.in_(task_ids)) if task_ids else UsageBucket()
     reporting = 0
     by_task: dict[str, UsageBucket] = {}
     if task_ids:
@@ -147,9 +149,7 @@ def get_usage(
             .where(_TASK.c.owner_member_id == ref)
             .order_by(_TASK.c.id)
         ).all()
-        usage, reporting, breakdown = _task_set_report(
-            conn, list(task_rows), [_TUE.c.agent_member_id == ref], rollup
-        )
+        usage, reporting, breakdown = _task_set_report(conn, list(task_rows), rollup)
         return rest.UsageReport(
             level=level,
             ref=ref,
@@ -164,10 +164,7 @@ def get_usage(
         .where(_TASK.c.channel_id == ref)
         .order_by(_TASK.c.id)
     ).all()
-    task_ids = [r[0] for r in task_rows]
-    usage, reporting, breakdown = _task_set_report(
-        conn, list(task_rows), [_TUE.c.task_id.in_(task_ids)], rollup
-    )
+    usage, reporting, breakdown = _task_set_report(conn, list(task_rows), rollup)
     return rest.UsageReport(
         level=level,
         ref=ref,

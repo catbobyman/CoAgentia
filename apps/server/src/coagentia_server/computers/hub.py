@@ -825,38 +825,35 @@ class DaemonHub:
                 tx, row, channel_id=channel_id, owner=owner, diag_type=diag_type
             )
 
-    def _append_preview_diagnostic(
+    def _emit_agent_diagnostic(
         self,
         tx: Any,
-        row: dict[str, Any],
         *,
-        channel_id: str | None,
-        owner: str | None,
+        workspace_id: str,
         diag_type: str,
+        payload: dict[str, Any],
+        member_id: str | None,
+        channel_id: str | None = None,
+        task_id: str | None = None,
     ) -> None:
-        """FR-11.3：登记 preview.* 进程状态诊断行；owner 为 Agent 时广播 DIAGNOSTIC_APPENDED
-        （归属 owner/channel 让人类可循，同 _record_worktree_failure 体例）。"""
-        payload = {
-            "preview_session_id": row["id"],
-            "status": row["status"],
-            "port": row["port"],
-        }
+        """诊断行落库 + member_id 为 Agent 时广播 DIAGNOSTIC_APPENDED（preview.*/deploy.* 共用单点；
+        非 Agent/None → 只落库不广播）。归属 agent/channel/task 供人类循。"""
         ts = now_iso()
         agent_owner: str | None = None
-        if owner is not None:
+        if member_id is not None:
             is_agent = tx.conn.execute(
-                select(_AGENT.c.member_id).where(_AGENT.c.member_id == owner)
+                select(_AGENT.c.member_id).where(_AGENT.c.member_id == member_id)
             ).first()
             if is_agent is not None:
-                agent_owner = owner
+                agent_owner = member_id
         seq = tx.conn.execute(
             insert(_DIAG)
             .values(
-                workspace_id=row["workspace_id"],
+                workspace_id=workspace_id,
                 agent_member_id=agent_owner,
                 type=diag_type,
                 channel_id=channel_id,
-                task_id=row["task_id"],
+                task_id=task_id,
                 batch_id=None,
                 payload=payload,
                 created_at=ts,
@@ -867,11 +864,11 @@ class DaemonHub:
             pub = diagnostic_public(
                 {
                     "seq": seq,
-                    "workspace_id": row["workspace_id"],
+                    "workspace_id": workspace_id,
                     "agent_member_id": agent_owner,
                     "type": diag_type,
                     "channel_id": channel_id,
-                    "task_id": row["task_id"],
+                    "task_id": task_id,
                     "batch_id": None,
                     "payload": payload,
                     "created_at": ts,
@@ -882,6 +879,26 @@ class DaemonHub:
                 None,
                 {"agent_member_id": agent_owner, "events": [pub]},
             )
+
+    def _append_preview_diagnostic(
+        self,
+        tx: Any,
+        row: dict[str, Any],
+        *,
+        channel_id: str | None,
+        owner: str | None,
+        diag_type: str,
+    ) -> None:
+        """FR-11.3：preview.* 进程状态诊断（Agent owner 时广播，_emit_agent_diagnostic 单点）。"""
+        self._emit_agent_diagnostic(
+            tx,
+            workspace_id=row["workspace_id"],
+            diag_type=diag_type,
+            payload={"preview_session_id": row["id"], "status": row["status"], "port": row["port"]},
+            member_id=owner,
+            channel_id=channel_id,
+            task_id=row["task_id"],
+        )
 
     # ---------------------------------------------------------------- 部署上报（M7b K4）
 
@@ -919,6 +936,7 @@ class DaemonHub:
         last = self._deploy_log_seq.get(data.deployment_id)
         if last is not None and data.chunk_seq <= last:
             return  # 重连窗口重发已收帧：按已收 max 去重
+        log_path = str(self._deploy_log_file(data.deployment_id))  # 纯路径，无 I/O（落盘在提交后）
         with gateway_tx(self._engine, self._bus) as tx:
             row = (
                 tx.conn.execute(
@@ -930,10 +948,8 @@ class DaemonHub:
                 .first()
             )
             if row is None:
-                return  # 未知部署（跨机越界/已清）：不落盘不广播
-            self._deploy_log_seq[data.deployment_id] = data.chunk_seq
-            log_path = self._append_deploy_log_file(data.deployment_id, data.lines)
-            if row["log_path"] is None:  # 首次落盘写回绝对路径（log_path 非状态列，无条件 UPDATE）
+                return  # 未知部署（跨机越界/已清）：不落盘不广播不推进游标
+            if row["log_path"] is None:  # 首次写回绝对路径（log_path 非状态列，无条件 UPDATE）
                 tx.conn.execute(
                     update(_DEPLOYMENT)
                     .where(_DEPLOYMENT.c.id == data.deployment_id)
@@ -959,6 +975,11 @@ class DaemonHub:
                     "lines": data.lines,
                 },
             )
+        # **提交后**才落盘 + 推进内存去重游标（复审 CONFIRMED 双修）：gateway_tx 若回滚（如
+        # SQLITE_BUSY），未推进游标 → daemon 重发不被误判重复而吞（防丢帧），且未落盘 → 不产生重复
+        # 行。走到此处 = 事务已成功提交（row 为 None 已早返，异常已由 with 抛出）。
+        self._append_deploy_log_file(data.deployment_id, data.lines)
+        self._deploy_log_seq[data.deployment_id] = data.chunk_seq
 
     def _report_deploy_finished(
         self, conn: DaemonConnection, data: DeployFinishedData
@@ -1035,55 +1056,19 @@ class DaemonHub:
             )
 
     def _append_deploy_diagnostic(self, tx: Any, row: dict[str, Any]) -> None:
-        """FR-12：登记 deploy.finished 诊断行；触发者为 Agent 时广播 DIAGNOSTIC_APPENDED
-        （归属 triggerer 让人类可循，同 _append_preview_diagnostic 体例）。"""
-        payload = {
-            "deployment_id": row["id"],
-            "status": row["status"],
-            "exit_code": row["exit_code"],
-            "url": row["url"],
-        }
-        ts = now_iso()
-        triggerer = row["triggered_by_member_id"]
-        agent_owner: str | None = None
-        is_agent = tx.conn.execute(
-            select(_AGENT.c.member_id).where(_AGENT.c.member_id == triggerer)
-        ).first()
-        if is_agent is not None:
-            agent_owner = triggerer
-        seq = tx.conn.execute(
-            insert(_DIAG)
-            .values(
-                workspace_id=row["workspace_id"],
-                agent_member_id=agent_owner,
-                type=_DEPLOY_DIAG_FINISHED,
-                channel_id=None,
-                task_id=None,
-                batch_id=None,
-                payload=payload,
-                created_at=ts,
-            )
-            .returning(_DIAG.c.seq)
-        ).scalar_one()
-        if agent_owner is not None:
-            pub = diagnostic_public(
-                {
-                    "seq": seq,
-                    "workspace_id": row["workspace_id"],
-                    "agent_member_id": agent_owner,
-                    "type": _DEPLOY_DIAG_FINISHED,
-                    "channel_id": None,
-                    "task_id": None,
-                    "batch_id": None,
-                    "payload": payload,
-                    "created_at": ts,
-                }
-            )
-            tx.emit(
-                EventType.DIAGNOSTIC_APPENDED,
-                None,
-                {"agent_member_id": agent_owner, "events": [pub]},
-            )
+        """FR-12：deploy.finished 诊断（触发者为 Agent 时广播，_emit_agent_diagnostic 单点）。"""
+        self._emit_agent_diagnostic(
+            tx,
+            workspace_id=row["workspace_id"],
+            diag_type=_DEPLOY_DIAG_FINISHED,
+            payload={
+                "deployment_id": row["id"],
+                "status": row["status"],
+                "exit_code": row["exit_code"],
+                "url": row["url"],
+            },
+            member_id=row["triggered_by_member_id"],
+        )
 
     def _report_status_changed(self, conn: DaemonConnection, d: AgentStatusChangedData) -> None:
         """agents.status 的唯一写入方（契约 D §7）+ 广播 presence.changed。"""

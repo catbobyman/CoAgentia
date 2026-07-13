@@ -336,10 +336,11 @@ def get_deployment_log(
         return rest.DeploymentLogPage(lines=[], next_after=None, truncated=False).model_dump()
     truncated = path.stat().st_size >= BUFFER_DEPLOY_LOG_MAX_BYTES
     all_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    total = len(all_lines)
     start = after if after is not None and after > 0 else 0
     page = all_lines[start:]
-    next_after = total if total > start else None
+    # 无分页上限：page 已含 start→EOF 全部行 → 恒已追平 → next_after=None（复审 CONFIRMED：旧
+    # `total if total > start` 对任何非空日志都返 total，前端误显"加载更多历史"按钮且点击拉空页；
+    # 实时新增行由 deployment.log 订阅流投递，前端不据 next_after 轮询）。
     return rest.DeploymentLogPage(
-        lines=page, next_after=next_after, truncated=truncated
+        lines=page, next_after=None, truncated=truncated
     ).model_dump()

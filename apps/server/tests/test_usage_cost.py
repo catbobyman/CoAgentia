@@ -181,13 +181,14 @@ def test_agent_level_owned_tasks_in_denominator(ctx: tuple[TestClient, Env]) -> 
     t1 = _task(env, ch, number=1, owner=agent)
     _task(env, ch, number=2, owner=agent)  # owner 任务但零上报 → 计入分母不计 reporting
     _usage(env, agent, task_id=t1, inp=10, out=5)
-    # 该 agent 另有一条无归属任务的事件（task_id=None）→ 计入 usage 和，不计任何任务 reporting。
+    # 该 agent 另有一条无归属事件（task_id=None）→ 不属任何 owner 任务集，不计入 usage/覆盖率。
     _usage(env, agent, task_id=None, inp=100, out=0)
     body = _get(client, "agent", agent)
     _assert_shape_no_currency(body)
     assert body["level"] == "agent" and body["ref"] == agent
-    # usage = 该 agent 全部事件（含无归属那条）。
-    assert body["usage"]["input_tokens"] == 110 and body["usage"]["events"] == 2
+    # usage / 覆盖率 / breakdown 同源 owner 任务集（task_id IN 集）——复审修：不再按 agent_member_id
+    # 聚合 usage（那会把无归属/非自有任务花费混入，与覆盖率互不一致）；无归属事件(100)不计入。
+    assert body["usage"]["input_tokens"] == 10 and body["usage"]["events"] == 1
     # total = owner 的所有任务（2），reporting = 有 usage 的 owner 任务数（仅 t1）。
     assert body["tasks_reporting"] == {"reporting": 1, "total": 2}
     assert body["breakdown"] is None
