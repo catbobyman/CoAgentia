@@ -15,6 +15,8 @@ daemon_hub.inject_orchestrator 投递（S1 直投，契约 D §5.2）。
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -290,6 +292,22 @@ def _transition(tx: Any, proposal: dict[str, Any], to_status: ProposalStatus) ->
 
 
 # ---------------------------------------------------------------- 建 / supersede 提案
+
+
+def _fingerprint_lenient(body: dict[str, Any]) -> str:
+    """未通过校验的原始体也要能出稳定哈希（修复/revbump/failed 留痕用，非 A §2 契约指纹）。
+
+    proposal_fingerprint 的前置（无 float、数组内无 null、temp_id 皆 str）只对零错误体成立；
+    修复路径的输入恰是违反前置的体，裸调会 ValueError/TypeError → 未捕获 500 → 消息回滚、
+    修复循环打不响。退化为规范 JSON 的 SHA-256：同体同哈希即可（此哈希只做审计/对账留痕，
+    不参与 landed_hash / 基线比对）。"""
+    try:
+        return proposal_fingerprint(body)
+    except (TypeError, ValueError):
+        canon = json.dumps(
+            body, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        )
+        return hashlib.sha256(canon.encode("utf-8")).hexdigest()
 
 
 def _drafting_placeholder() -> tuple[dict[str, Any], str]:
@@ -977,7 +995,7 @@ def _apply_new_delta_repair(
     body = parsed if isinstance(parsed, dict) else {}
     proposal = _create_delta_row_guarded(
         tx, channel, task, author,
-        new_id=new_id, body=body, proposal_hash=proposal_fingerprint(body),
+        new_id=new_id, body=body, proposal_hash=_fingerprint_lenient(body),
         base_hash=_delta_base_of(parsed),
     )
     if proposal is None:
@@ -1153,7 +1171,7 @@ def _apply_revbump_invalid(
     body = parsed if parsed is not None else {}
     proposal = _insert_revision_row(
         tx, old, new_id=new_id, status=ProposalStatus.DRAFTING,
-        body=body, proposal_hash=proposal_fingerprint(body),
+        body=body, proposal_hash=_fingerprint_lenient(body),
     )
     return _apply_repair(tx, proposal, channel, raw_body, parsed, errors)
 
@@ -1208,7 +1226,7 @@ def _store_failed_body(
     if parsed is not None:
         tx.conn.execute(
             update(_PROPOSAL).where(_PROPOSAL.c.id == proposal_id).values(
-                body=parsed, proposal_hash=proposal_fingerprint(parsed)
+                body=parsed, proposal_hash=_fingerprint_lenient(parsed)
             )
         )
 

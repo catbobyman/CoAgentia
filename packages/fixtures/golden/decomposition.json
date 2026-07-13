@@ -3617,5 +3617,246 @@
         "message": "system 节点的 system_action 必须为 'merge' 或 'check'"
       }
     ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_command_not_string",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "command 类型洞回归：非 str command 必报 FIELD_INVALID",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "验证伪代码",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1",
+          "command": 1.5
+        },
+        {
+          "temp_id": "N2",
+          "title": "评审登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "评审登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "验证伪代码",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[0].command",
+        "message": "command 必须为字符串或 null"
+      }
+    ]
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v4_command_null_array",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "check 节点 command=[null]：V4 类型错与 V14 非空必填并报",
+      "nodes": [
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "验证伪代码",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        },
+        {
+          "temp_id": "N3",
+          "title": "校验",
+          "kind": "system",
+          "system_action": "check",
+          "command": [
+            null
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N3"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "FIELD_INVALID",
+        "path": "$.nodes[1].command",
+        "message": "command 必须为字符串或 null"
+      },
+      {
+        "code": "SYSTEM_NODE_INVALID",
+        "path": "$.nodes[1].command",
+        "message": "system_action=check 的节点必须提供 command"
+      }
+    ]
+  },
+  {
+    "fn": "proposal_fingerprint",
+    "name": "fp_mixed_tempid_sort_guard",
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "混型 temp_id 指纹排序守卫",
+      "nodes": [
+        {
+          "temp_id": 2,
+          "title": "混型"
+        },
+        {
+          "temp_id": "N1",
+          "title": "实现登录",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现登录目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "验证伪代码",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        }
+      ],
+      "edges": []
+    },
+    "hash": "0a7e8ec6ae9ffdc42f53fda04536c3f53aea6e47aff8f81fef270d8885d992be"
+  },
+  {
+    "fn": "validate_proposal",
+    "name": "v8_edge_astral_hint",
+    "env": {
+      "node_limit": 12,
+      "member_ids": [
+        "M1",
+        "M2"
+      ],
+      "bound_project_ids": [
+        "P1"
+      ]
+    },
+    "body": {
+      "version": "coagentia.decomposition.v1",
+      "source": "T_SRC",
+      "mode": "decompose",
+      "summary": "星面字符 nearest hint 双端一致回归",
+      "nodes": [
+        {
+          "temp_id": "aa",
+          "title": "实现甲",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现甲目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "验证伪代码",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M1"
+        },
+        {
+          "temp_id": "x",
+          "title": "实现乙",
+          "kind": "agent",
+          "task_plan": {
+            "goal": "实现乙目标",
+            "acceptance_criteria": [
+              {
+                "id": "AC1",
+                "statement": "验证伪代码",
+                "verify_by": "command",
+                "verify_ref": "pytest"
+              }
+            ]
+          },
+          "suggested_owner": "M2"
+        }
+      ],
+      "edges": [
+        {
+          "from": "😀",
+          "to": "aa"
+        }
+      ]
+    },
+    "errors": [
+      {
+        "code": "EDGE_UNKNOWN_NODE",
+        "path": "$.edges[0].from",
+        "message": "边引用了不存在的节点 '😀'",
+        "hint": "现有 temp_id：aa、x；是否想引用 'x'？"
+      }
+    ]
   }
 ]

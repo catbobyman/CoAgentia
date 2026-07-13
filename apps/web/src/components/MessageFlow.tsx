@@ -89,9 +89,15 @@ export function MessageFlow(props: MessageFlowProps) {
         const ownerId = task?.owner_member_id ?? undefined;
         const owner = ownerId ? memberById[ownerId] : undefined;
         const conflictFiles = m.kind === 'system' && m.card_kind === 'merge_conflict' ? parseConflictFiles(m.body) : [];
-        // 提案消息:正文剥离 <control> 块只渲染散文(定界复用内核镜像,勿重写);卡片单独渲染。
+        // 机读体不进消息流(M6 review F10):任意含 <control> 的正文一律剥离(定界复用内核
+        // 镜像,勿重写)——只剥有卡消息会让修复循环首发的无效提案(无 card_ref)整段原始
+        // JSON 泄漏进人类会话;剥空则给占位说明。提案卡单独渲染(isProposal)。
         const isProposal = m.card_kind === 'proposal' && !!m.card_ref;
-        const bodyText = isProposal ? stripControl(m.body) : m.body;
+        const hasControl = m.body.includes('<control>');
+        const stripped = hasControl ? stripControl(m.body) : m.body;
+        const bodyText = hasControl && stripped === ''
+          ? '（机读控制块已交系统处理，正文无散文）'
+          : stripped;
         return (
           <div key={m.id} id={`msg-${m.id}`}>
             {newDay && <div className="datesep"><span>{date}</span></div>}

@@ -673,6 +673,48 @@ def test_status_upsert_persists_basic_transition_fields(migrated_engine: Engine)
         assert cleaned.row["cleaned_at"] is not None
 
 
+def test_apply_status_trusted_merge_survives_node_removal(migrated_engine: Engine) -> None:
+    """F2 回归（M6 review）：running merge 的 merged 上报（trusted_running_merge）在任务的
+    agent 画布节点已被 delta 删除后不得被丢弃——内连接会返回 None → merge 节点永卡 RUNNING。
+    非信任路径仍要求节点存在（越界上报不污染事实源）。"""
+    env = Env(migrated_engine)
+    channel = env.add_channel(kind="channel", name="build")
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+    task_id, node_id, _ = _task_node(
+        env, channel, canvas, number=1, owner=None, project_id=project, writes_code=True,
+    )
+    branch = f"coagentia/task-{task_id}"
+    with env.engine.begin() as c:
+        assert worktree_service.apply_status(
+            c, computer_id=env.comp_id,
+            data=WorktreeStatusData(
+                task_id=task_id, status="active", branch=branch, path=WORKTREE_PATH),
+        ) is not None
+    # delta 删除该任务的 agent 节点（done 任务节点可删）。
+    with env.engine.begin() as c:
+        c.execute(delete(_NODE).where(_NODE.c.id == node_id))
+    with env.engine.begin() as c:
+        # 信任路径（merge 步快照匹配）：节点没了也要吃下 merged 上报。
+        merged = worktree_service.apply_status(
+            c, computer_id=env.comp_id,
+            data=WorktreeStatusData(
+                task_id=task_id, status="merged", branch=branch,
+                path=WORKTREE_PATH, merge_commit="merge-f2",
+            ),
+            trusted_running_merge=True,
+        )
+        assert merged is not None, "修复前：内连接 agent 节点 → None → 上报被丢弃"
+        assert merged.row["merge_commit"] == "merge-f2" and merged.node_id is None
+        # 非信任路径：节点缺失仍拒收（越界上报）。
+        rejected = worktree_service.apply_status(
+            c, computer_id=env.comp_id,
+            data=WorktreeStatusData(
+                task_id=task_id, status="active", branch=branch, path=WORKTREE_PATH),
+        )
+        assert rejected is None
+
+
 def test_existing_task_still_ensures_after_project_unbind(migrated_engine: Engine) -> None:
     env = Env(migrated_engine)
     channel = env.add_channel(kind="channel", name="build")
@@ -697,6 +739,31 @@ def test_existing_task_still_ensures_after_project_unbind(migrated_engine: Engin
     with env.engine.connect() as c:
         plans = worktree_service.ensure_plans(c, task_id=task_id)
     assert [item.task_id for item in plans] == [task_id]
+
+
+def test_ensure_plans_covers_reopened_task_with_cleaned_worktree(migrated_engine: Engine) -> None:
+    """F3 回归（M6 review）：closed→todo reopen 的 writes_code 任务，其 worktree 行已 cleaned
+    时须重新进 ensure 派生（cleaned 视同无树）；active/merged 行仍不派生（语义不变）。"""
+    env = Env(migrated_engine)
+    channel = env.add_channel(kind="channel", name="build")
+    project = _project(env, channel)
+    canvas = _canvas(env, channel)
+    task_id, _, _ = _task_node(
+        env, channel, canvas, number=1, owner=None, project_id=project, writes_code=True,
+    )
+    _worktree(env, task_id=task_id, project_id=project, status="cleaned")
+    with env.engine.connect() as c:
+        plans = worktree_service.ensure_plans(c, task_id=task_id)
+    assert [item.task_id for item in plans] == [task_id], "cleaned 行任务须重新派生"
+    # active 行不重复派生（原语义）。
+    with env.engine.begin() as c:
+        c.execute(
+            models.tbl(models.Worktree).update()
+            .where(models.tbl(models.Worktree).c.task_id == task_id)
+            .values(status="active")
+        )
+    with env.engine.connect() as c:
+        assert worktree_service.ensure_plans(c, task_id=task_id) == []
 
 
 def test_directory_context_excludes_terminal_and_reblocked_tasks(

@@ -903,16 +903,19 @@ class DaemonHub:
             if status not in _DELIVERABLE:
                 continue  # offline/starting/error → 不投不唤醒（§8.2）
             with self._engine.connect() as c:
-                if worktree_service.delivery_waits_for_directory(
-                    c, agent_member_id=agent_id, message=msg
-                ):
-                    continue
+                # 单次过滤（M6 review F6/效率）：可投前缀既做「本消息是否已可投」判定（唤醒
+                # 门），也做「有没有东西可冲」判定（busy 冲洗门）。本消息被扣（不在前缀）只
+                # 取消**以它为由的唤醒**，不取消前缀冲洗——否则前缀里早先投递失败/被扣后解锁
+                # 的消息要等 60s 对账才走（旧版对 busy 无条件冲洗，此语义不得收窄）。
                 prefix, _ = self._filter_agent_delivery(
                     c, self._backlog(c, agent_id, channel_id), agent_id
                 )
-                if message_id not in {item["id"] for item in prefix}:
-                    continue
-                reason = self._compute_trigger(c, msg, channel, agent_id)
+                if not prefix:
+                    continue  # 首条即被扣或无积压：无可投面，解锁后由触发/对账再评
+                in_prefix = message_id in {item["id"] for item in prefix}
+                reason = (
+                    self._compute_trigger(c, msg, channel, agent_id) if in_prefix else None
+                )
             if status == AgentStatus.BUSY.value:
                 await self._deliver_backlog(conn, agent_id, channel_id)  # 直投（§8.2）
             elif reason is not None:  # idle + 触发命中 → wake + deliver
@@ -1086,8 +1089,21 @@ class DaemonHub:
         return lock
 
     async def _scan_channel_worktrees(self, channel_id: str) -> None:
-        """画布/任务提交后低延迟扫描；上游 done 解锁无需等 60s 周期。"""
+        """画布/任务提交后低延迟扫描；上游 done 解锁无需等 60s 周期。
+
+        单表 EXISTS 短路（M6 review 效率）：本扫描挂在每条 message.created 的投递前沿上，
+        无 writes_code 任务的纯聊天频道不必每条消息付 4 表 join + 逐候选画布推导。"""
         with self._engine.connect() as c:
+            has_code_task = c.execute(
+                select(_TASK.c.id).where(
+                    _TASK.c.channel_id == channel_id,
+                    _TASK.c.writes_code.is_(True),
+                    _TASK.c.project_id.is_not(None),
+                    _TASK.c.status.notin_(worktree_service.TERMINAL_TASK_STATUSES),
+                ).limit(1)
+            ).first()
+            if has_code_task is None:
+                return
             plans = worktree_service.ensure_plans(c, channel_id=channel_id)
         for plan in plans:
             await self._ensure_worktree(plan.task_id)
@@ -1107,7 +1123,13 @@ class DaemonHub:
                         _WORKTREE.c.task_id == task_id
                     )
                 ).first()
-                if existing is not None:
+                if existing is not None and existing[1] == "cleaned":
+                    # cleaned 行视同无树（M6 review F3）：reopen 任务经 ensure 派生重建，
+                    # daemon 幂等，apply_status 把行 upsert 回 active。
+                    plans = worktree_service.ensure_plans(
+                        c, task_id=task_id, allow_blocked=allow_blocked
+                    )
+                elif existing is not None:
                     already = bool(existing[0]) and existing[1] in {"active", "conflicted"}
                     if not revalidate or existing[1] != "active":
                         return already
@@ -1150,9 +1172,12 @@ class DaemonHub:
     async def _cleanup_worktree(self, task_id: str, computer_id: str) -> bool:
         async with self._worktree_lock(task_id):
             with self._engine.connect() as c:
+                # 锁内单任务复核（TOCTOU 纪律保留）；task_id 过滤免 K+1 次全局推导。
                 due = any(
                     item.task_id == task_id
-                    for item in worktree_service.cleanup_plans(c, computer_id=computer_id)
+                    for item in worktree_service.cleanup_plans(
+                        c, computer_id=computer_id, task_id=task_id
+                    )
                 )
             if not due:
                 return False
@@ -1326,6 +1351,11 @@ class DaemonHub:
 
     async def _scan_channel_system_nodes(self, channel_id: str) -> None:
         with self._engine.connect() as c:
+            # 落地期扫描级早退（M6 review 效率）：running 批期间 idle 认领必被 prepare_dispatch
+            # 抑制，而步事务每 node/edge 事件都触发一次本扫描——一查即返省去逐节点锁+事务；
+            # running 节点恢复由重连对账（workspace 扫描）与批 :done 的 LANDING_COMPLETED 兜住。
+            if system_node_service.channel_landing_in_progress(c, channel_id):
+                return
             node_ids = system_node_service.candidate_node_ids(c, channel_id=channel_id)
         for node_id in node_ids:
             await self._drive_system_node(node_id)

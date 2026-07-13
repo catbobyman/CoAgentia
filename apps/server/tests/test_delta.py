@@ -406,6 +406,57 @@ def test_validate_delta_edge_and_cycle(migrated_engine: Engine) -> None:
     assert any(e["code"] == "GRAPH_CYCLE" for e in e3)
 
 
+def test_validate_delta_edge_error_index_alignment(migrated_engine: Engine) -> None:
+    """F7 回归（M6 review）：畸形 add_edge（非 str 端点）之后的自环/端点错误必须归因
+    到原始 op 下标——修复前 add_edge_j 事后重建含畸形 op，错误整体左移。"""
+    ids = _seed(migrated_engine)
+    a, _ = _add_node(migrated_engine, ids, "甲")
+    base = _sync_baseline(migrated_engine, ids)
+    body = _delta_body(base, [
+        {"op": "add_edge", "from": 1, "to": "X"},  # 畸形：FIELD_INVALID@[0]
+        {"op": "add_edge", "from": a, "to": a},    # 自环：EDGE_SELF 应在 [1]
+    ])
+    errs = delta_domain.validate_delta(
+        migrated_engine.connect(), _channel_dict(migrated_engine, ids["channel"]),
+        _canvas_dict(migrated_engine, ids["channel"]), body,
+    )
+    self_errs = [e for e in errs if e["code"] == "EDGE_SELF"]
+    assert self_errs and self_errs[0]["path"] == "$.operations[1]", errs
+    shape_errs = [e for e in errs if e["code"] == "FIELD_INVALID"]
+    assert any(e["path"] == "$.operations[0]" for e in shape_errs), errs
+
+
+def test_validate_delta_writes_code_requires_merge(migrated_engine: Engine) -> None:
+    """F8 回归（M6 review）：无 merge 画布上 delta 新增 writes_code 节点必报
+    MERGE_PLAN_MISSING（对齐 full 提案 V13 硬度）；同增量补 merge 节点即放行。"""
+    ids = _seed(migrated_engine)
+    _add_node(migrated_engine, ids, "既有")
+    base = _sync_baseline(migrated_engine, ids)
+    wc_op = {"op": "add_node", "node": {
+        "temp_id": "W1", "title": "写代码", "kind": "agent", "writes_code": True,
+        "project": ids["project"], "task_plan": _plan("写代码")}}
+    conn = migrated_engine.connect()
+    ch = _channel_dict(migrated_engine, ids["channel"])
+    cv = _canvas_dict(migrated_engine, ids["channel"])
+    errs = delta_domain.validate_delta(conn, ch, cv, _delta_body(base, [wc_op]))
+    assert any(e["code"] == "MERGE_PLAN_MISSING" for e in errs), errs
+    # 同增量补 merge 节点 → 放行。
+    body2 = _delta_body(base, [
+        wc_op,
+        {"op": "add_node", "node": {"temp_id": "M1", "title": "合并",
+                                    "kind": "system", "system_action": "merge"}},
+        {"op": "add_edge", "from": "W1", "to": "M1"},
+    ])
+    errs2 = delta_domain.validate_delta(conn, ch, cv, body2)
+    assert not any(e["code"] == "MERGE_PLAN_MISSING" for e in errs2), errs2
+    # 画布已有 merge 节点 → 放行。
+    _add_node(migrated_engine, ids, "合并点", kind="system", system_action="merge")
+    base3 = _sync_baseline(migrated_engine, ids)
+    cv3 = _canvas_dict(migrated_engine, ids["channel"])
+    errs3 = delta_domain.validate_delta(conn, ch, cv3, _delta_body(base3, [wc_op]))
+    assert not any(e["code"] == "MERGE_PLAN_MISSING" for e in errs3), errs3
+
+
 def test_validate_delta_added_node_shape_path_remap(migrated_engine: Engine) -> None:
     """新增节点内形校验（信封+过滤）：缺 task_plan 的 agent → PLAN_MISSING，path 重映射到
     $.operations[j].node.task_plan（j = 该 add_node 的 op 下标）。"""
@@ -957,6 +1008,52 @@ def test_landing_suppresses_bare_system_node_claim(migrated_engine: Engine) -> N
         assert c.execute(
             select(_NODE.c.system_status).where(_NODE.c.id == merge_id)
         ).scalar_one() == "success"  # 裸 merge 空成功恢复（原语义不变）
+
+
+def test_fail_closed_batch_blocks_empty_merge_success(migrated_engine: Engine) -> None:
+    """F1 回归（M6 review）：最近落地批停在 fail_closed（截断前缀）时，上游被删空的 idle
+    merge 被 reconcile/画布事件重扫认领后不得空成功（不可 retry 终态）——须转 retryable
+    failed；其后任一批 :done 即解除，空 merge 恢复原语义。"""
+    from coagentia_server.computers.gateway_tx import gateway_tx
+    from coagentia_server.system_nodes import service as system_node_service
+
+    ids = _seed(migrated_engine)
+    merge_id, _ = _add_node(
+        migrated_engine, ids, "M", kind="system",
+        system_action="merge", system_status="idle",
+    )
+    body = _delta_body(_base(migrated_engine, ids), [_add_node_op("N1", "n")])
+    batch_id = new_ulid()
+    with migrated_engine.begin() as c:
+        c.execute(insert(_BATCH).values(
+            id=batch_id, workspace_id=ids["ws"], channel_id=ids["channel"], kind="delta",
+            status="fail_closed", content_hash=proposal_fingerprint(body), source_ref="x",
+            confirmed_by="probe", created_at=now_iso(),
+        ))
+
+    bus, _ = _bus()
+    with gateway_tx(migrated_engine, bus) as tx:
+        assert system_node_service.prepare_dispatch(tx, merge_id) is None
+    with migrated_engine.connect() as c:
+        assert c.execute(
+            select(_NODE.c.system_status).where(_NODE.c.id == merge_id)
+        ).scalar_one() == "failed"  # 修复前此处空成功进 success（不可 retry）
+
+    # 其后一批 :done → 最近批非 fail_closed，quarantine 解除；空 merge 恢复原语义。
+    with migrated_engine.begin() as c:
+        c.execute(insert(_BATCH).values(
+            id=new_ulid(), workspace_id=ids["ws"], channel_id=ids["channel"], kind="delta",
+            status="done", done_at=now_iso(), content_hash=proposal_fingerprint(body),
+            source_ref="y", confirmed_by="probe", created_at=now_iso(),
+        ))
+        c.execute(update(_NODE).where(_NODE.c.id == merge_id)
+                  .values(system_status="idle"))
+    with gateway_tx(migrated_engine, bus) as tx:
+        system_node_service.prepare_dispatch(tx, merge_id)
+    with migrated_engine.connect() as c:
+        assert c.execute(
+            select(_NODE.c.system_status).where(_NODE.c.id == merge_id)
+        ).scalar_one() == "success"
 
 
 def test_delta_landed_message_mentions_activated_owner(migrated_engine: Engine) -> None:

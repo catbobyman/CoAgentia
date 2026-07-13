@@ -651,8 +651,12 @@ class GitWorktreeManager:
         return entries[0].path.resolve(), branch
 
     async def _find_merge_commit(self, repo: Path, branch_head: str) -> str | None:
+        # 范围限界 {branch_head}..HEAD（M6 review 效率）：要找的 --no-ff 合并提交以 branch_head
+        # 为第二父，必是其后代、且在 HEAD 首父链上，故必在范围内；分叉点之前的全史被排除——
+        # 无界 HEAD 在大仓库上是整史 O(history) 遍历（本函数走幂等重放/恢复路径，每次重放都付）。
         result = await self._git(
-            repo, "rev-list", "--first-parent", "--parents", "--merges", "HEAD"
+            repo, "rev-list", "--first-parent", "--parents", "--merges",
+            f"{branch_head}..HEAD",
         )
         for line in result.stdout.splitlines():
             parts = line.split()

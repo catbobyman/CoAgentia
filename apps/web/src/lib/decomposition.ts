@@ -152,15 +152,19 @@ export function stripControl(text: string): string {
 
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
-  const la = a.length;
-  const lb = b.length;
+  // 距离语义 = Unicode 码点（对齐 py str 索引）——.length/下标是 UTF-16 码元，
+  // 增补平面字符会与 py 权威算出不同 nearest，hint 文本双侧分歧。
+  const ca = Array.from(a);
+  const cb = Array.from(b);
+  const la = ca.length;
+  const lb = cb.length;
   if (la === 0) return lb;
   if (lb === 0) return la;
   let prev = Array.from({ length: lb + 1 }, (_, i) => i);
   for (let i = 1; i <= la; i++) {
     const cur = [i, ...Array<number>(lb).fill(0)];
     for (let j = 1; j <= lb; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const cost = ca[i - 1] === cb[j - 1] ? 0 : 1;
       cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + cost);
     }
     prev = cur;
@@ -359,6 +363,13 @@ export function validateProposal(body: unknown, env: DecompEnv): DecompError[] {
     const projectPresent = has(node, 'project') && project !== null;
     if (projectPresent && !isStr(project)) {
       errors.push(err('FIELD_INVALID', `${base}.project`, 'project 必须为项目引用字符串或 null'));
+    }
+
+    // V4 command 类型（string | null；check 节点的非空必填由 V14 另判）——与 py 同步：
+    // 不校验则非 str 值零错误直达 proposalFingerprint（float/数组内 null 违反 A §2 前置）
+    const commandVal = node['command'];
+    if (has(node, 'command') && commandVal !== null && !isStr(commandVal)) {
+      errors.push(err('FIELD_INVALID', `${base}.command`, 'command 必须为字符串或 null'));
     }
 
     // -- kind 相关：V10（agent）/ V14（system + agent 禁 system_action）

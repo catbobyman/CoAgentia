@@ -402,6 +402,15 @@ def validate_proposal(body: object, env: Env) -> list[ValidationError]:
                 "project 必须为项目引用字符串或 null",
             ))
 
+        # V4 command 类型（string | null；check 节点的非空必填由 V14 另判）——不校验则
+        # 非 str 值可零错误直达 proposal_fingerprint（float/数组内 null 违反 A §2 前置而炸 500）
+        command_val = node.get("command")
+        if "command" in node and command_val is not None and not _is_str(command_val):
+            errors.append(_err(
+                CODE_FIELD_INVALID, f"{base}.command",
+                "command 必须为字符串或 null",
+            ))
+
         # -- kind 相关：V10（agent） / V14（system + agent 禁 system_action）
         if eff_kind == "agent":
             _validate_agent_plan(node, base, errors)
@@ -627,15 +636,25 @@ def proposal_fingerprint(body: dict) -> str:
     cleaned: dict = {k: v for k, v in body.items() if k not in _SYSTEM_INJECTED}
     nodes = cleaned.get("nodes")
     if isinstance(nodes, list):
+        # 排序键 _is_str 守卫（对齐 TS 镜像 isStr 兜底）：键存在但非 str（混型 temp_id）时
+        # 裸值会让 sorted() 抛 TypeError——修复路径对未校验体取指纹不得炸。
         cleaned["nodes"] = sorted(
-            nodes, key=lambda n: n.get("temp_id", "") if isinstance(n, dict) else ""
+            nodes,
+            key=lambda n: (
+                n["temp_id"] if isinstance(n, dict) and _is_str(n.get("temp_id")) else ""
+            ),
         )
     edges = cleaned.get("edges")
     if isinstance(edges, list):
         cleaned["edges"] = sorted(
             edges,
             key=lambda e: (
-                (e.get("from", ""), e.get("to", "")) if isinstance(e, dict) else ("", "")
+                (
+                    e["from"] if _is_str(e.get("from")) else "",
+                    e["to"] if _is_str(e.get("to")) else "",
+                )
+                if isinstance(e, dict)
+                else ("", "")
             ),
         )
     return fingerprint(cleaned)

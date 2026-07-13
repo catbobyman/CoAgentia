@@ -18,7 +18,7 @@ from coagentia_contracts.enums import (
     TaskStatus,
     WorktreeStatus,
 )
-from sqlalchemy import insert, select, update
+from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.engine import Connection
 
 from coagentia_server.canvas import service as canvas_service
@@ -32,7 +32,8 @@ _PROJECT = models.tbl(models.Project)
 _WORKTREE = models.tbl(models.Worktree)
 _MENTION = models.tbl(models.MessageMention)
 
-_TERMINAL_TASK_STATUSES = {TaskStatus.DONE.value, TaskStatus.CLOSED.value}
+TERMINAL_TASK_STATUSES = {TaskStatus.DONE.value, TaskStatus.CLOSED.value}
+_TERMINAL_TASK_STATUSES = TERMINAL_TASK_STATUSES  # 模块内旧名沿用
 _DIRECTORY_STATUSES = {WorktreeStatus.ACTIVE.value, WorktreeStatus.CONFLICTED.value}
 
 
@@ -71,7 +72,7 @@ class StatusResult:
     channel_id: str
     root_message_id: str
     owner_member_id: str | None
-    node_id: str
+    node_id: str | None  # agent 画布节点可能已被 delta 合法删除（F2）
     task_status: str
 
 
@@ -87,7 +88,12 @@ def ensure_plans(
     task_id: str | None = None,
     allow_blocked: bool = False,
 ) -> list[EnsurePlan]:
-    """推导缺树的激活 writes_code 画布任务；非画布/只读/blocked/终态一律不派生。"""
+    """推导缺树的激活 writes_code 画布任务；非画布/只读/blocked/终态一律不派生。
+
+    cleaned 行视同无树（M6 review F3）：closed→todo reopen 的任务若树已按 keep_days 清理，
+    只按 `_WORKTREE.task_id IS NULL` 推导会永远跳过它——revalidation 只扫 active、投递门又把
+    cleaned 计入缺目录，该任务的投递被永久扣住且无恢复面。cleaned 行任务重新进 ensure 派生，
+    daemon 幂等重建后 apply_status 把行 upsert 回 active。"""
     source = (
         _TASK.join(_NODE, _NODE.c.task_id == _TASK.c.id)
         .join(_CANVAS, _CANVAS.c.id == _NODE.c.canvas_id)
@@ -107,7 +113,10 @@ def ensure_plans(
             _TASK.c.writes_code.is_(True),
             _TASK.c.project_id.is_not(None),
             _TASK.c.status.notin_(_TERMINAL_TASK_STATUSES),
-            _WORKTREE.c.task_id.is_(None),
+            or_(
+                _WORKTREE.c.task_id.is_(None),
+                _WORKTREE.c.status == WorktreeStatus.CLEANED.value,
+            ),
             _CANVAS.c.channel_id == _TASK.c.channel_id,
         )
         .order_by(_TASK.c.id)
@@ -182,11 +191,15 @@ def revalidation_plans(
 
 
 def cleanup_plans(
-    conn: Connection, *, computer_id: str, now: str | None = None
+    conn: Connection, *, computer_id: str, now: str | None = None, task_id: str | None = None
 ) -> list[CleanupPlan]:
-    """任务 done/closed 起经过 Project.keep_days 后推导 cleanup；cleaned 行不会再下发。"""
+    """任务 done/closed 起经过 Project.keep_days 后推导 cleanup；cleaned 行不会再下发。
+
+    task_id 过滤（M6 review 效率）：hub._cleanup_worktree 锁内复核单任务是否 due，无须重推
+    全 computer 的候选集与全局 merge-retained BFS（reconcile 已算过全量，K 个 due 任务原本要
+    K+1 次全局推导）。"""
     at = _parse_timestamp(now or now_iso())
-    rows = conn.execute(
+    stmt = (
         select(
             _WORKTREE.c.task_id,
             _WORKTREE.c.project_id,
@@ -213,7 +226,10 @@ def cleanup_plans(
             _WORKTREE.c.status != WorktreeStatus.CLEANED.value,
         )
         .order_by(_WORKTREE.c.task_id)
-    ).mappings()
+    )
+    if task_id is not None:
+        stmt = stmt.where(_WORKTREE.c.task_id == task_id)
+    rows = conn.execute(stmt).mappings()
     occupied_by_tree: dict[tuple[str, str, str], set[str]] = {}
     for active in conn.execute(
         select(
@@ -230,7 +246,7 @@ def cleanup_plans(
     ).mappings():
         key = (active["project_id"], active["path"], active["branch"])
         occupied_by_tree.setdefault(key, set()).add(active["task_id"])
-    merge_retained = _merge_retained_task_ids(conn)
+    merge_retained = _merge_retained_task_ids(conn, only_task_id=task_id)
     plans: list[CleanupPlan] = []
     for row in rows:
         # 冲突任务的逻辑 Worktree 行复用原任务 path/branch；物理树只由原分支所属任务清理。
@@ -255,20 +271,27 @@ def cleanup_plans(
     return plans
 
 
-def _merge_retained_task_ids(conn: Connection) -> set[str]:
-    """返回非 success merge 节点的全部上游任务，避免 retention 抢先拆树。"""
+def _merge_retained_task_ids(
+    conn: Connection, *, only_task_id: str | None = None
+) -> set[str]:
+    """返回非 success merge 节点的全部上游任务，避免 retention 抢先拆树。
+
+    only_task_id：只需判定单任务时，把 BFS 限制在该任务节点所在画布（任务节点唯一属于
+    一张画布，跨画布 merge 不可能引用它）。"""
     retained: set[str] = set()
-    canvas_ids = list(
-        conn.execute(
-            select(_NODE.c.canvas_id)
-            .where(
-                _NODE.c.kind == CanvasNodeKind.SYSTEM.value,
-                _NODE.c.system_action == SystemAction.MERGE.value,
-                _NODE.c.system_status != SystemNodeStatus.SUCCESS.value,
-            )
-            .distinct()
-        ).scalars()
+    canvas_stmt = (
+        select(_NODE.c.canvas_id)
+        .where(
+            _NODE.c.kind == CanvasNodeKind.SYSTEM.value,
+            _NODE.c.system_action == SystemAction.MERGE.value,
+            _NODE.c.system_status != SystemNodeStatus.SUCCESS.value,
+        )
+        .distinct()
     )
+    if only_task_id is not None:
+        task_canvases = select(_NODE.c.canvas_id).where(_NODE.c.task_id == only_task_id)
+        canvas_stmt = canvas_stmt.where(_NODE.c.canvas_id.in_(task_canvases))
+    canvas_ids = list(conn.execute(canvas_stmt).scalars())
     for canvas_id in canvas_ids:
         nodes = canvas_service.fetch_nodes(conn, canvas_id)
         by_id = {node["id"]: node for node in nodes}
@@ -303,7 +326,12 @@ def apply_status(
     data: WorktreeStatusData,
     trusted_running_merge: bool = False,
 ) -> StatusResult | None:
-    """校验上报归属并按 task_id upsert；重复 active 不重复触发目录消息。"""
+    """校验上报归属并按 task_id upsert；重复 active 不重复触发目录消息。
+
+    画布节点外连接（M6 review F2）：running merge 的步快照按 task_id/branch/path 匹配上报
+    （trusted_running_merge），任务的 agent 节点可能已被 delta 合法删除（done 任务节点可删）——
+    内连接会让 merged 上报返回 None 被丢弃，merge 节点永卡 RUNNING 且重连重派同样被丢。
+    信任路径放行无节点任务；非信任路径仍要求节点存在（越界上报不污染事实源）。"""
     task_stmt = (
         select(
             _TASK.c.workspace_id,
@@ -315,17 +343,21 @@ def apply_status(
             _NODE.c.id.label("node_id"),
         )
         .select_from(
-            _TASK.join(_NODE, _NODE.c.task_id == _TASK.c.id).join(
-                _PROJECT, _PROJECT.c.id == _TASK.c.project_id
+            _TASK.join(_PROJECT, _PROJECT.c.id == _TASK.c.project_id).outerjoin(
+                _NODE,
+                and_(
+                    _NODE.c.task_id == _TASK.c.id,
+                    _NODE.c.kind == CanvasNodeKind.AGENT.value,
+                ),
             )
         )
-        .where(
-            _TASK.c.id == data.task_id,
-            _NODE.c.kind == CanvasNodeKind.AGENT.value,
-        )
+        .where(_TASK.c.id == data.task_id)
     )
     if not trusted_running_merge:
-        task_stmt = task_stmt.where(_PROJECT.c.computer_id == computer_id)
+        task_stmt = task_stmt.where(
+            _PROJECT.c.computer_id == computer_id,
+            _NODE.c.id.is_not(None),
+        )
     task = conn.execute(task_stmt).mappings().first()
     if task is None or task["project_id"] is None:
         return None

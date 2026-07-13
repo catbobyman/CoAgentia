@@ -309,6 +309,65 @@ def test_repair_loop_exhausts_to_failed(migrated_engine: Engine) -> None:
     assert _diag_count(migrated_engine, "proposal.failed_escalated") == 1
 
 
+def test_repair_with_unfingerprintable_body_no_500(migrated_engine: Engine) -> None:
+    """F4 回归（M6 review）：修复路径对未通过校验的体取哈希不得炸——float（违反 A §2.1）、
+    混型 temp_id（排序键 TypeError）都该走 _fingerprint_lenient 兜底进 repairing，而非 500 回滚。"""
+    ids = _seed(migrated_engine)
+    pid = _make_drafting(migrated_engine, ids)
+    channel = _channel_row(migrated_engine, ids["channel"])
+    bad = _invalid_decompose_body(ids["task"])
+    bad["nodes"][0]["task_plan"]["estimate"] = 1.5  # UNKNOWN_FIELD + float（指纹域外值）
+    bad["nodes"].append({"temp_id": 2, "title": "混型"})  # 混型 temp_id（排序键守卫）
+    with _tx(migrated_engine) as tx:
+        decision = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(bad), thread_root_id=ids["root_msg"],
+        )
+        assert decision is not None
+        injects = decision.apply(tx)  # 修复前此处 ValueError/TypeError → 500
+    assert len(injects) == 1 and injects[0].kind is InjectKind.REPAIR
+    row = _proposal_row(migrated_engine, pid)
+    assert row["status"] == ProposalStatus.REPAIRING.value
+    assert isinstance(row["proposal_hash"], str) and len(row["proposal_hash"]) == 64
+
+
+def test_awaiting_invalid_float_body_revbumps_no_500(migrated_engine: Engine) -> None:
+    """F4 回归（M6 review）：awaiting_confirm 期作者重提含 float 的无效体 →
+    _apply_revbump_invalid 取哈希不得炸，正常 rev+1 进 repairing。"""
+    ids = _seed(migrated_engine)
+    pid = _make_drafting(migrated_engine, ids)
+    channel = _channel_row(migrated_engine, ids["channel"])
+    with _tx(migrated_engine) as tx:
+        decision = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(_valid_single_task_body(ids["task"])),
+            thread_root_id=ids["root_msg"],
+        )
+        assert decision is not None
+        decision.apply(tx)
+    assert _proposal_row(migrated_engine, pid)["status"] == ProposalStatus.AWAITING_CONFIRM.value
+    bad = _invalid_decompose_body(ids["task"])
+    bad["estimate"] = 1.5  # 顶层未知字段 + float
+    with _tx(migrated_engine) as tx:
+        decision = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(bad), thread_root_id=ids["root_msg"],
+        )
+        assert decision is not None
+        injects = decision.apply(tx)  # 修复前此处 ValueError → 500
+    assert len(injects) == 1 and injects[0].kind is InjectKind.REPAIR
+    old = _proposal_row(migrated_engine, pid)
+    assert old["status"] == ProposalStatus.SUPERSEDED.value
+    with migrated_engine.connect() as c:
+        new_row = dict(c.execute(
+            select(_PROPOSAL).where(
+                _PROPOSAL.c.source_task_id == ids["task"], _PROPOSAL.c.revision == 2
+            )
+        ).mappings().one())
+    assert new_row["status"] == ProposalStatus.REPAIRING.value
+    assert len(new_row["proposal_hash"]) == 64
+
+
 def _system_msg_count(engine: Engine, channel_id: str) -> int:
     with engine.connect() as c:
         return len(c.execute(

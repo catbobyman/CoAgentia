@@ -367,6 +367,38 @@ def test_non_owner_agent_also_gated_on_blocked_thread(ctx: tuple[TestClient, Env
         d.sync()  # blocked 线程 → 对 Bee 与 Cass 均无 wake/deliver
 
 
+def test_busy_prefix_flush_when_new_message_behind_held(ctx: tuple[TestClient, Env, Any]) -> None:
+    """F6 回归（M6 review）：busy agent 的可投前缀不因「触发消息位于 held 之后」而滞留——
+    新消息不在前缀内只取消以它为由的唤醒，不取消前缀冲洗（旧版对 busy 无条件冲洗，
+    收窄成等 60s 对账是回归）。"""
+    client, env, _hub = ctx
+    ch, bee, _ta, rb = _blocked_setup(env)
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(bee, "busy")])
+        d.recv_hello_ack()
+        # 握手对账冲洗前缀 [anchor_a]（anchor_b 属 blocked 任务 B 线程被扣）——ack failed：
+        # read_position 不推进，anchor_a 成为「可投但滞留」的前缀。
+        deliver0 = d.recv_instr()
+        assert deliver0["type"] == "message.deliver"
+        pending = [m["id"] for m in deliver0["data"]["messages"]]
+        d.ack(deliver0, "failed")
+        d.sync()
+        # 新消息位于 held（anchor_b）之后 → 不在可投前缀内，不构成唤醒/直投理由；
+        # 修复后其事件仍冲洗既有前缀 [anchor_a]；修复前 membership 门直接 continue，
+        # 前缀滞留到 60s 对账。
+        r = client.post(
+            f"/api/channels/{ch}/messages", json={"body": "随口一句", "file_ids": []}
+        )
+        assert r.status_code == 201
+        deliver1 = d.recv_instr()
+        assert deliver1["type"] == "message.deliver"
+        got = [m["id"] for m in deliver1["data"]["messages"]]
+        assert got == pending, (got, pending)  # 冲洗的仍是滞留前缀，不含 held 之后的新消息
+        d.ack(deliver1, "done")
+        d.sync()
+
+
 def test_blocked_thread_message_not_leaked_in_backlog(ctx: tuple[TestClient, Env, Any]) -> None:
     """gating 只投 held 前连续前缀；later 不越过最大 id，解锁后整段按序补投。"""
     client, env, _hub = ctx

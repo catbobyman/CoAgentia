@@ -20,6 +20,7 @@ from coagentia_contracts.daemon import (
 from coagentia_contracts.enums import (
     CanvasNodeKind,
     CardKind,
+    LandingBatchStatus,
     SystemAction,
     SystemNodeStatus,
     TaskEventKind,
@@ -121,8 +122,10 @@ def _channel_landing_in_progress(conn: Any, channel_id: str) -> bool:
     idle merge/check 节点的上游删空;若此刻扫描器认领,空 steps 会 `_succeed_merge_node` 落
     **不可 retry 的 success 终态**,而后续 add 步才把替换边落上——J9 封死的「裸系统节点空成功」
     窗口经删除路径重开。判定读最新已提交态:任一 remove 步已提交 ⇒ 建批事务(更早提交)必可见,
-    故对该窗口无过期读活口;批 :done/fail_closed 后抑制自然解除(hub 在 landing.completed/
-    fail_closed 补扫描,不悬空)。decomp 批纯增本无此窗口,一并抑制无害且语义更简单。
+    故对该窗口无过期读活口;批 :done 后抑制自然解除(hub 仅在 LANDING_COMPLETED 补扫描)。
+    批 fail_closed 后抑制同样解除(无 settle 流,不能永久冻结频道),但截断前缀上的空 merge
+    由 `_channel_fail_closed_unsettled` 守卫兜住(空成功转 retryable failed,M6 review F1)。
+    decomp 批纯增本无此窗口,一并抑制无害且语义更简单。
     """
     _BATCH = models.tbl(models.LandingBatch)
     row = conn.execute(
@@ -133,6 +136,28 @@ def _channel_landing_in_progress(conn: Any, channel_id: str) -> bool:
         ).limit(1)
     ).first()
     return row is not None
+
+
+# hub 扫描早退用公开别名（落地期每 node/edge 步事务各触发一次频道扫描，扫描级一查即返，
+# 免逐节点锁+事务开销；语义与 prepare_dispatch 的认领抑制同源）。
+channel_landing_in_progress = _channel_landing_in_progress
+
+
+def _channel_fail_closed_unsettled(conn: Any, channel_id: str) -> bool:
+    """本频道最近一个 decomp/delta 落地批是否停在 fail_closed（M6 review F1）。
+
+    fail_closed 批可能只提交了 remove 前缀（步进事务），画布是截断前缀——此时被删空上游的
+    idle merge 会被 reconcile/画布事件重扫认领并以空 steps 落**不可 retry 的 success**，
+    绕过 hub「仅 LANDING_COMPLETED 补扫描」的事件面修复。以「最近批 == fail_closed」为
+    未 settle 判定：其后任一批 :done 即自然解除；期间空 merge 转 retryable failed。"""
+    _BATCH = models.tbl(models.LandingBatch)
+    latest = conn.execute(
+        select(_BATCH.c.status).where(
+            _BATCH.c.channel_id == channel_id,
+            _BATCH.c.kind.in_(["decomp", "delta"]),
+        ).order_by(_BATCH.c.id.desc()).limit(1)
+    ).scalar()
+    return latest == LandingBatchStatus.FAIL_CLOSED.value
 
 
 def prepare_dispatch(tx: Any, node_id: str) -> Dispatch | None:
@@ -179,6 +204,17 @@ def prepare_dispatch(tx: Any, node_id: str) -> Dispatch | None:
                 None,
             )
             if pending is None:
+                if not steps and _channel_fail_closed_unsettled(
+                    tx.conn, context["channel_id"]
+                ):
+                    # 截断前缀守卫（M6 review F1）：最近落地批 fail_closed 时，上游被删空的
+                    # merge 空成功会落不可 retry 终态——转 failed（可 retry），交人类 settle。
+                    _fail_node(
+                        tx, context, action="system.merge",
+                        reason="频道最近落地批 fail_closed，画布可能为截断前缀；"
+                               "空 merge 不落成功，修复画布/重出增量后可 retry",
+                    )
+                    return None
                 _succeed_merge_node(tx, context, empty=not steps)
                 return None
             return MergeDispatch(

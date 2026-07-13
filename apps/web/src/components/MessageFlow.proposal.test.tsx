@@ -1,5 +1,6 @@
 // M6b 消息流提案渲染（B-M6-2 ③）：card_kind==='proposal' → 正文剥离 <control> 只显散文 +
-// 渲染提案卡；无 card_kind 的貌似控制块文本不触发卡片（结构化 marker 而非 body 嗅探,同 #6 范式）。
+// 渲染提案卡；无 card_kind 不触发卡片（结构化 marker 而非 body 嗅探,同 #6 范式），但机读体
+// 仍一律剥离（M6 review F10：修复循环首发的无效提案无 card_ref，原样渲染=JSON 泄漏进会话）。
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,10 +67,23 @@ describe('消息流提案卡（card_kind=proposal）', () => {
     expect(screen.getByTestId('proposal-card')).toBeInTheDocument();
   });
 
-  it('无 card_kind 的貌似控制块文本 → 原样渲染,不触发卡片（负例）', () => {
+  it('无 card_kind 的控制块文本（修复循环首发）→ 不触发卡片,但机读体仍剥离（F10）', () => {
     const fake: MessagePublic = { ...MESSAGE, card_kind: undefined, card_ref: undefined };
     renderFlow(fake);
     expect(screen.queryByTestId('proposal-card')).not.toBeInTheDocument();
     expect(vi.mocked(api.proposal)).not.toHaveBeenCalled();
+    expect(screen.getByText(/拆解思路:单任务直达/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('<control>');
+    expect(document.body.textContent).not.toContain('coagentia.decomposition.v1"');
+  });
+
+  it('正文只有控制块（剥空）→ 占位说明,不空白不泄漏（F10）', () => {
+    const bare: MessagePublic = {
+      ...MESSAGE, card_kind: undefined, card_ref: undefined,
+      body: `<control>${CONTROL_JSON}</control>`,
+    };
+    renderFlow(bare);
+    expect(screen.getByText(/机读控制块已交系统处理/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('decomposition.v1');
   });
 });

@@ -173,7 +173,10 @@ def _validate_added_nodes(
     for e in raw:
         m = _NODE_PATH_RE.match(e.get("path", ""))
         if m is None:
-            continue  # 顶层/NODE_COUNT/merge_plan 类——过滤（结果图规则另判）
+            # 过滤非 $.nodes[i] 前缀错误：信封自身的顶层字段（V2/V4 占位值）与 NODE_COUNT(V6)
+            # 属信封伪影；V13(merge_plan) 由 validate_delta #4b 的 merge 覆盖判补偿——kernel 新增
+            # 任何非节点前缀规则时须评估是否需要同样的 delta 侧补偿（此过滤会静默丢弃之）。
+            continue
         i = int(m.group(1))
         if i >= len(add_node_indices):
             continue
@@ -259,7 +262,9 @@ def validate_delta(
     # -- 3. 结构应用：逐 op 形状校验 + 引用/存在性；同时累积结果图节点/边集。
     added_temp_ids: set[str] = set()
     removed_node_ids: set[str] = set()
-    add_edges: list[tuple[str, str]] = []
+    # (原始 op 下标, from, to)——下标在 append 处同步记录：畸形 add_edge（非 str 端点）不入列，
+    # 事后按「op=='add_edge' 的全部下标」重建会错位，端点/自环错误归因到错误的 $.operations[j]。
+    add_edges: list[tuple[int, str, str]] = []
     remove_edge_targets: list[tuple[str, str]] = []
 
     for j, op in enumerate(op_list):
@@ -321,7 +326,7 @@ def validate_delta(
                 errors.append(_err(
                     kdec.CODE_FIELD_INVALID, opath, "add_edge 的 from/to 须为字符串"))
                 continue
-            add_edges.append((frm, to))
+            add_edges.append((j, frm, to))
         else:  # remove_edge
             frm, to = op.get("from"), op.get("to")
             if not isinstance(frm, str) or not isinstance(to, str):
@@ -345,11 +350,9 @@ def validate_delta(
         surviving_edges.discard(pair)
     result_edges: set[tuple[str, str]] = set(surviving_edges)
 
-    # add_edge 端点存在性（结果图）+ 自环 + 重复（逐 op 报，用其 op 下标定位）。
-    add_edge_j = [j for j, op in enumerate(op_list)
-                  if isinstance(op, dict) and op.get("op") == "add_edge"]
-    for k, (frm, to) in enumerate(add_edges):
-        opath = f"$.operations[{add_edge_j[k]}]"
+    # add_edge 端点存在性（结果图）+ 自环 + 重复（逐 op 报，用 append 时记录的原始下标定位）。
+    for edge_j, frm, to in add_edges:
+        opath = f"$.operations[{edge_j}]"
         if frm == to:
             errors.append(_err(kdec.CODE_EDGE_SELF, opath, f"禁止自环（from 与 to 同为 '{frm}'）"))
             continue
@@ -383,6 +386,38 @@ def validate_delta(
             kdec.CODE_NODE_COUNT, "$.operations",
             f"应用后节点总数 {len(result_node_ids)} 超过上限 {node_limit}",
         ))
+
+    # -- 4b. 新增 writes_code 节点须有 merge 覆盖（对齐 full 提案 V13 的硬度）。delta 无
+    # merge_plan 表达面（_TOP_ALLOWED），且信封校验的 V13 错误（path=$.merge_plan）被 #5 的
+    # $.nodes[i] 前缀过滤丢弃、delta 落地也不像 decompose 那样自动追加 merge 节点——不补此判，
+    # writes_code 新增可零错误落进无 merge 画布，交付后没有合并路径。
+    def _op_adds_merge(op: Any) -> bool:
+        return (
+            isinstance(op, dict)
+            and op.get("op") == "add_node"
+            and isinstance(op.get("node"), dict)
+            and op["node"].get("kind") == "system"
+            and op["node"].get("system_action") == "merge"
+        )
+
+    adds_writes_code = any(
+        isinstance(op, dict) and op.get("op") == "add_node"
+        and isinstance(op.get("node"), dict) and op["node"].get("writes_code") is True
+        for op in op_list
+    )
+    if adds_writes_code:
+        merge_in_result = any(
+            nid not in removed_node_ids
+            and node_by_id[nid]["kind"] == CanvasNodeKind.SYSTEM.value
+            and node_by_id[nid].get("system_action") == "merge"
+            for nid in node_by_id
+        ) or any(_op_adds_merge(op) for op in op_list)
+        if not merge_in_result:
+            errors.append(_err(
+                kdec.CODE_MERGE_PLAN_MISSING, "$.operations",
+                "新增了 writes_code 节点但结果图无 merge 系统节点（代码交付无合并路径）",
+                "同一增量内以 add_node 补 kind='system'、system_action='merge' 节点并接边",
+            ))
 
     # -- 5. 新增节点内形校验（信封+过滤）。
     if op_list:
