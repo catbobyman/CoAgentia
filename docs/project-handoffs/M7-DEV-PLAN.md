@@ -61,8 +61,8 @@
 | K5 | trigger_deploy 工具（mcp.py +1/透传/话术/E2 核对） | ✅ | 波2 | TOOLS+build_request POST /projects/{id}/deployments 空体；409/422/503 结构化透传零码；catalog==COAGENTIA_MCP_TOOLS(16)；E2 codex 零改动核对；**Fable 补 X-Acting-Member 真调用链留痕测试（复审 minor 收口）**；daemon 178 pass |
 | K6 | 成本核算（GET /usage 三层/token_summary 新账快照） | ✅ | 波2 | routes/usage.py 三层 GROUP BY（task 恒{0\|1,1}/agent owner 任务集含零上报入分母/canvas 频道任务集）+rollup breakdown+永无货币字段；聚合 SQL 单点（纪律 7）；**复审 clean**；server 端 +11 测试 |
 | B-M7-2 | 前端部署卡+成本面（确认弹窗/日志跟随/token 小结/画布汇总条/wsBridge） | ✅ | 波2 | DeployButton+确认弹窗(R8/409 toast)/DeploymentCard(日志跟随+胶囊/URL·耗时·退出码/失败态色)/deploy_log 订阅制(wsUplink 上行订阅单例+重连 resend)/token 小结 Σ+N/M 无货币/UsageChip 画布汇总条/wsBridge deployment.*；web 403(+28)+build+tsc；**复审 2 minor 皆登记 K8**（弹窗触发者展示 owner 名——单人 MVP owner=用户,server acting_member 落准/日志交叠边缘态乱序——归 K9 核对）|
-| K7 | 性能小批四件（CR-9/usage.batch/serialize/search 双扫，行为等价） | ☐ | — | 波 3 |
-| K8 | 预留位审查文档 `docs/M7-RESERVATION-AUDIT.md` | ☐ | — | 波 3 |
+| K7 | 性能小批四件（CR-9/usage.batch/serialize/search 双扫，行为等价） | ✅ | 波3 | ①landing._post_landed_message 逐节点 fetch_task/_member_name→`_tasks_by_id`/`_member_names` 批预取 ②hub._report_usage 逐事件存在+归属查→`seen` 集+attribution dict 各一查 ③templates._plan_skeleton→`_plan_skeletons` 联查 ④search 双物化→单投影；**语义逐字节等价**（既有测试全绿不改+perf_helpers.count_queries 查询数断言 O(1)/O(批)）；**复审 clean**；**Fable 亲验 site1/site2 diff 等价**（seen 集复刻插后再查判重/setdefault(first)==（.first() 唯一根消息/task_map number·title 同 fetch_task）；server +4 测试=791 |
+| K8 | 预留位审查文档 `docs/M7-RESERVATION-AUDIT.md` | ✅ | 波3 | 三信任基座(单工作区/单机/单进程)逐面盘点+多机预留三件+单进程假设；**R-1~R-14 挂账登记表**（含 M7b 新登记 R-10~R-14=deploy.log 去重游标/对账 #10 queued 残窗契约授权/硬崩溃孤儿/弹窗触发者展示/日志交叠）；零代码；**Fable 终审**（修 §1.2 表数 14→13 事实纠偏；R-10~14 与我方复审逐条核对准确）|
 | K9 | 实机 verify = PRD M7 出口（§9b #16）→ `docs/verify/M7-EVIDENCE.md` | ☐ | — | Fable 亲跑 |
 | — | /code-review high（M7 收口）→ 修复 → 守门 → 任务书归档 | ☐ | — | **= MVP 全里程碑完成** |
 

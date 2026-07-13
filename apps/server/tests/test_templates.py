@@ -26,6 +26,7 @@ from coagentia_server.ledger import service
 from coagentia_server.templates import builtin
 from coagentia_server.templates import service as templates_service
 from fastapi.testclient import TestClient
+from perf_helpers import count_queries
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Engine
 
@@ -298,6 +299,36 @@ def test_plan_skeleton_none_when_absent(server_client: TestClient) -> None:
     assert r.status_code == 201, r.text
     tpl = entities.TemplatePublic.model_validate(r.json())
     assert tpl.body.nodes[0].plan_skeleton is None
+
+
+def test_plan_skeleton_batch_query_count_constant(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """K7 site 3：serialize 的 plan_skeleton 走批取——查询条数不随节点数增长（消除逐节点 N+1）。
+
+    1 节点与 5 节点两次 serialize 的 DML 条数相等 ⇒ 契约取用 O(1)（单条 IN），非旧 O(n) 逐任务查。
+    """
+    build = _build_channel(server_client)
+    canvas_id = _canvas_id(server_client, build)
+    _agent_node(server_client, canvas_id, "n0", task_plan=_TASK_PLAN)
+
+    with count_queries(seeded_engine) as q1:
+        with seeded_engine.connect() as conn:
+            body1 = templates_service.serialize_canvas_to_body(conn, build["id"])
+    assert body1 is not None and len(body1.nodes) == 1
+
+    for i in range(1, 5):
+        _agent_node(server_client, canvas_id, f"n{i}", task_plan=_TASK_PLAN)
+
+    with count_queries(seeded_engine) as q5:
+        with seeded_engine.connect() as conn:
+            body5 = templates_service.serialize_canvas_to_body(conn, build["id"])
+    assert body5 is not None and len(body5.nodes) == 5
+    assert all(n.plan_skeleton is not None for n in body5.nodes)
+    # 逐字等价护栏：批取后 5 节点与 1 节点 serialize 的 DML 条数一致（旧代码此处会 +4 条契约查）。
+    assert q1.dml_count == q5.dml_count, (q1.dml, q5.dml)
+    # 契约表恰被扫一次（不随节点数增长）。
+    assert sum("task_contracts" in s for s in q5.dml) == 1
 
 
 # ---------------------------------------------------------------- 序列化：include / edges

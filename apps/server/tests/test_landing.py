@@ -38,6 +38,7 @@ from coagentia_server.orchestration.role_templates import (
 )
 from daemon_helpers import Env
 from fastapi.testclient import TestClient
+from perf_helpers import count_queries
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Engine
 
@@ -1186,3 +1187,71 @@ def test_confirm_conditional_transition_blocks_double_confirm(migrated_engine: E
     with _tx(migrated_engine) as tx:
         with pytest.raises(draft_domain.StaleTransition):
             draft_domain.reject_proposal(tx, proposal=stale_row, reason="并发拒绝")
+
+
+# ---------------------------------------------------------------- K7：_post_landed_message 批查护栏
+
+
+def test_post_landed_message_query_count_constant(migrated_engine: Engine) -> None:
+    """K7 site 1：「已落地」消息构造的节点任务/建议人查询批量化——查询条数不随节点数增长。
+
+    直调 `_post_landed_message`（N=1 与 N=4），比较其对 tasks/members 表的 SELECT 条数：批取后
+    建议人名恒 1 条 IN、节点任务恒 1 条 IN（+ source 根消息 1 条），O(1) 非旧逐节点 fetch_task/
+    _member_name 的 O(n)。
+    """
+    from types import SimpleNamespace
+
+    env = Env(migrated_engine)
+    channel = env.add_channel(name="land")
+    root_msg = env.add_message(channel, author=env.owner_id, body="src")
+    source_task = new_ulid()
+    with migrated_engine.begin() as c:
+        c.execute(insert(_TASK).values(
+            id=source_task, workspace_id=env.ws_id, channel_id=channel, number=1,
+            root_message_id=root_msg, title="src", status="todo", level="l1",
+            created_by_member_id=env.owner_id, status_changed_at=now_iso(), created_at=now_iso(),
+        ))
+
+    def _scenario(n: int) -> tuple[dict[str, Any], Any]:
+        nodes: list[dict[str, Any]] = []
+        by_temp: dict[str, dict[str, Any]] = {}
+        for i in range(n):
+            owner = env.add_agent(f"A{i}-{n}", "idle")
+            tid = new_ulid()
+            node_root = env.add_message(channel, author=env.owner_id, body=f"node{i}-{n}")
+            with migrated_engine.begin() as c:
+                c.execute(insert(_TASK).values(
+                    id=tid, workspace_id=env.ws_id, channel_id=channel, number=100 + n * 10 + i,
+                    root_message_id=node_root, title=f"node{i}", status="todo", level="l2",
+                    created_by_member_id=env.owner_id, status_changed_at=now_iso(),
+                    created_at=now_iso(),
+                ))
+            temp = f"T{i}"
+            nodes.append(
+                {"temp_id": temp, "kind": "agent", "title": f"node{i}", "suggested_owner": owner}
+            )
+            by_temp[temp] = {"temp_id": temp, "task_id": tid}
+        ctx = landing_domain._ExecContext(
+            workspace_id=env.ws_id, channel_id=channel, canvas={"id": "c"},
+            proposed_by=env.owner_id, source_task_id=source_task,
+        )
+        ctx.by_temp = by_temp
+        return {"nodes": nodes, "edges": [], "mode": "decompose"}, ctx
+
+    batch = SimpleNamespace(id="B" * 26, workspace_id=env.ws_id, channel_id=channel)
+    proposal = {"revision": 1, "source_task_id": source_task}
+
+    def _measure(n: int) -> tuple[int, int]:
+        landed, ctx = _scenario(n)
+        with count_queries(migrated_engine) as q:
+            with _tx(migrated_engine) as tx:
+                landing_domain._post_landed_message(tx, ctx, batch, proposal, landed)
+        sel = [s for s in q.dml if s.upper().startswith("SELECT")]
+        member_sel = [s for s in sel if " members" in s.lower()]
+        task_sel = [s for s in sel if " tasks" in s.lower()]
+        return len(member_sel), len(task_sel)
+
+    m1, t1 = _measure(1)
+    m4, t4 = _measure(4)
+    assert m1 == m4 == 1, (m1, m4)  # 建议人名批查恰 1 条（旧码 = n 条 _member_name）
+    assert t1 == t4 == 2, (t1, t4)  # 节点任务批查(1) + source 根消息查(1)（旧码 = n+1 条）

@@ -20,6 +20,7 @@ from coagentia_server.db import models
 from coagentia_server.ledger.service import new_ulid, now_iso
 from daemon_helpers import AUTH, Env, StubDaemon
 from fastapi.testclient import TestClient
+from perf_helpers import count_queries
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
@@ -172,6 +173,41 @@ def test_usage_enrichment_non_task_root_message_null(
         ack = d.recv()
         assert ack["kind"] == "ack" and ack["ref"] == fid
     assert _usage_task_id(env.engine, ev["id"]) is None
+
+
+# ---------------------------------------------------------------- K7：批查归属/去重（非 N+1）
+
+
+def test_usage_batch_query_count_is_constant(ctx: tuple[TestClient, Env, Any]) -> None:
+    """K7 site 2：usage.batch 落库——去重存在性 + thread_root_id 归属各批查一次（非逐事件 N 查）。
+
+    4 事件命中 4 个不同任务：归属 SELECT（root_message_id IN）恰 1 条、去重 SELECT
+    （token_usage_events IN）恰 1 条；INSERT 仍 per-event（合法 O(n) 写）。落库富化逐字不变。
+    """
+    client, env, _hub = ctx
+    a = env.add_agent("A", "offline")
+    ch = env.add_channel(kind="channel", name="build")
+    env.join(ch, a)
+    env.join(ch, env.owner_id)
+    tasks = [_new_task(client, ch, body=f"t{i}") for i in range(4)]
+    events = [_usage_event(a, thread_root_id=t["message"]["id"]) for t in tasks]
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(a, "offline")])
+        d.recv_hello_ack()
+        with count_queries(env.engine) as q:
+            fid = d.report("usage.batch", {"events": events})
+            ack = d.recv()
+            assert ack["kind"] == "ack" and ack["ref"] == fid
+
+    attr = [s for s in q.dml if s.upper().startswith("SELECT") and "root_message_id" in s]
+    assert len(attr) == 1, attr  # 归属批查恰一次（旧码 = 4 次）
+    exist = [s for s in q.dml if s.upper().startswith("SELECT") and "token_usage_events" in s]
+    assert len(exist) == 1, exist  # 去重存在性批查恰一次（旧码 = 4 次）
+    # 全部事件落库 + 归属富化逐字不变。
+    for ev, t in zip(events, tasks, strict=True):
+        assert _usage_task_id(env.engine, ev["id"]) == t["task"]["id"]
 
 
 # ---------------------------------------------------------------- WS：广播 payload task_id 富化

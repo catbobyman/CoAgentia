@@ -1178,21 +1178,35 @@ class DaemonHub:
     def _report_usage(self, conn: DaemonConnection, d: UsageBatchData) -> None:
         """id(ULID) 主键 INSERT OR IGNORE → exactly-once；仅新行广播 token_usage.reported（§7）。"""
         with gateway_tx(self._engine, self._bus) as tx:
+            # 批量预取（K7）：已存在 id 集 + thread_root_id→task_id 归属映射各一次查完，替代逐事件
+            # 两查。`seen` 由已存在集起步、每插一行补记——批内重复 id 与旧「插后再查」判重逐字等价。
+            ev_ids = [ev.id for ev in d.events]
+            seen: set[str] = {
+                r[0]
+                for r in tx.conn.execute(
+                    select(_USAGE.c.id).where(_USAGE.c.id.in_(ev_ids))
+                )
+            } if ev_ids else set()
+            root_ids = {
+                ev.thread_root_id for ev in d.events if ev.thread_root_id is not None
+            }
+            attribution: dict[str, str] = {}
+            if root_ids:
+                for row in tx.conn.execute(
+                    select(_TASK.c.root_message_id, _TASK.c.id).where(
+                        _TASK.c.root_message_id.in_(root_ids)
+                    )
+                ):
+                    attribution.setdefault(row[0], row[1])  # 唯一根消息，至多一行
             for ev in d.events:
-                exists = tx.conn.execute(
-                    select(_USAGE.c.id).where(_USAGE.c.id == ev.id)
-                ).first()
-                if exists is not None:
-                    continue  # 重传去重（铁律 5）
+                if ev.id in seen:
+                    continue  # 重传去重（铁律 5）——含批内重复 id
+                seen.add(ev.id)
                 # 归属富化（契约 E §7.4）：thread_root_id 命中 tasks.root_message_id → task_id。
                 # 三路：无提示→None；有提示无匹配→None；命中→task.id。
                 task_id: str | None = None
                 if ev.thread_root_id is not None:
-                    task_row = tx.conn.execute(
-                        select(_TASK.c.id).where(_TASK.c.root_message_id == ev.thread_root_id)
-                    ).first()
-                    if task_row is not None:
-                        task_id = task_row[0]
+                    task_id = attribution.get(ev.thread_root_id)
                 tx.conn.execute(
                     insert(_USAGE).values(
                         id=ev.id,

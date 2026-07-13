@@ -56,6 +56,7 @@ from coagentia_server.templates import builtin
 
 _TEMPLATE = models.tbl(models.Template)
 _TASK = models.tbl(models.Task)
+_TC = models.tbl(models.TaskContract)
 _MEMBER = models.tbl(models.Member)
 _WORKSPACE = models.tbl(models.Workspace)
 _MSG = models.tbl(models.Message)
@@ -128,6 +129,8 @@ def serialize_canvas_to_body(
         if t["owner_member_id"] is not None
     }
     member_names = _member_names(conn, owner_ids)
+    # 批取入选任务的活动 TaskPlan 契约 → plan_skeleton（免逐节点 N+1；K7 性能小批）。
+    plan_skeletons = _plan_skeletons(conn, task_ids)
 
     node_key: dict[str, str] = {}  # node_id → 模板 key（连边引用）
     template_nodes: list[TemplateNode] = []
@@ -144,7 +147,7 @@ def serialize_canvas_to_body(
                 key=key,
                 title=task.get("title", ""),
                 role=placeholder,
-                plan_skeleton=_plan_skeleton(conn, n["task_id"]),
+                plan_skeleton=plan_skeletons.get(n["task_id"]),
                 writes_code=bool(task.get("writes_code", False)),
                 project_id=task.get("project_id"),
             )
@@ -181,15 +184,29 @@ def _member_names(conn: Connection, member_ids: set[str]) -> dict[str, str]:
     return {r[0]: r[1] for r in rows}
 
 
-def _plan_skeleton(conn: Connection, task_id: str) -> TaskPlanBody | None:
-    """该任务当前活动 TaskPlan 契约 body → TaskPlanBody（无则 None）。"""
-    row = contracts_service.active_contract(conn, task_id, ContractKind.TASK_PLAN)
-    if row is None:
-        return None
-    body = row["body"]
-    if not isinstance(body, dict):
-        return None
-    return TaskPlanBody.model_validate(body)
+def _plan_skeletons(
+    conn: Connection, task_ids: list[str]
+) -> dict[str, TaskPlanBody]:
+    """批取多任务的活动 TaskPlan 契约 body → {task_id: TaskPlanBody}（K7：替代逐任务 N+1）。
+
+    语义与旧 `_plan_skeleton` 单查逐字等价：仅收活动行（superseded_at IS NULL）、body 非 dict 或
+    无活动契约的任务**不入表**（调用侧 `.get()` 落 None，同旧函数 None 返回）。每任务至多一活动
+    TaskPlan（active_contract 单查前提），故 dict 无覆盖歧义。
+    """
+    if not task_ids:
+        return {}
+    rows = conn.execute(
+        select(_TC.c.task_id, _TC.c.body).where(
+            _TC.c.task_id.in_(set(task_ids)),
+            _TC.c.kind == ContractKind.TASK_PLAN,
+            _TC.c.superseded_at.is_(None),
+        )
+    ).all()
+    out: dict[str, TaskPlanBody] = {}
+    for tid, body in rows:
+        if isinstance(body, dict):
+            out[tid] = TaskPlanBody.model_validate(body)
+    return out
 
 
 # ---------------------------------------------------------------- 校验（route+builtin 共用执法点）

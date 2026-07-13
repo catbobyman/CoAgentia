@@ -174,9 +174,9 @@ def search(
         try:
             hits: list[tuple[dict[str, Any], str]] = []
             for row in tx.conn.execute(text(sql), params).mappings():
-                d = dict(row)
-                d.pop("snip", None)
-                hits.append(({k: d[k] for k in _MSG_COLS}, row["snip"]))
+                # 单扫（K7）：直接投影 _MSG_COLS（已剔 snip）+ 取 snip，免旧「dict(row) 全列复制 →
+                # pop → 再推导 _MSG_COLS」的逐行双扫；输出逐字等价（_MSG_COLS 不含 snip 辅助列）。
+                hits.append(({k: row[k] for k in _MSG_COLS}, row["snip"]))
             # 命中消息同为读面 → 附着 files（契约 A v1.0.4）。
             fmap = files_by_message(tx, [m["id"] for m, _ in hits])
             result["messages"] = [

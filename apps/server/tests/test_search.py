@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from coagentia_contracts import rest
 from fastapi.testclient import TestClient
+from perf_helpers import count_queries
+from sqlalchemy.engine import Engine
 
 BUILD = "build"
 RESEARCH = "research"
@@ -193,6 +195,28 @@ def test_short_cjk_query_matches_task_via_anchor_body(server_client: TestClient)
         server_client.get("/api/search", params={"q": "蟠桃"}).json()
     )
     assert any(x.id == task_id for x in res.tasks), "2 字 CJK 锚点正文子串应经 LIKE 兜底命中任务"
+
+
+def test_search_query_count_is_constant_in_result_size(
+    server_client: TestClient, seeded_engine: Engine
+) -> None:
+    """K7 site 4：/search 查询条数不随命中数增长（单扫，无 N+1）——2 命中与 6 命中 DML 条数相等。
+
+    消息命中的 FTS + files 附着均为一次批查；命中集扩大 3×，SQL 条数恒定 ⇒ O(1) 非 O(n)。
+    """
+    build = _channel(server_client, BUILD)["id"]
+    for i in range(2):
+        _post(server_client, build, f"zzsearchtok body {i}")
+    with count_queries(seeded_engine) as q2:
+        r2 = server_client.get("/api/search", params={"q": "zzsearchtok"})
+    assert r2.status_code == 200 and len(r2.json()["messages"]) == 2
+
+    for i in range(2, 6):
+        _post(server_client, build, f"zzsearchtok body {i}")
+    with count_queries(seeded_engine) as q6:
+        r6 = server_client.get("/api/search", params={"q": "zzsearchtok"})
+    assert r6.status_code == 200 and len(r6.json()["messages"]) == 6
+    assert q2.dml_count == q6.dml_count, (q2.dml, q6.dml)
 
 
 def test_empty_query_returns_empty_groups(server_client: TestClient) -> None:

@@ -351,6 +351,36 @@ def _member_name(conn: Connection, member_id: str) -> str | None:
     ).scalar()
 
 
+def _member_names(conn: Connection, member_ids: set[str]) -> dict[str, str]:
+    """批量在册成员名（removed_at IS NULL）→ {id: name}（K7：替代逐建议人 `_member_name` N+1）。
+
+    与单查逐字等价：软删/不存在的成员不入表，调用侧 `.get()` 落 None（同 `_member_name` 的 None）。
+    """
+    if not member_ids:
+        return {}
+    rows = conn.execute(
+        select(_MEMBER.c.id, _MEMBER.c.name).where(
+            _MEMBER.c.id.in_(member_ids), _MEMBER.c.removed_at.is_(None)
+        )
+    ).all()
+    return {r[0]: r[1] for r in rows}
+
+
+def _tasks_by_id(conn: Connection, task_ids: set[str]) -> dict[str, dict[str, Any]]:
+    """批量取任务行 → {id: row}（K7：替代 `_post_landed_message` 逐节点 fetch_task N+1）。
+
+    落地 :done 事务内所引任务恰在本批已建，故 id 集必全命中；语义等价 fetch_task（本用途仅取
+    number/title）。缺失任务在此不入表（.get 落 None），仅在数据损坏这一不可达路径上与 fetch_task
+    的断言分道，无测试/现实覆盖面。
+    """
+    if not task_ids:
+        return {}
+    rows = conn.execute(
+        select(_TASK.c.id, _TASK.c.number, _TASK.c.title).where(_TASK.c.id.in_(task_ids))
+    ).mappings()
+    return {r["id"]: dict(r) for r in rows}
+
+
 def _apply_create_node(
     tx: Any, ctx: _ExecContext, op: LandingOp
 ) -> dict[str, Any]:
@@ -1201,6 +1231,23 @@ def _post_landed_message(
     ]
     has_upstream = {b for _a, b in edges}
 
+    # 批量预取（K7）：节点任务行 number/title 与建议 owner 名各一次查完，替代循环内逐节点两查。
+    task_id_set: set[str] = set()
+    suggested_set: set[str] = set()
+    for node in raw_nodes:
+        if node.get("kind", "agent") == "system":
+            continue
+        temp_id = node.get("temp_id")
+        entry = ctx.by_temp.get(temp_id) if isinstance(temp_id, str) else None
+        tid = entry.get("task_id") if entry else None
+        if tid:
+            task_id_set.add(tid)
+        suggested = node.get("suggested_owner")
+        if isinstance(suggested, str):
+            suggested_set.add(suggested)
+    task_map = _tasks_by_id(tx.conn, task_id_set)
+    name_map = _member_names(tx.conn, suggested_set)
+
     lines: list[str] = []
     mention_ids: list[str] = []
     for node in raw_nodes:
@@ -1210,12 +1257,12 @@ def _post_landed_message(
             lines.append(f"- 系统节点：{node.get('system_action')}")
             continue
         task_id = entry.get("task_id") if entry else None
-        task = tasks_service.fetch_task(tx.conn, task_id) if task_id else None
+        task = task_map.get(task_id) if task_id else None
         label = f"#{task['number']} {task['title']}" if task else str(node.get("title") or "")
         suggested = node.get("suggested_owner")
         activated = temp_id not in has_upstream
         if isinstance(suggested, str):
-            name = _member_name(tx.conn, suggested)
+            name = name_map.get(suggested)
             if name is not None:
                 if activated:
                     label += f"（已激活，建议认领：@{name}）"
