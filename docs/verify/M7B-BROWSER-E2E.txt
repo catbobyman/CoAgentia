@@ -1,0 +1,31 @@
+M7b 浏览器可视 E2E（Fable 亲跑，2026-07-13）——真前端（apps/web/dist）由真 server 同源伺服，
+delivery 频道渲染真部署卡（read_page/get_page_text 采自 in-app 浏览器；截图工具在本 SPA 上
+viewport 0x0 超时，改以 a11y/DOM 文本树采证，字段完整可核）。
+
+数据源 = scratchpad/m7b_verify.py --keep 真机 29/29 收口后保活的 server（真 deploy 子进程 + 真
+merge --no-ff）。
+
+--- delivery 频道渲染快照（节选）---
+
+系统 merge 节点成功  node_id: 01KXEHRJZHXG4F6DM5HF15E7G9  merge_commit=243cd3d0…
+
+[部署卡 1 — 人类触发]
+  ✅ 部署成功 ｜ URL：https://demo.coagentia.test/build-42 ｜ 退出码：0 ｜ 耗时：0.0s
+  部署  main@243cd3d  成功
+  Σ 1.6k tok   输入 1.2k   输出 340   缓存读 80   缓存写 20
+  上报 1/1      （tooltip：有 usage 上报的任务数 / 聚合集任务总数（未上报计入分母））
+  https://demo.coagentia.test/build-42（可点链接）  耗时 0s  退出码 0  [展开日志]
+
+[部署卡 2 — Agent trigger_deploy 通道]
+  ✅ 部署成功 ｜ URL：https://demo.coagentia.test/build-42 ｜ 退出码：0 ｜ 耗时：0.0s
+  部署  main@243cd3d  成功
+  Σ 0 tok   输入 0   输出 0   缓存读 0   缓存写 0
+  上报 0/0    ← 新账口径正确：上次 success 部署后无新增 merged 任务 → 本次快照为空
+  https://demo.coagentia.test/build-42  耗时 0s  退出码 0  [展开日志]
+
+--- 证据要点 ---
+1. 部署卡 card_kind=deployment 进 delivery 频道渲染（结果行 URL·耗时·退出码·分支@hash、success 态）。
+2. token 小结行 Σ 四字段 + 上报 N/M 覆盖率诚实标注，**永无货币字段**。
+3. **新账语义可视**：卡 1 = 合并任务花费（Σ1.6k=1200+340+80+20，上报 1/1）；卡 2 = 同区间无新增
+   merged 任务 → Σ0、上报 0/0（失败/无增量不虚增）——B §13.4 新账口径前端如实呈现。
+4. 分支@hash = merge_commit 前 7 位 main@243cd3d（部署时 server 解析主干 HEAD 落列，卡片呈现）。

@@ -39,6 +39,32 @@
 
 > 块 M7a 的浏览器可视 E2E（预览面板三态顶条 / 并排面板 / 心跳）与部署卡一并在 **K9（PRD M7 出口）** 的完整流程（需求消息 → 拆解 → 交付卡 → 预览验收 → 合并 → 部署）中截图归档——交付卡承载预览按钮，需完整 message→task 链，落 K9 最自然。M7a 块级以本真机链 14/14 收口。
 
-## 块 M7b「部署、成本与收尾」
+## 块 M7b「部署、成本与收尾」—— 29/29 ALL PASS（2026-07-13，Fable 亲跑）
 
-（待 K9 收口填充：需求消息 → 拆解 → 执行 → Diff/预览验收 → 合并 → 一键部署 URL + 新账 token 小结；对账 #9/#10 崩溃探针。）
+真机装置 = `scratchpad/m7b_verify.py`（可复跑，`--keep` 保活）：真 uvicorn（`m7a_appfactory:make_probe_app`，隔离临时库 + data_root 落 deploy-logs）+ 真 daemon-sim（真 `DaemonClient`/真 websockets/**真 `PreviewRunner` 起真 dev server**/**真 `DeployRunner` 起真 deploy 子进程**）+ 真 scratch git 仓库。结果 = [M7B-VERIFY-results.json](M7B-VERIFY-results.json)。deploy_command = 本地 python 脚本输出伪 URL 行（裁决 #14，不真部署外网）。
+
+| # | 探针 | 结果 |
+| --- | --- | --- |
+| P0 | daemon-sim 真连 + 两 Project 绑定频道（好 dev/deploy + 慢 deploy） | ✅ ✅ |
+| **P1 预览验收** | writes_code 任务真 git 派生 worktree → daemon 真起 dev server → running 携 port → **iframe 数据源真实 HTTP 200** | ✅ ×3 |
+| **P2 合并** | merge 系统节点自动执行 → success（真 `--no-ff` 合并提交）→ worktree 行终态 merged | ✅ ×3 |
+| P3 | 任务 usage 事件就位（新账小结数据源） | ✅ |
+| **P4 部署（人类通道）** | POST=201 queued → deploy.run 真跑 → deploy.finished success → **末 URL 提取** `https://demo…/build-42` → exit_code=0 → **GET /log server 直读落盘含日志行** → **新账 token 小结含合并任务花费**（input=1200、task_ids 含该任务）→ 覆盖率 reporting/total **无货币字段** → **结果卡 card_kind=deployment 进绑定频道（card_ref）** | ✅ ×8 |
+| **P5 Agent 双通道** | X-Acting-Member=Agent 触发（R8 无角色门）→ success + **triggered_by=Agent 留痕** | ✅ ×2 |
+| **P6 成本三层读面** | GET /usage level=task（恒 {reporting,total=1}）/ level=agent（+rollup breakdown）/ level=canvas（频道任务集，**永无货币**） | ✅ ×3 |
+| **P7 409 不排队** | 慢部署 promote running → 进行中二次触发 → **409 DEPLOY_IN_PROGRESS** | ✅ ×2 |
+| **P8 对账 #10 崩溃探针** | daemon 真重启（新 boot_nonce）→ running 部署 **fail-closed 不重跑** → exit_code=NULL（结果未知）→ **fail-closed 结果卡 @触发者进频道** | ✅ ×3 |
+| **P9 对账 #9 崩溃探针** | 预览 running → daemon 真重启 → **活跃预览 fail-close**（子进程已死，裁决 #11 不自动重拉） | ✅ ×2 |
+
+### 覆盖的 PRD M7 出口句（§9b #16）
+
+需求/交付（writes_code 任务真 worktree）→ **预览验收（真 dev server iframe HTTP 200）** → **合并（真 --no-ff）** → **一键部署（人类点击 + Agent trigger_deploy 双通道，二次触发 409）→ 日志实时流 + 末 URL 提取 → 结果卡 URL + 新账 token 小结** → **对账 #9/#10 崩溃探针**。deploy 全程 `deployment.created/updated`/`deployment.log` 事件驱动无刷新。
+
+### 不变量实证（Fable 亲审 K4 的对抗核对在真机复现）
+
+- **对账 #10 fail-closed（铁律 3 副作用不可重放）**：P8 真重启后 running 部署置 failed(exit_code=NULL)、**不重跑**、结果卡 @触发者「请人工核实」——命令跑一半 daemon 死则人工核实，非自动重放。
+- **CAS 条件 UPDATE**：deploy.finished 终态 `WHERE status IN (queued,running)`、queued→running `WHERE status='queued'`；P8 fail-closed `WHERE status='running'`——全程起态门，重复/乱序帧幂等 noop。
+- **新账口径**：P4.6 token_summary 只含 P2 合并任务（merged_at ∈ 区间）的花费快照，触发时纯 SQL 落列。
+- **结果卡多频道**：裁决 #13，P4.8/P8.3 各绑定频道一条 card_kind=deployment。
+
+> 前端浏览器可视 E2E（部署卡日志滚动/token 小结行/画布 usage 汇总条）由 B-M7-2 组件行为测试（vitest 403，含 DeploymentCard/DeployButton/UsageChip/wsBridge.deployment 全套）覆盖；后端全链以本真机 29/29 收口。
