@@ -30,6 +30,7 @@ import type {
   NodePatch,
   NotificationMode,
   PresenceSnapshot,
+  PreviewSessionPublic,
   ProjectCreate,
   ProjectPatch,
   ProjectPublic,
@@ -378,6 +379,17 @@ export const api = {
   unbindProject: (channelId: string, projectId: string) =>
     writeJson<void>(`/api/channels/${channelId}/projects/${projectId}`, 'DELETE'),
   taskDiff: (taskId: string) => get<DiffPayload>(`/api/tasks/${taskId}/diff`),
+
+  // ---- M7(B-M7-1)预览生命周期（B §13.1）。三端点均无请求体，回 PreviewSessionPublic。
+  // POST = ensure + touch 幂等：无活跃会话（status ∈ starting/running）→ 建行（starting）并下发
+  // preview.start；已活跃 → 仅推进 last_active_at 返回现状。前端面板打开期按心跳重发 POST（60s，
+  // last_active_at 的唯一推进方）。GET 纯读不推进。DELETE 下发 preview.stop（回收），回 recycled 形状。
+  startPreview: (taskId: string) =>
+    writeJson<PreviewSessionPublic>(`/api/tasks/${taskId}/preview`, 'POST'),
+  getPreview: (taskId: string) =>
+    get<PreviewSessionPublic>(`/api/tasks/${taskId}/preview`),
+  stopPreview: (taskId: string) =>
+    writeJson<PreviewSessionPublic>(`/api/tasks/${taskId}/preview`, 'DELETE'),
 
   // ---- M6b 拆解编排（B §4.10）。POST decompose 三入口归一（T1 @Orchestrator 消息自然走消息路；
   // T2 携 task_id / T3 携 text）→ 202 ProposalPublic；无 Orchestrator → 409 NO_ORCHESTRATOR

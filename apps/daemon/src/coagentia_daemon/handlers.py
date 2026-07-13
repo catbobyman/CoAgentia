@@ -20,6 +20,8 @@ from coagentia_contracts.daemon import (
     InstrType,
     MessageDeliverData,
     MessageInjectData,
+    PreviewStartData,
+    PreviewStopData,
     WorktreeCleanupData,
     WorktreeEnsureData,
     WorktreeMergeData,
@@ -136,6 +138,25 @@ async def _check_run(client: DaemonClient, data: dict[str, Any]) -> HandlerResul
     return (AckResult.DONE if started else AckResult.NOOP, _OK)
 
 
+async def _preview_start(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
+    d = PreviewStartData.model_validate(data)
+    # 起进程后立即 ack（健康检查异步经 report_cb 上报，同 check.start 后台 task 立即 ack 思想）。
+    started, status = await client.previews.start(d, client.report_preview_status)
+    if status is not None:
+        # 已在跑 → 补报现状端口；起进程即失败 → 补报预生成 failed（契约 D §5.3）。
+        await client.report_preview_status(status)
+    return (AckResult.DONE if started else AckResult.NOOP, _OK)
+
+
+async def _preview_stop(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
+    d = PreviewStopData.model_validate(data)
+    stopped, status = await client.previews.stop(d.preview_session_id)
+    if status is not None:
+        # recycled；回收判定在 server，daemon 只执行并上报事实。
+        await client.report_preview_status(status)
+    return (AckResult.DONE if stopped else AckResult.NOOP, _OK)
+
+
 async def _unsupported(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
     return (
         AckResult.FAILED,
@@ -158,8 +179,8 @@ HANDLERS: dict[InstrType, Handler] = {
     InstrType.WORKTREE_MERGE: _worktree_merge,
     InstrType.WORKTREE_CLEANUP: _worktree_cleanup,
     InstrType.CHECK_RUN: _check_run,
-    # 后续波次 / M7：
-    InstrType.PREVIEW_START: _unsupported,
-    InstrType.PREVIEW_STOP: _unsupported,
+    InstrType.PREVIEW_START: _preview_start,
+    InstrType.PREVIEW_STOP: _preview_stop,
+    # 后续波次 / M7b：
     InstrType.DEPLOY_RUN: _unsupported,
 }

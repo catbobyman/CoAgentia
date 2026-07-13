@@ -31,4 +31,7 @@ export const qk = {
   // ---- M6b 拆解提案：按 proposal_id 存；消息流提案卡的渲染源（GET /proposals/{id}），
   // WS proposal.updated/draft.* 载 ProposalPublic 时按 proposal.id 反查该键 patch。
   proposal: (proposalId: string) => ['proposal', proposalId] as const,
+  // ---- M7 预览会话：按 task 存；面板经 POST(ensure) 播种缓存，WS preview.updated 载
+  // PreviewSessionPublic（task_id）时按此键 patch（daemon 状态流转 starting→running→failed）。
+  preview: (taskId: string) => ['preview', taskId] as const,
 };

@@ -18,6 +18,16 @@ export interface LandingSignal {
   channelId: string | null;
 }
 
+// M7（FR-11.2）并排多任务预览：打开的任务预览面板集合（多个任务各一面板，无全局互斥）。
+// idleMin/taskNumber 在打开时从任务的 Project 解析并随身携带——面板只有 taskId，回收倒计时（纯客户端
+// 推导 last_active_at+preview_idle_min）与牌头需要它们，避免面板再回查频道/Project。
+export interface PreviewTarget {
+  taskId: string;
+  taskNumber: number;
+  /** projects.preview_idle_min（分钟，默认 30）：回收倒计时的空闲窗口。 */
+  idleMin: number;
+}
+
 export interface UiState {
   // 当前活跃频道(布局壳选择,index 屏消费;M1 单屏在 store,多频道深链 B2 再提到 URL)
   activeChannelId: string | null;
@@ -33,6 +43,8 @@ export interface UiState {
   activeDelta: Record<string, string | null>;
   // M6b 落地事件信号（见 LandingSignal 注）。
   landing: LandingSignal | null;
+  // M7 并排预览面板集合（FR-11.2）：openPreview 按 taskId 去重（幂等，重复点[预览]不叠面板）。
+  previewTargets: PreviewTarget[];
 
   setActiveChannel: (id: string | null) => void;
   setSelectedNode: (id: string | null) => void;
@@ -43,6 +55,8 @@ export interface UiState {
   setActiveDraft: (channelId: string, proposalId: string | null) => void;
   setActiveDelta: (channelId: string, proposalId: string | null) => void;
   pushLanding: (kind: LandingSignal['kind'], channelId: string | null) => void;
+  openPreview: (target: PreviewTarget) => void;
+  closePreview: (taskId: string) => void;
 }
 
 let landingSeq = 0;
@@ -56,6 +70,7 @@ export const useUiStore = create<UiState>((set) => ({
   activeDraft: {},
   activeDelta: {},
   landing: null,
+  previewTargets: [],
 
   setActiveChannel: (activeChannelId) => set({ activeChannelId }),
   setSelectedNode: (selectedNodeId) => set({ selectedNodeId }),
@@ -68,4 +83,12 @@ export const useUiStore = create<UiState>((set) => ({
   setActiveDelta: (channelId, proposalId) =>
     set((s) => ({ activeDelta: { ...s.activeDelta, [channelId]: proposalId } })),
   pushLanding: (kind, channelId) => set({ landing: { id: ++landingSeq, kind, channelId } }),
+  openPreview: (target) =>
+    set((s) =>
+      s.previewTargets.some((t) => t.taskId === target.taskId)
+        ? s // 已开则幂等（保留原面板，不重置状态）
+        : { previewTargets: [...s.previewTargets, target] },
+    ),
+  closePreview: (taskId) =>
+    set((s) => ({ previewTargets: s.previewTargets.filter((t) => t.taskId !== taskId) })),
 }));

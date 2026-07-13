@@ -14,6 +14,7 @@ import type {
   MessagePublic,
   NotificationMode,
   PresenceEntry,
+  PreviewSessionPublic,
   ProjectCreate,
   ProjectPatch,
   ProposalPublic,
@@ -333,6 +334,39 @@ export const useCreateAgent = () => {
   return useMutation({
     mutationFn: (body: AgentCreate) => api.createAgent(body),
     onSuccess: () => void qc.invalidateQueries({ queryKey: qk.members() }),
+  });
+};
+
+// ---- M7（B-M7-1）预览会话（B §13.1）。渲染源 = qk.preview(taskId) 缓存：面板经 useStartPreview
+// 的 POST(ensure) 播种，WS preview.updated 后续 patch（daemon 状态流转）。usePreviewSession 只做缓存
+// 订阅（enabled:false，不自动拉取——POST 是唯一写副作用推进方，GET 纯读不作自动源，同 usageByTask 范式）。
+export const usePreviewSession = (taskId: string | undefined) =>
+  useQuery({
+    queryKey: qk.preview(taskId ?? '_'),
+    queryFn: () => api.getPreview(taskId!),
+    enabled: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+/** POST /tasks/{id}/preview = ensure + touch（幂等）。用于面板打开 + [重试]（failed 非活跃态自然走
+ *  ensure 重建）。成功以响应体按 task_id 播种/替换 qk.preview 缓存；DAEMON_OFFLINE 等结构化错误弹 toast。
+ *  心跳（面板打开期 60s 重发）不走本 mutation——见 PreviewPanel 内静默直调 api.startPreview（避免 60s
+ *  toast 噪声，touch 是尽力而为）。 */
+export const useStartPreview = () => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (taskId: string) => api.startPreview(taskId),
+    onSuccess: (session: PreviewSessionPublic) =>
+      qc.setQueryData<PreviewSessionPublic>(qk.preview(session.task_id), session),
+    onError: (e: unknown) =>
+      toast.push(
+        e instanceof ApiError && e.code === 'DAEMON_OFFLINE'
+          ? 'daemon 离线，无法启动预览'
+          : e instanceof Error ? e.message : '启动预览失败',
+        { tone: 'error' },
+      ),
   });
 };
 

@@ -135,16 +135,17 @@ async def test_runtime_rescan_reports_detected(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_unsupported_m7_instr_fails(tmp_path: Path) -> None:
+    # preview.start/stop 自 K2 起已实现（见 test_preview.py）；deploy.run 仍属未落地波次。
     tr = RecordingTransport()
     client, _adapter, _ = make_client(tmp_path, transport=tr)
     await client.handle_instr(
         instr(
-            "preview.start",
+            "deploy.run",
             {
-                "preview_session_id": "01K5PREV00000000000000000A",
-                "task_id": "01K5TASK00000000000000000A",
-                "worktree_path": "/r",
-                "dev_command": "run",
+                "deployment_id": "01K5DEPL00000000000000000A",
+                "repo_path": "/r",
+                "command": "run",
+                "branch": "main",
             },
         )
     )

@@ -14,6 +14,7 @@ import type {
   MemberPublic,
   MessagePublic,
   PresenceEntry,
+  PreviewUpdatedData,
   ProposalPublic,
   ReadPositionPublic,
   ReminderPublic,
@@ -87,6 +88,18 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       }
       // 分支状态/HEAD 变化会改变 Diff；已有观察者立即失效，未打开时不额外请求。
       void qc.invalidateQueries({ queryKey: qk.taskDiff(worktree.task_id) });
+      break;
+    }
+
+    // ---- M7 预览会话（契约 C preview.updated）。data 载 { preview: PreviewSessionPublic }，
+    // daemon 状态流转 starting→running（携 port）→failed（携 fail_log_tail）/recycled 经此反流。
+    // 按 preview.task_id patch qk.preview 缓存（整体替换，重复应用无害）。未加载（面板未开、getQueryData
+    // ===undefined）则放行不建——面板打开时由 POST(ensure) 播种，同 worktree/reminder/held_draft 范式。
+    case 'preview.updated': {
+      const { preview } = data as PreviewUpdatedData;
+      const key = qk.preview(preview.task_id);
+      if (qc.getQueryData(key) === undefined) break;
+      qc.setQueryData(key, preview);
       break;
     }
 

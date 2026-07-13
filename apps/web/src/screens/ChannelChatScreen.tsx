@@ -22,6 +22,7 @@ import { FilesTab } from '../components/FilesTab';
 import { Tabs } from '../components/Tabs';
 import { Topbar } from '../components/Topbar';
 import { ThreadPanel } from './ThreadPanel';
+import { PreviewDeck } from '../components/PreviewPanel';
 import { HeldDraftList } from './HeldDraftCard';
 import { ChannelSettingsModal } from '../components/ChannelSettingsModal';
 import { notifyModeOf } from '../lib/notify';
@@ -229,6 +230,9 @@ export function ChannelChatScreen({ search, setSearch }: {
           onReviewDelta={reviewDelta}
         />
       )}
+
+      {/* M7 并排预览 deck（FR-11.2）：底部横排多面板，由 [预览] 按钮 openPreview 驱动；空则不渲染。 */}
+      <PreviewDeck />
     </div>
   );
 }

@@ -20,15 +20,17 @@ import { TASK_TRANSITIONS, UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts'
 
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
 import { fmtTime } from '../lib/time';
-import { useTaskDetail, useThread } from '../data/queries';
+import { useProjects, useTaskDetail, useThread } from '../data/queries';
 import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
+import { useUiStore } from '../lib/store';
 import { Avatar } from '../components/Avatar';
 import { DecomposeGuideModals, useDecompose } from '../components/DecomposeGuide';
 import { MessageFlow } from '../components/MessageFlow';
 import { Composer } from '../components/Composer';
 import { HeldDraftList } from './HeldDraftCard';
 import { DiffCard } from '../components/DiffCard';
+import { PreviewButton } from '../components/PreviewPanel';
 import '../components/diff-card.css';
 
 // 契约 kind → 中文短名(§4.6);loop_contract 归 Reminder 上岗流程,不在任务线程契约卡出现。
@@ -203,6 +205,8 @@ export function ThreadPanel({
 }) {
   const threadQ = useThread(rootMessageId);
   const detailQ = useTaskDetail(task?.id);
+  const projectsQ = useProjects();
+  const openPreview = useUiStore((s) => s.openPreview);
   const toast = useToast();
   const [stOpen, setStOpen] = useState(false);
   const [draftOpen, setDraftOpen] = useState(false);
@@ -220,6 +224,10 @@ export function ThreadPanel({
 
   // 真契约 / usage(契约 B §9.8):usage 优先取真 detail 聚合。
   const detail = detailQ.data;
+  // M7 预览：任务所属 Project（dev_command 决定 [预览] 亮灭；preview_idle_min 供回收倒计时）。
+  const project = task?.project_id
+    ? projectsQ.data?.find((p) => p.id === task.project_id)
+    : undefined;
   const contracts = detail?.contracts ?? [];
   const { activePlan, activeHandoff, historical } = splitContracts(contracts);
   const u = detail?.usage;
@@ -363,6 +371,18 @@ export function ThreadPanel({
             <span className={`delivery-status ${detail?.worktree?.status ?? 'pending'}`}>
               {detail?.worktree?.status ?? 'pending'}
             </span>
+            {/* M7 [预览]：有 worktree 且 Project 配 dev_command 才亮；点击入并排 deck（交互 §12 / FR-11）。 */}
+            <PreviewButton
+              hasWorktree={!!detail?.worktree}
+              devCommand={project?.dev_command}
+              onOpen={() =>
+                openPreview({
+                  taskId: task.id,
+                  taskNumber: task.number,
+                  idleMin: project?.preview_idle_min ?? 30,
+                })
+              }
+            />
           </div>
           <DiffCard taskId={task.id} />
         </section>

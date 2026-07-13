@@ -51,9 +51,9 @@
 | K2-cal | 长驻 dev server win32 实测校准 → `scratchpad/PREVIEW-CALIBRATION.md` | ✅ | 5/5 探针 | Fable 亲跑（§3 已填）；关键坑=win32 SO_REUSEADDR 同端口双绑不被 OS 拒绝→daemon 自持端口唯一性 |
 | K0 | 契约登记（ENDPOINTS_M7/四模型/D 帧/工具目录/ws 核对/mock/conformance） | ✅ | 波1 | 7 端点+UsageBucket/TasksReporting/TokenSummary/UsageReport；trigger_deploy(16)；token_summary 收紧 TokenSummary\|None；ws 零改动(forward-freeze 已登记)；contracts 91 pass |
 | K1 | 0010 迁移（preview_sessions+单活跃索引）+ ORM | ✅ | 波1 | 部分唯一索引谓词单源 `_PREVIEW_ACTIVE_WHERE`(主动解 CR-10)；M7A_TABLES；alembic 63 pass+红例 |
-| K2 | daemon 预览进程域（PORT 注入/健康检查/存活监控/start·stop 处理器/status 上报） | ☐ | — | 波 2；Fable 审查关口 |
+| K2 | daemon 预览进程域（PORT 注入/健康检查/存活监控/start·stop 处理器/status 上报） | ✅ | 波2 | PreviewRunner 长驻变体；端口注册表自持唯一性；健康-存活并行竞速；shutdown 杀子无孤儿；daemon 154 pass；**Fable 亲审通过（端口释放恰一次逐交错核对）** |
 | K3 | server 预览域（ensure+touch/回收三触发/对账 #9/广播/拒绝路径） | ☐ | — | 波 3 |
-| B-M7-1 | 前端预览面板（按钮/三态顶条/失败日志尾/心跳/并排/倒计时/wsBridge） | ☐ | — | 波 2 起可开工 |
+| B-M7-1 | 前端预览面板（按钮/三态顶条/失败日志尾/心跳/并排/倒计时/wsBridge） | ✅ | 波2 | PreviewPanel+PreviewDeck 并排/canPreview 门/60s 心跳/wsBridge preview.updated；web 375（+16） |
 | — | M7a 实机 verify（§9a #7）→ 证据归档 | ☐ | — | Fable 亲跑 |
 | — | /code-review high（块 a）→ 修复 | ☐ | — | — |
 | K4 | 0011 迁移 + 部署域全链（端点/409+兜底/日志链路/结果卡/对账 #10/订阅流） | ☐ | — | 块 b 波 1 |

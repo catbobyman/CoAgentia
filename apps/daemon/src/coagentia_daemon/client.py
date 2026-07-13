@@ -34,6 +34,7 @@ from coagentia_contracts.daemon import (
     HomeTreeQuery,
     HomeTreeReply,
     InstrType,
+    PreviewStatusData,
     QueryType,
     ReportFrame,
     ReportType,
@@ -51,6 +52,7 @@ from coagentia_daemon.checks import CheckRunner
 from coagentia_daemon.git import GitWorktreeManager
 from coagentia_daemon.handlers import HANDLERS
 from coagentia_daemon.paths import DataPaths
+from coagentia_daemon.preview import PreviewRunner
 from coagentia_daemon.probe import CommandRunner, probe_runtimes
 from coagentia_daemon.transport import Transport, TransportClosed, websockets_connect
 from coagentia_daemon.util import new_ulid, now_iso
@@ -121,6 +123,7 @@ class DaemonClient:
         self.adapter.bind(self)  # AdapterSink = self
         self.git = GitWorktreeManager(paths)
         self.checks = CheckRunner()
+        self.previews = PreviewRunner()
         # worktree ensure/merge/cleanup 后台通道（#1：解放 reader，避免大 merge 阻塞 PONG 误重连）。
         # 键=frame_id 用于在飞去重 + 生命周期；单车道锁串行执行杜绝同仓并发 git。
         self._worktree_tasks: dict[str, asyncio.Task[None]] = {}
@@ -176,6 +179,7 @@ class DaemonClient:
     def stop(self) -> None:
         self._stopped = True
         self.checks.cancel()
+        self.previews.cancel()
         self._worktree_closing = True
         for task in tuple(self._worktree_tasks.values()):
             task.cancel()
@@ -189,6 +193,7 @@ class DaemonClient:
         恢复（_restore_cancelled_merge 回滚主干 HEAD），故 shutdown 中途取消大 merge 安全。"""
         self.stop()
         await self.checks.wait_closed()
+        await self.previews.wait_closed()
         await self._wait_worktrees_closed()
 
     # ---------------------------------------------------------------- 一条连接的服务
@@ -464,6 +469,10 @@ class DaemonClient:
     async def report_worktree_status(self, data: WorktreeStatusData) -> None:
         """worktree 指令先上报现状，再由 handle_instr 发 ack（同 WS 内有序）。"""
         await self._report_best_effort(ReportType.WORKTREE_STATUS, data)
+
+    async def report_preview_status(self, data: PreviewStatusData) -> None:
+        """preview.status 载状态直发（无 ack，镜像 report_worktree_status）；断连丢弃靠对账兜底。"""
+        await self._report_best_effort(ReportType.PREVIEW_STATUS, data)
 
     async def report_check_finished(self, data: CheckFinishedData) -> None:
         """check.finished 先持久入缓冲；flush 获 server ack 后才删除。"""
