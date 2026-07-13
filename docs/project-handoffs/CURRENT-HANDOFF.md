@@ -2,10 +2,10 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 更新 | 2026-07-12，**M6 里程碑整体收口（HEAD `c37a91f`）**。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘）完成：M6b 波 4（J10 delta+O9 ∥ B-M6-2 后半，双 Opus 子代理并行）→ 阶段 4 并行审计（5 维 finder→Fable 终裁修 7 含 1 blocking）+ J11 话术定稿 → **J12 实机 verify 48/48 ALL PASS**（=PRD M6 出口，A1–A8 逐条勾销）→ **/code-review high**（8 维 finder→对抗核实→Fable 终裁 13 findings 修 8[3 major]）→ 文档终态同步+任务书归档。 |
+| 更新 | 2026-07-13，**M6 复审修复批收口（HEAD `d517624`）**：/code-review high 二轮（8 维 finder→按域对抗核实→10 findings 全 CONFIRMED 全修 +8 回归；含 3 项不可恢复 wedge[fail_closed 空成功旁路/merged 上报丢弃/reopen-cleaned 投递死锁]、指纹崩溃族、投递前缀门收窄、raw control 泄漏[Playwright 实测发现]）+ 实机 verify 48/48 修后复跑通过 + 浏览器/Playwright E2E（chat/canvas/kanban/conflict/repair/direct 六面、console 零错误）。上一轮：2026-07-12，M6 里程碑整体收口（`c37a91f`）。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘）完成：M6b 波 4（J10 delta+O9 ∥ B-M6-2 后半，双 Opus 子代理并行）→ 阶段 4 并行审计（5 维 finder→Fable 终裁修 7 含 1 blocking）+ J11 话术定稿 → **J12 实机 verify 48/48 ALL PASS**（=PRD M6 出口，A1–A8 逐条勾销）→ **/code-review high**（8 维 finder→对抗核实→Fable 终裁 13 findings 修 8[3 major]）→ 文档终态同步+任务书归档。 |
 | 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 [PROJECT-RECORD.md](PROJECT-RECORD.md)（§13=M6a、§14=M6b）；M1–M6 任务书均已移 archive/ |
 | 一句话状态 | **M1–M6 全里程碑收口 = PRD M6 出口达成**。IM 基座→任务域→L2 契约→编排画布+gating→护栏（沉默/freshness/HeldDraft）→双 runtime+配置面→模板向导→Project 交付链（worktree/Diff/merge/check/冲突派回）→**Orchestrator 拆解链**（提案/校验/修复循环/草稿确认/落地/delta/O9）全部落地并经实机 verify。**接续 = M7（未立项）**。 |
-| 守门终态 | 后端 **947 passed / 4 skipped** · web vitest **354** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（golden 54 判例双跑逐字节）· web build 绿 · **工作树干净** |
+| 守门终态 | 后端 **955 passed / 4 skipped** · web vitest **359** · pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（golden **58** 判例双跑逐字节）· web build 绿 · m6_verify 48/48 修后复跑 · **工作树干净** |
 
 ## 1. 当前状态
 
@@ -13,7 +13,7 @@
 | --- | --- |
 | 仓库 | `D:\Project4work\Agenthub_7_8\coagentia`（monorepo：apps/server·web·daemon·mock-server + packages/contracts·contracts-ts·fixtures）；**无 git remote，全部提交仅存本地** |
 | 分支 / HEAD | `main`，HEAD = `c37a91f`（M6 收口文档提交），工作树干净 |
-| M6 提交链 | M6a：`d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`(verify 20/20)→`404aaa8`(review 修复)；M6b：`95d190c`(波1 J7+J11 骨架)→`3a78799`(波2 J8)→`832f2dc`(波3 J9 硬关口)→`3d3e12f`(波4 J10∥B-M6-2 后半)→`19fcfb5`(阶段4 审计+J11 定稿)→`818a483`(J12 verify)→`d303475`(code-review 收口)→`c37a91f`(文档) |
+| M6 提交链 | M6a：`d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`(verify 20/20)→`404aaa8`(review 修复)；M6b：`95d190c`(波1 J7+J11 骨架)→`3a78799`(波2 J8)→`832f2dc`(波3 J9 硬关口)→`3d3e12f`(波4 J10∥B-M6-2 后半)→`19fcfb5`(阶段4 审计+J11 定稿)→`818a483`(J12 verify)→`d303475`(code-review 收口)→`c37a91f`+`5165808`(文档)→**`d517624`(复审二轮 10 findings 全修)** |
 | 契约版本 | A **v1.0.10** · B **v1.4.3** · C **v1.0**（连续零修订至 M6 收口）· D **v1.0.3** · E **v1.4** · E2 **v1.0.1**。**M6 全程连续第四个里程碑零新增 Agent 工具**。事实源 = `D:\Project4work\Agenthub_7_8\engineering_docs\` 六契约 + `docx_agenthub\CoAgentia-PRD.md` + `orchestrator_docs\Orchestrator任务拆解设计.md`（拆解实现级权威） |
 | 建表批次 | 0001 M1 → 0002 M2 → 0003 M3 → 0004 files 索引 → 0005 messages_fts trigram → 0006 M4 held_drafts → 0007 M5 → 0008 M6a（projects+channel_projects+worktrees+tasks 两列）→ **0009 M6b（proposals[同 source 单一非终态部分唯一索引]+agent_role_templates+agents.role_template_key）** |
 | 实机证据 | **M6 = [M6-EVIDENCE.md](../verify/M6-EVIDENCE.md)**：真 uvicorn+真 websockets daemon-sim(真 git.py)+真 scratch 仓库 **48/48 ALL PASS**（S1 拆解全链/S2 冲突派回/S3 修复循环/S4 A5 崩溃重放/S5 delta+O9/S6 single_task/S7 直落；A1–A8 逐条勾销）+ [results.json](../verify/M6-VERIFY-results.json) + 2 截图（chat 全流程叙事/canvas 落地 DAG）；脚本 = `scratchpad/m6_verify.py`（可重跑）。历史：[M6A-EVIDENCE.md](../verify/M6A-EVIDENCE.md)（20/20）、M5/M5A/M4B/M4A/M3B/M3A/M2 系列。 |
