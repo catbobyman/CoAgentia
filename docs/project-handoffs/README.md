@@ -5,14 +5,15 @@
 | 文档 | 定位 | 维护规则 |
 |---|---|---|
 | [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) | 当前唯一有效的交接入口 | 每次阶段收口时更新 |
+| [M7-DEV-PLAN.md](M7-DEV-PLAN.md) | M7 逐模块执行计划与进度表（**已收口，只读**；任务书 = archive/M7-HANDOFF.md） | 阶段记录，收口后保留只读 |
 | [M6-DEV-PLAN.md](M6-DEV-PLAN.md) | M6 逐模块执行计划与进度表（**已收口，只读**；任务书 = archive/M6-HANDOFF.md） | 阶段记录，收口后保留只读 |
 | [CODEX-CONTEXT.md](CODEX-CONTEXT.md) | **接手任务的 AI 工程师完整项目上下文**（自足：术语解码/架构/纪律/坑清单；Codex CLI / Claude Code 会话通用）；仓库根 `AGENTS.md` 为其精炼版工作规程（Codex CLI 自动加载） | 大版本状态变化时更新时点注记 |
 | [COLLAB-MODEL.md](COLLAB-MODEL.md) | **M6 多模型协作模式 v2「Fable 单窗编排」**（2026-07-12；M6 已按此收口）；M7 立项复审 | 阶段推进时核对;M7 立项复审 |
 | [M2-DEV-PLAN.md](M2-DEV-PLAN.md) / [M3-DEV-PLAN.md](M3-DEV-PLAN.md) / [M4-DEV-PLAN.md](M4-DEV-PLAN.md) / [M5-DEV-PLAN.md](M5-DEV-PLAN.md) | 各里程碑逐模块执行计划与进度表（均收口） | 阶段记录，收口后保留只读 |
 | [PROJECT-RECORD.md](PROJECT-RECORD.md) | 历史阶段、关键结果与过时结论汇总 | 阶段完成后追加，不覆盖历史 |
-| [archive/](archive/) | 原始任务书快照（M1–M6 任务书收口后均移入） | 只读归档，不再维护状态 |
+| [archive/](archive/) | 原始任务书快照（M1–M7 任务书收口后均移入） | 只读归档，不再维护状态 |
 
-> **M1–M6 里程碑任务书均已收口并移入 `archive/`**（M6-HANDOFF 2026-07-12 收口移入）。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。**M1–M6 全里程碑完成 = PRD M6 出口达成；接续 = M7（未立项）**。
+> **M1–M7 里程碑任务书均已收口并移入 `archive/`**（M7-HANDOFF 2026-07-13 收口移入）。里程碑级最新状态见 `CURRENT-HANDOFF.md`，阶段结论见 `PROJECT-RECORD.md`。**MVP 全里程碑 M1–M7 完成 = PRD 全部规划里程碑收口（M7 = PRD M7 出口，实机 29/29 + 浏览器 E2E）；无后续 PRD 里程碑，后续 = M8+ 挂账消费（M7-RESERVATION-AUDIT.md R-1~R-15）未立项**。
 
 ## 原文件迁移表
 
@@ -28,6 +29,7 @@
 | `M4-HANDOFF.md` | [archive/M4-HANDOFF.md](archive/M4-HANDOFF.md) | 已完成，M4 护栏与提醒任务书（= PRD M4 出口） |
 | `M5-HANDOFF.md` | [archive/M5-HANDOFF.md](archive/M5-HANDOFF.md) | 已完成，M5 模板与第二 runtime 任务书（= PRD M5 出口） |
 | `M6-HANDOFF.md` | [archive/M6-HANDOFF.md](archive/M6-HANDOFF.md) | 已完成，M6 Orchestrator 与 Project 任务书（= PRD M6 出口，实机 verify 48/48） |
+| `M7-HANDOFF.md` | [archive/M7-HANDOFF.md](archive/M7-HANDOFF.md) | 已完成，M7 预览·部署·打磨任务书（= PRD M7 出口 = MVP 收口，实机 29/29 + 浏览器 E2E） |
 
 ## 维护约定
 

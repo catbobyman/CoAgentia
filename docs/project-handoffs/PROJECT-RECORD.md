@@ -161,6 +161,20 @@ COLLAB-MODEL v2「Fable 单窗编排」：执行/审计/评审派 Opus 子代理
 - **code-review high 收口**（`d303475`，947/354）：8 维 Opus finder → 对抗核实（默认证伪）→ Fable 终裁 13 findings（12 CONFIRMED/1 REFUTED），修 8——3 major（delta 同 rev base_hash 对称刷新 / 模板 instantiate 补 O9 人类门 / kernel 5 处 unhashable 枚举 `_is_str` 守卫，与 TS 镜像双跑一致）+ 4 minor（remove_node TOCTOU 锁内重验 / fail-closed 不重扫系统节点 / ProposalCard delta 指标 / 短路效率）+ golden +4 判例。3 观察挂账（N+1/索引谓词双源/downgrade FK）登记 M6-HANDOFF §8。
 - **守门终态**：后端 **947 passed / 4 skipped**、web vitest **354**、pyright 0 + 双 tsc、ruff 干净、`pnpm gen` 确定（golden 54 双跑）、web build 绿。关键教训（记忆正文）：pysqlite 读自动提交非串行化点→凡状态机边写必条件 UPDATE（J9/SM-F1 反复印证）；delta 先删后加的步序在 fail-closed 部分提交前缀上会重开系统节点空成功窗口→落地期抑制须覆盖 fail_closed（不重扫）；内核枚举成员测试须 `_is_str` 守卫防 unhashable 崩溃并与 TS 镜像对齐。
 
+## 15. M7 预览、部署与打磨（M7 里程碑收口 2026-07-13 = PRD M7 出口达成 = **MVP 全里程碑 M1–M7 完成**，`b18adbe`）
+
+COLLAB-MODEL v2「Fable 单窗编排」续用：执行/评审派 Opus 子代理，关键关口（K2-cal 校准/K9 实机 verify/幂等·对账正确性修复/code-review 终裁）Fable 亲做。两块竖切（M7a 预览链先行 / M7b 部署+成本+收尾），块内分波并行。
+
+- **契约**：A **v1.0.11**（fail_log_tail/两处部分唯一索引/排队措辞对齐）· B **v1.5**（§13 预览部署条文+§13.4 成本口径）· C **v1.0**（连续零修订核对）· D **v1.0.5**（对账 #9/#10 + PORT 注入 + preview.status log_tail + jitter-survive hello boot_nonce/previews 快照）· E **v1.5**（新增 trigger_deploy 工具，零工具连胜止于 M6 四届）· E2 v1.0.1 零修订。**错误码零新增（仍 29）**。
+- **块 M7a 预览链**（`82ebd1b`）：**K2-cal win32 长驻 dev server 实测校准**（Fable 亲跑 5/5，最关键坑 = win32 SO_REUSEADDR 同端口双绑不被 OS 拒 → daemon 进程内注册表自持端口唯一性）→ 波1 K0 契约登记（ENDPOINTS_M7 7 端点/四模型/trigger_deploy）∥ K1 0010 迁移（preview_sessions + 单活跃部分唯一索引，谓词单源）→ 波2 K2 daemon PreviewRunner（PORT 注入/健康-存活并行竞速/杀树无孤儿）∥ B-M7-1 前端预览面板 → 波3 K3 server 预览域（ensure+touch/回收三触发/对账 #9，Fable 亲修 pre-commit 下发竞态→after_commit 硬保证）→ **实机 verify 14/14**（真 dev server + iframe HTTP 200 + idle 回收）→ code-review 7 CONFIRMED 全修 → jitter-survive 增补（存活预览 survive WS jitter，真重启才 fail-close）。
+- **块 M7b 部署·成本·收尾**（`8d26abe`→`b18adbe`）：
+  - **K4 部署域全链**（`8d26abe`）：0011 迁移（deployments 单一非终态部分唯一索引，谓词单源 `_DEPLOYMENT_ACTIVE_WHERE`）；routes/deployments.py（POST R8 无角色门/422 无 deploy_command/503/409 DEPLOY_IN_PROGRESS 索引兜底+SAVEPOINT/Idempotency-Key/主干 HEAD 快照/token_summary 新账纯 SQL 落列/tx.after_commit 提交后下发）+ GET + GET log（server 直读落盘）；hub deploy.log（chunk_seq 去重+落盘+queued→running CAS）·deploy.finished（终态 CAS+结果卡多绑定频道+诊断）·**对账 #10（真重启 running→fail-closed 不重跑@触发者 / queued 安全重发，铁律 3 副作用不可重放）**；daemon deploy.py（DeployRunner 流式日志+末 URL 提取+30min 超时杀树+deployment_id 幂等）+buffer 双缓冲。
+  - **波2**（`e06a793`）：K5 trigger_deploy 工具（mcp.py +1 纯代理/结构化透传/E2 codex 零改动/X-Acting-Member 留痕）∥ K6 GET /usage 三层 GROUP BY（task 恒{0/1,1}/agent·canvas 任务集/永无货币/聚合 SQL 单点）∥ B-M7-2 部署卡+成本面（确认弹窗/日志跟随+胶囊/token 小结 Σ+覆盖率/画布 UsageChip/wsUplink 订阅制+重连 resend）。
+  - **波3**（`9082827`）：K7 性能小批四件（landing._post_landed_message / hub._report_usage / templates._plan_skeleton / search——**语义逐字节等价** + 查询数断言 O(1)/O(批)）∥ K8 预留位审查文档 `docs/M7-RESERVATION-AUDIT.md`（三信任基座盘点 + R-1~R-15 挂账登记，零代码）。
+  - **K9 实机 verify**（`f6655d1`）= **PRD M7 出口 29/29 ALL PASS**（Fable 亲跑，真 uvicorn+真 daemon-sim[真 PreviewRunner/真 DeployRunner 起真子进程]+真 scratch git）：交付→预览验收 iframe HTTP 200→合并 --no-ff→部署人类+Agent 双通道(末 URL 提取/GET log 落盘/新账小结/结果卡多频道)→409 不排队→GET /usage 三层→对账 #10 真重启 fail-closed(exit_code=NULL)@触发者→对账 #9 预览 fail-close；+ 浏览器可视 E2E（真前端渲染部署卡 URL·退出码·耗时·新账 Σ1.6k·上报 1/1，Agent 卡 Σ0 新账正确）；证据 = `docs/verify/M7-EVIDENCE.md`+`M7B-VERIFY-results.json`+`M7B-BROWSER-E2E.txt`。
+  - **code-review high 收口**（`b18adbe`）：8 维 Opus finder→1 票对抗核实（40 候选→39 去重→12 CONFIRMED），Fable 终裁修 **4 真缺陷**（① GET log next_after 无分页却返 total→空按钮→改 None ② `_report_deploy_log` 去重游标先于提交推进+事务内落盘→回滚吞帧/重复→**落盘+游标挪到提交后** ③ usage level=agent usage 按 agent_member_id 聚合而覆盖率按 owner 任务集→不一致→统一 owner 任务集 usage==Σbreakdown ④ 诊断去重抽 `_emit_agent_diagnostic` 单点）+ 其余 CONFIRMED 登记 R-10~R-15（契约授权/MVP 安全残窗，M8+）。
+- **守门终态**：后端 **1071 passed / 4 skipped**（M7a 起点 955）、web vitest **403**、pyright 0 + 双 tsc、ruff 干净、`pnpm gen` 确定（golden 58 双跑）、web build 绿、**K9 实机 29/29**。关键教训（记忆正文）：win32 SO_REUSEADDR 双绑不被 OS 拒→长驻子进程端口唯一性须 daemon 进程内自持；部署副作用不可重放→running 崩溃 fail-closed 不重跑（对账 #10 与落地 #4 可重放性质相反）；遥测去重游标（内存）+ 非事务落盘须**挪到 tx 提交后**，否则回滚吞帧或重复落盘（收口复审印证）；读面聚合的 usage 与覆盖率/明细须同源任务集，否则口径互不一致。
+
 ## 已失效结论
 
 | 历史表述 | 当前结论 |
@@ -178,12 +192,15 @@ COLLAB-MODEL v2「Fable 单窗编排」：执行/审计/评审派 Opus 子代理
 | 接续 = M5（模板与向导）/ M5b 待开工 | **M5 里程碑已收口（§12 = PRD M5 出口达成，`bef88eb`）；M6 已立项，M6a 实现波次完成并停在真机 verify 前（§13）** |
 | `712`/`772 passed` + vitest `175` 是最新基线，或 M6a 波 2 待提交 | **M6a 波 3 实现守门后为 `813 passed, 4 skipped` + vitest `194`；波 2 已提交 `62939f2`，当前停在 M6a 实机 verify 前** |
 | `813`/`827`/`915`/`936`/`943 passed` 是最新基线，或 M6b/M6 未收口 | **M6 里程碑收口后为 `947 passed, 4 skipped` + vitest `354`（§14 = PRD M6 出口达成，`d303475`）** |
-| 接续 = M6b（M6a 全收口；M6b 未开工）/ M6b 波 X 待提交 | **M6 里程碑已整体收口（§14，实机 verify 48/48 + code-review 13 findings 修 8）；接续 = M7（未立项）** |
+| 接续 = M6b（M6a 全收口；M6b 未开工）/ M6b 波 X 待提交 | M6 里程碑已整体收口（§14）；M7 已收口（§15） |
+| `947 passed` + vitest `354` 是最新基线，或 M7 未收口 | **M7 里程碑收口后为 `1071 passed, 4 skipped` + vitest `403`（§15 = PRD M7 出口达成，`b18adbe`）** |
+| 接续 = M7（未立项）/ M7 块 X 待开工 | **M7 里程碑已整体收口（§15，实机 29/29 + 浏览器 E2E + code-review 12 CONFIRMED 修 4）；MVP 全部规划里程碑 M1–M7 完成，无后续 PRD 里程碑（M8+ 为挂账消费/多机多租户扩展，未立项）** |
 
 ## 当前接续任务
 
-1. **M1–M6 全里程碑收口（2026-07-12，`d303475` = PRD M6 出口达成）**：M6b 拆解链全链落地 + 实机 verify 48/48 + code-review 收口，见 §14。守门 **947/4 skipped + web 354 + pyright 0**。外部契约 A **v1.0.10**/B v1.4.3/C v1.0/D v1.0.3/E v1.4/E2 v1.0.1。**接续 = M7（未立项）**——CoAgentia 全部规划里程碑（M1–M6）已完成。
-2. **M6 提交链**：M6a `d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`→`404aaa8`；M6b `95d190c`(波1)→`3a78799`(波2)→`832f2dc`(波3)→`3d3e12f`(波4)→`19fcfb5`(阶段4审计+J11)→`818a483`(J12 verify)→`d303475`(code-review 收口)。历史 M6a 细节见 §13。
+1. **MVP 全里程碑 M1–M7 完成（2026-07-13，`b18adbe` = PRD M7 出口达成）**：M7b 部署·成本·收尾全链落地 + 实机 verify 29/29 + 浏览器可视 E2E + code-review 收口，见 §15。守门 **1071/4 skipped + web 403 + pyright 0 + K9 29/29**。外部契约 A **v1.0.11**/B **v1.5**/C v1.0/D **v1.0.5**/E **v1.5**/E2 v1.0.1（错误码仍 29）。**无后续 PRD 里程碑**——CoAgentia 全部规划里程碑（M1–M7）已完成；M8+ 为挂账消费（`docs/M7-RESERVATION-AUDIT.md` R-1~R-15：多租户/多机/单进程假设 + M7b 残窗）与 O8 汇总设计另文，均未立项。
+2. **M7 提交链**：M7a `6eb78ff`(波1 K0+K1+K2-cal)→`9cf4318`(波2 K2+B-M7-1)→`3812f06`(波3 K3)→`9a2b17c`(verify 14/14)→`82ebd1b`(code-review)→`d238988`(jitter-survive)；M7b `8d26abe`(K4 部署域)→`e06a793`(波2 K5∥K6∥B-M7-2)→`9082827`(波3 K7∥K8)→`f6655d1`(K9 verify 29/29)→`b18adbe`(code-review 收口 = MVP 完成)。细节见 §15。
+3. **M6 提交链**：M6a `d564ebf`→`62939f2`→`6f6fc93`→`bc70cd5`→`404aaa8`；M6b `95d190c`(波1)→`3a78799`(波2)→`832f2dc`(波3)→`3d3e12f`(波4)→`19fcfb5`(阶段4审计+J11)→`818a483`(J12 verify)→`d303475`(code-review 收口)。历史 M6a 细节见 §13。
 3. **M5 里程碑已整体收口（§12 = PRD M5 出口达成，`bef88eb`，实机 e2e 12/12 + codex PONG + 5 截图 + 并行审计 1 blocking+1 major 全修 + code-review 6 CONFIRMED 全修）**。M5-HANDOFF 已移 archive/。
 4. ~~`_emit_activity` 迁 service 层~~ **已收（M4a F2）**：迁 `activity/service.py`（conn 注入式，hub 后台可调、提交后广播）。~~`patch_task` 清空 silence_override_h~~ 亦已收（同 F2，白名单式 null 清除）。
 5. 独立性能小批（不阻塞）：hub `usage.batch` 逐事件 SELECT 可批内 IN 预查；search 双 MATCH+LIKE 扫描。

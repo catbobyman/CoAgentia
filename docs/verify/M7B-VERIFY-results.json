@@ -15,17 +15,17 @@
     {
       "probe": "P1.1 writes_code 任务真 git 派生 worktree",
       "ok": true,
-      "detail": "01KXEHM8S9X1CTKEHS8AYKDR8R"
+      "detail": "01KXEMRREVDHM3TM5YK6RY5AB3"
     },
     {
       "probe": "P1.2 daemon 真起 dev server → running 携 port",
       "ok": true,
-      "detail": "port=63678"
+      "detail": "port=50177"
     },
     {
       "probe": "P1.3 预览验收：iframe 数据源真实 HTTP 200",
       "ok": true,
-      "detail": "http://127.0.0.1:63678/"
+      "detail": "http://127.0.0.1:50177/"
     },
     {
       "probe": "P2.1 merge 系统节点自动执行 → success（真 --no-ff 合并）",
@@ -35,7 +35,7 @@
     {
       "probe": "P2.2 主仓出现 --no-ff merge 提交",
       "ok": true,
-      "detail": "ca87866 CoAgentia merge task #1 M7 交付任务 (task_id=0"
+      "detail": "1b3241f CoAgentia merge task #1 M7 交付任务 (task_id=0"
     },
     {
       "probe": "P2.3 worktree 行终态 merged",
@@ -50,7 +50,7 @@
     {
       "probe": "P4.1 POST 部署 = 201 queued（人类触发）",
       "ok": true,
-      "detail": "01KXEHMDF346RE9QBCB75RQJY5"
+      "detail": "01KXEMRZN23EPJVKYA5AM3SYB0"
     },
     {
       "probe": "P4.2 deploy.run 真跑 → deploy.finished success",
