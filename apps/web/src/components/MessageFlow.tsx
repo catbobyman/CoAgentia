@@ -12,6 +12,7 @@ import { renderBody } from '../lib/render';
 import { fmtDate, fmtTime } from '../lib/time';
 import { Avatar } from './Avatar';
 import { AttachCard } from './AttachCard';
+import { DeploymentCard } from './DeploymentCard';
 import { ProposalCard } from './ProposalCard';
 import { TaskChip } from './TaskChip';
 
@@ -93,6 +94,7 @@ export function MessageFlow(props: MessageFlowProps) {
         // 镜像,勿重写)——只剥有卡消息会让修复循环首发的无效提案(无 card_ref)整段原始
         // JSON 泄漏进人类会话;剥空则给占位说明。提案卡单独渲染(isProposal)。
         const isProposal = m.card_kind === 'proposal' && !!m.card_ref;
+        const isDeployment = m.card_kind === 'deployment' && !!m.card_ref;
         const hasControl = m.body.includes('<control>');
         const stripped = hasControl ? stripControl(m.body) : m.body;
         const bodyText = hasControl && stripped === ''
@@ -110,6 +112,8 @@ export function MessageFlow(props: MessageFlowProps) {
                   <span className="sys">系统</span>
                   <span dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
                 </div>
+                {/* M7b 部署结果卡（card_kind=deployment，结果卡走系统消息）：card_ref = deployment_id。 */}
+                {isDeployment && <DeploymentCard deploymentId={m.card_ref!} />}
                 {task && m.card_kind === 'merge_conflict' ? (
                   <div className="conflict-task-card">
                     <div className="conflict-title"><GitMerge /><span>冲突文件 · {conflictFiles.length}</span></div>
@@ -167,6 +171,7 @@ export function MessageFlow(props: MessageFlowProps) {
                       onViewThread={onOpenProposalThread ? () => onOpenProposalThread(m) : undefined}
                     />
                   )}
+                  {isDeployment && <DeploymentCard deploymentId={m.card_ref!} />}
                   {/* 附件卡数据源 = 消息读面派生 files(契约 A v1.0.4)——不再依赖 channelFiles 首页 ≤50 */}
                   {m.files?.map((f) => <AttachCard key={f.id} file={f} />)}
                   {task && (

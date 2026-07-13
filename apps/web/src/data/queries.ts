@@ -9,6 +9,7 @@ import type {
   ChannelPatch,
   ChannelPublic,
   ChannelsSnapshot,
+  DeploymentPublic,
   HeldDraftPublic,
   MemberPublic,
   MessagePublic,
@@ -22,12 +23,14 @@ import type {
   TaskPublic,
   TemplateCreate,
   TemplateInstantiate,
+  UsageLevel,
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
 import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
 import { qk } from '../lib/queryKeys';
+import { type DeployLogState, EMPTY_DEPLOY_LOG, mergeDeployLogPage } from './deployLog';
 
 // ---- 单实体/列表查询
 export const useWorkspace = () =>
@@ -369,6 +372,79 @@ export const useStartPreview = () => {
       ),
   });
 };
+
+// ---- M7b 部署（B-M7-2 / B §13.2-13.4）。部署卡渲染源 = qk.deployment(id)（GET；WS
+// deployment.created/updated 载 DeploymentPublic 按 id patch，daemon queued→running→success/failed
+// 反流携 url/exit_code/token_summary）。触发 = 空体 POST（R8 全员含 Agent）；409 DEPLOY_IN_PROGRESS
+// → 交互 §12 文案「上一次部署进行中」，422/503 据 code 组 toast。
+export const useDeployment = (deploymentId: string | undefined) =>
+  useQuery({
+    queryKey: qk.deployment(deploymentId ?? '_'),
+    queryFn: () => api.getDeployment(deploymentId!),
+    enabled: !!deploymentId,
+  });
+
+export const useTriggerDeploy = () => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (projectId: string) => api.createDeployment(projectId),
+    // 成功以响应体（queued 部署）播种缓存；结果卡消息 + WS deployment.updated 后续接管展示。
+    onSuccess: (dep: DeploymentPublic) =>
+      qc.setQueryData<DeploymentPublic>(qk.deployment(dep.id), dep),
+    onError: (e: unknown) => {
+      const msg =
+        e instanceof ApiError && e.code === 'DEPLOY_IN_PROGRESS'
+          ? '上一次部署进行中'
+          : e instanceof ApiError && e.code === 'DAEMON_OFFLINE'
+            ? 'daemon 离线，无法部署'
+            : e instanceof ApiError && e.code === 'VALIDATION_FAILED'
+              ? '未配置部署命令，无法部署'
+              : e instanceof Error ? e.message : '部署触发失败';
+      toast.push(msg, { tone: 'error' });
+    },
+  });
+};
+
+// 部署日志累积（qk.deploymentLog(id)）：卡打开时 seedDeployLog 播种空缓存（让 WS deployment.log 有
+// 锚点可追加），loadDeployLogPage 拉历史（首页无 after，「加载更多」按 nextAfter 续翻）；实时新行由
+// wsBridge deployment.log 追加同一缓存。enabled:false + 缓存驱动（同 usePreviewSession/usageByTask 范式）。
+// 注：仍在跑且已有大量历史的部署被重开时，历史翻页与实时流可能交叠——卡先拉首页再订阅，覆盖「新部署
+// 空历史 / 已完成无实时」两主路径，交叠边缘态留 K9 实机核对（截图归 K9）。
+export const useDeployLogState = (deploymentId: string | undefined) =>
+  useQuery<DeployLogState>({
+    queryKey: qk.deploymentLog(deploymentId ?? '_'),
+    queryFn: () => EMPTY_DEPLOY_LOG,
+    enabled: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+export function seedDeployLog(qc: QueryClient, deploymentId: string): void {
+  if (qc.getQueryData(qk.deploymentLog(deploymentId)) === undefined) {
+    qc.setQueryData<DeployLogState>(qk.deploymentLog(deploymentId), EMPTY_DEPLOY_LOG);
+  }
+}
+
+export async function loadDeployLogPage(
+  qc: QueryClient,
+  deploymentId: string,
+  after?: number,
+): Promise<void> {
+  const page = await api.deploymentLog(deploymentId, after);
+  qc.setQueryData<DeployLogState>(qk.deploymentLog(deploymentId), (prev) =>
+    mergeDeployLogPage(prev, page),
+  );
+}
+
+// 成本核算（GET /usage?level=&ref=）：画布页签汇总条（level=canvas ref=channel_id）与成本面共用。
+// 永不折算货币（W7）；tasks_reporting 诚实标注覆盖率。ref 缺失（如频道无锚）则不拉取。
+export const useUsage = (level: UsageLevel, ref: string | undefined, rollup = false) =>
+  useQuery({
+    queryKey: qk.usage(level, ref ?? '_'),
+    queryFn: () => api.usage(level, ref!, rollup),
+    enabled: !!ref,
+  });
 
 export const useRetryCanvasNode = (channelId: string) => {
   const qc = useQueryClient();

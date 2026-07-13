@@ -229,6 +229,131 @@ def test_create_reminder_body_matches_contract() -> None:
     ReminderCreate.model_validate(rec.json_body)
 
 
+def test_tool_catalog_matches_contract() -> None:
+    """TOOLS 名集恰等于契约正目录 COAGENTIA_MCP_TOOLS（含 M7 trigger_deploy，无遗漏/多发明）。"""
+    from coagentia_contracts.constants import COAGENTIA_MCP_TOOLS
+
+    names = [t["name"] for t in mcp.TOOLS]
+    assert set(names) == set(COAGENTIA_MCP_TOOLS)
+    assert len(names) == len(set(names)) == len(COAGENTIA_MCP_TOOLS)  # 无重复
+    assert "trigger_deploy" in names
+
+
+def test_build_request_trigger_deploy() -> None:
+    """trigger_deploy → POST /api/projects/{id}/deployments，空请求体（分支由 server 侧解析）。"""
+    r = mcp.build_request("trigger_deploy", {"project_id": "P1"})
+    assert r.method == "POST"
+    assert r.path == "/api/projects/P1/deployments"
+    assert r.json_body is None
+    assert r.query is None
+
+
+def test_trigger_deploy_in_progress_passthrough() -> None:
+    """trigger_deploy 收 409 DEPLOY_IN_PROGRESS → isError=True 且 status/data 原样透传。"""
+    http = StubHttp(status=409, data={"code": "DEPLOY_IN_PROGRESS"})
+    out = mcp.call_tool("trigger_deploy", {"project_id": "P1"}, http)
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 409
+    assert payload["data"]["code"] == "DEPLOY_IN_PROGRESS"
+    # 请求确实发到 deployments 端点
+    assert http.calls[0].path == "/api/projects/P1/deployments"
+    assert http.calls[0].method == "POST"
+
+
+def test_trigger_deploy_validation_failed_passthrough() -> None:
+    """trigger_deploy 收 422 VALIDATION_FAILED（无 deploy_command）→ isError=True 原样透传。"""
+    data = {"code": "VALIDATION_FAILED", "details": {"hint": "先配置 deploy_command"}}
+    http = StubHttp(status=422, data=data)
+    out = mcp.call_tool("trigger_deploy", {"project_id": "P1"}, http)
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 422
+    assert payload["data"]["code"] == "VALIDATION_FAILED"
+    assert payload["data"]["details"]["hint"] == "先配置 deploy_command"
+
+
+def test_trigger_deploy_daemon_offline_passthrough() -> None:
+    """trigger_deploy 收 503 DAEMON_OFFLINE → isError=True 原样透传。"""
+    http = StubHttp(status=503, data={"code": "DAEMON_OFFLINE"})
+    out = mcp.call_tool("trigger_deploy", {"project_id": "P1"}, http)
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 503
+    assert payload["data"]["code"] == "DAEMON_OFFLINE"
+
+
+def test_trigger_deploy_injects_acting_member_header() -> None:
+    """R8 留痕真调用链：make_urllib_http 对 trigger_deploy 的出站请求注入 Authorization Bearer +
+    X-Acting-Member（触发者身份 = Agent member_id）——server 单点据此落准 triggered_by（E §3）。"""
+    import urllib.request
+    from contextlib import contextmanager
+
+    captured: dict[str, object] = {}
+
+    class _Resp:
+        status = 201
+        headers = {"Content-Type": "application/json"}
+
+        def read(self) -> bytes:
+            return b'{"id":"D1","status":"queued"}'
+
+        def __enter__(self) -> _Resp:
+            return self
+
+        def __exit__(self, *a: object) -> None:
+            return None
+
+    def _fake_urlopen(req: urllib.request.Request, timeout: float = 0) -> _Resp:  # noqa: ARG001
+        captured["url"] = req.full_url
+        captured["method"] = req.get_method()
+        captured["headers"] = dict(req.header_items())
+        return _Resp()
+
+    @contextmanager
+    def _patched():  # noqa: ANN202
+        orig = urllib.request.urlopen
+        urllib.request.urlopen = _fake_urlopen  # type: ignore[assignment]
+        try:
+            yield
+        finally:
+            urllib.request.urlopen = orig  # type: ignore[assignment]
+
+    with _patched():
+        http = mcp.make_urllib_http("http://srv", "secret-key", "01AGENTMEMBER0000000000000")
+        out = mcp.call_tool("trigger_deploy", {"project_id": "P1"}, http)
+
+    assert out["isError"] is False
+    assert captured["method"] == "POST"
+    assert captured["url"] == "http://srv/api/projects/P1/deployments"
+    headers = {k.lower(): v for k, v in captured["headers"].items()}  # type: ignore[union-attr]
+    assert headers["authorization"] == "Bearer secret-key"
+    assert headers["x-acting-member"] == "01AGENTMEMBER0000000000000"
+
+
+def test_tools_list_includes_trigger_deploy() -> None:
+    """tools/list 往返：trigger_deploy 出现且声明 project_id 必填。"""
+    state = mcp._RpcState(http=StubHttp())
+    listed = mcp.handle_rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, state)
+    td = next(t for t in listed["result"]["tools"] if t["name"] == "trigger_deploy")
+    assert td["inputSchema"]["required"] == ["project_id"]
+
+
+def test_codex_reuses_same_mcp_catalog() -> None:
+    """E2 Codex 零改动：config.toml 拉起同一 `mcp` 子命令 server（工具目录 runtime 无关，
+    trigger_deploy 经同一 TOOLS 目录对 codex 亦生效，无需 codex 侧改动）。"""
+    from coagentia_daemon.adapters import cmdline, codex_cmdline
+
+    cmd, base_args = cmdline.mcp_command()
+    toml = codex_cmdline.build_config_toml(
+        agent_member_id="M1", server_url="http://x", api_key="k"
+    )
+    assert json.dumps(cmd) in toml  # 同一 daemon mcp 入口 → 同一 mcp.TOOLS 目录
+    assert "mcp" in base_args
+    # 目录 = 单一事实源，两 runtime 共用；trigger_deploy 无需 codex 侧登记即可用
+    assert "trigger_deploy" in {t["name"] for t in mcp.TOOLS}
+
+
 def test_jsonrpc_initialize_and_tools_list() -> None:
     state = mcp._RpcState(http=StubHttp())
     init = mcp.handle_rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, state)

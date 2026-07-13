@@ -34,4 +34,12 @@ export const qk = {
   // ---- M7 预览会话：按 task 存；面板经 POST(ensure) 播种缓存，WS preview.updated 载
   // PreviewSessionPublic（task_id）时按此键 patch（daemon 状态流转 starting→running→failed）。
   preview: (taskId: string) => ['preview', taskId] as const,
+  // ---- M7b 部署（B-M7-2）：部署卡渲染源（GET /deployments/{id}），WS deployment.created/updated
+  // 载 DeploymentPublic 时按 deployment.id patch（daemon queued→running→success/failed 反流）。
+  deployment: (deploymentId: string) => ['deployment', deploymentId] as const,
+  // 部署日志累积（订阅制 deployment.log 追加 + GET /deployments/{id}/log?after= 翻页）；
+  // 无独立 REST 快照概念，卡打开时按此键播种并追加。
+  deploymentLog: (deploymentId: string) => ['deploymentLog', deploymentId] as const,
+  // 成本汇总（GET /usage?level=&ref=）：按 level+ref 存；画布页签汇总条与成本面共用。
+  usage: (level: string, ref: string) => ['usage', level, ref] as const,
 };

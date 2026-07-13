@@ -4,6 +4,7 @@
 import type { Envelope } from '@coagentia/contracts-ts';
 
 import { API_BASE } from './api';
+import { resendSubscriptions, setWsSender } from './data/wsUplink';
 
 export type WsStatus = 'connecting' | 'online' | 'reconnecting';
 
@@ -38,6 +39,12 @@ export function connectWs(handlers: WsHandlers): () => void {
     lastSeq = null;
     sock = new WebSocket(webSocketUrl());
 
+    // 连接就绪即暴露上行通道（deploy_log 订阅走此下发）；send 前复查 OPEN 防竞态。
+    sock.onopen = () =>
+      setWsSender((msg) => {
+        if (sock?.readyState === WebSocket.OPEN) sock.send(JSON.stringify(msg));
+      });
+
     sock.onmessage = (raw) => {
       let env: Envelope;
       try {
@@ -60,6 +67,8 @@ export function connectWs(handlers: WsHandlers): () => void {
         status('online');
         if (hadConnection) onResync?.(); // 断线重连成功 → 重同步(§4 步骤 1)
         hadConnection = true;
+        // 重发活跃 deploy_log 订阅：server 订阅集重连即失（per-connection 内存态），前端恢复。
+        resendSubscriptions();
         const sec = (env.data as { heartbeat_sec: number }).heartbeat_sec;
         window.clearInterval(heartbeat);
         heartbeat = window.setInterval(
@@ -73,6 +82,7 @@ export function connectWs(handlers: WsHandlers): () => void {
 
     sock.onclose = () => {
       window.clearInterval(heartbeat);
+      setWsSender(null); // 断开：订阅只登记不下发，待重连 hello 后 resend
       if (closed) return;
       attempt += 1;
       status('reconnecting');
@@ -87,6 +97,7 @@ export function connectWs(handlers: WsHandlers): () => void {
 
   return () => {
     closed = true;
+    setWsSender(null);
     window.clearInterval(heartbeat);
     window.clearTimeout(retryTimer);
     sock?.close();

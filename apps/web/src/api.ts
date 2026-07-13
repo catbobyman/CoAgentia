@@ -15,6 +15,8 @@ import type {
   ComputerPublic,
   ContractDraftRequest,
   DecomposeRequest,
+  DeploymentLogPage,
+  DeploymentPublic,
   DiagnosticEventPublic,
   DiffPayload,
   EdgeCreate,
@@ -47,6 +49,8 @@ import type {
   TemplateCreate,
   TemplateInstantiate,
   TemplatePublic,
+  UsageLevel,
+  UsageReport,
   WorkspaceCreate,
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
@@ -390,6 +394,34 @@ export const api = {
     get<PreviewSessionPublic>(`/api/tasks/${taskId}/preview`),
   stopPreview: (taskId: string) =>
     writeJson<PreviewSessionPublic>(`/api/tasks/${taskId}/preview`, 'DELETE'),
+
+  // ---- M7b 部署（B-M7-2 / B §13.2-13.4）。触发空体 POST（R8 全员含 Agent；分支/commit 由 server
+  // 解析主干 HEAD）：DEPLOY_IN_PROGRESS(409 同 Project 串行)/VALIDATION_FAILED(422 无 deploy_command)/
+  // DAEMON_OFFLINE(503) 均结构化 ApiError 上浮，UI 据 code 组 toast。idempotencyKey 可选（防丢响应
+  // 网络重试重复触发）。GET 部署纯读（部署卡渲染源）；GET log 直读 server 落盘（不依赖 daemon 在线），
+  // after=行号游标翻页。
+  createDeployment: (projectId: string, idempotencyKey?: string) =>
+    writeJson<DeploymentPublic>(
+      `/api/projects/${projectId}/deployments`,
+      'POST',
+      undefined,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    ),
+  getDeployment: (deploymentId: string) =>
+    get<DeploymentPublic>(`/api/deployments/${deploymentId}`),
+  deploymentLog: (deploymentId: string, after?: number) =>
+    get<DeploymentLogPage>(
+      `/api/deployments/${deploymentId}/log${after != null ? `?after=${after}` : ''}`,
+    ),
+
+  // ---- M7b 成本核算（B §13.4）。三层聚合（task/agent/canvas）；rollup=true 附 breakdown 明细。
+  // 永不折算货币（W7）；tasks_reporting 诚实标注覆盖率。ref 是层锚（task_id / agent_member_id /
+  // channel_id）。
+  usage: (level: UsageLevel, ref: string, rollup = false) => {
+    const qs = new URLSearchParams({ level, ref });
+    if (rollup) qs.set('rollup', 'true');
+    return get<UsageReport>(`/api/usage?${qs.toString()}`);
+  },
 
   // ---- M6b 拆解编排（B §4.10）。POST decompose 三入口归一（T1 @Orchestrator 消息自然走消息路；
   // T2 携 task_id / T3 携 text）→ 202 ProposalPublic；无 Orchestrator → 409 NO_ORCHESTRATOR

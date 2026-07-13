@@ -1,0 +1,101 @@
+/* M7b 部署卡（消息流内 card_kind==='deployment'）+ [部署] 确认弹窗 + 成本汇总 chip。
+   视觉与 proposal-card 同族：surface-2 卡 + 状态色左缘，日志 mono 等宽可滚。 */
+.deployment-card {
+  max-width: 640px; margin: 6px 0 8px; border: 1px solid var(--border);
+  border-left: 2px solid var(--accent); border-radius: var(--radius-s);
+  background: var(--surface-2); padding: 10px 12px;
+}
+.deployment-card.loading, .deployment-card.error {
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+  border-left-color: var(--border-strong);
+}
+.deployment-card[data-status='failed'] { border-left-color: var(--danger); }
+.deployment-card[data-status='success'] { border-left-color: var(--success); }
+
+.dep-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dep-head .sp { flex: 1; }
+.dep-kind { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text); }
+.dep-kind svg.lucide { width: 14px; height: 14px; color: var(--accent); }
+.dep-branch { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.dep-badge {
+  font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--depst); border: 1px solid var(--depst); border-radius: var(--radius-s); padding: 2px 6px;
+}
+
+.dep-tokens { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+.dep-tok-total { font-size: 12px; font-weight: 600; color: var(--text); }
+.dep-tok-part { font-size: 11px; color: var(--text-secondary); }
+.dep-tok-cov { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+
+.dep-result {
+  display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-secondary);
+}
+.dep-result[data-status='failed'] { color: var(--danger); }
+.dep-url { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); text-decoration: none; }
+.dep-url:hover { text-decoration: underline; }
+.dep-url.none { color: var(--text-muted); }
+.dep-url svg.lucide { width: 12px; height: 12px; }
+.dep-dur, .dep-exit { font-family: var(--font-mono); }
+
+.dep-logtoggle {
+  margin-top: 8px; height: 24px; padding: 0 8px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-s);
+  background: transparent; color: var(--text-secondary);
+}
+.dep-logtoggle:hover { background: var(--surface-hover); }
+
+.dep-logwrap { position: relative; margin-top: 8px; }
+.dep-loadmore {
+  height: 22px; padding: 0 8px; margin-bottom: 4px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-s);
+  background: transparent; color: var(--text-secondary);
+}
+.dep-loadmore:hover:not(:disabled) { background: var(--surface-hover); }
+.dep-log {
+  max-height: 240px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: var(--radius-s); background: var(--surface-1); padding: 8px 10px;
+}
+.dep-log pre {
+  margin: 0; font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
+  color: var(--text-secondary); white-space: pre-wrap; word-break: break-word;
+}
+.dep-log-empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.dep-log-trunc { margin-top: 4px; font-size: 10px; color: var(--warning); }
+.dep-follow-pill {
+  position: absolute; right: 12px; bottom: 12px;
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px;
+  font-size: 11px; cursor: pointer; color: var(--text); background: var(--surface-3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-round);
+  box-shadow: var(--shadow-1, 0 1px 4px rgba(0, 0, 0, .25));
+}
+.dep-follow-pill:hover { background: var(--surface-hover); }
+.dep-follow-pill svg.lucide { width: 12px; height: 12px; }
+
+/* [部署] 确认弹窗（scrim/modal/ops 复用 force-start.css 体例的公共类）。 */
+.deploy-btn svg.lucide { width: 14px; height: 14px; }
+.deploy-modal { min-width: 400px; max-width: 520px; }
+.deploy-confirm-body { padding: 4px 0 8px; }
+.deploy-fields { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; }
+.deploy-fields dt { font-size: 12px; color: var(--text-muted); }
+.deploy-fields dd { margin: 0; font-size: 12px; color: var(--text); }
+.deploy-fields dd.mono { font-family: var(--font-mono); font-size: 11px; word-break: break-all; }
+.deploy-nocmd { color: var(--text-muted); }
+.deploy-warn {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px;
+  border: 1px solid var(--danger); border-radius: var(--radius-s);
+  background: var(--danger-bg); font-size: 12px; color: var(--danger);
+}
+.deploy-warn svg.lucide { width: 15px; height: 15px; flex: none; }
+.deploy-note { margin: 10px 0 0; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
+/* 画布页签成本汇总 chip。 */
+.canvasbar-sp { flex: 1; }
+.usage-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+  font-size: 11px; color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: var(--radius-round); background: var(--surface-2);
+}
+.usage-chip svg.lucide { width: 13px; height: 13px; color: var(--text-muted); }
+.usage-total { font-weight: 600; color: var(--text); }
+.usage-cov { color: var(--text-muted); }

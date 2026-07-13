@@ -51,8 +51,10 @@ import { Avatar } from './Avatar';
 import { DecomposeGuideModals, DecomposeTextModal, useDecompose } from './DecomposeGuide';
 import { DraftLayer } from './DraftLayer';
 import { DeltaPanel } from './DeltaPanel';
+import { DeployButton } from './DeployButton';
 import { ForceStartModal } from './ForceStartModal';
 import { SaveTemplateModal } from './SaveTemplateModal';
+import { CanvasUsageChip } from './UsageChip';
 import { TemplateWizard } from './TemplateWizard';
 import { useToast } from './Toast';
 import './templates.css';
@@ -555,6 +557,15 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
         >
           <ListTree /> ▸拆解
         </button>
+        {/* M7b [部署]（R8 全员含 Agent）：确认弹窗 → 空体 POST；结果卡进频道。绑定 Project 才可点。 */}
+        <DeployButton
+          projectId={boundProjects[0]?.id}
+          deployCommand={boundProjects[0]?.deploy_command}
+          triggererName={members.find((m) => m.kind === 'human' && m.role === 'owner')?.name}
+        />
+        <span className="canvasbar-sp" />
+        {/* M7b 成本汇总条（轻量 chip）：本频道画布任务 token 汇总 + 覆盖率。 */}
+        <CanvasUsageChip channelId={channelId} />
         {cycleWarn && (
           <span className="cyclemsg" role="alert"><CircleAlert /> 连边会形成环</span>
         )}

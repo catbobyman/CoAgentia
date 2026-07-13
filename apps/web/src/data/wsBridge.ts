@@ -8,6 +8,9 @@ import type {
   CanvasEdgePublic,
   CanvasNodePublic,
   ChannelsSnapshot,
+  DeploymentData,
+  DeploymentLogData,
+  DeploymentPublic,
   Envelope,
   HeldDraftPublic,
   LandingBatchPublic,
@@ -24,6 +27,7 @@ import type {
 } from '@coagentia/contracts-ts';
 
 import { qk } from '../lib/queryKeys';
+import { type DeployLogState, appendDeployLogLines } from './deployLog';
 
 // canvas.* 事件 data 载 canvas_id（非 channel_id）,而快照缓存按 channel 存(qk.canvas)。
 // 二法反查承载该 canvas 的频道快照:①按 canvas.id 命中(带 canvas_id 的事件);
@@ -100,6 +104,31 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       const key = qk.preview(preview.task_id);
       if (qc.getQueryData(key) === undefined) break;
       qc.setQueryData(key, preview);
+      break;
+    }
+
+    // ---- M7b 部署（契约 C deployment.*）。created/updated 全量广播，载 { deployment:
+    // DeploymentPublic }（daemon queued→running→success/failed 反流，携 url/exit_code/token_summary）。
+    // 按 deployment.id patch qk.deployment 缓存：整体替换、重复应用无害。未加载（卡未挂载、getQueryData
+    // ===undefined）则放行不建——部署卡挂载时由 GET 拉全（同 proposal/preview 范式）。POST 触发的
+    // mutation 亦会先播种缓存，故 created 通常已有锚点。
+    case 'deployment.created':
+    case 'deployment.updated': {
+      const { deployment } = data as DeploymentData;
+      const key = qk.deployment(deployment.id);
+      if (qc.getQueryData<DeploymentPublic>(key) === undefined) break;
+      qc.setQueryData<DeploymentPublic>(key, deployment);
+      break;
+    }
+
+    // deployment.log = 订阅制实时日志（只发订阅该 deployment 的连接，ws/hub.py 过滤）。载
+    // { deployment_id, chunk_seq, lines }，把 lines 追加到 qk.deploymentLog 累积缓存尾部。未加载
+    // （卡未打开日志视图、未播种）则放行不建——卡打开时 GET 首页播种后本流才有锚点。
+    case 'deployment.log': {
+      const d = data as DeploymentLogData;
+      const key = qk.deploymentLog(d.deployment_id);
+      if (qc.getQueryData<DeployLogState>(key) === undefined) break;
+      qc.setQueryData<DeployLogState>(key, (prev) => appendDeployLogLines(prev, d.lines ?? []));
       break;
     }
 

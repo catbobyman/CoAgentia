@@ -231,6 +231,19 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["q"],
         },
     },
+    # M7（契约 E v1.5）部署——R8「部署全员含 Agent」的通道兑现
+    {
+        "name": "trigger_deploy",
+        "description": "触发一次部署（全员含 Agent，R8）。请求体空——"
+        "分支/commit 由 server 触发时解析主干 HEAD。"
+        "进行中→409 DEPLOY_IN_PROGRESS / 无 deploy_command→422 / daemon 离线→503，均结构化透传。"
+        "部署结果经绑定频道的结果卡消息被动触达（无需轮询）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_id": {"type": "string"}},
+            "required": ["project_id"],
+        },
+    },
 ]
 
 _TOOL_NAMES = frozenset(t["name"] for t in TOOLS)
@@ -298,6 +311,8 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
             if a.get(k) is not None
         }
         return ToolRequest("GET", "/api/search", query=query)
+    if tool == "trigger_deploy":  # 空请求体：分支/commit 由 server 解析主干 HEAD
+        return ToolRequest("POST", f"/api/projects/{a['project_id']}/deployments")
     raise KeyError(tool)
 
 
