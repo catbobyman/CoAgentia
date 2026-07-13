@@ -1,0 +1,72 @@
+[
+  {
+    "name": "P0.1 daemon-sim 真 websockets 连上真 server",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "P0.2 两 Project 建立并绑定频道（好/坏 dev_command）",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "P1.1 writes_code 任务激活联动真 git 派生 worktree",
+    "pass": true,
+    "detail": "01KXDWE4863Y4J4BKA6GGKB0AK"
+  },
+  {
+    "name": "P1.2 POST /preview = 201 建 starting 会话",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "P1.3 daemon 真起 dev server → 健康检查 → running 携 port",
+    "pass": true,
+    "detail": "port=58740"
+  },
+  {
+    "name": "P1.4 iframe 数据源真实可达 HTTP 200（真 http.server 在 worktree）",
+    "pass": true,
+    "detail": "http://127.0.0.1:58740/"
+  },
+  {
+    "name": "P2.1 并排双预览端口互异（注册表唯一性）",
+    "pass": true,
+    "detail": "58740 vs 55466"
+  },
+  {
+    "name": "P2.2 两预览 iframe 同时 HTTP 200",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "P3.1 二次 POST = 200 touch 同会话（ensure+touch 幂等）",
+    "pass": true,
+    "detail": "200 same_session=True"
+  },
+  {
+    "name": "P4.1 idle 超时 → 回收扫描下发 stop → recycled",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "P4.2 回收后 dev server 子进程被杀（端口不可达）",
+    "pass": true,
+    "detail": "port=58740"
+  },
+  {
+    "name": "P5.0 坏命令任务 worktree 就位",
+    "pass": true,
+    "detail": "01KXDWEAV66MRZ8RT2BK7A8GEN"
+  },
+  {
+    "name": "P5.1 坏 dev_command → failed",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "P5.2 failed 携 fail_log_tail（进程输出尾）",
+    "pass": true,
+    "detail": "D:\\Project4work\\Agenthub_7_8\\coagentia\\.venv\\Scripts\\python."
+  }
+]

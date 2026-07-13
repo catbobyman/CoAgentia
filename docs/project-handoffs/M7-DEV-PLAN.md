@@ -54,8 +54,8 @@
 | K2 | daemon 预览进程域（PORT 注入/健康检查/存活监控/start·stop 处理器/status 上报） | ✅ | 波2 | PreviewRunner 长驻变体；端口注册表自持唯一性；健康-存活并行竞速；shutdown 杀子无孤儿；daemon 154 pass；**Fable 亲审通过（端口释放恰一次逐交错核对）** |
 | K3 | server 预览域（ensure+touch/回收三触发/对账 #9/广播/拒绝路径） | ✅ | 波3 | 端点/CAS 条件 UPDATE/回收三触发/对账 #9；**Fable 亲修 3 项**：pre-commit 下发竞态→after_commit 硬保证 / 补 preview.failed 诊断(FR-11.3) / test_preview 跨 app 同名冲突；后端 1001 pass |
 | B-M7-1 | 前端预览面板（按钮/三态顶条/失败日志尾/心跳/并排/倒计时/wsBridge） | ✅ | 波2 | PreviewPanel+PreviewDeck 并排/canPreview 门/60s 心跳/wsBridge preview.updated；web 375（+16） |
-| — | M7a 实机 verify（§9a #7）→ 证据归档 | ☐ | — | Fable 亲跑 |
-| — | /code-review high（块 a）→ 修复 | ☐ | — | — |
+| — | M7a 实机 verify（§9a #7）→ 证据归档 | ✅ | 14/14 | Fable 亲跑：真 uvicorn+真 daemon-sim+真 PreviewRunner；真起 dev server→健康检查→**iframe HTTP 200**→并排端口互异→ensure+touch→idle 回收+杀进程→坏命令 failed；孤儿 0；[M7-EVIDENCE.md](../verify/M7-EVIDENCE.md) |
+| — | /code-review high（块 a）→ 修复 | ☐ | — | 评审全 Opus，Fable 终裁 |
 | K4 | 0011 迁移 + 部署域全链（端点/409+兜底/日志链路/结果卡/对账 #10/订阅流） | ☐ | — | 块 b 波 1 |
 | K5 | trigger_deploy 工具（mcp.py +1/透传/话术/E2 核对） | ☐ | — | 波 2 |
 | K6 | 成本核算（GET /usage 三层/token_summary 新账快照） | ☐ | — | 波 2 |
