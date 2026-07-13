@@ -719,6 +719,9 @@ class PreviewSessionRow(ContractModel):
     worktree_id: Ulid
     port: int | None = None  # starting 期未知
     status: PreviewStatus
+    # v1.0.11：failed 时 daemon preview.status 携 log_tail 落列（交互 §12「启动失败显示日志尾
+    # 20 行」的数据源；≤2KB，上限为实现默认）——进程输出尾。
+    fail_log_tail: str | None = None
     started_at: TimestampZ
     last_active_at: TimestampZ | None = None
     recycled_at: TimestampZ | None = None
@@ -726,6 +729,40 @@ class PreviewSessionRow(ContractModel):
 
 class PreviewSessionPublic(PreviewSessionRow):
     pass
+
+
+# ---- W7 成本聚合形状：UsageBucket / TasksReporting / TokenSummary（契约 B §13.4 / §9.8）
+#
+# JSON 列嵌套模型（§8.3）：deployments.token_summary 触发时纯 SQL 推导快照落列（新账口径——
+# 上次 success 部署以来 merged 任务集，B §13.4）。GET /usage 三层读面（rest.UsageReport）复用
+# UsageBucket/TasksReporting 同形（§9.8 TaskDetail.usage 同源同形）；永不折算货币（W7）。
+
+
+class UsageBucket(ContractModel):
+    """token 聚合四字段 + 事件计数（§9.8 同源同形；永不折算货币，W7）。"""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    events: int = 0  # 参与聚合的 token_usage_events 行数
+
+
+class TasksReporting(ContractModel):
+    """W7 覆盖率诚实标注：reporting = 有 usage 上报的任务数，total = 聚合集任务总数
+    （未上报任务计入分母，B §13.4）。level=task 时恒 {0/1, 1}。"""
+
+    reporting: int = 0
+    total: int = 0
+
+
+class TokenSummary(ContractModel):
+    """deployments.token_summary 新账快照（契约 B §13.4）：上次 success 部署以来 merged 任务集
+    聚合。task_ids 按 id 稳定排序、最多 50 项（details 有界先例 §12.12 #4）。"""
+
+    usage: UsageBucket
+    tasks_reporting: TasksReporting
+    task_ids: list[Ulid] = Field(default_factory=list)
 
 
 class DeploymentRow(ContractModel):
@@ -740,7 +777,7 @@ class DeploymentRow(ContractModel):
     exit_code: int | None = None
     url: str | None = None
     log_path: str | None = None  # 日志落文件（契约 D §9.1），卡片流式读
-    token_summary: JsonValue | None = None  # Σ + tasksReporting（W7；M7 收紧）
+    token_summary: TokenSummary | None = None  # 新账 Σ + tasksReporting（W7；v1.5 收紧）
     started_at: TimestampZ | None = None
     finished_at: TimestampZ | None = None
 
@@ -758,7 +795,7 @@ class DeploymentPublic(ContractModel):
     status: DeploymentStatus
     exit_code: int | None = None
     url: str | None = None
-    token_summary: JsonValue | None = None
+    token_summary: TokenSummary | None = None
     started_at: TimestampZ | None = None
     finished_at: TimestampZ | None = None
 

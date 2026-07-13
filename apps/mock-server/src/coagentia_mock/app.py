@@ -10,7 +10,7 @@ from typing import Any
 
 import uvicorn
 from coagentia_contracts import daemon, entities, rest
-from coagentia_contracts.enums import ActivityFilter, SearchKind
+from coagentia_contracts.enums import ActivityFilter, SearchKind, UsageLevel
 from coagentia_contracts.ws import EventType
 from fastapi import FastAPI, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -872,6 +872,121 @@ async def patch_template(template_id: str, body: rest.TemplatePatch) -> Any:
 @app.delete("/api/templates/{template_id}", status_code=204)
 async def delete_template(template_id: str) -> Response:
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------- M7 预览/部署/成本（纯形状）
+#
+# K0 登记：mock 只验形状不做业务（纪律 4）——健康检查/端口分配/回收调度/409 不排队/聚合 SQL/
+# 新账推导只活真 server/daemon。此处仅喂 OpenAPI→rest.ts：预览会话 / 部署 / 日志翻页 / usage
+# 三层形状（PreviewSessionPublic / DeploymentPublic / DeploymentLogPage / UsageReport）。
+
+
+def _mock_usage_bucket() -> dict[str, Any]:
+    return {"input_tokens": 1200, "output_tokens": 450, "cache_read_tokens": 800,
+            "cache_write_tokens": 200, "events": 3}
+
+
+def _mock_token_summary() -> dict[str, Any]:
+    """新账口径快照占位（B §13.4）；真值 = server 触发时纯 SQL 推导落列。"""
+    return {"usage": _mock_usage_bucket(),
+            "tasks_reporting": {"reporting": 1, "total": 2},
+            "task_ids": [t["id"] for t in store.tasks[:1]]}
+
+
+def _mock_preview_session(task_id: str, *, status: str = "running") -> dict[str, Any]:
+    return {
+        "id": new_id(), "workspace_id": store.workspace["id"], "task_id": task_id,
+        "worktree_id": new_id(),
+        "port": 43117 if status == "running" else None,
+        "status": status, "fail_log_tail": None,
+        "started_at": now_ts(), "last_active_at": now_ts(),
+        "recycled_at": now_ts() if status == "recycled" else None,
+    }
+
+
+def _mock_deployment(deployment_id: str | None = None, *, project_id: str | None = None,
+                     status: str = "success") -> dict[str, Any]:
+    terminal = status in ("success", "failed")
+    return {
+        "id": deployment_id or new_id(), "workspace_id": store.workspace["id"],
+        "project_id": project_id or new_id(),
+        "triggered_by_member_id": store.members[0]["id"],
+        "branch": "main", "commit_hash": "0" * 40, "command": "npm run deploy",
+        "status": status,
+        "exit_code": 0 if status == "success" else (1 if status == "failed" else None),
+        "url": "https://preview.example.com/app" if status == "success" else None,
+        "token_summary": _mock_token_summary(),
+        "started_at": now_ts() if status != "queued" else None,
+        "finished_at": now_ts() if terminal else None,
+    }
+
+
+@app.post("/api/tasks/{task_id}/preview", response_model=entities.PreviewSessionPublic)
+async def start_preview(task_id: str) -> Any:
+    """ensure+touch 幂等（B §13.1）：mock 回 running 会话形状；健康检查/端口分配活真 daemon。"""
+    require_task(task_id)
+    session = _mock_preview_session(task_id)
+    await hub.broadcast(EventType.PREVIEW_UPDATED, None, {"preview": session})
+    return session
+
+
+@app.get("/api/tasks/{task_id}/preview", response_model=entities.PreviewSessionPublic)
+async def get_preview(task_id: str) -> Any:
+    """纯读（B §13.1）：mock 回现状形状；无活跃会话 404 活真 server。"""
+    require_task(task_id)
+    return _mock_preview_session(task_id)
+
+
+@app.delete("/api/tasks/{task_id}/preview", response_model=entities.PreviewSessionPublic)
+async def stop_preview(task_id: str) -> Any:
+    """下发 preview.stop（B §13.1）：mock 回 recycled 形状；回收判定活真 server。"""
+    require_task(task_id)
+    session = _mock_preview_session(task_id, status="recycled")
+    await hub.broadcast(EventType.PREVIEW_UPDATED, None, {"preview": session})
+    return session
+
+
+@app.post("/api/projects/{project_id}/deployments",
+          response_model=entities.DeploymentPublic, status_code=202)
+async def create_deployment(project_id: str) -> Any:
+    """触发部署（B §13.2；R8 全员含 Agent 无角色校验，请求体空）：mock 回 queued 形状；
+    409 不排队/branch·commit 直查主干 HEAD/deploy.run 下发活真 server。"""
+    deployment = _mock_deployment(project_id=project_id, status="queued")
+    await hub.broadcast(EventType.DEPLOYMENT_CREATED, None, {"deployment": deployment})
+    return deployment
+
+
+@app.get("/api/deployments/{deployment_id}", response_model=entities.DeploymentPublic)
+async def get_deployment(deployment_id: str) -> Any:
+    return _mock_deployment(deployment_id, status="success")
+
+
+@app.get("/api/deployments/{deployment_id}/log", response_model=rest.DeploymentLogPage)
+async def get_deployment_log(deployment_id: str, after: int = 0) -> Any:
+    """server 直读落盘日志（B §13.3，不依赖 daemon 在线）：mock 回固定尾巴形状（无翻页）。"""
+    return {
+        "lines": ["$ npm run deploy", "build ok",
+                  "deployed https://preview.example.com/app"],
+        "next_after": None, "truncated": False,
+    }
+
+
+@app.get("/api/usage", response_model=rest.UsageReport)
+async def get_usage(level: UsageLevel = UsageLevel.TASK, ref: str | None = None,
+                    rollup: bool = False) -> Any:
+    """三层成本聚合（B §13.4；永不折算货币）：mock 回形状源；聚合 SQL/覆盖率/新账活真 server。"""
+    default_ref = store.tasks[0]["id"] if store.tasks else new_id()
+    report: dict[str, Any] = {
+        "level": level.value, "ref": ref or default_ref, "usage": _mock_usage_bucket(),
+        "tasks_reporting": ({"reporting": 1, "total": 1} if level == UsageLevel.TASK
+                            else {"reporting": 1, "total": 2}),
+        "breakdown": None,
+    }
+    if rollup and level != UsageLevel.TASK:
+        report["breakdown"] = [
+            {"ref": default_ref, "label": "任务 #1", "usage": _mock_usage_bucket()},
+        ]
+    return report
 
 
 # ---------------------------------------------------------------- WS 与 mock 控制面

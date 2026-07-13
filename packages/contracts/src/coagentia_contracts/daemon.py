@@ -411,7 +411,7 @@ class DeployLogReportData(ContractModel):
 class DeployFinishedData(ContractModel):
     deployment_id: Ulid
     status: Literal["success", "failed"]
-    exit_code: int
+    exit_code: int | None = None  # 超时 = failed（exit_code=null，契约 D §5.3 deploy.run）
     url: str | None = None
 
 
@@ -419,6 +419,9 @@ class PreviewStatusData(ContractModel):
     preview_session_id: Ulid
     status: Literal["starting", "running", "recycled", "failed"]
     port: int | None = None
+    # v1.0.4 扩：failed 时携进程输出尾 ≤2KB（server 落 preview_sessions.fail_log_tail，
+    # A v1.0.11）；加字段向后兼容。
+    log_tail: str | None = None
 
 
 class WorktreeStatusData(ContractModel):

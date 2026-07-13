@@ -168,10 +168,15 @@ def test_m3_endpoint_catalog_size() -> None:
     assert set(rest.ENDPOINTS_M2).isdisjoint(rest.ENDPOINTS_M3)
 
 
+# M1(9)+M2(6)=15 冻结至 M6；M7 起 +trigger_deploy（契约 E v1.5）——排除后核对"该里程碑零新增"。
+def _tools_through_m6() -> int:
+    return len(set(constants.COAGENTIA_MCP_TOOLS) - {"trigger_deploy"})
+
+
 def test_m3_adds_no_mcp_tools() -> None:
     """E 契约 v1.2 裁决：M3 契约面零新 Agent 工具（提交/force-start 人确认/C3 门，
     读走 get_task、起草走 request-draft 直投 + send_message）。COAGENTIA_MCP_TOOLS 不增补。"""
-    assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3 无增
+    assert _tools_through_m6() == 15  # M1(9)+M2(6)，M3 无增（M7 的 trigger_deploy 已排除）
 
 
 def test_m4_endpoint_catalog_size() -> None:
@@ -186,7 +191,7 @@ def test_m4_endpoint_catalog_size() -> None:
 def test_m4_adds_no_mcp_tools() -> None:
     """E 契约 v1.3 裁决：M4 零新 Agent 工具（护栏干预是人类面 rule=G3；create_reminder 参数
     扩展属 daemon mcp.py 非工具目录）。COAGENTIA_MCP_TOOLS 不增补。"""
-    assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3/M4 无增
+    assert _tools_through_m6() == 15  # M1(9)+M2(6)，M3/M4 无增
 
 
 def test_m5_endpoint_catalog_size() -> None:
@@ -200,7 +205,7 @@ def test_m5_endpoint_catalog_size() -> None:
 def test_m5_adds_no_mcp_tools() -> None:
     """E 契约 v1.4 裁决（§7 #12）：M5 工具组为空——连续第三个里程碑零新增 Agent 工具（唯一变化 =
     create_reminder cadence 值域扩 cron，属描述文案非工具目录）。COAGENTIA_MCP_TOOLS 不增补。"""
-    assert len(constants.COAGENTIA_MCP_TOOLS) == 15  # M1(9)+M2(6)，M3/M4/M5 无增
+    assert _tools_through_m6() == 15  # M1(9)+M2(6)，M3/M4/M5 无增
 
 
 def test_m6_endpoint_catalog_size() -> None:
@@ -219,8 +224,33 @@ def test_m6_endpoint_catalog_size() -> None:
 
 
 def test_m6_adds_no_mcp_tools() -> None:
-    """M6 零新增 Agent 工具（契约裁决 #13）。"""
-    assert len(constants.COAGENTIA_MCP_TOOLS) == 15
+    """M6 零新增 Agent 工具（契约裁决 #13）；零工具连胜止于 M6——M7 起 +trigger_deploy。"""
+    assert _tools_through_m6() == 15
+
+
+def test_m7_endpoint_catalog_size() -> None:
+    """M7 端点清单：预览 3 + 部署 3 + 成本 1 = 7（§13），与 M1–M6 全不相交。"""
+    assert len(rest.ENDPOINTS_M7) == 7
+    assert len(set(rest.ENDPOINTS_M7)) == 7
+    prior = (
+        rest.ENDPOINTS_M1,
+        rest.ENDPOINTS_M2,
+        rest.ENDPOINTS_M3,
+        rest.ENDPOINTS_M4,
+        rest.ENDPOINTS_M5,
+        rest.ENDPOINTS_M6,
+    )
+    for endpoints in prior:
+        assert set(endpoints).isdisjoint(rest.ENDPOINTS_M7)
+
+
+def test_m7_adds_trigger_deploy_tool() -> None:
+    """M7 工具组 +1：trigger_deploy（契约 E v1.5；R8 部署全员含 Agent 的通道兑现）——与负目录
+    DISALLOWED_TOOLS 不相交，总数 15→16。"""
+    assert "trigger_deploy" in constants.COAGENTIA_MCP_TOOLS
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 16
+    assert len(set(constants.COAGENTIA_MCP_TOOLS)) == 16  # 无重复
+    assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)
 
 
 def test_codex_disallowed_tools_placeholder() -> None:

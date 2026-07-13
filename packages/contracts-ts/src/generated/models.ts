@@ -309,7 +309,7 @@ export type Text = string | null;
 export type DeliverableKind = 'file' | 'dir' | 'url' | 'artifact';
 export type Path = string;
 export type DeploymentId = string;
-export type ExitCode1 = number;
+export type ExitCode1 = number | null;
 export type Status1 = 'success' | 'failed';
 export type Url = string | null;
 export type ChunkSeq = number;
@@ -329,12 +329,23 @@ export type Id15 = string;
 export type ProjectId3 = string;
 export type StartedAt = string | null;
 export type DeploymentStatus = 'queued' | 'running' | 'success' | 'failed';
+export type TaskIds = string[];
+export type Reporting = number;
+export type Total = number;
+export type CacheReadTokens = number;
+export type CacheWriteTokens = number;
+export type Events = number;
+export type InputTokens = number;
+export type OutputTokens = number;
 export type TriggeredByMemberId = string;
 export type Url1 = string | null;
 export type WorkspaceId9 = string;
 export type ChunkSeq1 = number;
 export type DeploymentId3 = string;
 export type Lines1 = string[];
+export type Lines2 = string[];
+export type NextAfter = number | null;
+export type Truncated = boolean;
 export type Branch2 = string;
 export type Command5 = string;
 export type CommitHash2 = string | null;
@@ -348,7 +359,7 @@ export type TriggeredByMemberId1 = string;
 export type Url2 = string | null;
 export type WorkspaceId10 = string;
 export type AgentMemberId9 = string;
-export type Events = JsonValue[];
+export type Events1 = JsonValue[];
 export type AgentMemberId10 = string | null;
 export type At = string;
 export type BatchId = string | null;
@@ -371,7 +382,7 @@ export type Seq1 = number;
 export type TaskId7 = string | null;
 export type Type2 = string;
 export type WorkspaceId12 = string;
-export type Events1 = DiagnosticEventIn[];
+export type Events2 = DiagnosticEventIn[];
 export type Additions = number;
 export type Deletions = number;
 export type OldPath = string | null;
@@ -573,7 +584,7 @@ export type AgentMemberId15 = string;
 export type Path2 = string;
 export type Content = string;
 export type Kind2 = 'text';
-export type Truncated = boolean;
+export type Truncated1 = boolean;
 export type Kind3 = 'dir' | 'file';
 export type Mtime = string;
 export type Name13 = string;
@@ -742,6 +753,7 @@ export type PresenceStatus = 'online' | 'offline' | 'starting' | 'idle' | 'busy'
 export type BusyDetail = string | null;
 export type MemberId17 = string;
 export type Items2 = PresenceEntry[];
+export type FailLogTail = string | null;
 export type Id28 = string;
 export type LastActiveAt = string | null;
 export type Port = number | null;
@@ -751,6 +763,7 @@ export type PreviewStatus = 'starting' | 'running' | 'recycled' | 'failed';
 export type TaskId11 = string;
 export type WorkspaceId25 = string;
 export type WorktreeId = string;
+export type FailLogTail1 = string | null;
 export type Id29 = string;
 export type LastActiveAt1 = string | null;
 export type Port1 = number | null;
@@ -763,6 +776,7 @@ export type DevCommand = string;
 export type PreviewSessionId = string;
 export type TaskId13 = string;
 export type WorktreePath = string;
+export type LogTail = string | null;
 export type Port2 = number | null;
 export type PreviewSessionId1 = string;
 export type Status3 = 'starting' | 'running' | 'recycled' | 'failed';
@@ -967,11 +981,11 @@ export type TaskId15 = string | null;
 export type Version3 = string;
 export type WorkspaceId35 = string;
 export type Contracts = TaskContractPublic[];
-export type CacheReadTokens = number;
-export type CacheWriteTokens = number;
-export type Events2 = number;
-export type InputTokens = number;
-export type OutputTokens = number;
+export type CacheReadTokens1 = number;
+export type CacheWriteTokens1 = number;
+export type Events3 = number;
+export type InputTokens1 = number;
+export type OutputTokens1 = number;
 export type Branch3 = string;
 export type CleanedAt = string | null;
 export type CreatedAt31 = string;
@@ -1059,45 +1073,53 @@ export type Description12 = string;
 export type Id41 = string;
 export type Name23 = string;
 export type WorkspaceId39 = string;
-export type CacheReadTokens1 = number;
-export type CacheWriteTokens1 = number;
-export type InputTokens1 = number;
-export type OutputTokens1 = number;
-export type AgentMemberId22 = string;
 export type CacheReadTokens2 = number;
 export type CacheWriteTokens2 = number;
-export type ChannelId33 = string | null;
-export type Id42 = string;
 export type InputTokens2 = number;
 export type OutputTokens2 = number;
+export type AgentMemberId22 = string;
+export type CacheReadTokens3 = number;
+export type CacheWriteTokens3 = number;
+export type ChannelId33 = string | null;
+export type Id42 = string;
+export type InputTokens3 = number;
+export type OutputTokens3 = number;
 export type ReportedAt = string;
 export type SourceSession1 = string | null;
 export type ThreadRootId6 = string | null;
 export type AgentMemberId23 = string;
-export type CacheReadTokens3 = number;
-export type CacheWriteTokens3 = number;
+export type CacheReadTokens4 = number;
+export type CacheWriteTokens4 = number;
 export type ChannelId34 = string | null;
 export type Id43 = string;
-export type InputTokens3 = number;
-export type OutputTokens3 = number;
+export type InputTokens4 = number;
+export type OutputTokens4 = number;
 export type ReportedAt1 = string;
 export type SourceSession2 = string | null;
 export type TaskId19 = string | null;
 export type WorkspaceId40 = string;
 export type AgentMemberId24 = string;
-export type CacheReadTokens4 = number;
-export type CacheWriteTokens4 = number;
+export type CacheReadTokens5 = number;
+export type CacheWriteTokens5 = number;
 export type ChannelId35 = string | null;
 export type Id44 = string;
-export type InputTokens4 = number;
-export type OutputTokens4 = number;
+export type InputTokens5 = number;
+export type OutputTokens5 = number;
 export type ReportedAt2 = string;
 export type SourceSession3 = string | null;
 export type TaskId20 = string | null;
 export type WorkspaceId41 = string;
 export type AgentMemberId25 = string;
 export type TaskId21 = string | null;
-export type Events3 = TokenUsageEventIn[];
+export type Events4 = TokenUsageEventIn[];
+export type Label = string;
+export type Ref4 = string;
+export type Breakdown = UsageBreakdownItem[] | null;
+/**
+ * `GET /usage?level=`（契约 B §13.4）三层聚合维度值域（?filter=/?kind= 枚举先例）。
+ */
+export type UsageLevel = 'task' | 'agent' | 'canvas';
+export type Ref5 = string;
 export type Name24 = string;
 export type Slug = string;
 export type AttachmentMaxMb = number | null;
@@ -1230,6 +1252,7 @@ export interface CoAgentiaContracts {
   DeployRunData?: DeployRunData;
   DeploymentData?: DeploymentData;
   DeploymentLogData?: DeploymentLogData;
+  DeploymentLogPage?: DeploymentLogPage;
   DeploymentPublic?: DeploymentPublic;
   DeploymentRow?: DeploymentRow;
   DetectedRuntime?: DetectedRuntime;
@@ -1358,6 +1381,7 @@ export interface CoAgentiaContracts {
   TaskStatusChange?: TaskStatusChange;
   TaskUpdatedData?: TaskUpdatedData;
   TaskUsage?: TaskUsage;
+  TasksReporting?: TasksReporting;
   TemplateBody?: TemplateBody;
   TemplateCreate?: TemplateCreate;
   TemplateEdge?: TemplateEdge;
@@ -1367,12 +1391,16 @@ export interface CoAgentiaContracts {
   TemplatePublic?: TemplatePublic;
   TemplateRole?: TemplateRole;
   TemplateRow?: TemplateRow;
+  TokenSummary?: TokenSummary;
   TokenTotals?: TokenTotals;
   TokenUsageEventIn?: TokenUsageEventIn;
   TokenUsageEventPublic?: TokenUsageEventPublic;
   TokenUsageEventRow?: TokenUsageEventRow;
   TokenUsageReportedData?: TokenUsageReportedData;
   UsageBatchData?: UsageBatchData;
+  UsageBreakdownItem?: UsageBreakdownItem;
+  UsageBucket?: UsageBucket;
+  UsageReport?: UsageReport;
   WakeRefs?: WakeRefs;
   WorkspaceCreate?: WorkspaceCreate;
   WorkspacePatch?: WorkspacePatch;
@@ -1936,7 +1964,7 @@ export interface Deliverable {
 }
 export interface DeployFinishedData {
   deployment_id: DeploymentId;
-  exit_code: ExitCode1;
+  exit_code?: ExitCode1;
   status: Status1;
   url?: Url;
 }
@@ -1968,15 +1996,51 @@ export interface DeploymentPublic {
   project_id: ProjectId3;
   started_at?: StartedAt;
   status: DeploymentStatus;
-  token_summary?: unknown;
+  token_summary?: TokenSummary | null;
   triggered_by_member_id: TriggeredByMemberId;
   url?: Url1;
   workspace_id: WorkspaceId9;
+}
+/**
+ * deployments.token_summary 新账快照（契约 B §13.4）：上次 success 部署以来 merged 任务集
+ * 聚合。task_ids 按 id 稳定排序、最多 50 项（details 有界先例 §12.12 #4）。
+ */
+export interface TokenSummary {
+  task_ids?: TaskIds;
+  tasks_reporting: TasksReporting;
+  usage: UsageBucket;
+}
+/**
+ * W7 覆盖率诚实标注：reporting = 有 usage 上报的任务数，total = 聚合集任务总数
+ * （未上报任务计入分母，B §13.4）。level=task 时恒 {0/1, 1}。
+ */
+export interface TasksReporting {
+  reporting?: Reporting;
+  total?: Total;
+}
+/**
+ * token 聚合四字段 + 事件计数（§9.8 同源同形；永不折算货币，W7）。
+ */
+export interface UsageBucket {
+  cache_read_tokens?: CacheReadTokens;
+  cache_write_tokens?: CacheWriteTokens;
+  events?: Events;
+  input_tokens?: InputTokens;
+  output_tokens?: OutputTokens;
 }
 export interface DeploymentLogData {
   chunk_seq: ChunkSeq1;
   deployment_id: DeploymentId3;
   lines: Lines1;
+}
+/**
+ * GET /deployments/{id}/log?after=<行号>（B §13.3）：server 直读落盘日志文件（不依赖 daemon
+ * 在线）。next_after = 下一页游标行号（无更多为 None）；truncated = 文件超 5MB 上限截断置真。
+ */
+export interface DeploymentLogPage {
+  lines?: Lines2;
+  next_after?: NextAfter;
+  truncated?: Truncated;
 }
 export interface DeploymentRow {
   branch: Branch2;
@@ -1989,7 +2053,7 @@ export interface DeploymentRow {
   project_id: ProjectId4;
   started_at?: StartedAt1;
   status: DeploymentStatus;
-  token_summary?: unknown;
+  token_summary?: TokenSummary | null;
   triggered_by_member_id: TriggeredByMemberId1;
   url?: Url2;
   workspace_id: WorkspaceId10;
@@ -1999,7 +2063,7 @@ export interface DeploymentRow {
  */
 export interface DiagnosticAppendedData {
   agent_member_id: AgentMemberId9;
-  events: Events;
+  events: Events1;
 }
 /**
  * 诊断上行条目：无 seq（server 落库赋）、无 workspace_id（server 由 computer 富化）。
@@ -2039,7 +2103,7 @@ export interface DiagnosticEventRow {
   workspace_id: WorkspaceId12;
 }
 export interface DiagnosticsBatchData {
-  events: Events1;
+  events: Events2;
 }
 export interface DiffFile {
   additions: Additions;
@@ -2248,7 +2312,7 @@ export interface HomeFileQuery {
 export interface HomeFileTextReply {
   content: Content;
   kind?: Kind2;
-  truncated?: Truncated;
+  truncated?: Truncated1;
 }
 export interface HomeTreeEntry {
   kind: Kind3;
@@ -2556,6 +2620,7 @@ export interface PresenceSnapshot {
   items: Items2;
 }
 export interface PreviewSessionPublic {
+  fail_log_tail?: FailLogTail;
   id: Id28;
   last_active_at?: LastActiveAt;
   port?: Port;
@@ -2567,6 +2632,7 @@ export interface PreviewSessionPublic {
   worktree_id: WorktreeId;
 }
 export interface PreviewSessionRow {
+  fail_log_tail?: FailLogTail1;
   id: Id29;
   last_active_at?: LastActiveAt1;
   port?: Port1;
@@ -2584,6 +2650,7 @@ export interface PreviewStartData {
   worktree_path: WorktreePath;
 }
 export interface PreviewStatusData {
+  log_tail?: LogTail;
   port?: Port2;
   preview_session_id: PreviewSessionId1;
   status: Status3;
@@ -2897,11 +2964,11 @@ export interface TaskDetail {
  * TaskDetail 的成本聚合（token_usage_events 按 task_id 汇总）。
  */
 export interface TaskUsage {
-  cache_read_tokens?: CacheReadTokens;
-  cache_write_tokens?: CacheWriteTokens;
-  events?: Events2;
-  input_tokens?: InputTokens;
-  output_tokens?: OutputTokens;
+  cache_read_tokens?: CacheReadTokens1;
+  cache_write_tokens?: CacheWriteTokens1;
+  events?: Events3;
+  input_tokens?: InputTokens1;
+  output_tokens?: OutputTokens1;
 }
 export interface WorktreePublic {
   branch: Branch3;
@@ -3095,10 +3162,10 @@ export interface TemplateRow {
   workspace_id: WorkspaceId39;
 }
 export interface TokenTotals {
-  cache_read_tokens?: CacheReadTokens1;
-  cache_write_tokens?: CacheWriteTokens1;
-  input_tokens?: InputTokens1;
-  output_tokens?: OutputTokens1;
+  cache_read_tokens?: CacheReadTokens2;
+  cache_write_tokens?: CacheWriteTokens2;
+  input_tokens?: InputTokens2;
+  output_tokens?: OutputTokens2;
 }
 /**
  * usage 上行条目：id = 适配器 ULID（exactly-once 去重根基，契约 E §7.4）；
@@ -3106,24 +3173,24 @@ export interface TokenTotals {
  */
 export interface TokenUsageEventIn {
   agent_member_id: AgentMemberId22;
-  cache_read_tokens?: CacheReadTokens2;
-  cache_write_tokens?: CacheWriteTokens2;
+  cache_read_tokens?: CacheReadTokens3;
+  cache_write_tokens?: CacheWriteTokens3;
   channel_id?: ChannelId33;
   id: Id42;
-  input_tokens?: InputTokens2;
-  output_tokens?: OutputTokens2;
+  input_tokens?: InputTokens3;
+  output_tokens?: OutputTokens3;
   reported_at: ReportedAt;
   source_session?: SourceSession1;
   thread_root_id?: ThreadRootId6;
 }
 export interface TokenUsageEventPublic {
   agent_member_id: AgentMemberId23;
-  cache_read_tokens?: CacheReadTokens3;
-  cache_write_tokens?: CacheWriteTokens3;
+  cache_read_tokens?: CacheReadTokens4;
+  cache_write_tokens?: CacheWriteTokens4;
   channel_id?: ChannelId34;
   id: Id43;
-  input_tokens?: InputTokens3;
-  output_tokens?: OutputTokens3;
+  input_tokens?: InputTokens4;
+  output_tokens?: OutputTokens4;
   reported_at: ReportedAt1;
   source_session?: SourceSession2;
   task_id?: TaskId19;
@@ -3134,12 +3201,12 @@ export interface TokenUsageEventPublic {
  */
 export interface TokenUsageEventRow {
   agent_member_id: AgentMemberId24;
-  cache_read_tokens?: CacheReadTokens4;
-  cache_write_tokens?: CacheWriteTokens4;
+  cache_read_tokens?: CacheReadTokens5;
+  cache_write_tokens?: CacheWriteTokens5;
   channel_id?: ChannelId35;
   id: Id44;
-  input_tokens?: InputTokens4;
-  output_tokens?: OutputTokens4;
+  input_tokens?: InputTokens5;
+  output_tokens?: OutputTokens5;
   reported_at: ReportedAt2;
   source_session?: SourceSession3;
   task_id?: TaskId20;
@@ -3151,7 +3218,28 @@ export interface TokenUsageReportedData {
   totals: TokenTotals;
 }
 export interface UsageBatchData {
-  events: Events3;
+  events: Events4;
+}
+/**
+ * UsageReport.breakdown 逐子项（rollup=true 附）：agent 逐任务 / canvas 逐节点任务。
+ */
+export interface UsageBreakdownItem {
+  label: Label;
+  ref: Ref4;
+  usage: UsageBucket;
+}
+/**
+ * GET /usage?level=task|agent|canvas&ref=&rollup=（B §13.4，响应形状冻结）。
+ *
+ * 永不折算货币（W7）；`tasks_reporting` 诚实标注覆盖率（level=task 恒 {0/1, 1}）；rollup=true
+ * 时附 `breakdown` 逐子项明细，默认省略。聚合 SQL/新账推导活 server 单点（纪律 7）。
+ */
+export interface UsageReport {
+  breakdown?: Breakdown;
+  level: UsageLevel;
+  ref: Ref5;
+  tasks_reporting: TasksReporting;
+  usage: UsageBucket;
 }
 export interface WorkspaceCreate {
   name: Name24;

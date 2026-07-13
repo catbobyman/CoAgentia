@@ -129,8 +129,8 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
         "merge_commit", "created_at", "merged_at", "cleaned_at",
     }),
     "preview_sessions": (entities.PreviewSessionRow, {
-        "id", "workspace_id", "task_id", "worktree_id", "port", "status", "started_at",
-        "last_active_at", "recycled_at",
+        "id", "workspace_id", "task_id", "worktree_id", "port", "status", "fail_log_tail",
+        "started_at", "last_active_at", "recycled_at",
     }),
     "deployments": (entities.DeploymentRow, {
         "id", "workspace_id", "project_id", "triggered_by_member_id", "branch", "commit_hash",

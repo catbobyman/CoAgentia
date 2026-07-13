@@ -25,6 +25,8 @@ from coagentia_contracts.entities import (
     TaskContractPublic,
     TaskPlanBody,
     TaskPublic,
+    TasksReporting,
+    UsageBucket,
     WorktreePublic,
 )
 from coagentia_contracts.enums import (
@@ -42,6 +44,7 @@ from coagentia_contracts.enums import (
     TaskLevel,
     TaskStatus,
     UiTheme,
+    UsageLevel,
 )
 from coagentia_contracts.ids import Sha256Hex, Ulid
 
@@ -664,6 +667,45 @@ class ProjectBind(ContractModel):
     project_id: Ulid
 
 
+# ---- §13 预览、部署与成本（M7；行为语义见 B §13，此处只登记读响应形状）
+#
+# 预览三端点无请求体（POST=ensure+touch 幂等空体推进 last_active_at；DELETE=下发 preview.stop）；
+# 部署 POST 请求空体（分支/commit_hash 由 server 触发时解析主干 HEAD，B §13.2）——故请求侧零模型。
+# 预览/部署实体读面 = entities.PreviewSessionPublic / DeploymentPublic（WS preview.updated /
+# deployment.created·updated 同源）。
+
+
+class DeploymentLogPage(ContractModel):
+    """GET /deployments/{id}/log?after=<行号>（B §13.3）：server 直读落盘日志文件（不依赖 daemon
+    在线）。next_after = 下一页游标行号（无更多为 None）；truncated = 文件超 5MB 上限截断置真。"""
+
+    lines: list[str] = []
+    next_after: int | None = None
+    truncated: bool = False
+
+
+class UsageBreakdownItem(ContractModel):
+    """UsageReport.breakdown 逐子项（rollup=true 附）：agent 逐任务 / canvas 逐节点任务。"""
+
+    ref: str
+    label: str
+    usage: UsageBucket
+
+
+class UsageReport(ContractModel):
+    """GET /usage?level=task|agent|canvas&ref=&rollup=（B §13.4，响应形状冻结）。
+
+    永不折算货币（W7）；`tasks_reporting` 诚实标注覆盖率（level=task 恒 {0/1, 1}）；rollup=true
+    时附 `breakdown` 逐子项明细，默认省略。聚合 SQL/新账推导活 server 单点（纪律 7）。
+    """
+
+    level: UsageLevel
+    ref: str
+    usage: UsageBucket
+    tasks_reporting: TasksReporting
+    breakdown: list[UsageBreakdownItem] | None = None
+
+
 # ---------------------------------------------------- M1 端点清单（mock 一致性测试的基准）
 
 ENDPOINTS_M1: tuple[tuple[str, str], ...] = (
@@ -791,4 +833,23 @@ ENDPOINTS_M6: tuple[tuple[str, str], ...] = (
     # §4.12 模板治理
     ("PATCH", "/templates/{template_id}"),
     ("DELETE", "/templates/{template_id}"),
+)
+
+# ---------------------------------------------------- M7 端点清单（§13 预览/部署/成本）
+# 预览 3（POST/GET/DELETE /tasks/{id}/preview）+ 部署 3（POST /projects/{id}/deployments、
+# GET /deployments/{id}、GET /deployments/{id}/log）+ 成本 1（GET /usage）= 7。
+# mock 形状源全 serve（喂 OpenAPI→rest.ts）；真 server serve 与逐端点行为双跑归 K3/K4/K6。
+
+ENDPOINTS_M7: tuple[tuple[str, str], ...] = (
+    # §13.1 预览生命周期
+    ("POST", "/tasks/{task_id}/preview"),
+    ("GET", "/tasks/{task_id}/preview"),
+    ("DELETE", "/tasks/{task_id}/preview"),
+    # §13.2 部署触发与查询
+    ("POST", "/projects/{project_id}/deployments"),
+    ("GET", "/deployments/{deployment_id}"),
+    # §13.3 部署日志
+    ("GET", "/deployments/{deployment_id}/log"),
+    # §13.4 成本
+    ("GET", "/usage"),
 )

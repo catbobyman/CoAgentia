@@ -249,6 +249,14 @@ class DeploymentStatus(StrEnum):
     FAILED = "failed"
 
 
+class UsageLevel(StrEnum):
+    """`GET /usage?level=`（契约 B §13.4）三层聚合维度值域（?filter=/?kind= 枚举先例）。"""
+
+    TASK = "task"
+    AGENT = "agent"
+    CANVAS = "canvas"
+
+
 class NotificationMode(StrEnum):
     ALL = "all"
     MENTIONS = "mentions"

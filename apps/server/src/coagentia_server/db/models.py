@@ -31,6 +31,7 @@ from coagentia_contracts.enums import (
     MemberRole,
     MessageKind,
     NotificationMode,
+    PreviewStatus,
     ProposalKind,
     ProposalStatus,
     ReminderKind,
@@ -93,6 +94,8 @@ M6A_TABLES: tuple[str, ...] = ("projects", "channel_projects", "worktrees")
 # M6b（契约 A v1.0.10 §4.8/§4.1）：proposals + agent_role_templates 两张新表一次建齐；
 # agents.role_template_key 由 0009 增量补齐（第二例既有表加列，沿 0008 tasks 加列先例）。
 M6B_TABLES: tuple[str, ...] = ("proposals", "agent_role_templates")
+# M7a（契约 A v1.0.11 §4.9）：preview_sessions 一张，0010 一次建齐（纯新表，无既有表改动）。
+M7A_TABLES: tuple[str, ...] = ("preview_sessions",)
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -793,3 +796,50 @@ class Worktree(Base):
     created_at: Mapped[str] = mapped_column(Text)
     merged_at: Mapped[str | None] = mapped_column(Text)
     cleaned_at: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- 4.9 预览会话（M7a）
+
+# 「活跃预览」谓词集 = 契约 PreviewStatus 的非终态子集（starting/running）。部分唯一索引
+# 「每任务至多一活跃预览」的谓词、以及 K3 检索/回收调度均引此单一常量，杜绝 CR-10 同型
+# 「索引谓词与状态集双源漂移」；与 contracts.enums.PreviewStatus 的一致性由
+# test_alembic_upgrade::test_preview_active_statuses_align_with_contract 钉死。
+PREVIEW_ACTIVE_STATUSES: tuple[str, ...] = ("starting", "running")
+_PREVIEW_ACTIVE_LITERALS = ", ".join(f"'{status}'" for status in PREVIEW_ACTIVE_STATUSES)
+_PREVIEW_ACTIVE_WHERE = f"status IN ({_PREVIEW_ACTIVE_LITERALS})"
+
+
+class PreviewSession(Base):
+    """M7a（FR-11，契约 A v1.0.11 §4.9）：任务独立预览的 dev server 会话。**可变表**——
+    status/port/last_active_at/recycled_at/fail_log_tail 会被 UPDATE（健康检查转 running 携
+    port、心跳 touch 推进 last_active_at、回收落 recycled_at、失败落 fail_log_tail），不进
+    IMMUTABLE 集。状态机边写将来必条件 UPDATE（K3 的活）；本表只以部分唯一索引兜底
+    「每任务至多一活跃预览」，防并发双 POST /preview 建双活跃行。"""
+
+    __tablename__ = "preview_sessions"
+    __table_args__ = (
+        # 活跃唯一（契约 A v1.0.11「活跃唯一不变量」）：同 task_id 至多一个活跃行
+        # （status ∈ starting/running）——ensure+touch 幂等的 DB 兜底。终态行
+        # （recycled/failed）落在 sqlite_where 外，不占唯一（可多行，历史留痕）。
+        # 谓词由 _PREVIEW_ACTIVE_WHERE 单源生成（避免 held_drafts/proposals 式硬编码双源）。
+        Index(
+            "ix_preview_sessions_task_active",
+            "task_id",
+            unique=True,
+            sqlite_where=text(_PREVIEW_ACTIVE_WHERE),
+        ),
+        # 读面/回收调度索引：hub 周期扫描 idle 预览按 status 过滤（对齐 ix_held_drafts_status）。
+        Index("ix_preview_sessions_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    task_id: Mapped[str] = mapped_column(_ULID, ForeignKey("tasks.id"))
+    worktree_id: Mapped[str] = mapped_column(_ULID, ForeignKey("worktrees.id"))
+    port: Mapped[int | None] = mapped_column(Integer)  # starting 期未知，转 running 携端口
+    status: Mapped[str] = mapped_column(_enum(PreviewStatus))
+    # 失败日志尾 ≤2KB（交互 §12 数据源；契约 A v1.0.11 增列 / D preview.status.log_tail）
+    fail_log_tail: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[str] = mapped_column(Text)
+    last_active_at: Mapped[str | None] = mapped_column(Text)  # 心跳 touch 推进（B §13.1）
+    recycled_at: Mapped[str | None] = mapped_column(Text)

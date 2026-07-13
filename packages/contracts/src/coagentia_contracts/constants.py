@@ -222,4 +222,7 @@ COAGENTIA_MCP_TOOLS: tuple[str, ...] = (
     "unclaim_task",     # POST /tasks/{id}/unclaim（仅本人为 owner）
     "set_task_status",  # POST /tasks/{id}/status（TASK_TRANSITION_INVALID 透传）
     "search",           # GET  /search（三分组）
+    # M7（契约 E v1.5）——零工具连胜止于 M6；R8「部署全员含 Agent」的通道兑现
+    "trigger_deploy",   # POST /projects/{id}/deployments（DEPLOY_IN_PROGRESS/VALIDATION_FAILED
+                        # /DAEMON_OFFLINE 结构化透传；请求体空，分支/commit 由 server 解析主干）
 )

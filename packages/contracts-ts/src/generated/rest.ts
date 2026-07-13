@@ -543,6 +543,43 @@ export interface paths {
         patch: operations["rename_computer_api_computers__computer_id__patch"];
         trace?: never;
     };
+    "/api/deployments/{deployment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Deployment */
+        get: operations["get_deployment_api_deployments__deployment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deployments/{deployment_id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Deployment Log
+         * @description server 直读落盘日志（B §13.3，不依赖 daemon 在线）：mock 回固定尾巴形状（无翻页）。
+         */
+        get: operations["get_deployment_log_api_deployments__deployment_id__log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dms": {
         parameters: {
             query?: never;
@@ -733,6 +770,27 @@ export interface paths {
         head?: never;
         /** Patch Project */
         patch: operations["patch_project_api_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/projects/{project_id}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Deployment
+         * @description 触发部署（B §13.2；R8 全员含 Agent 无角色校验，请求体空）：mock 回 queued 形状；
+         *     409 不排队/branch·commit 直查主干 HEAD/deploy.run 下发活真 server。
+         */
+        post: operations["create_deployment_api_projects__project_id__deployments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/proposals/{proposal_id}": {
@@ -943,6 +1001,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{task_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preview
+         * @description 纯读（B §13.1）：mock 回现状形状；无活跃会话 404 活真 server。
+         */
+        get: operations["get_preview_api_tasks__task_id__preview_get"];
+        put?: never;
+        /**
+         * Start Preview
+         * @description ensure+touch 幂等（B §13.1）：mock 回 running 会话形状；健康检查/端口分配活真 daemon。
+         */
+        post: operations["start_preview_api_tasks__task_id__preview_post"];
+        /**
+         * Stop Preview
+         * @description 下发 preview.stop（B §13.1）：mock 回 recycled 形状；回收判定活真 server。
+         */
+        delete: operations["stop_preview_api_tasks__task_id__preview_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{task_id}/status": {
         parameters: {
             query?: never;
@@ -1033,6 +1119,26 @@ export interface paths {
          * @description 实例化（B §4.12/§11.2）：mock 回落地批 + 空任务形状（单事务/幂等/briefing 活真 server）。
          */
         post: operations["instantiate_template_api_templates__template_id__instantiate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description 三层成本聚合（B §13.4；永不折算货币）：mock 回形状源；聚合 SQL/覆盖率/新账活真 server。
+         */
+        get: operations["get_usage_api_usage_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1534,6 +1640,60 @@ export interface components {
             text?: string | null;
         };
         /**
+         * DeploymentLogPage
+         * @description GET /deployments/{id}/log?after=<行号>（B §13.3）：server 直读落盘日志文件（不依赖 daemon
+         *     在线）。next_after = 下一页游标行号（无更多为 None）；truncated = 文件超 5MB 上限截断置真。
+         */
+        DeploymentLogPage: {
+            /**
+             * Lines
+             * @default []
+             */
+            lines: string[];
+            /** Next After */
+            next_after?: number | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * DeploymentPublic
+         * @description = DeploymentRow 剔除 log_path（服务端内部；日志经端点/WS 流读取）。
+         */
+        DeploymentPublic: {
+            /** Branch */
+            branch: string;
+            /** Command */
+            command: string;
+            /** Commit Hash */
+            commit_hash?: string | null;
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Started At */
+            started_at?: string | null;
+            status: components["schemas"]["DeploymentStatus"];
+            token_summary?: components["schemas"]["TokenSummary"] | null;
+            /** Triggered By Member Id */
+            triggered_by_member_id: string;
+            /** Url */
+            url?: string | null;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * DeploymentStatus
+         * @enum {string}
+         */
+        DeploymentStatus: "queued" | "running" | "success" | "failed";
+        /**
          * DetectedRuntime
          * @description computers.detected_runtimes 数组元素（FR-2.3）。
          */
@@ -1964,6 +2124,33 @@ export interface components {
          * @enum {string}
          */
         PresenceStatus: "online" | "offline" | "starting" | "idle" | "busy" | "error";
+        /** PreviewSessionPublic */
+        PreviewSessionPublic: {
+            /** Fail Log Tail */
+            fail_log_tail?: string | null;
+            /** Id */
+            id: string;
+            /** Last Active At */
+            last_active_at?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Recycled At */
+            recycled_at?: string | null;
+            /** Started At */
+            started_at: string;
+            status: components["schemas"]["PreviewStatus"];
+            /** Task Id */
+            task_id: string;
+            /** Workspace Id */
+            workspace_id: string;
+            /** Worktree Id */
+            worktree_id: string;
+        };
+        /**
+         * PreviewStatus
+         * @enum {string}
+         */
+        PreviewStatus: "starting" | "running" | "recycled" | "failed";
         /** ProjectBind */
         ProjectBind: {
             /** Project Id */
@@ -2434,6 +2621,23 @@ export interface components {
             output_tokens: number;
         };
         /**
+         * TasksReporting
+         * @description W7 覆盖率诚实标注：reporting = 有 usage 上报的任务数，total = 聚合集任务总数
+         *     （未上报任务计入分母，B §13.4）。level=task 时恒 {0/1, 1}。
+         */
+        TasksReporting: {
+            /**
+             * Reporting
+             * @default 0
+             */
+            reporting: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
          * TemplateBody
          * @description templates.body（A v1.0.9 §4.10）：DAG 结构 + 角色占位表 + 简报话术（C7）。
          *
@@ -2576,10 +2780,85 @@ export interface components {
             placeholder: string;
         };
         /**
+         * TokenSummary
+         * @description deployments.token_summary 新账快照（契约 B §13.4）：上次 success 部署以来 merged 任务集
+         *     聚合。task_ids 按 id 稳定排序、最多 50 项（details 有界先例 §12.12 #4）。
+         */
+        TokenSummary: {
+            /** Task Ids */
+            task_ids?: string[];
+            tasks_reporting: components["schemas"]["TasksReporting"];
+            usage: components["schemas"]["UsageBucket"];
+        };
+        /**
          * UiTheme
          * @enum {string}
          */
         UiTheme: "dark" | "light" | "system";
+        /**
+         * UsageBreakdownItem
+         * @description UsageReport.breakdown 逐子项（rollup=true 附）：agent 逐任务 / canvas 逐节点任务。
+         */
+        UsageBreakdownItem: {
+            /** Label */
+            label: string;
+            /** Ref */
+            ref: string;
+            usage: components["schemas"]["UsageBucket"];
+        };
+        /**
+         * UsageBucket
+         * @description token 聚合四字段 + 事件计数（§9.8 同源同形；永不折算货币，W7）。
+         */
+        UsageBucket: {
+            /**
+             * Cache Read Tokens
+             * @default 0
+             */
+            cache_read_tokens: number;
+            /**
+             * Cache Write Tokens
+             * @default 0
+             */
+            cache_write_tokens: number;
+            /**
+             * Events
+             * @default 0
+             */
+            events: number;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+        };
+        /**
+         * UsageLevel
+         * @description `GET /usage?level=`（契约 B §13.4）三层聚合维度值域（?filter=/?kind= 枚举先例）。
+         * @enum {string}
+         */
+        UsageLevel: "task" | "agent" | "canvas";
+        /**
+         * UsageReport
+         * @description GET /usage?level=task|agent|canvas&ref=&rollup=（B §13.4，响应形状冻结）。
+         *
+         *     永不折算货币（W7）；`tasks_reporting` 诚实标注覆盖率（level=task 恒 {0/1, 1}）；rollup=true
+         *     时附 `breakdown` 逐子项明细，默认省略。聚合 SQL/新账推导活 server 单点（纪律 7）。
+         */
+        UsageReport: {
+            /** Breakdown */
+            breakdown?: components["schemas"]["UsageBreakdownItem"][] | null;
+            level: components["schemas"]["UsageLevel"];
+            /** Ref */
+            ref: string;
+            tasks_reporting: components["schemas"]["TasksReporting"];
+            usage: components["schemas"]["UsageBucket"];
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -3925,6 +4204,70 @@ export interface operations {
             };
         };
     };
+    get_deployment_api_deployments__deployment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_deployment_log_api_deployments__deployment_id__log_get: {
+        parameters: {
+            query?: {
+                after?: number;
+            };
+            header?: never;
+            path: {
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentLogPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     open_dm_api_dms_post: {
         parameters: {
             query?: never;
@@ -4314,6 +4657,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_deployment_api_projects__project_id__deployments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentPublic"];
                 };
             };
             /** @description Validation Error */
@@ -4755,6 +5129,99 @@ export interface operations {
             };
         };
     };
+    get_preview_api_tasks__task_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewSessionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_preview_api_tasks__task_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewSessionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_preview_api_tasks__task_id__preview_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewSessionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_task_status_api_tasks__task_id__status_post: {
         parameters: {
             query?: never;
@@ -4960,6 +5427,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InstantiateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_usage_api_usage_get: {
+        parameters: {
+            query?: {
+                level?: components["schemas"]["UsageLevel"];
+                ref?: string | null;
+                rollup?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReport"];
                 };
             };
             /** @description Validation Error */

@@ -6,8 +6,15 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from coagentia_contracts.enums import PreviewStatus
 from coagentia_server.db.engine import make_engine
-from coagentia_server.db.models import IMMUTABLE_TABLES, M6A_TABLES, M6B_TABLES
+from coagentia_server.db.models import (
+    IMMUTABLE_TABLES,
+    M6A_TABLES,
+    M6B_TABLES,
+    M7A_TABLES,
+    PREVIEW_ACTIVE_STATUSES,
+)
 from sqlalchemy import Column, MetaData, String, Table, inspect, select
 
 # 契约 A §5 M1 首行清单（17 张）。
@@ -29,6 +36,8 @@ M5_EXPECTED_TABLES = {"templates", "channel_notification_settings"}
 M6A_EXPECTED_TABLES = {"projects", "channel_projects", "worktrees"}
 # 契约 A v1.0.10 §5 M6b 批次（0009：proposals + agent_role_templates 两张 + agents 加列）。
 M6B_EXPECTED_TABLES = {"proposals", "agent_role_templates"}
+# 契约 A v1.0.11 §5 M7a 批次（0010：preview_sessions 一张，纯新表）。
+M7A_EXPECTED_TABLES = {"preview_sessions"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -424,6 +433,7 @@ def test_incremental_from_0008_to_head(db_url: str, alembic_cfg: Config) -> None
     mid = _table_names(db_url)
     assert M6A_EXPECTED_TABLES <= mid
     assert M6B_EXPECTED_TABLES.isdisjoint(mid)  # 0008 不得泄漏建出 M6b 表
+    assert M7A_EXPECTED_TABLES.isdisjoint(mid)  # 0008 不得泄漏建出 M7a 表
     command.upgrade(alembic_cfg, "head")
     final = _table_names(db_url)
     assert M6B_EXPECTED_TABLES <= final
@@ -434,6 +444,154 @@ def test_incremental_from_0008_to_head(db_url: str, alembic_cfg: Config) -> None
         }
     finally:
         engine.dispose()
+
+
+def _preview_index_names(db_url: str) -> set[str]:
+    """直查 sqlite_master 取 preview_sessions 的索引名集（部分索引亦可见，
+    对齐 held_drafts 表达式索引的直查手法——inspect().get_indexes() 对部分/表达式索引不稳）。"""
+    from sqlalchemy import text as _sql
+
+    engine = make_engine(url=db_url)
+    try:
+        with engine.connect() as conn:
+            return {
+                r[0]
+                for r in conn.execute(
+                    _sql(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type='index' AND tbl_name='preview_sessions'"
+                    )
+                )
+            }
+    finally:
+        engine.dispose()
+
+
+def _preview_active_index_sql(db_url: str) -> str:
+    """取活跃部分唯一索引的建索引 SQL（含 WHERE 谓词），供 CR-10 同型断言核对字面量。"""
+    from sqlalchemy import text as _sql
+
+    engine = make_engine(url=db_url)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                _sql(
+                    "SELECT sql FROM sqlite_master WHERE type='index' "
+                    "AND name='ix_preview_sessions_task_active'"
+                )
+            ).one()
+    finally:
+        engine.dispose()
+    return row[0]
+
+
+def test_upgrade_head_creates_m7a_preview_sessions(db_url: str, alembic_cfg: Config) -> None:
+    """0010 从零建 preview_sessions（fail_log_tail 全列 + 活跃部分唯一索引 + status 读面索引）。"""
+    assert set(M7A_TABLES) == M7A_EXPECTED_TABLES
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        preview_cols = {c["name"] for c in inspect(engine).get_columns("preview_sessions")}
+    finally:
+        engine.dispose()
+    assert M7A_EXPECTED_TABLES <= _table_names(db_url)
+    assert preview_cols == {
+        "id", "workspace_id", "task_id", "worktree_id", "port", "status",
+        "fail_log_tail", "started_at", "last_active_at", "recycled_at",
+    }
+    assert {
+        "ix_preview_sessions_task_active", "ix_preview_sessions_status"
+    } <= _preview_index_names(db_url)
+
+
+def test_incremental_from_0009_to_head(db_url: str, alembic_cfg: Config) -> None:
+    # 增量路径：先到 0009（M1..M6b 库），再升 head——模拟线上 M6b 库升 M7a（K1 出口）。
+    command.upgrade(alembic_cfg, "0009_m6b")
+    mid = _table_names(db_url)
+    assert (
+        M1_EXPECTED_TABLES | M2_EXPECTED_TABLES | M3_EXPECTED_TABLES | M4_EXPECTED_TABLES
+        | M5_EXPECTED_TABLES | M6A_EXPECTED_TABLES | M6B_EXPECTED_TABLES
+    ) <= mid
+    assert M7A_EXPECTED_TABLES.isdisjoint(mid)   # 0009 不得泄漏建出 M7a 表（坑1 回归守门）
+    command.upgrade(alembic_cfg, "head")
+    final = _table_names(db_url)
+    assert M7A_EXPECTED_TABLES <= final          # 0010 增量建出 preview_sessions
+
+
+def test_preview_sessions_active_index_enforces_uniqueness(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """活跃部分唯一索引兜底：同 task_id 第二个活跃行（status='running'）被拒；
+    一活跃行（running）+ 一终态行（recycled）可共存——终态落在 sqlite_where 外不占唯一。
+    FK 强制为 ON，故先播完整父链（workspace→computer→member→channel→message→task→
+    project→worktree），preview_sessions 三 FK（workspace/task/worktree）方满足。"""
+    import pytest as _pytest
+    from sqlalchemy import text as _sql
+    from sqlalchemy.exc import IntegrityError
+
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    seed = (
+        "INSERT INTO workspaces (id, name, slug, created_at) VALUES ('ws','w','w-slug','t')",
+        "INSERT INTO computers (id, workspace_id, name, api_key_hash, created_at) "
+        "VALUES ('cmp','ws','C1','hash','t')",
+        "INSERT INTO members (id, workspace_id, kind, name, created_at) "
+        "VALUES ('mem','ws','agent','A1','t')",
+        "INSERT INTO channels (id, workspace_id, kind, created_at) "
+        "VALUES ('ch','ws','channel','t')",
+        "INSERT INTO messages (id, workspace_id, channel_id, body, created_at) "
+        "VALUES ('m1','ws','ch','need','t')",
+        "INSERT INTO tasks (id, workspace_id, channel_id, number, root_message_id, title, "
+        " status, level, created_by_member_id, status_changed_at, created_at) "
+        "VALUES ('tk','ws','ch',1,'m1','T','todo','l1','mem','t','t')",
+        "INSERT INTO projects (id, workspace_id, computer_id, name, repo_path, created_at) "
+        "VALUES ('pr','ws','cmp','P1','/repo','t')",
+        "INSERT INTO worktrees (id, workspace_id, project_id, task_id, branch, path, status, "
+        " created_at) VALUES ('wt','ws','pr','tk','feat','/wt','active','t')",
+    )
+    ins = _sql(
+        "INSERT INTO preview_sessions "
+        "(id, workspace_id, task_id, worktree_id, status, started_at) "
+        "VALUES (:id, 'ws', 'tk', 'wt', :status, 't')"
+    )
+    try:
+        with engine.begin() as conn:
+            for stmt in seed:
+                conn.execute(_sql(stmt))
+            conn.execute(ins, {"id": "pv1", "status": "running"})  # 首个活跃行成功
+        with engine.begin() as conn:
+            # 同 task_id 第二个活跃行（starting 亦属活跃）被拒
+            with _pytest.raises(IntegrityError):
+                conn.execute(ins, {"id": "pv2", "status": "starting"})
+        with engine.begin() as conn:
+            # 终态行（recycled）落在部分索引 sqlite_where 外，可与活跃行共存
+            conn.execute(ins, {"id": "pv3", "status": "recycled"})
+    finally:
+        engine.dispose()
+
+
+def test_preview_active_statuses_align_with_contract(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """CR-10 同型断言：把「活跃预览状态字面量集」的三处来源钉在一起，任一漂移即红——
+    ① ORM 模块常量 PREVIEW_ACTIVE_STATUSES；② 契约 contracts.enums.PreviewStatus 的非终态子集；
+    ③ 实际落库的部分唯一索引 WHERE 谓词。避免 held_drafts/proposals 式硬编码双源无人守。"""
+    contract_active = {PreviewStatus.STARTING.value, PreviewStatus.RUNNING.value}
+    contract_terminal = {PreviewStatus.RECYCLED.value, PreviewStatus.FAILED.value}
+    all_states = {s.value for s in PreviewStatus}
+
+    # ① 模块常量 == 契约非终态子集；活跃 ∪ 终态 == 全集，且两两不交（终态判定亦被钉）。
+    assert set(PREVIEW_ACTIVE_STATUSES) == contract_active
+    assert contract_active | contract_terminal == all_states
+    assert contract_active.isdisjoint(contract_terminal)
+
+    # ③ 实际索引谓词只含活跃字面量，绝不含终态字面量（防手改索引 SQL 漂移）。
+    command.upgrade(alembic_cfg, "head")
+    index_sql = _preview_active_index_sql(db_url)
+    for literal in contract_active:
+        assert f"'{literal}'" in index_sql
+    for literal in contract_terminal:
+        assert f"'{literal}'" not in index_sql
 
 
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
@@ -447,4 +605,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     assert M5_EXPECTED_TABLES.isdisjoint(names)
     assert M6A_EXPECTED_TABLES.isdisjoint(names)
     assert M6B_EXPECTED_TABLES.isdisjoint(names)
+    assert M7A_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

@@ -424,6 +424,22 @@ def test_mock_covers_m6_endpoints() -> None:
     assert not missing, f"mock 未 serve M6 端点: {missing}"
 
 
+# ---------------------------------------------------------------- M7 契约登记（K0）
+#
+# K0 只登记契约面：mock serve 全部 M7 七端点（形状源喂 OpenAPI→rest.ts）。真 server serve 与
+# 逐端点行为双跑（预览 ensure+touch/回收调度、部署 409 不排队、usage 三层聚合）归实现模块
+# （K3/K4/K6）各自测试——K0 不在此断言真 server serve（块 a/b 期间尚未实现，同 M5/M6 J0 先例）。
+
+
+def test_mock_covers_m7_endpoints() -> None:
+    """mock 形状源 serve 全部 M7 七端点（§13 预览 3 + 部署 3 + 成本 1）——喂 OpenAPI→rest.ts。"""
+    from coagentia_mock.app import app as mock_app
+
+    served = _served(TestClient(mock_app))
+    missing = [(m, p) for m, p in rest.ENDPOINTS_M7 if (m, _norm(p)) not in served]
+    assert not missing, f"mock 未 serve M7 端点: {missing}"
+
+
 def test_proposal_j8_endpoints_served(server_client: TestClient) -> None:
     """编排端点四件套被真 server serve（J8 decompose/GET + J9 confirm/reject；
     与 mock 的 ENDPOINTS_M6 全量覆盖双跑一致——纪律 3）。"""

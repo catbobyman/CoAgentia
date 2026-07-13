@@ -48,9 +48,9 @@
 | # | 模块 | 状态 | 提交 | 备注 |
 | --- | --- | --- | --- | --- |
 | — | 立项：契约六面落笔（A v1.0.11/B v1.5/D v1.0.4/E v1.5；C/E2 零修订核对）+ 任务书 + 本计划 | ✅ | 本提交 | owner 六拍板（任务书 §7 #1–#6）；A/B/D 矛盾纠偏（排队措辞）随立项收口 |
-| K2-cal | 长驻 dev server win32 实测校准 → `scratchpad/PREVIEW-CALIBRATION.md` | ☐ | — | 五组探针（§0）；块 a 波 1 |
-| K0 | 契约登记（ENDPOINTS_M7/四模型/D 帧/工具目录/ws 核对/mock/conformance） | ☐ | — | 波 1 |
-| K1 | 0010 迁移（preview_sessions+单活跃索引）+ ORM | ☐ | — | 波 1 |
+| K2-cal | 长驻 dev server win32 实测校准 → `scratchpad/PREVIEW-CALIBRATION.md` | ✅ | 5/5 探针 | Fable 亲跑（§3 已填）；关键坑=win32 SO_REUSEADDR 同端口双绑不被 OS 拒绝→daemon 自持端口唯一性 |
+| K0 | 契约登记（ENDPOINTS_M7/四模型/D 帧/工具目录/ws 核对/mock/conformance） | ✅ | 波1 | 7 端点+UsageBucket/TasksReporting/TokenSummary/UsageReport；trigger_deploy(16)；token_summary 收紧 TokenSummary\|None；ws 零改动(forward-freeze 已登记)；contracts 91 pass |
+| K1 | 0010 迁移（preview_sessions+单活跃索引）+ ORM | ✅ | 波1 | 部分唯一索引谓词单源 `_PREVIEW_ACTIVE_WHERE`(主动解 CR-10)；M7A_TABLES；alembic 63 pass+红例 |
 | K2 | daemon 预览进程域（PORT 注入/健康检查/存活监控/start·stop 处理器/status 上报） | ☐ | — | 波 2；Fable 审查关口 |
 | K3 | server 预览域（ensure+touch/回收三触发/对账 #9/广播/拒绝路径） | ☐ | — | 波 3 |
 | B-M7-1 | 前端预览面板（按钮/三态顶条/失败日志尾/心跳/并排/倒计时/wsBridge） | ☐ | — | 波 2 起可开工 |
@@ -80,6 +80,16 @@
 | CAS/条件 UPDATE 纪律 | CURRENT-HANDOFF §8「凡状态机边写必条件 UPDATE」（M6 三度印证） | deployments/preview_sessions 状态推进一律 WHERE status=起态；两处部分唯一索引是兜底不是替代 |
 | 实机基建 | `scratchpad/m6a_harness.py`/`m6a_appfactory.py`/`m6_verify.py` | K9 扩探针；dev_command 零依赖命令见 K2-cal |
 
-## 3. K2-cal 校准结论（待填；K2/K3 的权威实现参考）
+## 3. K2-cal 校准结论（✅ 已填；K2/K3 的权威实现参考 = `scratchpad/PREVIEW-CALIBRATION.md`）
 
-> 校准完成后本节填：端口分配方式与竞态结论 / PORT 注入在 cmd·shell 包裹下的继承行为 / taskkill /F /T 孙进程覆盖实测 / 孤儿进程形态与清理手段 / 健康检查轮询参数默认。未填前 K2 不开工。
+> 2026-07-13 真机 5/5 探针 `passed: true`（`scratchpad/preview_calibration.py` 可复跑），无孤儿泄漏。全文结论见 [PREVIEW-CALIBRATION.md](../../scratchpad/PREVIEW-CALIBRATION.md)。摘要如下——K2 从「探测未知」降为「照已知行为填空」：
+
+| 探针 | 结论 | K2 实现约束 |
+| --- | --- | --- |
+| 端口分配+PORT 注入 | `bind :0→getsockname→close` 取端口；`create_subprocess_shell`+`env["PORT"]`，命令引用 `%PORT%` 由 cmd.exe 展开，dev server 亦可读 `process.env.PORT` | **必须用 shell 非 exec**（%PORT% 展开 + npm run dev 类命令） |
+| **同端口双开（最关键坑）** | **Windows SO_REUSEADDR 允许同端口双绑成功**（http.server/Vite 默认设该选项，Unix 不允许）；OS 不拒绝、健康检查对双方都通过 | **daemon 进程内 `assigned_ports` set + asyncio.Lock 自持端口唯一性**（撞则重取），不能靠 OS 拒绝或「第二进程崩溃」信号 |
+| taskkill 杀孙 | `taskkill /F /T /PID <shell_pid>` 连 python 孙进程一并杀，端口释放（`checks.py:_kill_process_tree` 同款） | 杀树 key = daemon 持有的 shell 进程 PID |
+| daemon 崩溃孤儿 | **win32 asyncio 子进程不随父退出自动死**；清洁关闭须逐个杀子（`CheckRunner.wait_closed` 先例），硬崩溃孤儿存活并占端口 | **shutdown handler 逐个 taskkill 活跃预览**；对账 #9 硬崩溃孤儿 fail-closed 置 failed（端口由 pick_free_port 自然规避，孤儿泄漏 MVP 接受，登记 K8） |
+| 存活监控+坏命令 | 坏命令先退出（先于 120s 健康超时）；log_tail 捕获进程输出尾 ≤2KB | 健康检查 vs `proc.wait()` **并行竞速** `asyncio.wait(FIRST_COMPLETED)`；`_bounded_utf8_tail` 复用 |
+
+**参数默认**（实现默认非协议形状）：健康检查轮询 0.5s / 超时 **120s**（D §5.3）/ log_tail **2KB** / 前端心跳 60s（B §13.1）。
