@@ -25,6 +25,8 @@ from coagentia_contracts.constants import (
 from coagentia_contracts.daemon import (
     BufferedCounts,
     CheckFinishedData,
+    DeployFinishedData,
+    DeployLogReportData,
     DiagnosticEventIn,
     TokenUsageEventIn,
 )
@@ -51,6 +53,8 @@ class TelemetryBuffer:
         self._diag: list[dict[str, Any]] = []
         self._usage: list[dict[str, Any]] = []
         self._checks: list[dict[str, Any]] = []
+        self._deploy_logs: list[dict[str, Any]] = []
+        self._deploy_finished: list[dict[str, Any]] = []
         self._dropped_diag = 0
         self._dropped_usage = 0
         self._load()
@@ -69,11 +73,21 @@ class TelemetryBuffer:
     def _check_path(self) -> Path:
         return self._paths.buffer_dir / "check-finished.jsonl"
 
+    @property
+    def _deploy_log_path(self) -> Path:
+        return self._paths.buffer_dir / "deploy-log.jsonl"
+
+    @property
+    def _deploy_finished_path(self) -> Path:
+        return self._paths.buffer_dir / "deploy-finished.jsonl"
+
     def _load(self) -> None:
         self._paths.buffer_dir.mkdir(parents=True, exist_ok=True)
         self._diag = _read_jsonl(self._diag_path)
         self._usage = _read_jsonl(self._usage_path)
         self._checks = _read_jsonl(self._check_path)
+        self._deploy_logs = _read_jsonl(self._deploy_log_path)
+        self._deploy_finished = _read_jsonl(self._deploy_finished_path)
 
     def _rewrite_diag(self) -> None:
         _write_jsonl(self._diag_path, self._diag)
@@ -83,6 +97,12 @@ class TelemetryBuffer:
 
     def _rewrite_checks(self) -> None:
         _write_jsonl(self._check_path, self._checks)
+
+    def _rewrite_deploy_logs(self) -> None:
+        _write_jsonl(self._deploy_log_path, self._deploy_logs)
+
+    def _rewrite_deploy_finished(self) -> None:
+        _write_jsonl(self._deploy_finished_path, self._deploy_finished)
 
     # ---------------------------------------------------------------- 追加（含溢出处置）
 
@@ -163,6 +183,81 @@ class TelemetryBuffer:
     def find_check(self, run_id: str) -> CheckFinishedData | None:
         row = next((e for e in self._checks if e.get("run_id") == run_id), None)
         return CheckFinishedData.model_validate(row) if row is not None else None
+
+    # ---------------------------------------------------------------- deploy.log（去重键 =
+    # (deployment_id, chunk_seq)；需 ack，server 按已收 max chunk_seq 去重）。
+
+    def append_deploy_log(self, data: DeployLogReportData) -> None:
+        """deploy.log 以 (deployment_id, chunk_seq) 去重落盘；未 ack 前重启仍可原样重传。"""
+        row = data.model_dump(mode="json")
+        for index, current in enumerate(self._deploy_logs):
+            if (
+                current.get("deployment_id") == data.deployment_id
+                and current.get("chunk_seq") == data.chunk_seq
+            ):
+                self._deploy_logs[index] = row
+                self._rewrite_deploy_logs()
+                return
+        self._deploy_logs.append(row)
+        self._rewrite_deploy_logs()
+
+    def peek_deploy_logs(self, n: int) -> list[DeployLogReportData]:
+        return [DeployLogReportData.model_validate(e) for e in self._deploy_logs[:n]]
+
+    def ack_deploy_log(self, deployment_id: str, chunk_seq: int) -> None:
+        self._deploy_logs = [
+            e
+            for e in self._deploy_logs
+            if not (
+                e.get("deployment_id") == deployment_id
+                and e.get("chunk_seq") == chunk_seq
+            )
+        ]
+        self._rewrite_deploy_logs()
+
+    def has_deploy_logs(self) -> bool:
+        return bool(self._deploy_logs)
+
+    # ---------------------------------------------------------------- deploy.finished（去重键 =
+    # deployment_id；需 ack，已终态重发经 find 重报）。
+
+    def append_deploy_finished(self, data: DeployFinishedData) -> None:
+        row = data.model_dump(mode="json")
+        for index, current in enumerate(self._deploy_finished):
+            if current.get("deployment_id") == data.deployment_id:
+                self._deploy_finished[index] = row
+                self._rewrite_deploy_finished()
+                return
+        self._deploy_finished.append(row)
+        self._rewrite_deploy_finished()
+
+    def peek_deploy_finished(self, n: int) -> list[DeployFinishedData]:
+        return [
+            DeployFinishedData.model_validate(e) for e in self._deploy_finished[:n]
+        ]
+
+    def ack_deploy_finished(self, deployment_ids: list[str]) -> None:
+        if not deployment_ids:
+            return
+        drop = set(deployment_ids)
+        self._deploy_finished = [
+            e for e in self._deploy_finished if e.get("deployment_id") not in drop
+        ]
+        self._rewrite_deploy_finished()
+
+    def has_deploy_finished(self) -> bool:
+        return bool(self._deploy_finished)
+
+    def find_deploy_finished(self, deployment_id: str) -> DeployFinishedData | None:
+        row = next(
+            (
+                e
+                for e in self._deploy_finished
+                if e.get("deployment_id") == deployment_id
+            ),
+            None,
+        )
+        return DeployFinishedData.model_validate(row) if row is not None else None
 
     def counts(self) -> BufferedCounts:
         return BufferedCounts(diagnostics=len(self._diag), usage=len(self._usage))

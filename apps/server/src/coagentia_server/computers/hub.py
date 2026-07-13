@@ -20,10 +20,11 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from coagentia_contracts import entities
-from coagentia_contracts.constants import DIAGNOSTIC_TYPES
+from coagentia_contracts.constants import BUFFER_DEPLOY_LOG_MAX_BYTES, DIAGNOSTIC_TYPES
 from coagentia_contracts.daemon import (
     ACK_TIMEOUT_SEC,
     CLOSE_PROTOCOL_MISMATCH,
@@ -41,6 +42,9 @@ from coagentia_contracts.daemon import (
     DaemonAgentActivityData,
     DaemonHelloAckData,
     DaemonHelloData,
+    DeployFinishedData,
+    DeployLogReportData,
+    DeployRunData,
     DiagnosticsBatchData,
     FrameKind,
     GitDiffQuery,
@@ -67,6 +71,7 @@ from coagentia_contracts.daemon import (
 from coagentia_contracts.enums import (
     ActivityKind,
     AgentStatus,
+    CardKind,
     ChannelKind,
     ComputerStatus,
     ContractKind,
@@ -98,6 +103,7 @@ from coagentia_server.orchestration import proposal as proposal_domain
 from coagentia_server.reminders import cadence as reminder_cadence
 from coagentia_server.routes.serialize import (
     computer_public,
+    deployment_public,
     diagnostic_public,
     held_draft_public,
     message_public,
@@ -128,9 +134,48 @@ _HELD = models.tbl(models.HeldDraft)
 _WORKTREE = models.tbl(models.Worktree)
 _PROJECT = models.tbl(models.Project)
 _PREVIEW = models.tbl(models.PreviewSession)
+_CHANNEL_PROJECT = models.tbl(models.ChannelProject)
+_DEPLOYMENT = models.tbl(models.Deployment)
 
 # 「活跃预览」谓词集（starting/running）单源自 models（部分唯一索引谓词同源，杜绝 CR-10 漂移）。
 _PREVIEW_ACTIVE = models.PREVIEW_ACTIVE_STATUSES
+# 「活跃部署」谓词集（queued/running）同源自 models（对账 #10 / 结果卡终态判定）。
+_DEPLOYMENT_ACTIVE = models.DEPLOYMENT_ACTIVE_STATUSES
+
+# FR-12 部署完成诊断（constants.DIAGNOSTIC_TYPES 权威登记，deploy.finished 已登记）。
+_DEPLOY_DIAG_FINISHED = "deploy.finished"
+assert _DEPLOY_DIAG_FINISHED in DIAGNOSTIC_TYPES
+# 对账 #10 fail-closed 定型文案（DB 事实推导，非 daemon 上报；副作用不可重放，铁律 3）。
+_DEPLOY_FAIL_DAEMON_RESTARTED = "daemon restarted: deployment outcome unknown"
+_DEPLOY_RESTART_CARD_BODY = (
+    "⚠️ 部署结果未知：daemon 重启，请人工核实（副作用不可重放，已置 failed 未自动重跑）"
+)
+
+
+def _deploy_duration(started: str | None, finished: str | None) -> str | None:
+    if not started or not finished:
+        return None
+    try:
+        start_dt = datetime.fromisoformat(started)
+        finish_dt = datetime.fromisoformat(finished)
+    except ValueError:
+        return None
+    secs = max(0.0, (finish_dt - start_dt).total_seconds())
+    return f"{secs:.1f}s"
+
+
+def _deploy_result_body(row: dict[str, Any]) -> str:
+    """结果卡文案（含状态/URL/退出码/耗时；success/failed 分色由前端按 card_kind+status）。"""
+    head = "✅ 部署成功" if row["status"] == "success" else "❌ 部署失败"
+    parts = [head]
+    if row.get("url"):
+        parts.append(f"URL：{row['url']}")
+    if row.get("exit_code") is not None:
+        parts.append(f"退出码：{row['exit_code']}")
+    dur = _deploy_duration(row.get("started_at"), row.get("finished_at"))
+    if dur is not None:
+        parts.append(f"耗时：{dur}")
+    return " ｜ ".join(parts)
 
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
 _RESUMABLE = {AgentStatus.STARTING.value, AgentStatus.IDLE.value, AgentStatus.BUSY.value}
@@ -224,6 +269,7 @@ class DaemonHub:
         bus: EventBus,
         server_version: str,
         *,
+        data_root: str | Path | None = None,
         ack_timeout: float = ACK_TIMEOUT_SEC,
         query_timeout: float = ACK_TIMEOUT_SEC,
         reconcile_interval: float = RECONCILE_INTERVAL_SEC,
@@ -256,6 +302,16 @@ class DaemonHub:
         self._system_node_locks: dict[str, asyncio.Lock] = {}
         self._system_pending: dict[str, tuple[tuple[str, str], str]] = {}
         self._landing_lock = asyncio.Lock()  # J9 落地扫描进程内防重入（跨进程由账本三态兜）
+        # 部署日志落盘目录（K4）：deploy.log 逐 chunk 追加 <data_root>/deploy-logs/<id>.log；首条落
+        # 盘时把绝对路径写回 deployments.log_path（GET log 端点 server 直读）。data_root 与
+        # FileStore 同根（app.py 传入；None 兜底 DEFAULT_DATA_ROOT，同 db 目录父级）。
+        if data_root is None:
+            from coagentia_server.db.engine import DEFAULT_DB_PATH
+
+            data_root = DEFAULT_DB_PATH.parent
+        self._deploy_log_dir = Path(data_root) / "deploy-logs"
+        # 每 deployment 已收最大 chunk_seq（去重：重连窗口 daemon 可能重发已 ack 帧）。
+        self._deploy_log_seq: dict[str, int] = {}
         # 每 computer 最后一次 hello 的 boot_nonce（对账 #9 区分 WS jitter 与真重启；server 重启
         # 丢失 → 首连按「重启」措辞，存活判定不受影响——它按 hello 预览进程表逐会话推导）。
         self._last_boot_nonce: dict[str, str | None] = {}
@@ -576,6 +632,12 @@ class DaemonHub:
             await self._ack(conn, frame_id, AckResult.DONE)
         elif rtype == ReportType.PREVIEW_STATUS:
             self._report_preview_status(conn, PreviewStatusData.model_validate(data))
+        elif rtype == ReportType.DEPLOY_LOG:
+            self._report_deploy_log(conn, DeployLogReportData.model_validate(data))
+            await self._ack(conn, frame_id, AckResult.DONE)
+        elif rtype == ReportType.DEPLOY_FINISHED:
+            self._report_deploy_finished(conn, DeployFinishedData.model_validate(data))
+            await self._ack(conn, frame_id, AckResult.DONE)
         # hello（重复）：忽略
 
     def _report_worktree_status(
@@ -810,6 +872,208 @@ class DaemonHub:
                     "type": diag_type,
                     "channel_id": channel_id,
                     "task_id": row["task_id"],
+                    "batch_id": None,
+                    "payload": payload,
+                    "created_at": ts,
+                }
+            )
+            tx.emit(
+                EventType.DIAGNOSTIC_APPENDED,
+                None,
+                {"agent_member_id": agent_owner, "events": [pub]},
+            )
+
+    # ---------------------------------------------------------------- 部署上报（M7b K4）
+
+    def _deploy_log_file(self, deployment_id: str) -> Path:
+        return self._deploy_log_dir / f"{deployment_id}.log"
+
+    def _append_deploy_log_file(self, deployment_id: str, lines: list[str]) -> str:
+        """把 lines 追加到该 deployment 的落盘日志文件，返回绝对路径（首次落盘写回 log_path）。
+
+        超 BUFFER_DEPLOY_LOG_MAX_BYTES（5MB）停止追加（truncated 判定交给 GET log 端点）。判定归
+        server：server 单点落盘，GET /deployments/{id}/log 直读该文件（不依赖 daemon 在线）。"""
+        self._deploy_log_dir.mkdir(parents=True, exist_ok=True)
+        path = self._deploy_log_file(deployment_id)
+        if lines:
+            try:
+                over_cap = (
+                    path.exists()
+                    and path.stat().st_size >= BUFFER_DEPLOY_LOG_MAX_BYTES
+                )
+                if not over_cap:
+                    with open(path, "a", encoding="utf-8", newline="\n") as f:
+                        for line in lines:
+                            f.write(line + "\n")
+            except OSError:
+                pass  # 落盘失败不阻断状态推进/广播（日志尽力而为）
+        return str(path)
+
+    def _report_deploy_log(self, conn: DaemonConnection, data: DeployLogReportData) -> None:
+        """deploy.log（契约 D §7，需 ack）：chunk_seq 去重 + 落盘 + queued→running 条件 UPDATE +
+        订阅制广播 deployment.log（+ 首条推进时 deployment.updated 全量广播）。
+
+        chunk_seq 去重（按已收 max）：deploy.log 是 ack 类正常不重发；去重只防重连窗口重发未 ack
+        帧（daemon 重启后 chunk_seq 从 0 重计，但重启走对账 #10 fail-close，不重放旧日志）。
+        收到任意 deploy.log 且行 status='queued' → 隐含起跑：条件 UPDATE 置 running。"""
+        last = self._deploy_log_seq.get(data.deployment_id)
+        if last is not None and data.chunk_seq <= last:
+            return  # 重连窗口重发已收帧：按已收 max 去重
+        with gateway_tx(self._engine, self._bus) as tx:
+            row = (
+                tx.conn.execute(
+                    select(_DEPLOYMENT.c.id, _DEPLOYMENT.c.log_path).where(
+                        _DEPLOYMENT.c.id == data.deployment_id
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                return  # 未知部署（跨机越界/已清）：不落盘不广播
+            self._deploy_log_seq[data.deployment_id] = data.chunk_seq
+            log_path = self._append_deploy_log_file(data.deployment_id, data.lines)
+            if row["log_path"] is None:  # 首次落盘写回绝对路径（log_path 非状态列，无条件 UPDATE）
+                tx.conn.execute(
+                    update(_DEPLOYMENT)
+                    .where(_DEPLOYMENT.c.id == data.deployment_id)
+                    .values(log_path=log_path)
+                )
+            promoted = tx.conn.execute(
+                update(_DEPLOYMENT)
+                .where(
+                    _DEPLOYMENT.c.id == data.deployment_id,
+                    _DEPLOYMENT.c.status == "queued",
+                )
+                .values(status="running", started_at=now_iso())
+            ).rowcount
+            if promoted:
+                self._emit_deployment_updated(tx, data.deployment_id)
+            # 订阅制广播（ws/hub._dispatch 按 deploy_log_subs 过滤 deployment_id）。
+            tx.emit(
+                EventType.DEPLOYMENT_LOG,
+                None,
+                {
+                    "deployment_id": data.deployment_id,
+                    "chunk_seq": data.chunk_seq,
+                    "lines": data.lines,
+                },
+            )
+
+    def _report_deploy_finished(
+        self, conn: DaemonConnection, data: DeployFinishedData
+    ) -> None:
+        """deploy.finished（契约 D §7，需 ack）：条件 UPDATE 落终态 + deployment.updated 全量广播 +
+        结果卡发 project 全部绑定频道各一条（mention 触发者）+ 部署完成诊断。
+
+        条件 UPDATE `WHERE status IN (queued,running)`：rowcount=0（已终态/重复/未知）→ noop 不广播
+        （幂等，daemon 重发终态帧安全）。"""
+        with gateway_tx(self._engine, self._bus) as tx:
+            res = tx.conn.execute(
+                update(_DEPLOYMENT)
+                .where(
+                    _DEPLOYMENT.c.id == data.deployment_id,
+                    _DEPLOYMENT.c.status.in_(_DEPLOYMENT_ACTIVE),
+                )
+                .values(
+                    status=data.status,
+                    exit_code=data.exit_code,
+                    url=data.url,
+                    finished_at=now_iso(),
+                )
+            )
+            if res.rowcount == 0:
+                return  # 已终态/重复/未知：CAS 未命中 → 幂等 noop（不广播）
+            row = dict(
+                tx.conn.execute(
+                    select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == data.deployment_id)
+                )
+                .mappings()
+                .one()
+            )
+            tx.emit(
+                EventType.DEPLOYMENT_UPDATED, None, {"deployment": deployment_public(row)}
+            )
+            self._deploy_log_seq.pop(data.deployment_id, None)  # 终态后清去重游标
+            self._post_deployment_cards(tx, row, body=_deploy_result_body(row))
+            self._append_deploy_diagnostic(tx, row)
+
+    def _emit_deployment_updated(self, tx: Any, deployment_id: str) -> None:
+        """回读部署行 → 全量广播 deployment.updated（部署为工作区级实体，channel_id=None）。"""
+        row = (
+            tx.conn.execute(
+                select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == deployment_id)
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            return
+        tx.emit(
+            EventType.DEPLOYMENT_UPDATED, None, {"deployment": deployment_public(dict(row))}
+        )
+
+    def _post_deployment_cards(self, tx: Any, row: dict[str, Any], *, body: str) -> None:
+        """结果卡（裁决 #13）：project 每个绑定频道各一条系统消息（card_kind=deployment,
+        card_ref=deployment_id），mention 触发者（success/failed 分色由前端）。"""
+        channel_ids = list(
+            tx.conn.execute(
+                select(_CHANNEL_PROJECT.c.channel_id).where(
+                    _CHANNEL_PROJECT.c.project_id == row["project_id"]
+                )
+            ).scalars()
+        )
+        for channel_id in channel_ids:
+            self._post_system_message(
+                tx,
+                workspace_id=row["workspace_id"],
+                channel_id=channel_id,
+                body=body,
+                mention_member_ids=(row["triggered_by_member_id"],),
+                card_kind=CardKind.DEPLOYMENT.value,
+                card_ref=row["id"],
+            )
+
+    def _append_deploy_diagnostic(self, tx: Any, row: dict[str, Any]) -> None:
+        """FR-12：登记 deploy.finished 诊断行；触发者为 Agent 时广播 DIAGNOSTIC_APPENDED
+        （归属 triggerer 让人类可循，同 _append_preview_diagnostic 体例）。"""
+        payload = {
+            "deployment_id": row["id"],
+            "status": row["status"],
+            "exit_code": row["exit_code"],
+            "url": row["url"],
+        }
+        ts = now_iso()
+        triggerer = row["triggered_by_member_id"]
+        agent_owner: str | None = None
+        is_agent = tx.conn.execute(
+            select(_AGENT.c.member_id).where(_AGENT.c.member_id == triggerer)
+        ).first()
+        if is_agent is not None:
+            agent_owner = triggerer
+        seq = tx.conn.execute(
+            insert(_DIAG)
+            .values(
+                workspace_id=row["workspace_id"],
+                agent_member_id=agent_owner,
+                type=_DEPLOY_DIAG_FINISHED,
+                channel_id=None,
+                task_id=None,
+                batch_id=None,
+                payload=payload,
+                created_at=ts,
+            )
+            .returning(_DIAG.c.seq)
+        ).scalar_one()
+        if agent_owner is not None:
+            pub = diagnostic_public(
+                {
+                    "seq": seq,
+                    "workspace_id": row["workspace_id"],
+                    "agent_member_id": agent_owner,
+                    "type": _DEPLOY_DIAG_FINISHED,
+                    "channel_id": None,
+                    "task_id": None,
                     "batch_id": None,
                     "payload": payload,
                     "created_at": ts,
@@ -1834,6 +2098,9 @@ class DaemonHub:
         # （存活者 survive WS jitter，真重启 fail-close，裁决 #11 不自动重拉）；周期只收 starting
         # 超时。
         await self._reconcile_previews(conn, on_reconnect=revalidate_worktrees)
+        # 对账 #10 部署纠偏（契约 D §4.4；铁律 3）：reconnect 真重启时 running→fail-closed（副作用
+        # 不可重放，不自动重跑）/ queued 安全重发；周期与同 nonce jitter 不动。
+        await self._reconcile_deployments(conn, on_reconnect=revalidate_worktrees)
 
     def _backlog_trigger(
         self, c: Connection, backlog: list[dict[str, Any]], channel: dict[str, Any], agent_id: str
@@ -2264,6 +2531,134 @@ class DaemonHub:
         with contextlib.suppress(DaemonOffline):
             await self.send_instr(conn, f"preview:{task_id}", itype, data)
 
+    # ---------------------------------------------------------------- 部署下发桥（M7b K4）
+
+    def request_deploy_run(self, *, computer_id: str, data: DeployRunData) -> None:
+        """REST POST /deployments 下发 deploy.run：由路由的 tx.after_commit 在 **queued 行提交后**
+        调用（铁律 4）——daemon 起进程后的 running/finished 帧其 CAS 必命中已提交行。503 门已由路由
+        前置 preview_daemon_online 把守；下发瞬时 daemon 离线则 best-effort 静默（行留 queued，对账
+        #10 reconnect 安全重发）。"""
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(
+            self._spawn, self._dispatch_deploy_instr(computer_id, data)
+        )
+
+    async def _dispatch_deploy_instr(
+        self, computer_id: str, data: DeployRunData
+    ) -> None:
+        """deploy.run 底座下发（同部署串行锁 `deploy:{deployment_id}`）：离线/断连 best-effort 静默
+        （判定归 server，daemon 只执行；queued 未 ack 由对账 #10 安全重发）。"""
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            return
+        with contextlib.suppress(DaemonOffline):
+            await self.send_instr(
+                conn, f"deploy:{data.deployment_id}", InstrType.DEPLOY_RUN, data
+            )
+
+    async def _reconcile_deployments(
+        self, conn: DaemonConnection, *, on_reconnect: bool
+    ) -> None:
+        """对账 #10 部署纠偏（契约 D §4.4；铁律 3 副作用可重放性分野）：**只在 reconnect 且真重启
+        （boot_nonce 变化/缺失）时处置**。
+
+        - 周期（on_reconnect=False）：不动（同进程帧可达，deploy.run 仍在跑或终态帧可达）。
+        - reconnect 但同 nonce（WS jitter）：不动（daemon 进程还在，命令仍在跑）。
+        - reconnect 且真重启（daemon_restarted）：
+          ① 本机 project 的 running 部署 → **fail-closed**（命令跑了一半 daemon 死了，外部副作用
+             不可重放）：条件 UPDATE running→failed(exit_code=NULL) + 广播 deployment.updated +
+             结果卡 @触发者「请人工核实」+ 诊断。**不重跑**。
+          ② 本机 project 的 queued 部署（未 ack 未开跑）→ **安全重发** deploy.run（daemon 已在跑/
+             终态则 noop + 重发终态；未开跑则正常起跑）。
+        """
+        if not on_reconnect or not conn.daemon_restarted:
+            return
+        # 快路径：本机无活跃部署（绝大多数握手的常态）→ 免开 gateway_tx（省事件 flush 机器 +
+        # 调度扰动）。轻量 connect 只读探一行，无则直接返回。
+        with self._engine.connect() as probe:
+            has_active = probe.execute(
+                select(_DEPLOYMENT.c.id)
+                .select_from(
+                    _DEPLOYMENT.join(_PROJECT, _PROJECT.c.id == _DEPLOYMENT.c.project_id)
+                )
+                .where(
+                    _PROJECT.c.computer_id == conn.computer_id,
+                    _DEPLOYMENT.c.status.in_(_DEPLOYMENT_ACTIVE),
+                )
+                .limit(1)
+            ).first()
+        if has_active is None:
+            return
+        redispatch: list[DeployRunData] = []
+        failed_ids: list[str] = []
+        with gateway_tx(self._engine, self._bus) as tx:
+            rows = (
+                tx.conn.execute(
+                    select(
+                        _DEPLOYMENT.c.id,
+                        _DEPLOYMENT.c.status,
+                        _DEPLOYMENT.c.branch,
+                        _DEPLOYMENT.c.commit_hash,
+                        _DEPLOYMENT.c.command,
+                        _PROJECT.c.repo_path,
+                    )
+                    .select_from(
+                        _DEPLOYMENT.join(
+                            _PROJECT, _PROJECT.c.id == _DEPLOYMENT.c.project_id
+                        )
+                    )
+                    .where(
+                        _PROJECT.c.computer_id == conn.computer_id,
+                        _DEPLOYMENT.c.status.in_(_DEPLOYMENT_ACTIVE),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            for row in rows:
+                if row["status"] == "running":
+                    res = tx.conn.execute(
+                        update(_DEPLOYMENT)
+                        .where(
+                            _DEPLOYMENT.c.id == row["id"],
+                            _DEPLOYMENT.c.status == "running",
+                        )
+                        .values(status="failed", exit_code=None, finished_at=now_iso())
+                    )
+                    if res.rowcount:
+                        failed_ids.append(row["id"])
+                else:  # queued：未 ack 未开跑 → 安全重发（副作用未发生）
+                    redispatch.append(
+                        DeployRunData(
+                            deployment_id=row["id"],
+                            repo_path=row["repo_path"],
+                            command=row["command"],
+                            branch=row["branch"],
+                            commit_hash=row["commit_hash"],
+                        )
+                    )
+            for dep_id in failed_ids:
+                frow = dict(
+                    tx.conn.execute(
+                        select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == dep_id)
+                    )
+                    .mappings()
+                    .one()
+                )
+                tx.emit(
+                    EventType.DEPLOYMENT_UPDATED,
+                    None,
+                    {"deployment": deployment_public(frow)},
+                )
+                self._deploy_log_seq.pop(dep_id, None)
+                self._post_deployment_cards(tx, frow, body=_DEPLOY_RESTART_CARD_BODY)
+                self._append_deploy_diagnostic(tx, frow)
+        # 事务外下发重发指令（daemon 幂等：已在跑/终态 → noop + 重发终态）。
+        for data in redispatch:
+            await self._dispatch_deploy_instr(conn.computer_id, data)
+
     async def _recycle_task_preview(self, task_id: str) -> None:
         """回收单任务活跃预览（触发②任务终态 / 触发③cleanup 前置共用）：下发 preview.stop。
 
@@ -2508,11 +2903,14 @@ class DaemonHub:
         thread_root_id: str | None = None,
         mention_member_ids: Iterable[str] = (),
         created_at: str | None = None,
+        card_kind: str | None = None,
+        card_ref: str | None = None,
     ) -> str:
         """插一条 durable 系统消息（author=NULL, kind=SYSTEM）+ 可选 @mention 行 + emit。
 
-        reminder 触发 / 沉默提醒 / 沉默升级三处共用，避免 insert(_MSG)+mention+回读+emit 骨架
-        多份漂移（§8.2：系统消息 + mention 对目标 Agent 视同唤醒触发）。返回 msg_id。
+        reminder 触发 / 沉默提醒 / 沉默升级 / 部署结果卡四处共用，避免 insert(_MSG)+mention+回读+
+        emit 骨架多份漂移（§8.2：系统消息 + mention 对目标 Agent 视同唤醒触发）。card_kind/card_ref
+        非空则落卡片列（部署结果卡 card_kind='deployment'）。返回 msg_id。
         """
         msg_id = new_ulid()
         ts = created_at or now_iso()
@@ -2524,8 +2922,8 @@ class DaemonHub:
                 thread_root_id=thread_root_id,
                 author_member_id=None,
                 kind=MessageKind.SYSTEM,
-                card_kind=None,
-                card_ref=None,
+                card_kind=card_kind,
+                card_ref=card_ref,
                 body=body,
                 created_at=ts,
             )

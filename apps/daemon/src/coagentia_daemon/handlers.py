@@ -16,6 +16,7 @@ from coagentia_contracts.daemon import (
     AgentRefData,
     AgentWakeData,
     CheckRunData,
+    DeployRunData,
     FrameError,
     InstrType,
     MessageDeliverData,
@@ -157,6 +158,22 @@ async def _preview_stop(client: DaemonClient, data: dict[str, Any]) -> HandlerRe
     return (AckResult.DONE if stopped else AckResult.NOOP, _OK)
 
 
+async def _deploy_run(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
+    d = DeployRunData.model_validate(data)
+    # 已终态重发（缓冲留痕）→ 重报终态，不重跑（副作用不可重放，铁律 3）。
+    buffered = client.buffer.find_deploy_finished(d.deployment_id)
+    if buffered is not None:
+        await client.report_deploy_finished(buffered)
+        return (AckResult.NOOP, _OK)
+    started, known = client.deploys.start(
+        d, client.report_deploy_log, client.report_deploy_finished
+    )
+    if not started and known is not None:
+        # 内存态已终态（同进程重发）→ 重报终态供 server CAS 幂等落库。
+        await client.report_deploy_finished(known)
+    return (AckResult.DONE if started else AckResult.NOOP, _OK)
+
+
 async def _unsupported(client: DaemonClient, data: dict[str, Any]) -> HandlerResult:
     return (
         AckResult.FAILED,
@@ -181,6 +198,5 @@ HANDLERS: dict[InstrType, Handler] = {
     InstrType.CHECK_RUN: _check_run,
     InstrType.PREVIEW_START: _preview_start,
     InstrType.PREVIEW_STOP: _preview_stop,
-    # 后续波次 / M7b：
-    InstrType.DEPLOY_RUN: _unsupported,
+    InstrType.DEPLOY_RUN: _deploy_run,
 }

@@ -83,7 +83,12 @@ def create_app(
     file_store.ensure_dirs()
     bus = EventBus()
     ws_hub = WsHub(engine, bus, __version__)
-    daemon_hub = DaemonHub(engine, bus, __version__)
+    daemon_hub = DaemonHub(
+        engine,
+        bus,
+        __version__,
+        data_root=data_root if data_root is not None else DEFAULT_DATA_ROOT,
+    )
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

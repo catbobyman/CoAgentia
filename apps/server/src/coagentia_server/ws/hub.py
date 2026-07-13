@@ -68,6 +68,7 @@ class Connection:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     seq: int = 0
     diagnostic_subs: set[str] = field(default_factory=set)  # 订阅的 agent_member_id 集合
+    deploy_log_subs: set[str] = field(default_factory=set)  # 订阅的 deployment_id 集合（§8）
 
 
 class WsHub:
@@ -179,7 +180,11 @@ class WsHub:
                 else:
                     conn.diagnostic_subs.discard(msg.agent_member_id)
             elif stream == "deploy_log":
-                SubDeployLogMsg.model_validate(raw)  # M6 流：接受但 M1 无源（留接缝）
+                msg = SubDeployLogMsg.model_validate(raw)
+                if msg.type == "sub":
+                    conn.deploy_log_subs.add(msg.deployment_id)  # 重复 sub 幂等
+                else:
+                    conn.deploy_log_subs.discard(msg.deployment_id)
 
     # ---------------------------------------------------------------- 广播
 
@@ -188,6 +193,10 @@ class WsHub:
         if event.type == EventType.DIAGNOSTIC_APPENDED:
             agent_member_id = event.data.get("agent_member_id")
             targets = [c for c in self._conns if agent_member_id in c.diagnostic_subs]
+        elif event.type == EventType.DEPLOYMENT_LOG:
+            # 订阅制（§8）：只发订阅该 deployment_id 的连接（deployment.created/updated 仍全量）。
+            deployment_id = event.data.get("deployment_id")
+            targets = [c for c in self._conns if deployment_id in c.deploy_log_subs]
         else:
             targets = list(self._conns)
         for conn in targets:

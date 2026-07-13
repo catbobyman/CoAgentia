@@ -24,6 +24,8 @@ from coagentia_contracts.daemon import (
     DaemonAgentActivityData,
     DaemonHelloAckData,
     DaemonHelloData,
+    DeployFinishedData,
+    DeployLogReportData,
     DiagnosticEventIn,
     FrameKind,
     GitDiffQuery,
@@ -49,6 +51,7 @@ from coagentia_daemon import __version__
 from coagentia_daemon.adapter import RuntimeAdapter
 from coagentia_daemon.buffer import TelemetryBuffer
 from coagentia_daemon.checks import CheckRunner
+from coagentia_daemon.deploy import DeployRunner
 from coagentia_daemon.git import GitWorktreeManager
 from coagentia_daemon.handlers import HANDLERS
 from coagentia_daemon.paths import DataPaths
@@ -127,6 +130,7 @@ class DaemonClient:
         self.git = GitWorktreeManager(paths)
         self.checks = CheckRunner()
         self.previews = PreviewRunner()
+        self.deploys = DeployRunner()
         # worktree ensure/merge/cleanup 后台通道（#1：解放 reader，避免大 merge 阻塞 PONG 误重连）。
         # 键=frame_id 用于在飞去重 + 生命周期；单车道锁串行执行杜绝同仓并发 git。
         self._worktree_tasks: dict[str, asyncio.Task[None]] = {}
@@ -187,6 +191,7 @@ class DaemonClient:
         self._stopped = True
         self.checks.cancel()
         self.previews.cancel()
+        self.deploys.cancel()
         self._worktree_closing = True
         for task in tuple(self._worktree_tasks.values()):
             task.cancel()
@@ -201,6 +206,7 @@ class DaemonClient:
         self.stop()
         await self.checks.wait_closed()
         await self.previews.wait_closed()
+        await self.deploys.wait_closed()
         await self._wait_worktrees_closed()
 
     # ---------------------------------------------------------------- 一条连接的服务
@@ -489,6 +495,17 @@ class DaemonClient:
         self.buffer.append_check(data)
         self._flush_event.set()
 
+    async def report_deploy_log(self, data: DeployLogReportData) -> None:
+        """deploy.log 先持久入缓冲（需 ack）；flush 获 server ack 后按 (deployment_id,chunk_seq)
+        删除。断连重启仍可原样重传（chunk_seq 单调，server 按已收 max 去重）。"""
+        self.buffer.append_deploy_log(data)
+        self._flush_event.set()
+
+    async def report_deploy_finished(self, data: DeployFinishedData) -> None:
+        """deploy.finished 先持久入缓冲（需 ack）；flush 获 server ack 后按 deployment_id 删除。"""
+        self.buffer.append_deploy_finished(data)
+        self._flush_event.set()
+
     async def _report_best_effort(self, rtype: ReportType, data: Any) -> None:
         """载状态类上报（无 ack）：连接可用即发，断连忽略（重连 hello 全量重报兜底）。"""
         frame = ReportFrame(
@@ -507,6 +524,9 @@ class DaemonClient:
                 await self._flush_usage()
                 await self._flush_diagnostics()
                 await self._flush_checks()
+                # deploy.log 先于 deploy.finished flush（保序：日志全排空再报终态）。
+                await self._flush_deploy_logs()
+                await self._flush_deploy_finished()
 
     async def _flush_usage(self) -> None:
         while self.buffer.has_usage():
@@ -537,6 +557,22 @@ class DaemonClient:
             if not ok:
                 return
             self.buffer.ack_checks([batch[0].run_id])
+
+    async def _flush_deploy_logs(self) -> None:
+        while self.buffer.has_deploy_logs():
+            batch = self.buffer.peek_deploy_logs(1)
+            ok = await self._report_awaited(ReportType.DEPLOY_LOG, batch[0])
+            if not ok:
+                return  # 未 ack → 保留待重传（chunk_seq 不变，server 去重）
+            self.buffer.ack_deploy_log(batch[0].deployment_id, batch[0].chunk_seq)
+
+    async def _flush_deploy_finished(self) -> None:
+        while self.buffer.has_deploy_finished():
+            batch = self.buffer.peek_deploy_finished(1)
+            ok = await self._report_awaited(ReportType.DEPLOY_FINISHED, batch[0])
+            if not ok:
+                return
+            self.buffer.ack_deploy_finished([batch[0].deployment_id])
 
     async def _report_awaited(self, rtype: ReportType, data: Any) -> bool:
         """缓冲重传类上报（需 ack）：发帧 → 等 server ack（超时/断连 → False）。"""

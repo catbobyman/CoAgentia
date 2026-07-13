@@ -134,24 +134,29 @@ async def test_runtime_rescan_reports_detected(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_unsupported_m7_instr_fails(tmp_path: Path) -> None:
-    # preview.start/stop 自 K2 起已实现（见 test_preview.py）；deploy.run 仍属未落地波次。
+async def test_deploy_run_now_supported_acks_done(tmp_path: Path) -> None:
+    # preview.start/stop 自 K2、deploy.run 自 M7b K4 起均已落地——M7 指令目录再无 _unsupported。
+    from coagentia_daemon.deploy import DeployProcessResult, DeployRunner
+    from coagentia_daemon.util import new_ulid
+
+    async def fake(data: object, *, on_log: object, timeout_sec: float) -> object:
+        return DeployProcessResult(0, "https://demo.example.com")
+
     tr = RecordingTransport()
     client, _adapter, _ = make_client(tmp_path, transport=tr)
+    client.deploys = DeployRunner(runner=fake)  # type: ignore[arg-type]
     await client.handle_instr(
         instr(
             "deploy.run",
             {
-                "deployment_id": "01K5DEPL00000000000000000A",
+                "deployment_id": new_ulid(),
                 "repo_path": "/r",
                 "command": "run",
                 "branch": "main",
             },
         )
     )
-    ack = tr.last_ack()
-    assert ack["result"] == "failed"
-    assert ack["error"]["code"] == "UNSUPPORTED_IN_M1"
+    assert tr.last_ack()["result"] == "done"  # 起后台 task 即 ack DONE（不再 UNSUPPORTED）
 
 
 @pytest.mark.asyncio

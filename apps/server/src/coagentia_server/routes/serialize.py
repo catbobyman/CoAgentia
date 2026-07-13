@@ -132,3 +132,11 @@ def preview_session_public(row: dict[str, Any]) -> dict[str, Any]:
 def proposal_public(row: dict[str, Any]) -> dict[str, Any]:
     """M6b 提案（拆解生命周期）。body/adjustments JSON 列直接透传，即 ProposalPublic。"""
     return _dump(entities.ProposalPublic, row)
+
+
+def deployment_public(row: dict[str, Any]) -> dict[str, Any]:
+    """M7b 部署（FR-12，契约 A v1.5 §4.9）。剔除内部列 log_path（服务端直读落盘，经端点/WS
+    流读取）与 created_at（表内部排序/新账区间用，不在契约 Public）。token_summary JSON 列直接
+    透传，即 DeploymentPublic（extra=forbid 会拒绝多余列，故须先剔）。"""
+    clean = {k: v for k, v in row.items() if k not in ("log_path", "created_at")}
+    return _dump(entities.DeploymentPublic, clean)

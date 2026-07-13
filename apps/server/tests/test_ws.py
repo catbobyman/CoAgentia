@@ -238,6 +238,52 @@ def test_diagnostic_sub_unsub_idempotent_and_routing(server_client: TestClient) 
         assert nxt.type is ws.EventType.SYS_PONG  # 退订后无 diagnostic 帧插入
 
 
+def test_deploy_log_sub_unsub_and_subscription_routing(server_client: TestClient) -> None:
+    """deployment.log 订阅制（§8）：只发订阅该 deployment_id 的连接；deployment.created/updated
+    仍全量。sub/unsub 幂等；未订阅的 deployment.log 不转发。"""
+    c = server_client
+    hub = c.app.state.ws_hub
+    dep_id = "01K5DEP100000000000000000A"
+
+    with c.websocket_connect("/api/ws") as sock:
+        _drain_open(sock, first=True)
+        sock.send_json({"type": "sub", "stream": "deploy_log", "deployment_id": dep_id})
+        sock.send_json({"type": "sub", "stream": "deploy_log", "deployment_id": dep_id})
+        sock.send_json({"type": "ping"})
+        assert recv(sock).type is ws.EventType.SYS_PONG
+        conn = next(iter(hub._conns))
+        assert conn.deploy_log_subs == {dep_id}
+
+        # 订阅的 deployment.log 转发。
+        c.app.state.bus.emit(
+            ws.EventType.DEPLOYMENT_LOG, None,
+            {"deployment_id": dep_id, "chunk_seq": 0, "lines": ["l0"]},
+        )
+        log = recv(sock)
+        assert log.type is ws.EventType.DEPLOYMENT_LOG
+        assert log.data["deployment_id"] == dep_id
+
+        # 未订阅的 deployment_id 不转发（发后紧跟 ping → 下一帧应为 pong）。
+        c.app.state.bus.emit(
+            ws.EventType.DEPLOYMENT_LOG, None,
+            {"deployment_id": "01K5DEP200000000000000000A", "chunk_seq": 0, "lines": ["x"]},
+        )
+        sock.send_json({"type": "ping"})
+        assert recv(sock).type is ws.EventType.SYS_PONG
+
+        # unsub 幂等 + 退订后不再转发。
+        sock.send_json({"type": "unsub", "stream": "deploy_log", "deployment_id": dep_id})
+        sock.send_json({"type": "ping"})
+        assert recv(sock).type is ws.EventType.SYS_PONG
+        assert conn.deploy_log_subs == set()
+        c.app.state.bus.emit(
+            ws.EventType.DEPLOYMENT_LOG, None,
+            {"deployment_id": dep_id, "chunk_seq": 1, "lines": ["l1"]},
+        )
+        sock.send_json({"type": "ping"})
+        assert recv(sock).type is ws.EventType.SYS_PONG
+
+
 # ---------------------------------------------------------------- 多标签全量广播（§2）
 
 

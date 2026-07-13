@@ -768,11 +768,26 @@ def test_repeat_conflict_reuses_active_task_second_real_conflict_creates_new(
         daemon.ack(merge, "done")
         assert _conflict_task_count(env) == 1
 
+        # _force_running 人为把 merge 节点置回 running（模拟 daemon 缓冲重放/重复 retry），系统节点
+        # 周期/事件扫描可能对这个"孤儿 running 节点"再下发一次 worktree.merge——与本用例断言（不重复
+        # 建任务）正交。sync 屏障须容忍并 ack 掉这条可选的重发 merge，再收 pong（否则调度抖动下偶发
+        # 抢到 merge 帧误判）。
+        def _sync_tolerating_merge() -> None:
+            daemon.ping()
+            while True:
+                f = daemon.recv()
+                if f.get("kind") == "pong":
+                    return
+                if f.get("kind") == "instr" and f.get("type") == "worktree.merge":
+                    daemon.ack(f, "done")
+                    continue
+                raise AssertionError(f"unexpected frame during sync: {f}")
+
         # 同一冲突重复上报（如 daemon 缓冲重放/重复 retry）：派回任务仍 todo → 复用不再建。
         _force_running()
         daemon.report("worktree.status", conflicted)
         assert _poll(lambda: _node_status(env, merge_node) == "failed")
-        daemon.sync()
+        _sync_tolerating_merge()
         assert _conflict_task_count(env) == 1
 
         # 前次派回任务 done（但树仍 active 未真正解决）→ 二次真冲突建新一轮。
@@ -785,7 +800,7 @@ def test_repeat_conflict_reuses_active_task_second_real_conflict_creates_new(
         _force_running()
         daemon.report("worktree.status", conflicted)
         assert _poll(lambda: _node_status(env, merge_node) == "failed")
-        daemon.sync()
+        _sync_tolerating_merge()
         assert _conflict_task_count(env) == 2
 
 

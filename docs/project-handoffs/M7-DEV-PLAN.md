@@ -57,7 +57,7 @@
 | — | M7a 实机 verify（§9a #7）→ 证据归档 | ✅ | 14/14 | Fable 亲跑：真 uvicorn+真 daemon-sim+真 PreviewRunner；真起 dev server→健康检查→**iframe HTTP 200**→并排端口互异→ensure+touch→idle 回收+杀进程→坏命令 failed；孤儿 0；[M7-EVIDENCE.md](../verify/M7-EVIDENCE.md) |
 | — | /code-review high（块 a）→ 修复 | ✅ | 7 CONFIRMED 全修 | 8 维 Opus finder→对抗核实→Fable 终裁：15 findings/7 CONFIRMED；**Fable 亲修 4 correctness**（reconnect 泄漏→daemon 断连对称杀预览 / 心跳复活 failed→isActive 守护 / idle_min=0 当 30→is not None / 前端）+ Opus 补 5 回归/覆盖测试；后端 1006 pass |
 | — | **jitter-survive 增补**（owner 拍板「现在修」，Fable 亲做）：契约 D **v1.0.5**——hello 扩 boot_nonce+previews 进程表快照；对账 #9 改逐会话四步（快照重放/无条目 fail-close 分档措辞/反向泄漏 stop/任务终态补回收）；daemon 撤销断连即杀 | ✅ | 块 a 收口后 | 存活预览 survive WS jitter，真重启才 fail-close；旧 daemon 行为兼容；+8 测试，后端 1013 pass |
-| K4 | 0011 迁移 + 部署域全链（端点/409+兜底/日志链路/结果卡/对账 #10/订阅流） | ☐ | — | 块 b 波 1 |
+| K4 | 0011 迁移 + 部署域全链（端点/409+兜底/日志链路/结果卡/对账 #10/订阅流） | ✅ | 波1 | Deployment ORM+M7B_TABLES+单一非终态部分唯一索引（谓词单源 `_DEPLOYMENT_ACTIVE_WHERE`）/routes/deployments.py（R8/422/503/409+SAVEPOINT/Idempotency/主干 HEAD 快照/token_summary 新账/tx.after_commit 下发）/hub deploy.log(chunk_seq 去重+落盘+queued→running CAS)·deploy.finished(终态 CAS+结果卡全绑定频道+诊断)·request_deploy_run·**对账 #10（真重启 running→fail-closed 不重跑@触发者 / queued 安全重发，同 nonce/周期不动）**/ws deploy_log 订阅过滤/daemon deploy.py（DeployRunner 流式+末 URL 提取+30min 超时杀树+deployment_id 幂等）·buffer 双缓冲·client 双 flush。**Fable 亲审全链 + 独立 gate：1048 pass/pyright0/ruff/gen 确定；对抗复审 2 findings 皆契约授权残窗登记 K8；改的 M6 flaky 测试经 pristine 8 跑复现（7/8，与 K4 正交）** |
 | K5 | trigger_deploy 工具（mcp.py +1/透传/话术/E2 核对） | ☐ | — | 波 2 |
 | K6 | 成本核算（GET /usage 三层/token_summary 新账快照） | ☐ | — | 波 2 |
 | B-M7-2 | 前端部署卡+成本面（确认弹窗/日志跟随/token 小结/画布汇总条/wsBridge） | ☐ | — | 波 2 |

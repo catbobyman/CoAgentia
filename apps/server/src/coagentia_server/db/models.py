@@ -23,6 +23,7 @@ from coagentia_contracts.enums import (
     ComputerStatus,
     ContractKind,
     DecompMode,
+    DeploymentStatus,
     HeldDraftStatus,
     HeldResolution,
     LandingBatchKind,
@@ -96,6 +97,8 @@ M6A_TABLES: tuple[str, ...] = ("projects", "channel_projects", "worktrees")
 M6B_TABLES: tuple[str, ...] = ("proposals", "agent_role_templates")
 # M7a（契约 A v1.0.11 §4.9）：preview_sessions 一张，0010 一次建齐（纯新表，无既有表改动）。
 M7A_TABLES: tuple[str, ...] = ("preview_sessions",)
+# M7b（契约 A v1.5 / B §13.2）：deployments 一张，0011 一次建齐（纯新表，无既有表改动）。
+M7B_TABLES: tuple[str, ...] = ("deployments",)
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -843,3 +846,63 @@ class PreviewSession(Base):
     started_at: Mapped[str] = mapped_column(Text)
     last_active_at: Mapped[str | None] = mapped_column(Text)  # 心跳 touch 推进（B §13.1）
     recycled_at: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- 4.9 部署（M7b）
+
+# 「活跃部署」谓词集 = 契约 DeploymentStatus 的非终态子集（queued/running）。部分唯一索引
+# 「每 project 至多一活跃部署」的谓词、以及 K4 建行 409 判定/对账 #10 均引此单一常量，杜绝
+# CR-10 同型「索引谓词与状态集双源漂移」；与 contracts.enums.DeploymentStatus 的一致性由
+# test_alembic_upgrade::test_deployment_active_statuses_align_with_contract 钉死。
+DEPLOYMENT_ACTIVE_STATUSES: tuple[str, ...] = ("queued", "running")
+_DEPLOYMENT_ACTIVE_LITERALS = ", ".join(
+    f"'{status}'" for status in DEPLOYMENT_ACTIVE_STATUSES
+)
+_DEPLOYMENT_ACTIVE_WHERE = f"status IN ({_DEPLOYMENT_ACTIVE_LITERALS})"
+
+
+class Deployment(Base):
+    """M7b（FR-12，契约 A v1.5 §4.9 / B §13.2）：一次部署命令的执行留痕。**可变表**——
+    status/exit_code/url/token_summary/log_path/started_at/finished_at 会被 UPDATE（daemon
+    上报 deploy.log 转 running 携 started_at、deploy.finished 落终态携 exit_code/url），不进
+    IMMUTABLE 集。状态机边写一律条件 UPDATE（K4 的活；铁律 2 CAS 纪律）；本表以部分唯一索引
+    兜底「每 project 至多一活跃部署」，防并发双 POST 建双活跃行（409 DEPLOY_IN_PROGRESS）。
+
+    注：DeploymentRow/Public 无 created_at，但建行需排序 + 新账区间上界（本次 created_at）——
+    加 created_at 内部列（表内部用；序列化 deployment_public 不吐，只吐契约字段）。
+    """
+
+    __tablename__ = "deployments"
+    __table_args__ = (
+        # 活跃唯一（B §13.2「单一非终态不变量」）：同 project_id 至多一个活跃行
+        # （status ∈ queued/running）——建行 409 的 DB 兜底。终态行（success/failed）落在
+        # sqlite_where 外，不占唯一（可多行，历史留痕）。谓词由 _DEPLOYMENT_ACTIVE_WHERE 单源生成。
+        Index(
+            "uq_deployments_active_project",
+            "project_id",
+            unique=True,
+            sqlite_where=text(_DEPLOYMENT_ACTIVE_WHERE),
+        ),
+        # 读面/对账索引：POST 新账下界按 project + status='success' 查上一 success（对齐
+        # ix_preview_sessions_status 读面索引先例）。
+        Index("ix_deployments_project_status", "project_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(_ULID, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    project_id: Mapped[str] = mapped_column(_ULID, ForeignKey("projects.id"))
+    triggered_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    branch: Mapped[str] = mapped_column(Text)
+    commit_hash: Mapped[str | None] = mapped_column(Text)
+    command: Mapped[str] = mapped_column(Text)  # 触发时 project.deploy_command 快照（留痕）
+    status: Mapped[str] = mapped_column(_enum(DeploymentStatus), server_default=text("'queued'"))
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    url: Mapped[str | None] = mapped_column(Text)  # 部署工具输出末行 URL（daemon 提取）
+    # 日志落文件（契约 D §9.1）：server 收 deploy.log 落 <data_root>/deploy-logs/<id>.log 绝对路径。
+    log_path: Mapped[str | None] = mapped_column(Text)
+    # 新账 Σ 快照（TokenSummary）：POST 建行纯 SQL 推导落列，查询不重算（失败部署不推进区间）。
+    token_summary: Mapped[dict | None] = mapped_column(JSON)
+    started_at: Mapped[str | None] = mapped_column(Text)  # 首条 deploy.log 转 running 落
+    finished_at: Mapped[str | None] = mapped_column(Text)  # deploy.finished 终态落
+    # 表内部列（不进 Public）：建行排序 + 新账区间上界（本次 created_at）。
+    created_at: Mapped[str] = mapped_column(Text)

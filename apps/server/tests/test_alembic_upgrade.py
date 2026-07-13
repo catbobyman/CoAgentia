@@ -6,13 +6,15 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from coagentia_contracts.enums import PreviewStatus
+from coagentia_contracts.enums import DeploymentStatus, PreviewStatus
 from coagentia_server.db.engine import make_engine
 from coagentia_server.db.models import (
+    DEPLOYMENT_ACTIVE_STATUSES,
     IMMUTABLE_TABLES,
     M6A_TABLES,
     M6B_TABLES,
     M7A_TABLES,
+    M7B_TABLES,
     PREVIEW_ACTIVE_STATUSES,
 )
 from sqlalchemy import Column, MetaData, String, Table, inspect, select
@@ -38,6 +40,8 @@ M6A_EXPECTED_TABLES = {"projects", "channel_projects", "worktrees"}
 M6B_EXPECTED_TABLES = {"proposals", "agent_role_templates"}
 # 契约 A v1.0.11 §5 M7a 批次（0010：preview_sessions 一张，纯新表）。
 M7A_EXPECTED_TABLES = {"preview_sessions"}
+# 契约 A v1.5 §5 M7b 批次（0011：deployments 一张，纯新表）。
+M7B_EXPECTED_TABLES = {"deployments"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -594,6 +598,114 @@ def test_preview_active_statuses_align_with_contract(
         assert f"'{literal}'" not in index_sql
 
 
+def _deployment_index_sql(db_url: str, name: str) -> str:
+    from sqlalchemy import text as _sql
+
+    engine = make_engine(url=db_url)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                _sql(
+                    "SELECT sql FROM sqlite_master WHERE type='index' "
+                    "AND name=:name"
+                ),
+                {"name": name},
+            ).one()
+    finally:
+        engine.dispose()
+    return row[0]
+
+
+def test_upgrade_head_creates_m7b_deployments(db_url: str, alembic_cfg: Config) -> None:
+    """0011 从零建 deployments（全列 + 活跃部分唯一索引 + project_status 读面索引）。"""
+    assert set(M7B_TABLES) == M7B_EXPECTED_TABLES
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        cols = {c["name"] for c in inspect(engine).get_columns("deployments")}
+        index_names = {ix["name"] for ix in inspect(engine).get_indexes("deployments")}
+    finally:
+        engine.dispose()
+    assert M7B_EXPECTED_TABLES <= _table_names(db_url)
+    assert cols == {
+        "id", "workspace_id", "project_id", "triggered_by_member_id", "branch",
+        "commit_hash", "command", "status", "exit_code", "url", "log_path",
+        "token_summary", "started_at", "finished_at", "created_at",
+    }
+    assert {"uq_deployments_active_project", "ix_deployments_project_status"} <= index_names
+
+
+def test_incremental_from_0010_to_head(db_url: str, alembic_cfg: Config) -> None:
+    # 增量路径：先到 0010（M1..M7a 库），再升 head——模拟线上 M7a 库升 M7b（K1 出口）。
+    command.upgrade(alembic_cfg, "0010_m7a")
+    mid = _table_names(db_url)
+    assert M7A_EXPECTED_TABLES <= mid
+    assert M7B_EXPECTED_TABLES.isdisjoint(mid)  # 0010 不得泄漏建出 M7b 表（坑1 回归守门）
+    command.upgrade(alembic_cfg, "head")
+    assert M7B_EXPECTED_TABLES <= _table_names(db_url)
+
+
+def test_deployments_active_index_enforces_uniqueness(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """活跃部分唯一索引兜底：同 project_id 第二个活跃行（queued）被拒；一活跃行 + 一终态行
+    （success）可共存（终态落在 sqlite_where 外，不占唯一）。"""
+    import pytest as _pytest
+    from sqlalchemy import text as _sql
+    from sqlalchemy.exc import IntegrityError
+
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    seed = (
+        "INSERT INTO workspaces (id, name, slug, created_at) VALUES ('ws','w','w-slug','t')",
+        "INSERT INTO computers (id, workspace_id, name, api_key_hash, created_at) "
+        "VALUES ('cmp','ws','C1','hash','t')",
+        "INSERT INTO members (id, workspace_id, kind, name, created_at) "
+        "VALUES ('mem','ws','human','O','t')",
+        "INSERT INTO projects (id, workspace_id, computer_id, name, repo_path, created_at) "
+        "VALUES ('pr','ws','cmp','P1','/repo','t')",
+    )
+    ins = _sql(
+        "INSERT INTO deployments "
+        "(id, workspace_id, project_id, triggered_by_member_id, branch, command, "
+        " status, created_at) "
+        "VALUES (:id, 'ws', 'pr', 'mem', 'main', 'deploy', :status, 't')"
+    )
+    try:
+        with engine.begin() as conn:
+            for stmt in seed:
+                conn.execute(_sql(stmt))
+            conn.execute(ins, {"id": "dp1", "status": "running"})  # 首个活跃行成功
+        with engine.begin() as conn:
+            with _pytest.raises(IntegrityError):  # 同 project 第二个活跃行被拒
+                conn.execute(ins, {"id": "dp2", "status": "queued"})
+        with engine.begin() as conn:
+            conn.execute(ins, {"id": "dp3", "status": "success"})  # 终态可共存
+    finally:
+        engine.dispose()
+
+
+def test_deployment_active_statuses_align_with_contract(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """CR-10 同型断言：把「活跃部署状态字面量集」的三处来源钉在一起——① ORM 常量
+    DEPLOYMENT_ACTIVE_STATUSES；② 契约 DeploymentStatus 非终态子集；③ 落库索引 WHERE 谓词。"""
+    contract_active = {DeploymentStatus.QUEUED.value, DeploymentStatus.RUNNING.value}
+    contract_terminal = {DeploymentStatus.SUCCESS.value, DeploymentStatus.FAILED.value}
+    all_states = {s.value for s in DeploymentStatus}
+
+    assert set(DEPLOYMENT_ACTIVE_STATUSES) == contract_active
+    assert contract_active | contract_terminal == all_states
+    assert contract_active.isdisjoint(contract_terminal)
+
+    command.upgrade(alembic_cfg, "head")
+    index_sql = _deployment_index_sql(db_url, "uq_deployments_active_project")
+    for literal in contract_active:
+        assert f"'{literal}'" in index_sql
+    for literal in contract_terminal:
+        assert f"'{literal}'" not in index_sql
+
+
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
     command.upgrade(alembic_cfg, "head")
     command.downgrade(alembic_cfg, "base")
@@ -606,4 +718,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     assert M6A_EXPECTED_TABLES.isdisjoint(names)
     assert M6B_EXPECTED_TABLES.isdisjoint(names)
     assert M7A_EXPECTED_TABLES.isdisjoint(names)
+    assert M7B_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

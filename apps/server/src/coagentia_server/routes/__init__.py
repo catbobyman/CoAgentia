@@ -7,6 +7,7 @@ from coagentia_server.routes import (
     canvas,
     channels,
     computers,
+    deployments,
     files,
     held_drafts,
     members,
@@ -36,5 +37,6 @@ def install_routes(app: FastAPI) -> None:
         canvas,
         held_drafts,
         templates,
+        deployments,
     ):
         app.include_router(module.router)
