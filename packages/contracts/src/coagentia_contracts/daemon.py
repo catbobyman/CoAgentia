@@ -330,6 +330,17 @@ class BufferedCounts(ContractModel):
     usage: int = 0
 
 
+class PreviewStatusData(ContractModel):
+    """preview.status 上报 data；hello.previews 进程表条目复用同形状（v1.0.5）。"""
+
+    preview_session_id: Ulid
+    status: Literal["starting", "running", "recycled", "failed"]
+    port: int | None = None
+    # v1.0.4 扩：failed 时携进程输出尾 ≤2KB（server 落 preview_sessions.fail_log_tail，
+    # A v1.0.11）；加字段向后兼容。
+    log_tail: str | None = None
+
+
 class DaemonHelloData(ContractModel):
     daemon_version: str
     os: str
@@ -337,6 +348,13 @@ class DaemonHelloData(ContractModel):
     detected_runtimes: list[DetectedRuntime]
     agents: list[DaemonAgentState]
     buffered: BufferedCounts
+    # v1.0.5 扩（加字段向后兼容，缺省 = 旧 daemon 行为）：
+    # boot_nonce = daemon **进程级**一次性随机值（进程启动时生成，重连不变、重启必变）——server
+    # 借此区分「同进程 WS jitter」与「daemon 真重启」（对账 #9 失败措辞与防御性判定）。
+    boot_nonce: str | None = None
+    # previews = 预览会话进程表快照（与 agents 真实进程表同义；复用 preview.status 形状，含终态
+    # 记录以恢复断连期丢失的 failed/recycled 上报）。缺省空表 → server 按旧口径全量 fail-close。
+    previews: list[PreviewStatusData] = []
 
 
 class DaemonHelloAckData(ContractModel):
@@ -413,15 +431,6 @@ class DeployFinishedData(ContractModel):
     status: Literal["success", "failed"]
     exit_code: int | None = None  # 超时 = failed（exit_code=null，契约 D §5.3 deploy.run）
     url: str | None = None
-
-
-class PreviewStatusData(ContractModel):
-    preview_session_id: Ulid
-    status: Literal["starting", "running", "recycled", "failed"]
-    port: int | None = None
-    # v1.0.4 扩：failed 时携进程输出尾 ≤2KB（server 落 preview_sessions.fail_log_tail，
-    # A v1.0.11）；加字段向后兼容。
-    log_tail: str | None = None
 
 
 class WorktreeStatusData(ContractModel):

@@ -681,8 +681,9 @@ def test_recycle_cleanup_preempt_before_worktree_cleanup(
 def test_reconcile_9_reconnect_fails_active_preview(
     ctx: tuple[TestClient, Env, Any],
 ) -> None:
-    """对账 #9：reconnect 握手 → 本机活跃预览（running）失进程置 failed('daemon restarted')，
-    不自动重拉（无 preview.start 帧）。"""
+    """对账 #9（v1.0.5 真重启口径）：reconnect hello 无 boot_nonce/预览快照（真重启或旧 daemon）
+    → 本机活跃预览（running）失进程置 failed('daemon restarted')，不自动重拉（无 preview.start
+    帧）。"""
     client, env, _hub = ctx
     channel, task_id, worktree_id = _seed(env)
     assert worktree_id is not None
@@ -706,6 +707,192 @@ def test_reconcile_9_reconnect_fails_active_preview(
         e for e in events if e.type == EventType.PREVIEW_UPDATED and e.channel_id == channel
     ]
     assert any(u.data["preview"]["status"] == "failed" for u in updates)
+
+
+def test_reconcile_9_jitter_preserves_live_preview(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """对账 #9 v1.0.5 核心：reconnect hello 预览快照含存活条目 → 该 running 行**原样存活**
+    （survive WS jitter）；同机无条目的另一活跃行照旧 fail-close（作对账已完成的观察锚点）。"""
+    client, env, _hub = ctx
+    channel = env.add_channel(kind="channel", name="build")
+    project = _project(env, channel)
+    task_live = _task(env, channel, number=1, project_id=project)
+    task_lost = _task(env, channel, number=2, project_id=project)
+    wt_live = _worktree(env, task_id=task_live, project_id=project)
+    wt_lost = _worktree(env, task_id=task_lost, project_id=project)
+    live_id = _insert_preview(
+        env, task_id=task_live, worktree_id=wt_live, status="running", port=5001
+    )
+    lost_id = _insert_preview(
+        env, task_id=task_lost, worktree_id=wt_lost, status="running", port=5002
+    )
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello(
+            [],
+            boot_nonce=nid(),
+            previews=[
+                {"preview_session_id": live_id, "status": "running", "port": 5001}
+            ],
+        )
+        d.recv_hello_ack()
+        drain_revalidation(d, count=2)  # 两 active worktree 各一条复验 ensure
+        # 无快照条目的行 fail-close = 对账已跑完的锚点；存活条目行必须原样 running。
+        assert _poll(lambda: _preview_row(env, lost_id)["status"] == "failed")
+        assert _preview_row(env, live_id)["status"] == "running"
+        assert _preview_row(env, live_id)["port"] == 5001
+        d.sync()  # 存活行无 preview.stop / preview.start 下发
+
+
+def test_reconcile_9_replay_promotes_starting_row(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """对账 #9 v1.0.5 快照重放：断连期丢失的 running 上报经 hello 快照恢复——starting 行被推进为
+    running 携 port（同 preview.status CAS 口径）。"""
+    client, env, _hub = ctx
+    channel, task_id, worktree_id = _seed(env)
+    assert worktree_id is not None
+    session_id = _insert_preview(
+        env, task_id=task_id, worktree_id=worktree_id, status="starting", port=None
+    )
+    events: list[Any] = []
+    token = client.app.state.bus.subscribe(events.append)  # type: ignore[union-attr]
+    try:
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello(
+                [],
+                boot_nonce=nid(),
+                previews=[
+                    {"preview_session_id": session_id, "status": "running", "port": 6001}
+                ],
+            )
+            d.recv_hello_ack()
+            drain_revalidation(d)
+            assert _poll(lambda: _preview_row(env, session_id)["status"] == "running")
+            assert _preview_row(env, session_id)["port"] == 6001
+            d.sync()
+    finally:
+        client.app.state.bus.unsubscribe(token)  # type: ignore[union-attr]
+    updates = [
+        e for e in events if e.type == EventType.PREVIEW_UPDATED and e.channel_id == channel
+    ]
+    assert any(u.data["preview"]["status"] == "running" for u in updates)
+
+
+def test_reconcile_9_replay_recovers_lost_failed_report(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """对账 #9 v1.0.5 快照重放：断连期 dev server 崩溃、failed 上报丢失 → 重连 hello 快照携终态
+    条目补落（fail_log_tail = daemon 侧真实输出尾，非定型文案）。"""
+    client, env, _hub = ctx
+    _, task_id, worktree_id = _seed(env)
+    assert worktree_id is not None
+    session_id = _insert_preview(
+        env, task_id=task_id, worktree_id=worktree_id, status="running", port=5001
+    )
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello(
+            [],
+            boot_nonce=nid(),
+            previews=[
+                {"preview_session_id": session_id, "status": "failed", "log_tail": "boom"}
+            ],
+        )
+        d.recv_hello_ack()
+        drain_revalidation(d)
+        assert _poll(lambda: _preview_row(env, session_id)["status"] == "failed")
+        assert _preview_row(env, session_id)["fail_log_tail"] == "boom"
+        d.sync()
+
+
+def test_reconcile_9_same_nonce_missing_entry_process_lost(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """对账 #9 v1.0.5 措辞分档：boot_nonce 未变（同 daemon 进程 jitter）但快照无该会话（start
+    指令断连期丢失）→ failed('preview process lost')，与真重启 'daemon restarted' 区分。"""
+    client, env, _hub = ctx
+    _, task_id, worktree_id = _seed(env)
+    assert worktree_id is not None
+    nonce = nid()
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([], boot_nonce=nonce, previews=[])
+        d.recv_hello_ack()
+        drain_revalidation(d)
+    # 断连期建行（start 指令永失）；同 nonce 重连 → 同进程口径 fail-close。
+    session_id = _insert_preview(
+        env, task_id=task_id, worktree_id=worktree_id, status="running", port=5001
+    )
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([], boot_nonce=nonce, previews=[])
+        d.recv_hello_ack()
+        drain_revalidation(d)
+        assert _poll(lambda: _preview_row(env, session_id)["status"] == "failed")
+        assert _preview_row(env, session_id)["fail_log_tail"] == "preview process lost"
+
+
+def test_reconcile_9_orphan_live_entry_gets_stop(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """对账 #9 v1.0.5 反向泄漏防护：快照中存活但 DB 行已非活跃（断连期 server 已 fail-close，如
+    starting 超时）→ 下发 preview.stop 杀进程；行终态不被 recycled 上报覆盖（CAS 起态门）。"""
+    client, env, _hub = ctx
+    _, task_id, worktree_id = _seed(env)
+    assert worktree_id is not None
+    session_id = _insert_preview(
+        env, task_id=task_id, worktree_id=worktree_id, status="failed", port=5001
+    )
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello(
+            [],
+            boot_nonce=nid(),
+            previews=[
+                {"preview_session_id": session_id, "status": "running", "port": 5001}
+            ],
+        )
+        d.recv_hello_ack()
+        drain_revalidation(d)
+        stop = d.recv_instr()
+        assert stop["type"] == "preview.stop"
+        assert stop["data"] == {"preview_session_id": session_id}
+        d.ack(stop, "done")
+        assert _preview_row(env, session_id)["status"] == "failed"  # 终态不回退
+
+
+def test_reconcile_9_terminal_task_preview_recycled_on_reconnect(
+    ctx: tuple[TestClient, Env, Any],
+) -> None:
+    """对账 #9 v1.0.5 回收触发②补扫：断连期任务转终态（stop 下发丢失）→ 重连时存活预览补下发
+    preview.stop（存活不等于该活着——回收判定归 server）。"""
+    client, env, _hub = ctx
+    channel = env.add_channel(kind="channel", name="build")
+    project = _project(env, channel)
+    task_id = _task(env, channel, number=1, project_id=project, status="done")
+    worktree_id = _worktree(env, task_id=task_id, project_id=project)
+    session_id = _insert_preview(
+        env, task_id=task_id, worktree_id=worktree_id, status="running", port=5001
+    )
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello(
+            [],
+            boot_nonce=nid(),
+            previews=[
+                {"preview_session_id": session_id, "status": "running", "port": 5001}
+            ],
+        )
+        d.recv_hello_ack()
+        stop = d.recv_instr()
+        assert stop["type"] == "preview.stop"
+        assert stop["data"] == {"preview_session_id": session_id}
+        d.ack(stop, "done")
+        # 存活行在 daemon 确认（recycled 上报）前保持 running——判定归 server、事实归 daemon。
+        assert _preview_row(env, session_id)["status"] == "running"
 
 
 def test_reconcile_9_starting_timeout_fails(ctx: tuple[TestClient, Env, Any]) -> None:

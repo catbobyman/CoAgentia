@@ -155,6 +155,9 @@ assert _PREVIEW_DIAG_RECYCLED in DIAGNOSTIC_TYPES
 
 # 对账 #9 / _report_preview_status 的 failed fail_log_tail 定型文案（DB 事实推导，非 daemon 上报）。
 _PREVIEW_FAIL_DAEMON_RESTARTED = "daemon restarted"
+# 同进程重连（boot_nonce 未变）但 hello 预览进程表无该会话：start 指令在断连期丢失/进程域记录
+# 缺位——非重启但进程事实已失，同口径 fail-close（裁决 #11 不自动重拉），措辞区分便于诊断。
+_PREVIEW_FAIL_PROCESS_LOST = "preview process lost"
 _PREVIEW_FAIL_STARTING_TIMEOUT = "starting timeout: no preview.status received"
 _WORKTREE_ENSURE_ESCALATE_AFTER = 3  # #2：worktree ensure 连续失败达此次数 → 升级喊人（一次性）
 
@@ -198,6 +201,11 @@ class DaemonConnection:
     last_ping_monotonic: float = field(default_factory=time.monotonic)
     last_seen_written: float = 0.0
     superseded: bool = False
+    # hello v1.0.5：daemon 进程 boot nonce / 预览进程表快照 / 是否判定为真重启（对账 #9 消费；
+    # daemon_restarted 缺省 True = 旧 daemon 无 nonce 按重启口径全量 fail-close，行为兼容）。
+    boot_nonce: str | None = None
+    hello_previews: dict[str, PreviewStatusData] = field(default_factory=dict)
+    daemon_restarted: bool = True
 
     def agent_lock(self, agent_id: str) -> asyncio.Lock:
         lock = self.agent_locks.get(agent_id)
@@ -248,6 +256,9 @@ class DaemonHub:
         self._system_node_locks: dict[str, asyncio.Lock] = {}
         self._system_pending: dict[str, tuple[tuple[str, str], str]] = {}
         self._landing_lock = asyncio.Lock()  # J9 落地扫描进程内防重入（跨进程由账本三态兜）
+        # 每 computer 最后一次 hello 的 boot_nonce（对账 #9 区分 WS jitter 与真重启；server 重启
+        # 丢失 → 首连按「重启」措辞，存活判定不受影响——它按 hello 预览进程表逐会话推导）。
+        self._last_boot_nonce: dict[str, str | None] = {}
 
     # ---------------------------------------------------------------- lifespan 装配
 
@@ -439,6 +450,15 @@ class DaemonHub:
             if pending[1] != conn.computer_id
         }
         conn.present = {a.agent_member_id: a.status.value for a in hello.agents}
+        # hello v1.0.5：登记 boot nonce 与预览进程表快照（对账 #9 消费）。nonce 未变 = 同 daemon
+        # 进程 WS jitter；变化/缺失/无前值 = 按真重启口径。
+        conn.boot_nonce = hello.boot_nonce
+        conn.hello_previews = {p.preview_session_id: p for p in hello.previews}
+        prev_nonce = self._last_boot_nonce.get(conn.computer_id)
+        conn.daemon_restarted = (
+            hello.boot_nonce is None or prev_nonce is None or prev_nonce != hello.boot_nonce
+        )
+        self._last_boot_nonce[conn.computer_id] = hello.boot_nonce
         with gateway_tx(self._engine, self._bus) as tx:
             tx.conn.execute(
                 update(_COMPUTER)
@@ -1810,9 +1830,10 @@ class DaemonHub:
                 await self.send_instr(
                     conn, inj.agent_member_id, InstrType.MESSAGE_INJECT, data
                 )
-        # 对账 #9 预览纠偏（契约 D §4.4）：reconnect 握手 fail-close 本机全部活跃预览（daemon 重启
-        # 失进程，裁决 #11 不自动重拉）；周期只收 starting 超时。独立 gateway_tx，无 await 内联。
-        self._reconcile_previews(conn.computer_id, on_reconnect=revalidate_worktrees)
+        # 对账 #9 预览纠偏（契约 D §4.4 v1.0.5）：reconnect 握手以 hello 预览进程表快照逐会话对账
+        # （存活者 survive WS jitter，真重启 fail-close，裁决 #11 不自动重拉）；周期只收 starting
+        # 超时。
+        await self._reconcile_previews(conn, on_reconnect=revalidate_worktrees)
 
     def _backlog_trigger(
         self, c: Connection, backlog: list[dict[str, Any]], channel: dict[str, Any], agent_id: str
@@ -2318,34 +2339,51 @@ class DaemonHub:
                 PreviewStopData(preview_session_id=preview_id),
             )
 
-    def _reconcile_previews(self, computer_id: str, *, on_reconnect: bool) -> None:
-        """对账 #9 预览纠偏（契约 D §4.4；裁决 #11）：**从 DB 事实推导**，不自动重拉。
+    async def _reconcile_previews(
+        self, conn: DaemonConnection, *, on_reconnect: bool
+    ) -> None:
+        """对账 #9 预览纠偏（契约 D §4.4 v1.0.5；裁决 #11）：**从 DB 事实 × hello 预览进程表推导**，
+        不自动重拉。
 
-        - on_reconnect=True（reconnect 握手）：daemon 重启后其 dev server 子进程已随进程失联/成孤儿
-          （K2-cal §3.4：win32 硬崩溃孤儿存活但不可再追踪）——本机全部活跃预览（starting/running）
-          置 failed（fail_log_tail='daemon restarted'），等人再点 POST ensure 重建（不引入无人观察
-          的常驻进程）；
-        - 周期（on_reconnect=False）：仅 starting 超时（连接仍在但迟迟未收 preview.status）同口径置
-          failed。running 行由 daemon 存活监控上报 failed，周期不动（连接在=帧可达）。
+        - 周期（on_reconnect=False）：仅 starting 超时（连接仍在但迟迟未收 preview.status）置
+          failed；running 行由 daemon 存活监控上报 failed，周期不动（连接在=帧可达）。
+        - reconnect 握手（on_reconnect=True）：以 hello 预览进程表快照逐会话对账——
+          ① **快照重放**：终态/running 条目走 preview.status 同一 CAS 落库（恢复断连期 best-effort
+            丢失的上报：starting 行被 running 条目推进携 port、failed/recycled 补终态）；已一致则
+            rowcount=0 幂等 noop——**存活预览 survive WS jitter，不再全量 fail-close**；
+          ② 快照无条目的活跃行 fail-close：boot_nonce 变化/缺失（真重启，子进程必死/成孤儿，
+            K2-cal §3.4）→ 'daemon restarted'；nonce 未变（start 指令断连期丢失）→
+            'preview process lost'。等人再点 POST ensure 重建（不引入无人观察的常驻进程）；
+          ③ **反向泄漏防护**：快照中活跃（starting/running）但 DB 行已非活跃（断连期 server 已
+            fail-close/回收，如 starting 超时）→ 下发 preview.stop 杀进程+释放端口；
+          ④ 回收触发②补扫：存活行的任务已终态（断连期 stop 下发丢失）→ 下发 preview.stop。
 
         状态机边写一律条件 UPDATE（起态门 CAS）：竞败/已被 preview.status 推进则 rowcount=0 不覆盖。
         """
-        threshold_iso = format_iso(
-            datetime.now(UTC) - timedelta(seconds=self.preview_starting_timeout_sec)
+        if not on_reconnect:
+            self._fail_previews_starting_timeout(conn.computer_id)
+            return
+        # ① 快照重放（复用 preview.status 处置：CAS + 广播 + 诊断；starting 条目无事实可推进）。
+        for entry in conn.hello_previews.values():
+            if entry.status != "starting":
+                self._report_preview_status(conn, entry)
+        reason = (
+            _PREVIEW_FAIL_DAEMON_RESTARTED
+            if conn.daemon_restarted
+            else _PREVIEW_FAIL_PROCESS_LOST
         )
+        stop_targets: list[tuple[str, str]] = []  # (task_id 串行锁键, preview_session_id)
         with gateway_tx(self._engine, self._bus) as tx:
             rows = (
                 tx.conn.execute(
-                    select(
-                        _PREVIEW.c.id, _PREVIEW.c.status, _PREVIEW.c.started_at
-                    )
+                    select(_PREVIEW.c.id, _PREVIEW.c.task_id, _TASK.c.status.label("task_status"))
                     .select_from(
-                        _PREVIEW.join(_WORKTREE, _WORKTREE.c.id == _PREVIEW.c.worktree_id).join(
-                            _PROJECT, _PROJECT.c.id == _WORKTREE.c.project_id
-                        )
+                        _PREVIEW.join(_WORKTREE, _WORKTREE.c.id == _PREVIEW.c.worktree_id)
+                        .join(_PROJECT, _PROJECT.c.id == _WORKTREE.c.project_id)
+                        .join(_TASK, _TASK.c.id == _PREVIEW.c.task_id)
                     )
                     .where(
-                        _PROJECT.c.computer_id == computer_id,
+                        _PROJECT.c.computer_id == conn.computer_id,
                         _PREVIEW.c.status.in_(_PREVIEW_ACTIVE),
                     )
                 )
@@ -2354,26 +2392,82 @@ class DaemonHub:
             )
             failed_ids: list[str] = []
             for row in rows:
-                if on_reconnect:
-                    reason = _PREVIEW_FAIL_DAEMON_RESTARTED
-                    guard = _PREVIEW_ACTIVE
-                else:
-                    if row["status"] != "starting" or row["started_at"] >= threshold_iso:
-                        continue  # 周期只收 starting 超时；running 交 daemon 存活监控
-                    reason = _PREVIEW_FAIL_STARTING_TIMEOUT
-                    guard = ("starting",)
+                entry = conn.hello_previews.get(row["id"])
+                if entry is None or entry.status not in ("starting", "running"):
+                    # ② 无活条目（终态条目在 ① 已推进，此处兜防御）：fail-close。
+                    res = tx.conn.execute(
+                        update(_PREVIEW)
+                        .where(
+                            _PREVIEW.c.id == row["id"],
+                            _PREVIEW.c.status.in_(_PREVIEW_ACTIVE),
+                        )
+                        .values(status="failed", fail_log_tail=reason)
+                    )
+                    if res.rowcount:
+                        failed_ids.append(row["id"])
+                elif row["task_status"] in (TaskStatus.DONE.value, TaskStatus.CLOSED.value):
+                    stop_targets.append((row["task_id"], row["id"]))  # ④ 终态补回收
+            for preview_id in failed_ids:
+                # 广播 preview.updated + 落 preview.failed 诊断（FR-11.3；对账置 failed 同口径）。
+                self._emit_preview_updated(tx, preview_id, diag_type=_PREVIEW_DIAG_FAILED)
+            # ③ 反向泄漏防护：快照活跃条目，其行不在本机活跃集（已 failed/recycled/不存在）。
+            active_ids = {row["id"] for row in rows}
+            for entry in conn.hello_previews.values():
+                if (
+                    entry.status not in ("starting", "running")
+                    or entry.preview_session_id in active_ids
+                ):
+                    continue
+                orphan = tx.conn.execute(
+                    select(_PREVIEW.c.task_id).where(
+                        _PREVIEW.c.id == entry.preview_session_id
+                    )
+                ).first()
+                lock_key = orphan[0] if orphan is not None else entry.preview_session_id
+                stop_targets.append((lock_key, entry.preview_session_id))
+        # 事务外下发（daemon 幂等：已停/未知 → noop；recycled 上报对非活跃行 CAS noop 不覆盖终态）。
+        for task_key, preview_id in stop_targets:
+            await self._dispatch_preview_instr(
+                conn.computer_id,
+                task_key,
+                InstrType.PREVIEW_STOP,
+                PreviewStopData(preview_session_id=preview_id),
+            )
+
+    def _fail_previews_starting_timeout(self, computer_id: str) -> None:
+        """对账 #9 周期分支：starting 超 preview_starting_timeout_sec 未收 preview.status →
+        failed。"""
+        threshold_iso = format_iso(
+            datetime.now(UTC) - timedelta(seconds=self.preview_starting_timeout_sec)
+        )
+        with gateway_tx(self._engine, self._bus) as tx:
+            rows = (
+                tx.conn.execute(
+                    select(_PREVIEW.c.id)
+                    .select_from(
+                        _PREVIEW.join(_WORKTREE, _WORKTREE.c.id == _PREVIEW.c.worktree_id).join(
+                            _PROJECT, _PROJECT.c.id == _WORKTREE.c.project_id
+                        )
+                    )
+                    .where(
+                        _PROJECT.c.computer_id == computer_id,
+                        _PREVIEW.c.status == "starting",
+                        _PREVIEW.c.started_at < threshold_iso,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            failed_ids: list[str] = []
+            for row in rows:
                 res = tx.conn.execute(
                     update(_PREVIEW)
-                    .where(
-                        _PREVIEW.c.id == row["id"],
-                        _PREVIEW.c.status.in_(guard),
-                    )
-                    .values(status="failed", fail_log_tail=reason)
+                    .where(_PREVIEW.c.id == row["id"], _PREVIEW.c.status == "starting")
+                    .values(status="failed", fail_log_tail=_PREVIEW_FAIL_STARTING_TIMEOUT)
                 )
                 if res.rowcount:
                     failed_ids.append(row["id"])
             for preview_id in failed_ids:
-                # 广播 preview.updated + 落 preview.failed 诊断（FR-11.3；对账置 failed 同口径）。
                 self._emit_preview_updated(tx, preview_id, diag_type=_PREVIEW_DIAG_FAILED)
 
     def _require_conn_for_agent(self, agent_id: str) -> tuple[DaemonConnection, dict[str, Any]]:

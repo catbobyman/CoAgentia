@@ -298,9 +298,15 @@ export type ServerVersion = string;
 export type WorkspaceId8 = string;
 export type Agents = DaemonAgentState[];
 export type Arch2 = string;
+export type BootNonce = string | null;
 export type DaemonVersion2 = string;
 export type DetectedRuntimes2 = DetectedRuntime[];
 export type Os2 = string;
+export type LogTail = string | null;
+export type Port = number | null;
+export type PreviewSessionId = string;
+export type Status1 = 'starting' | 'running' | 'recycled' | 'failed';
+export type Previews = PreviewStatusData[];
 export type TaskId4 = string | null;
 export type Text = string | null;
 /**
@@ -310,7 +316,7 @@ export type DeliverableKind = 'file' | 'dir' | 'url' | 'artifact';
 export type Path = string;
 export type DeploymentId = string;
 export type ExitCode1 = number | null;
-export type Status1 = 'success' | 'failed';
+export type Status2 = 'success' | 'failed';
 export type Url = string | null;
 export type ChunkSeq = number;
 export type DeploymentId1 = string;
@@ -389,7 +395,7 @@ export type OldPath = string | null;
 export type Patch = string;
 export type PatchTruncated = boolean;
 export type Path1 = string;
-export type Status2 = 'added' | 'modified' | 'deleted' | 'renamed';
+export type Status3 = 'added' | 'modified' | 'deleted' | 'renamed';
 export type BaseRef = string;
 export type Files = DiffFile[];
 export type FilesTruncated = boolean;
@@ -756,7 +762,7 @@ export type Items2 = PresenceEntry[];
 export type FailLogTail = string | null;
 export type Id28 = string;
 export type LastActiveAt = string | null;
-export type Port = number | null;
+export type Port1 = number | null;
 export type RecycledAt = string | null;
 export type StartedAt2 = string;
 export type PreviewStatus = 'starting' | 'running' | 'recycled' | 'failed';
@@ -766,20 +772,16 @@ export type WorktreeId = string;
 export type FailLogTail1 = string | null;
 export type Id29 = string;
 export type LastActiveAt1 = string | null;
-export type Port1 = number | null;
+export type Port2 = number | null;
 export type RecycledAt1 = string | null;
 export type StartedAt3 = string;
 export type TaskId12 = string;
 export type WorkspaceId26 = string;
 export type WorktreeId1 = string;
 export type DevCommand = string;
-export type PreviewSessionId = string;
+export type PreviewSessionId1 = string;
 export type TaskId13 = string;
 export type WorktreePath = string;
-export type LogTail = string | null;
-export type Port2 = number | null;
-export type PreviewSessionId1 = string;
-export type Status3 = 'starting' | 'running' | 'recycled' | 'failed';
 export type PreviewSessionId2 = string;
 export type ProjectId8 = string;
 export type ComputerId4 = string;
@@ -1949,10 +1951,21 @@ export interface DaemonHelloAckData {
 export interface DaemonHelloData {
   agents: Agents;
   arch: Arch2;
+  boot_nonce?: BootNonce;
   buffered: BufferedCounts;
   daemon_version: DaemonVersion2;
   detected_runtimes: DetectedRuntimes2;
   os: Os2;
+  previews?: Previews;
+}
+/**
+ * preview.status 上报 data；hello.previews 进程表条目复用同形状（v1.0.5）。
+ */
+export interface PreviewStatusData {
+  log_tail?: LogTail;
+  port?: Port;
+  preview_session_id: PreviewSessionId;
+  status: Status1;
 }
 export interface DecomposeRequest {
   task_id?: TaskId4;
@@ -1965,7 +1978,7 @@ export interface Deliverable {
 export interface DeployFinishedData {
   deployment_id: DeploymentId;
   exit_code?: ExitCode1;
-  status: Status1;
+  status: Status2;
   url?: Url;
 }
 export interface DeployLogReportData {
@@ -2112,7 +2125,7 @@ export interface DiffFile {
   patch: Patch;
   patch_truncated: PatchTruncated;
   path: Path1;
-  status: Status2;
+  status: Status3;
 }
 /**
  * git.diff 查询响应（契约 D §6）；REST Diff 卡直接复用此形状。
@@ -2623,7 +2636,7 @@ export interface PreviewSessionPublic {
   fail_log_tail?: FailLogTail;
   id: Id28;
   last_active_at?: LastActiveAt;
-  port?: Port;
+  port?: Port1;
   recycled_at?: RecycledAt;
   started_at: StartedAt2;
   status: PreviewStatus;
@@ -2635,7 +2648,7 @@ export interface PreviewSessionRow {
   fail_log_tail?: FailLogTail1;
   id: Id29;
   last_active_at?: LastActiveAt1;
-  port?: Port1;
+  port?: Port2;
   recycled_at?: RecycledAt1;
   started_at: StartedAt3;
   status: PreviewStatus;
@@ -2645,15 +2658,9 @@ export interface PreviewSessionRow {
 }
 export interface PreviewStartData {
   dev_command: DevCommand;
-  preview_session_id: PreviewSessionId;
+  preview_session_id: PreviewSessionId1;
   task_id: TaskId13;
   worktree_path: WorktreePath;
-}
-export interface PreviewStatusData {
-  log_tail?: LogTail;
-  port?: Port2;
-  preview_session_id: PreviewSessionId1;
-  status: Status3;
 }
 export interface PreviewStopData {
   preview_session_id: PreviewSessionId2;

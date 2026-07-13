@@ -231,38 +231,26 @@ async def test_wait_closed_kills_active_preview_no_orphan(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_recycle_all_active_kills_on_disconnect(tmp_path: Path) -> None:
-    """断连回收（裁决 #11 对称杀）：transport 失联 → recycle_all_active 杀所有活跃预览子进程 +
-    释放端口，但**不置 _closing**——重连后 runner 仍可再起新预览（与 wait_closed 终结 runner 区别）。
-
-    锁 Fable #1/#3 修：daemon 不重启（同进程瞬时重连/server 重启）时必须对称杀掉子进程，否则
-    进程+端口泄漏且 server 侧重连 fail-close 永标 failed 无回收路径。
-    """
+async def test_process_table_snapshots_live_and_terminal_sessions(tmp_path: Path) -> None:
+    """hello.previews 进程表快照（契约 D §4.1 v1.0.5）：含活跃与**终态**记录——running 携 port、
+    failed 携 log_tail（断连期 best-effort 丢失的终态上报靠重连 hello 快照恢复）。断连不再杀预览
+    （对账 #9 逐会话判活取代 v1.0.4 的对称杀），存活子进程跨重连原样保持。"""
     runner = PreviewRunner(health_timeout=15.0, poll_interval=0.1)
     reports = Reports()
-    data = _start_data(tmp_path)
+    ok = _start_data(tmp_path)
+    bad = _start_data(tmp_path / "does_not_exist")  # 起进程即失败 → 终态记录留存注册表
     try:
-        started, _ = await runner.start(data, reports.cb)
+        started, _ = await runner.start(ok, reports.cb)
         assert started
+        await runner.start(bad, reports.cb)
         await until(lambda: bool(reports.by_status("running")), timeout=15)
-        port = reports.by_status("running")[-1].port
-        assert port is not None and await asyncio.to_thread(_tcp_reachable, port)
-        # 断连即杀（不置 _closing）：子进程死 → 端口不再可达。
-        await runner.recycle_all_active()
-        await asyncio.sleep(0.5)
-        assert not await asyncio.to_thread(_tcp_reachable, port)
-        assert port not in runner._registry._assigned  # 端口已释放（回注册表可再分配）
-        # 关键区别（vs wait_closed）：_closing 未置 → 重连后仍能起新预览。
-        data2 = _start_data(tmp_path)
-        started2, _ = await runner.start(data2, reports.cb)
-        assert started2  # recycle_all_active 后 runner 未终结，start 成功（非 (False, None)）
-        await until(
-            lambda: any(
-                r.preview_session_id == data2.preview_session_id
-                for r in reports.by_status("running")
-            ),
-            timeout=15,
-        )
+        table = {e.preview_session_id: e for e in runner.process_table()}
+        live = table[ok.preview_session_id]
+        assert live.status == "running" and live.port is not None
+        assert await asyncio.to_thread(_tcp_reachable, live.port)  # 快照 ≠ 杀进程，仍存活
+        dead = table[bad.preview_session_id]
+        assert dead.status == "failed" and dead.log_tail
+        assert dead.port is None  # 终态不再占端口
     finally:
         await runner.wait_closed()
 

@@ -121,6 +121,9 @@ class DaemonClient:
         self._backoff_cap = backoff_cap
 
         self.adapter.bind(self)  # AdapterSink = self
+        # 进程级 boot nonce（契约 D §4.1 v1.0.5）：每 DaemonClient 实例（=daemon 进程）一次性生成，
+        # 重连不变、重启必变——server 借此区分 WS jitter 与真重启（对账 #9）。
+        self.boot_nonce = new_ulid()
         self.git = GitWorktreeManager(paths)
         self.checks = CheckRunner()
         self.previews = PreviewRunner()
@@ -170,12 +173,10 @@ class DaemonClient:
                 self.connected.clear()
                 self._transport = None
                 self._fail_pending("connection closed")
-                # 断连即对称杀活跃预览（契约裁决 #11 / code-review 修）：失联后 server 会在重连
-                # 对账 #9 fail-close 活跃预览，daemon 须杀掉对应 dev server 子进程避免进程+端口泄漏
-                # （worktree 幂等复验可保活，预览有状态故断连即回收）。shutdown 由 wait_closed 收。
-                if not self._stopped:
-                    with contextlib.suppress(Exception):
-                        await self.previews.recycle_all_active()
+                # 断连**不杀**活跃预览（契约 D §4.2 v1.0.5，与 Agent 进程同款保持存活）：重连 hello
+                # 携 boot_nonce + 预览进程表快照，server 对账 #9 逐会话判活——同进程 WS jitter 存活
+                # 预览无缝续用；真重启（新 nonce + 空表）才 fail-close。泄漏面由对账收口：server
+                # 侧已非活跃行的存活进程，重连时收 preview.stop 回收；shutdown 由 wait_closed 杀。
             if self._was_connected:
                 backoff = self._backoff_start  # 成功连过一轮 → 退避复位
             else:
@@ -238,7 +239,8 @@ class DaemonClient:
         return frame.frame_id
 
     def build_hello(self) -> DaemonHelloData:
-        """hello 载荷：真实进程表（adapter）+ 探测 runtime + 缓冲计数（契约 D §4.1）。"""
+        """hello 载荷：真实进程表（adapter）+ 探测 runtime + 缓冲计数 + boot nonce 与预览进程表
+        快照（契约 D §4.1 v1.0.5——server 对账 #9 以此逐会话判活，预览 survive WS jitter）。"""
         return DaemonHelloData(
             daemon_version=self.daemon_version,
             os=self.os_name,
@@ -246,6 +248,8 @@ class DaemonClient:
             detected_runtimes=self._detected_runtimes,
             agents=self.adapter.process_table(),
             buffered=self.buffer.counts(),
+            boot_nonce=self.boot_nonce,
+            previews=self.previews.process_table(),
         )
 
     def _apply_hello_ack(self, ack: dict[str, Any], hello_frame_id: str) -> None:

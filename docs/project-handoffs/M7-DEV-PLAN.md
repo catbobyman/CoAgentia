@@ -56,6 +56,7 @@
 | B-M7-1 | 前端预览面板（按钮/三态顶条/失败日志尾/心跳/并排/倒计时/wsBridge） | ✅ | 波2 | PreviewPanel+PreviewDeck 并排/canPreview 门/60s 心跳/wsBridge preview.updated；web 375（+16） |
 | — | M7a 实机 verify（§9a #7）→ 证据归档 | ✅ | 14/14 | Fable 亲跑：真 uvicorn+真 daemon-sim+真 PreviewRunner；真起 dev server→健康检查→**iframe HTTP 200**→并排端口互异→ensure+touch→idle 回收+杀进程→坏命令 failed；孤儿 0；[M7-EVIDENCE.md](../verify/M7-EVIDENCE.md) |
 | — | /code-review high（块 a）→ 修复 | ✅ | 7 CONFIRMED 全修 | 8 维 Opus finder→对抗核实→Fable 终裁：15 findings/7 CONFIRMED；**Fable 亲修 4 correctness**（reconnect 泄漏→daemon 断连对称杀预览 / 心跳复活 failed→isActive 守护 / idle_min=0 当 30→is not None / 前端）+ Opus 补 5 回归/覆盖测试；后端 1006 pass |
+| — | **jitter-survive 增补**（owner 拍板「现在修」，Fable 亲做）：契约 D **v1.0.5**——hello 扩 boot_nonce+previews 进程表快照；对账 #9 改逐会话四步（快照重放/无条目 fail-close 分档措辞/反向泄漏 stop/任务终态补回收）；daemon 撤销断连即杀 | ✅ | 块 a 收口后 | 存活预览 survive WS jitter，真重启才 fail-close；旧 daemon 行为兼容；+8 测试，后端 1013 pass |
 | K4 | 0011 迁移 + 部署域全链（端点/409+兜底/日志链路/结果卡/对账 #10/订阅流） | ☐ | — | 块 b 波 1 |
 | K5 | trigger_deploy 工具（mcp.py +1/透传/话术/E2 核对） | ☐ | — | 波 2 |
 | K6 | 成本核算（GET /usage 三层/token_summary 新账快照） | ☐ | — | 波 2 |

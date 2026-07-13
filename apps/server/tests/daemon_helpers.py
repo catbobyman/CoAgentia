@@ -303,21 +303,29 @@ def hello_frame(
     arch: str = "x64",
     runtimes: list[dict[str, Any]] | None = None,
     v: int = 1,
+    boot_nonce: str | None = None,
+    previews: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "daemon_version": version,
+        "os": os,
+        "arch": arch,
+        "detected_runtimes": runtimes or [],
+        "agents": [{"agent_member_id": a, "status": s} for a, s in agents],
+        "buffered": {"diagnostics": 0, "usage": 0},
+    }
+    # v1.0.5 可选字段：缺省不带（模拟旧 daemon → server 按重启口径全量 fail-close）。
+    if boot_nonce is not None:
+        data["boot_nonce"] = boot_nonce
+    if previews is not None:
+        data["previews"] = previews
     return {
         "v": v,
         "kind": "report",
         "frame_id": new_ulid(),
         "type": "hello",
         "at": now_iso(),
-        "data": {
-            "daemon_version": version,
-            "os": os,
-            "arch": arch,
-            "detected_runtimes": runtimes or [],
-            "agents": [{"agent_member_id": a, "status": s} for a, s in agents],
-            "buffered": {"diagnostics": 0, "usage": 0},
-        },
+        "data": data,
     }
 
 

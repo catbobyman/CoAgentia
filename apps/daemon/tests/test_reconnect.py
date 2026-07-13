@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from coagentia_contracts.daemon import TokenUsageEventIn
 from coagentia_daemon.client import BACKOFF_CAP, next_backoff
+from coagentia_daemon.preview import _Preview
+from coagentia_daemon.util import new_ulid
 from helpers import (
     AutoAckTransport,
     RecordingTransport,
@@ -103,6 +105,48 @@ async def test_reconnect_keeps_agents_and_rehellos(tmp_path: Path) -> None:
         assert hellos, "重连应重发 hello"
         table = [a["agent_member_id"] for a in hellos[-1]["data"]["agents"]]
         assert aid in table  # 存活进程仍在进程表
+    finally:
+        client.stop()
+        if transports:
+            await transports[-1].close()
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_reconnect_hello_carries_boot_nonce_and_previews(tmp_path: Path) -> None:
+    """契约 D §4.1/§4.2 v1.0.5：断连**不杀**预览——重连 hello 携**同一** boot_nonce 与预览进程表
+    快照（server 对账 #9 以此逐会话判活，存活预览 survive WS jitter）。"""
+    transports: list[AutoAckTransport] = []
+
+    async def connect_fn(url: str, key: str) -> AutoAckTransport:
+        t = AutoAckTransport()
+        transports.append(t)
+        return t
+
+    client, _adapter, _ = make_client(
+        tmp_path, connect_fn=connect_fn, runner=fake_runner, backoff_start=0.01, backoff_cap=0.02
+    )
+    # 直接在进程域种 running 记录（不起真子进程；PreviewRunner 注册表即 hello 快照事实源）。
+    session_id = new_ulid()
+    client.previews._previews[session_id] = _Preview(
+        session_id=session_id, status="running", port=4321
+    )
+    task = asyncio.create_task(client.run())
+    try:
+        await asyncio.wait_for(client.connected.wait(), timeout=5)
+        t1 = transports[-1]
+        hello1 = [f for f in t1.sent if f.get("type") == "hello"][-1]
+        await t1.close()
+        await until(lambda: len(transports) >= 2 and client.connected.is_set())
+        t2 = transports[-1]
+        hello2 = [f for f in t2.sent if f.get("type") == "hello"][-1]
+        # boot nonce：进程级一次性——重连不变（jitter 与真重启的区分信号）。
+        assert hello1["data"]["boot_nonce"] == hello2["data"]["boot_nonce"] == client.boot_nonce
+        # 断连未杀：重连快照仍含存活预览（携 port）。
+        table = {p["preview_session_id"]: p for p in hello2["data"]["previews"]}
+        assert table[session_id]["status"] == "running"
+        assert table[session_id]["port"] == 4321
     finally:
         client.stop()
         if transports:
