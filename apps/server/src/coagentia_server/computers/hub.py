@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from coagentia_contracts import entities
+from coagentia_contracts.constants import DIAGNOSTIC_TYPES
 from coagentia_contracts.daemon import (
     ACK_TIMEOUT_SEC,
     CLOSE_PROTOCOL_MISMATCH,
@@ -50,6 +51,9 @@ from coagentia_contracts.daemon import (
     InstrType,
     MessageDeliverData,
     MessageInjectData,
+    PreviewStartData,
+    PreviewStatusData,
+    PreviewStopData,
     QueryFrame,
     QueryType,
     ReportType,
@@ -97,6 +101,7 @@ from coagentia_server.routes.serialize import (
     diagnostic_public,
     held_draft_public,
     message_public,
+    preview_session_public,
     reminder_public,
     worktree_public,
 )
@@ -121,6 +126,11 @@ _CANVAS_NODE = models.tbl(models.CanvasNode)
 _REMINDER = models.tbl(models.Reminder)
 _HELD = models.tbl(models.HeldDraft)
 _WORKTREE = models.tbl(models.Worktree)
+_PROJECT = models.tbl(models.Project)
+_PREVIEW = models.tbl(models.PreviewSession)
+
+# 「活跃预览」谓词集（starting/running）单源自 models（部分唯一索引谓词同源，杜绝 CR-10 漂移）。
+_PREVIEW_ACTIVE = models.PREVIEW_ACTIVE_STATUSES
 
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
 _RESUMABLE = {AgentStatus.STARTING.value, AgentStatus.IDLE.value, AgentStatus.BUSY.value}
@@ -128,6 +138,24 @@ _DELIVERABLE = {AgentStatus.IDLE.value, AgentStatus.BUSY.value}
 
 _ACTIVITY_THROTTLE_SEC = 0.5  # 契约 D §7：server ≥500ms 节流转发 agent.activity
 _LAST_SEEN_THROTTLE_SEC = 60  # 契约 D §2：last_seen_at 写库节流
+
+# 对账 #9 starting 超时（契约 D §4.4）：连接仍在但 starting 行迟迟未收 preview.status（healthy/
+# failed）→ daemon 侧健康检查上限 120s（D §5.3）+ 裕度。超此仍 starting 视同失进程 fail-closed。
+_PREVIEW_STARTING_TIMEOUT_SEC = 180.0
+
+# FR-11.3 进程状态入 diagnostic（constants.DIAGNOSTIC_TYPES 为权威登记表，同 gc/ledger 体例）：
+# running→started、failed→failed、recycled→recycled 三种进程状态均落诊断（preview.failed 由
+# Fable 补齐登记——失败是最该进诊断时间线的进程状态；对账 #9 置 failed 同口径）。
+_PREVIEW_DIAG_STARTED = "preview.started"
+_PREVIEW_DIAG_FAILED = "preview.failed"
+_PREVIEW_DIAG_RECYCLED = "preview.recycled"
+assert _PREVIEW_DIAG_STARTED in DIAGNOSTIC_TYPES
+assert _PREVIEW_DIAG_FAILED in DIAGNOSTIC_TYPES
+assert _PREVIEW_DIAG_RECYCLED in DIAGNOSTIC_TYPES
+
+# 对账 #9 / _report_preview_status 的 failed fail_log_tail 定型文案（DB 事实推导，非 daemon 上报）。
+_PREVIEW_FAIL_DAEMON_RESTARTED = "daemon restarted"
+_PREVIEW_FAIL_STARTING_TIMEOUT = "starting timeout: no preview.status received"
 _WORKTREE_ENSURE_ESCALATE_AFTER = 3  # #2：worktree ensure 连续失败达此次数 → 升级喊人（一次性）
 
 
@@ -196,6 +224,7 @@ class DaemonHub:
         held_interval: float = 5.0,
         heartbeat_timeout: float = 60.0,
         landing_interval: float = 15.0,
+        preview_recycle_interval: float = 60.0,
     ) -> None:
         self._engine = engine
         self._bus = bus
@@ -208,6 +237,8 @@ class DaemonHub:
         self.held_interval = held_interval
         self.heartbeat_timeout = heartbeat_timeout
         self.landing_interval = landing_interval
+        self.preview_recycle_interval = preview_recycle_interval
+        self.preview_starting_timeout_sec = _PREVIEW_STARTING_TIMEOUT_SEC
         self._conns: dict[str, DaemonConnection] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._sub_token: int | None = None
@@ -230,6 +261,7 @@ class DaemonHub:
             loop.create_task(self._held_loop()),
             loop.create_task(self._heartbeat_loop()),
             loop.create_task(self._landing_loop()),
+            loop.create_task(self._preview_recycle_loop()),
         ]
         # 对账 #4 启动扫描（J9）：崩溃遗留的 running decomp 批次 / 直落 landing 提案即刻续跑
         # （不等首个周期；幂等——前段 hit 跳过尾段补齐，§9.2）。
@@ -278,6 +310,14 @@ class DaemonHub:
                     loop.call_soon_threadsafe(
                         self._spawn, self._notify_active_task_owner(task["id"])
                     )
+            # 回收触发②任务终态（K3；FR-11.1）：任务转 done/closed → 即回收其活跃预览（下发
+            # preview.stop；判定归 server，recycled 由 daemon 上报确认，不等 keep_days cleanup）。
+            if event.type == EventType.TASK_UPDATED and task.get("id") and change.get(
+                "to_status"
+            ) in {TaskStatus.DONE.value, TaskStatus.CLOSED.value}:
+                loop.call_soon_threadsafe(
+                    self._spawn, self._recycle_task_preview(task["id"])
+                )
             return
         if event.type in {
             EventType.CANVAS_NODE_ADDED,
@@ -514,7 +554,9 @@ class DaemonHub:
         elif rtype == ReportType.CHECK_FINISHED:
             self._report_check_finished(conn, CheckFinishedData.model_validate(data))
             await self._ack(conn, frame_id, AckResult.DONE)
-        # hello（重复）/ M7 上报：忽略
+        elif rtype == ReportType.PREVIEW_STATUS:
+            self._report_preview_status(conn, PreviewStatusData.model_validate(data))
+        # hello（重复）：忽略
 
     def _report_worktree_status(
         self, conn: DaemonConnection, data: WorktreeStatusData
@@ -618,6 +660,146 @@ class DaemonHub:
             self._system_pending.pop(data.node_id, None)
         if continue_channel is not None:
             self._spawn(self._scan_channel_system_nodes(continue_channel))
+
+    # ---------------------------------------------------------------- 预览状态上报（M7 K3）
+
+    def _report_preview_status(
+        self, conn: DaemonConnection, data: PreviewStatusData
+    ) -> None:
+        """preview.status（契约 D §7）：条件 UPDATE 推进预览行 + 广播 preview.updated（+ FR-11.3
+        进程状态诊断）。
+
+        **幂等且单调**（K2 审查 note）：daemon 对已在跑会话会重发冗余 starting/running 补报——条件
+        UPDATE 的「起态门」天然防回退：starting→running 仅 WHERE status='starting' 命中一次，重复
+        running/乱序帧 rowcount=0 幂等 noop；failed/recycled 终态不被后到帧复活（越界更新落 CAS
+        起态门外）。判定归 server、执行归 daemon：daemon 只上报事实（status/port/log_tail），server
+        落库并广播（无 ack，同 worktree.status 载状态类）。"""
+        if data.status == "running":
+            stmt = (
+                update(_PREVIEW)
+                .where(
+                    _PREVIEW.c.id == data.preview_session_id,
+                    _PREVIEW.c.status == "starting",
+                )
+                .values(status="running", port=data.port)
+            )
+            diag_type: str | None = _PREVIEW_DIAG_STARTED
+        elif data.status == "failed":
+            stmt = (
+                update(_PREVIEW)
+                .where(
+                    _PREVIEW.c.id == data.preview_session_id,
+                    _PREVIEW.c.status.in_(_PREVIEW_ACTIVE),
+                )
+                .values(status="failed", fail_log_tail=data.log_tail)
+            )
+            diag_type = _PREVIEW_DIAG_FAILED
+        elif data.status == "recycled":
+            stmt = (
+                update(_PREVIEW)
+                .where(
+                    _PREVIEW.c.id == data.preview_session_id,
+                    _PREVIEW.c.status.in_(_PREVIEW_ACTIVE),
+                )
+                .values(status="recycled", recycled_at=now_iso())
+            )
+            diag_type = _PREVIEW_DIAG_RECYCLED
+        else:  # 冗余 starting 补报：行已建为 starting，永不回退——直接 noop
+            return
+        with gateway_tx(self._engine, self._bus) as tx:
+            if tx.conn.execute(stmt).rowcount == 0:
+                return  # 竞败/重复/乱序/已终态：CAS 起态门未命中 → 幂等 noop（不广播）
+            self._emit_preview_updated(tx, data.preview_session_id, diag_type=diag_type)
+
+    def _emit_preview_updated(
+        self, tx: Any, preview_id: str, *, diag_type: str | None = None
+    ) -> None:
+        """回读预览行 → 广播 preview.updated 到任务频道；diag_type 非空则附一条进程状态诊断
+        （FR-11.3）。tx = 进行中 gateway_tx（提交后按序 flush 事件）。"""
+        row = (
+            tx.conn.execute(select(_PREVIEW).where(_PREVIEW.c.id == preview_id))
+            .mappings()
+            .first()
+        )
+        if row is None:
+            return
+        row = dict(row)
+        ctx = (
+            tx.conn.execute(
+                select(_TASK.c.channel_id, _TASK.c.owner_member_id).where(
+                    _TASK.c.id == row["task_id"]
+                )
+            )
+            .mappings()
+            .first()
+        )
+        channel_id = ctx["channel_id"] if ctx is not None else None
+        owner = ctx["owner_member_id"] if ctx is not None else None
+        tx.emit(
+            EventType.PREVIEW_UPDATED, channel_id, {"preview": preview_session_public(row)}
+        )
+        if diag_type is not None:
+            self._append_preview_diagnostic(
+                tx, row, channel_id=channel_id, owner=owner, diag_type=diag_type
+            )
+
+    def _append_preview_diagnostic(
+        self,
+        tx: Any,
+        row: dict[str, Any],
+        *,
+        channel_id: str | None,
+        owner: str | None,
+        diag_type: str,
+    ) -> None:
+        """FR-11.3：登记 preview.* 进程状态诊断行；owner 为 Agent 时广播 DIAGNOSTIC_APPENDED
+        （归属 owner/channel 让人类可循，同 _record_worktree_failure 体例）。"""
+        payload = {
+            "preview_session_id": row["id"],
+            "status": row["status"],
+            "port": row["port"],
+        }
+        ts = now_iso()
+        agent_owner: str | None = None
+        if owner is not None:
+            is_agent = tx.conn.execute(
+                select(_AGENT.c.member_id).where(_AGENT.c.member_id == owner)
+            ).first()
+            if is_agent is not None:
+                agent_owner = owner
+        seq = tx.conn.execute(
+            insert(_DIAG)
+            .values(
+                workspace_id=row["workspace_id"],
+                agent_member_id=agent_owner,
+                type=diag_type,
+                channel_id=channel_id,
+                task_id=row["task_id"],
+                batch_id=None,
+                payload=payload,
+                created_at=ts,
+            )
+            .returning(_DIAG.c.seq)
+        ).scalar_one()
+        if agent_owner is not None:
+            pub = diagnostic_public(
+                {
+                    "seq": seq,
+                    "workspace_id": row["workspace_id"],
+                    "agent_member_id": agent_owner,
+                    "type": diag_type,
+                    "channel_id": channel_id,
+                    "task_id": row["task_id"],
+                    "batch_id": None,
+                    "payload": payload,
+                    "created_at": ts,
+                }
+            )
+            tx.emit(
+                EventType.DIAGNOSTIC_APPENDED,
+                None,
+                {"agent_member_id": agent_owner, "events": [pub]},
+            )
 
     def _report_status_changed(self, conn: DaemonConnection, d: AgentStatusChangedData) -> None:
         """agents.status 的唯一写入方（契约 D §7）+ 广播 presence.changed。"""
@@ -1184,6 +1366,9 @@ class DaemonHub:
             conn = self._conns.get(computer_id)
             if conn is None:
                 return False
+            # 回收触发③cleanup 前置（B §13.1 / FR-11.1）：删 worktree 前先回收其上活跃预览
+            # （dev server 子进程持有工作树目录句柄，win32 未回收 → cleanup rmtree 失败）。
+            await self._recycle_task_preview(task_id)
             ack = await self.send_instr(
                 conn,
                 f"worktree:{task_id}",
@@ -1625,6 +1810,9 @@ class DaemonHub:
                 await self.send_instr(
                     conn, inj.agent_member_id, InstrType.MESSAGE_INJECT, data
                 )
+        # 对账 #9 预览纠偏（契约 D §4.4）：reconnect 握手 fail-close 本机全部活跃预览（daemon 重启
+        # 失进程，裁决 #11 不自动重拉）；周期只收 starting 超时。独立 gateway_tx，无 await 内联。
+        self._reconcile_previews(conn.computer_id, on_reconnect=revalidate_worktrees)
 
     def _backlog_trigger(
         self, c: Connection, backlog: list[dict[str, Any]], channel: dict[str, Any], agent_id: str
@@ -1998,6 +2186,193 @@ class DaemonHub:
             # daemon 回帧（在线）只是 git 查询失败（坏 base ref 等）→ 4xx，非 503（#5）。
             raise GitQueryError(error)
         return reply
+
+    # ---------------------------------------------------------------- 预览下发桥（M7 K3；B §13.1）
+
+    def preview_daemon_online(self, computer_id: str) -> bool:
+        """预览 POST 的 503 门（B §13.1）：目标 Computer 无活跃 daemon 连接 → 离线。"""
+        return self._conns.get(computer_id) is not None
+
+    def request_preview_start(
+        self, *, computer_id: str, task_id: str, data: PreviewStartData
+    ) -> None:
+        """REST POST /preview 下发 preview.start（裁决 8 ensure）：由路由的 `tx.after_commit`
+        在 **starting 行提交后**调用（deps.get_tx 提交后按序执行 after_commit 回调）——本方法只做
+        线程→事件循环的下发调度，不 `_run_sync` 阻塞等 ack。
+
+        提交后调用的硬保证：starting 行已落库 → daemon 起进程健康检查（≥0.5s）后的 running 帧其
+        CAS（WHERE status='starting'）必命中已提交行，杜绝「running 先于建行提交」丢帧窗口
+        （DEV-PLAN §2 CAS 纪律）。503 门已由路由前置 preview_daemon_online 把守；下发瞬时 daemon
+        离线则 best-effort 静默（行留 starting，对账 #9 starting 超时兜底 fail-closed）。"""
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(
+            self._spawn,
+            self._dispatch_preview_instr(
+                computer_id, task_id, InstrType.PREVIEW_START, data
+            ),
+        )
+
+    def request_preview_stop(
+        self, *, computer_id: str, task_id: str, preview_session_id: str
+    ) -> None:
+        """REST DELETE /preview 下发 preview.stop（回收）：同 start 提交后异步下发；离线 best-effort
+        （recycled 由 daemon 上报确认，离线则待重连对账 #9 / idle 兜底）。"""
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(
+            self._spawn,
+            self._dispatch_preview_instr(
+                computer_id,
+                task_id,
+                InstrType.PREVIEW_STOP,
+                PreviewStopData(preview_session_id=preview_session_id),
+            ),
+        )
+
+    async def _dispatch_preview_instr(
+        self, computer_id: str, task_id: str, itype: InstrType, data: Any
+    ) -> None:
+        """preview.start/stop 底座下发（同任务串行锁 `preview:{task_id}`）：离线/断连 best-effort
+        静默（判定归 server，daemon 只执行；失败面由对账兜底，不发明事件）。"""
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            return
+        with contextlib.suppress(DaemonOffline):
+            await self.send_instr(conn, f"preview:{task_id}", itype, data)
+
+    async def _recycle_task_preview(self, task_id: str) -> None:
+        """回收单任务活跃预览（触发②任务终态 / 触发③cleanup 前置共用）：下发 preview.stop。
+
+        判定归 server（此处判「该任务有活跃预览」），执行归 daemon（recycled 经 preview.status 上报
+        确认，行留存供诊断——不在此改态）。"""
+        with self._engine.connect() as c:
+            row = (
+                c.execute(
+                    select(_PREVIEW.c.id, _PROJECT.c.computer_id)
+                    .select_from(
+                        _PREVIEW.join(_WORKTREE, _WORKTREE.c.id == _PREVIEW.c.worktree_id).join(
+                            _PROJECT, _PROJECT.c.id == _WORKTREE.c.project_id
+                        )
+                    )
+                    .where(
+                        _PREVIEW.c.task_id == task_id,
+                        _PREVIEW.c.status.in_(_PREVIEW_ACTIVE),
+                    )
+                    .order_by(_PREVIEW.c.started_at.desc())
+                    .limit(1)
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            return
+        await self._dispatch_preview_instr(
+            row["computer_id"],
+            task_id,
+            InstrType.PREVIEW_STOP,
+            PreviewStopData(preview_session_id=row["id"]),
+        )
+
+    async def _run_preview_recycle_scan(self) -> None:
+        """回收触发①idle（B §13.1 / FR-11.1）：活跃预览 last_active_at 超 projects.preview_idle_min
+        → 下发 preview.stop。判定（阈值）归 server，daemon 执行。逐项阈值随 Project 不同，故 Python
+        侧按行判（活跃预览数有界）。"""
+        now = datetime.now(UTC)
+        with self._engine.connect() as c:
+            rows = (
+                c.execute(
+                    select(
+                        _PREVIEW.c.id,
+                        _PREVIEW.c.task_id,
+                        _PREVIEW.c.started_at,
+                        _PREVIEW.c.last_active_at,
+                        _PROJECT.c.computer_id,
+                        _PROJECT.c.preview_idle_min,
+                    )
+                    .select_from(
+                        _PREVIEW.join(_WORKTREE, _WORKTREE.c.id == _PREVIEW.c.worktree_id).join(
+                            _PROJECT, _PROJECT.c.id == _WORKTREE.c.project_id
+                        )
+                    )
+                    .where(_PREVIEW.c.status.in_(_PREVIEW_ACTIVE))
+                )
+                .mappings()
+                .all()
+            )
+        due: list[tuple[str, str, str]] = []
+        for row in rows:
+            idle_min = row["preview_idle_min"] or 30
+            anchor = row["last_active_at"] or row["started_at"]
+            if (now - datetime.fromisoformat(anchor)).total_seconds() > idle_min * 60:
+                due.append((row["computer_id"], row["task_id"], row["id"]))
+        for computer_id, task_id, preview_id in due:
+            await self._dispatch_preview_instr(
+                computer_id,
+                task_id,
+                InstrType.PREVIEW_STOP,
+                PreviewStopData(preview_session_id=preview_id),
+            )
+
+    def _reconcile_previews(self, computer_id: str, *, on_reconnect: bool) -> None:
+        """对账 #9 预览纠偏（契约 D §4.4；裁决 #11）：**从 DB 事实推导**，不自动重拉。
+
+        - on_reconnect=True（reconnect 握手）：daemon 重启后其 dev server 子进程已随进程失联/成孤儿
+          （K2-cal §3.4：win32 硬崩溃孤儿存活但不可再追踪）——本机全部活跃预览（starting/running）
+          置 failed（fail_log_tail='daemon restarted'），等人再点 POST ensure 重建（不引入无人观察
+          的常驻进程）；
+        - 周期（on_reconnect=False）：仅 starting 超时（连接仍在但迟迟未收 preview.status）同口径置
+          failed。running 行由 daemon 存活监控上报 failed，周期不动（连接在=帧可达）。
+
+        状态机边写一律条件 UPDATE（起态门 CAS）：竞败/已被 preview.status 推进则 rowcount=0 不覆盖。
+        """
+        threshold_iso = format_iso(
+            datetime.now(UTC) - timedelta(seconds=self.preview_starting_timeout_sec)
+        )
+        with gateway_tx(self._engine, self._bus) as tx:
+            rows = (
+                tx.conn.execute(
+                    select(
+                        _PREVIEW.c.id, _PREVIEW.c.status, _PREVIEW.c.started_at
+                    )
+                    .select_from(
+                        _PREVIEW.join(_WORKTREE, _WORKTREE.c.id == _PREVIEW.c.worktree_id).join(
+                            _PROJECT, _PROJECT.c.id == _WORKTREE.c.project_id
+                        )
+                    )
+                    .where(
+                        _PROJECT.c.computer_id == computer_id,
+                        _PREVIEW.c.status.in_(_PREVIEW_ACTIVE),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            failed_ids: list[str] = []
+            for row in rows:
+                if on_reconnect:
+                    reason = _PREVIEW_FAIL_DAEMON_RESTARTED
+                    guard = _PREVIEW_ACTIVE
+                else:
+                    if row["status"] != "starting" or row["started_at"] >= threshold_iso:
+                        continue  # 周期只收 starting 超时；running 交 daemon 存活监控
+                    reason = _PREVIEW_FAIL_STARTING_TIMEOUT
+                    guard = ("starting",)
+                res = tx.conn.execute(
+                    update(_PREVIEW)
+                    .where(
+                        _PREVIEW.c.id == row["id"],
+                        _PREVIEW.c.status.in_(guard),
+                    )
+                    .values(status="failed", fail_log_tail=reason)
+                )
+                if res.rowcount:
+                    failed_ids.append(row["id"])
+            for preview_id in failed_ids:
+                # 广播 preview.updated + 落 preview.failed 诊断（FR-11.3；对账置 failed 同口径）。
+                self._emit_preview_updated(tx, preview_id, diag_type=_PREVIEW_DIAG_FAILED)
 
     def _require_conn_for_agent(self, agent_id: str) -> tuple[DaemonConnection, dict[str, Any]]:
         with self._engine.connect() as c:
@@ -2456,6 +2831,14 @@ class DaemonHub:
             await asyncio.sleep(self.landing_interval)
             with contextlib.suppress(Exception):
                 await self._run_landing_scan()
+
+    async def _preview_recycle_loop(self) -> None:
+        """回收触发①idle 周期扫描（M7 K3；挂同一调度器心智，勿另起独立调度器）：按
+        preview_recycle_interval 扫活跃预览 last_active_at 超 idle_min → 下发 preview.stop。"""
+        while True:
+            await asyncio.sleep(self.preview_recycle_interval)
+            with contextlib.suppress(Exception):
+                await self._run_preview_recycle_scan()
 
     # ---------------------------------------------------------------- 周期后台 loop
 

@@ -117,6 +117,7 @@ DIAGNOSTIC_TYPES: tuple[str, ...] = (
     "deploy.finished",
     "preview.started",
     "preview.recycled",
+    "preview.failed",
     # system / daemon（契约 D）
     "system.file_gc",
     "daemon.buffer_overflow",

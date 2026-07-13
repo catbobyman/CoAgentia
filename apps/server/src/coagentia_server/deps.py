@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from coagentia_contracts import rest
@@ -38,6 +38,7 @@ class Tx:
         self.request = request
         self.pending: list[PendingEvent] = []
         self.bound_file_ids: list[str] = []
+        self.after_commit_callbacks: list[Callable[[], None]] = []
 
     @property
     def bus(self) -> EventBus:
@@ -50,6 +51,15 @@ class Tx:
     def emit(self, etype: Any, channel_id: str | None, data: dict[str, Any]) -> None:
         """登记一条待广播事件（提交后由 get_tx flush，契约 C §1.4）。"""
         self.pending.append(PendingEvent(type=etype, channel_id=channel_id, data=data))
+
+    def after_commit(self, callback: Callable[[], None]) -> None:
+        """登记提交后副作用（daemon 指令下发等）：get_tx 在 commit + 事件 flush 后按序执行。
+
+        用于「必须在写行提交后才能发出」的下发（如 preview.start——running 帧的 CAS
+        WHERE status='starting' 须命中已提交行，杜绝下发先于建行提交的丢帧窗口；DEV-PLAN §2）。
+        与 bus 事件同为提交后动作，但携完整闭包上下文、不经事件形状约束、不触发 WS 广播。
+        """
+        self.after_commit_callbacks.append(callback)
 
     def bind_file(self, file_id: str) -> str:
         """登记可补偿的 staging → files 搬运。"""
@@ -90,6 +100,10 @@ def get_tx(request: Request) -> Iterator[Tx]:
         bus = request.app.state.bus
         for ev in tx.pending:
             bus.emit(ev.type, ev.channel_id, ev.data)
+        # 提交后副作用（daemon 下发等）：置于事件 flush 之后，保证「先落库+广播、再下发」时序
+        # （preview.start 硬保证 running 帧 CAS 命中已提交行——DEV-PLAN §2 CAS 纪律）。
+        for callback in tx.after_commit_callbacks:
+            callback()
 
 
 # ---------------------------------------------------------------- 身份解析

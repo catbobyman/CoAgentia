@@ -30,6 +30,7 @@ from coagentia_server.messages import service as messages_service
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
     message_public,
+    preview_session_public,
     task_contract_public,
     task_public,
     worktree_public,
@@ -46,6 +47,8 @@ _MEMBER = models.tbl(models.Member)
 _TUE = models.tbl(models.TokenUsageEvent)
 _PROJECT = models.tbl(models.Project)
 _WORKTREE = models.tbl(models.Worktree)
+_PREVIEW = models.tbl(models.PreviewSession)
+_PREVIEW_ACTIVE = models.PREVIEW_ACTIVE_STATUSES
 
 
 def _require_task(tx: Tx, task_id: str) -> dict[str, Any]:
@@ -468,6 +471,190 @@ def get_task_diff(
             503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线或查询超时，无法读取 Diff"
         ) from exc
     return daemon.DiffPayload.model_validate(payload)
+
+
+# ---------------------------------------------------------------- 预览域（M7 K3；契约 B §13.1）
+
+
+def _preview_resource(tx: Tx, task_id: str, task: dict[str, Any]) -> dict[str, Any]:
+    """预览宿主（挂 diff 同款资源）：任务 worktree 行 + 其 Project 的 dev_command/computer_id。
+    无 worktree → 404（同 diff 拒绝路径）。"""
+    row = (
+        tx.conn.execute(
+            select(_WORKTREE, _PROJECT.c.computer_id, _PROJECT.c.dev_command)
+            .select_from(_WORKTREE.join(_PROJECT, _WORKTREE.c.project_id == _PROJECT.c.id))
+            .where(
+                _WORKTREE.c.task_id == task_id,
+                _WORKTREE.c.project_id == task["project_id"],
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "任务尚无可用 worktree")
+    return dict(row)
+
+
+def _active_preview(tx: Tx, task_id: str) -> dict[str, Any] | None:
+    """该任务的活跃预览行（starting/running；单活跃不变量下至多一行）。"""
+    row = (
+        tx.conn.execute(
+            select(_PREVIEW)
+            .where(_PREVIEW.c.task_id == task_id, _PREVIEW.c.status.in_(_PREVIEW_ACTIVE))
+            .order_by(_PREVIEW.c.started_at.desc())
+            .limit(1)
+        )
+        .mappings()
+        .first()
+    )
+    return dict(row) if row is not None else None
+
+
+def _read_preview(tx: Tx, preview_id: str) -> dict[str, Any]:
+    return dict(
+        tx.conn.execute(select(_PREVIEW).where(_PREVIEW.c.id == preview_id)).mappings().one()
+    )
+
+
+def _touch_preview(tx: Tx, preview_id: str, ts: str) -> None:
+    """心跳/touch（裁决 8）：仅条件 UPDATE 推进 last_active_at（CAS 起态门——竞败/已终态
+    rowcount=0 不覆盖终态）。last_active_at 是「面板还开着」的唯一诚实信号。"""
+    tx.conn.execute(
+        update(_PREVIEW)
+        .where(_PREVIEW.c.id == preview_id, _PREVIEW.c.status.in_(_PREVIEW_ACTIVE))
+        .values(last_active_at=ts)
+    )
+
+
+@router.post("/tasks/{task_id}/preview", response_model=entities.PreviewSessionPublic)
+def ensure_preview(
+    task_id: str, request: Request, response: Response, tx: Tx = Depends(get_tx)
+) -> Any:
+    """ensure+touch 幂等（裁决 8 / B §13.1）：无活跃预览 → 建 starting 行 + 下发 preview.start；
+    已活跃 → 仅 touch last_active_at 返回现状（不重下发）。无 worktree 404 / daemon 离线 503 /
+    Project 无 dev_command 422（details+hint）。"""
+    task = _require_task(tx, task_id)
+    res = _preview_resource(tx, task_id, task)  # 404 无 worktree
+    dev_command = res["dev_command"]
+    if not dev_command or not dev_command.strip():
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "任务所属 Project 未配置 dev_command，无法启动预览",
+            rule="B§13.1",
+            details={
+                "project_id": res["project_id"],
+                "hint": "先在 Project 设置里配置 dev_command 再打开预览",
+            },
+        )
+    computer_id = res["computer_id"]
+    hub = request.app.state.daemon_hub
+    # 503 早探（不建行）：daemon 离线直接拒，避免建 starting 孤行（判定归 server）。
+    if not hub.preview_daemon_online(computer_id):
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法启动预览")
+
+    ts = tasks_service.service.now_iso()
+    active = _active_preview(tx, task_id)
+    if active is not None:
+        _touch_preview(tx, active["id"], ts)  # touch 不重下发 preview.start
+        response.status_code = 200
+        return preview_session_public(_read_preview(tx, active["id"]))
+
+    # 无活跃 → 建 starting 行（部分唯一索引兜底并发双 POST）+ 下发 preview.start（裁决 8）。
+    session_id = tasks_service.service.new_ulid()
+    try:
+        # SAVEPOINT 包裹建行：并发双 POST 抢先时单活跃部分唯一索引触发 IntegrityError——只回退
+        # 本段，退化为回读现有活跃行 touch 返回（恰一行）。
+        with tx.conn.begin_nested():
+            tx.conn.execute(
+                insert(_PREVIEW).values(
+                    id=session_id,
+                    workspace_id=res["workspace_id"],
+                    task_id=task_id,
+                    worktree_id=res["id"],
+                    port=None,
+                    status="starting",
+                    fail_log_tail=None,
+                    started_at=ts,
+                    last_active_at=ts,
+                    recycled_at=None,
+                )
+            )
+    except IntegrityError:
+        existing = _active_preview(tx, task_id)
+        if existing is None:  # 非单活跃索引冲突（防御：其它完整性错误不吞）
+            raise
+        _touch_preview(tx, existing["id"], ts)
+        response.status_code = 200
+        return preview_session_public(_read_preview(tx, existing["id"]))
+
+    new_row = _read_preview(tx, session_id)
+    tx.emit(
+        tasks_service.EventType.PREVIEW_UPDATED,
+        task["channel_id"],
+        {"preview": preview_session_public(new_row)},
+    )
+    # 下发 preview.start：**提交后**（tx.after_commit）才发——running 帧的 CAS（WHERE status=
+    # 'starting'）须命中已提交的 starting 行，否则「下发先于建行提交」窗口下会丢 running 帧
+    # （DEV-PLAN §2 CAS 纪律；Fable 亲修）。start_data 闭包捕获，daemon 起进程健康检查后的 running
+    # 帧必晚于本行提交到达。
+    start_data = daemon.PreviewStartData(
+        preview_session_id=session_id,
+        task_id=task_id,
+        worktree_path=res["path"],
+        dev_command=dev_command,
+    )
+    tx.after_commit(
+        lambda: hub.request_preview_start(
+            computer_id=computer_id, task_id=task_id, data=start_data
+        )
+    )
+    response.status_code = 201
+    return preview_session_public(new_row)
+
+
+@router.get("/tasks/{task_id}/preview", response_model=entities.PreviewSessionPublic)
+def get_preview(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
+    """纯读现状（无写副作用；不推进 last_active_at）：活跃行优先，否则最近一条会话，皆无 → 404。"""
+    _require_task(tx, task_id)
+    active = _active_preview(tx, task_id)
+    if active is not None:
+        return preview_session_public(active)
+    recent = (
+        tx.conn.execute(
+            select(_PREVIEW)
+            .where(_PREVIEW.c.task_id == task_id)
+            .order_by(_PREVIEW.c.started_at.desc())
+            .limit(1)
+        )
+        .mappings()
+        .first()
+    )
+    if recent is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "任务尚无预览会话")
+    return preview_session_public(dict(recent))
+
+
+@router.delete("/tasks/{task_id}/preview", response_model=entities.PreviewSessionPublic)
+def stop_preview(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
+    """下发 preview.stop（回收）：判定归 server（此处判「有活跃预览」），执行归 daemon（recycled 经
+    preview.status 上报确认，行留存供诊断——不在此改态）。无活跃会话 → 404。"""
+    _require_task(tx, task_id)
+    active = _active_preview(tx, task_id)
+    if active is None:
+        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "无活跃预览会话可回收")
+    # 目标 Computer 取自预览自持 worktree（避免任务 Project 改绑造成的错投）。
+    computer_id = tx.conn.execute(
+        select(_PROJECT.c.computer_id)
+        .select_from(_WORKTREE.join(_PROJECT, _WORKTREE.c.project_id == _PROJECT.c.id))
+        .where(_WORKTREE.c.id == active["worktree_id"])
+    ).scalar_one_or_none()
+    if computer_id is not None:
+        request.app.state.daemon_hub.request_preview_stop(
+            computer_id=computer_id, task_id=task_id, preview_session_id=active["id"]
+        )
+    return preview_session_public(active)
 
 
 @router.patch("/tasks/{task_id}", response_model=entities.TaskPublic)

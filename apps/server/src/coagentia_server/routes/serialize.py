@@ -123,6 +123,12 @@ def worktree_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.WorktreePublic, row)
 
 
+def preview_session_public(row: dict[str, Any]) -> dict[str, Any]:
+    """M7a 预览会话（FR-11，契约 A v1.0.11 §4.9）。port/last_active_at/recycled_at/fail_log_tail
+    可空列直接透传，即 PreviewSessionPublic。"""
+    return _dump(entities.PreviewSessionPublic, row)
+
+
 def proposal_public(row: dict[str, Any]) -> dict[str, Any]:
     """M6b 提案（拆解生命周期）。body/adjustments JSON 列直接透传，即 ProposalPublic。"""
     return _dump(entities.ProposalPublic, row)
