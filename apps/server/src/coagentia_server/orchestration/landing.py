@@ -942,6 +942,32 @@ def _finish_landed(tx: Any, batch: LandingBatchRow, proposal: dict[str, Any]) ->
         task_id=proposal["source_task_id"], batch_id=batch.id,
         payload={"batch_id": batch.id, "landed_hash": batch.content_hash},
     )
+    _post_quality_signal(tx, batch, proposal)
+
+
+def _post_quality_signal(tx: Any, batch: LandingBatchRow, proposal: dict[str, Any]) -> None:
+    """O8 质量回路（M8b L9，汇总设计 §8）：带调整落地（landed_hash≠proposal_hash 或 adjustments 非
+    空）→ 结构化质量信号进 source 线程系统消息 @Orchestrator（护栏可见、人机同源；@ 触发唤醒使
+    Orchestrator 学习其提案被如何调整——落地已成事实无重提风险）+ 提交后 GUARD_FEEDBACK 直投
+    （hub LANDING_COMPLETED，见 hub._signal_landing_quality）。未调整 → None 不发（防噪声）。"""
+    from coagentia_server.messages import service as messages_service
+    from coagentia_server.orchestration import quality
+
+    body = quality.adjustment_signal_body(proposal, batch.content_hash)
+    if body is None:
+        return
+    root = tx.conn.execute(
+        select(_TASK.c.root_message_id).where(_TASK.c.id == proposal["source_task_id"])
+    ).scalar()
+    proposer = proposal["proposed_by_member_id"]
+    messages_service.post_system_message(
+        tx,
+        workspace_id=batch.workspace_id,
+        channel_id=batch.channel_id,
+        body=body,
+        thread_root_id=root,
+        mention_member_ids=[proposer] if proposer is not None else [],
+    )
 
 
 # ---------------------------------------------------------------- delta 落地（J10；拆解设计 §11）

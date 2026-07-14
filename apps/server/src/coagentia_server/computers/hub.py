@@ -452,6 +452,12 @@ class DaemonHub:
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_summary_nodes(channel_id)
                 )
+            # L9 质量回路：带调整落地 → GUARD_FEEDBACK 直投 proposer（提交后，daemon 离线静默）。
+            batch = event.data.get("batch") or {}
+            if batch:
+                loop.call_soon_threadsafe(
+                    self._spawn, self._signal_landing_quality(batch)
+                )
             return
         if event.type == EventType.PROPOSAL_UPDATED:
             proposal = event.data.get("proposal") or {}
@@ -2104,6 +2110,35 @@ class DaemonHub:
         """协调触顶阻断（§6.3）：@人类系统消息 + DiagnosticEvent 留痕——单点在
         summary.post_coordination_block（hub scan / delta 共用防漂移）。cand 携 ctx 五键。"""
         summary_domain.post_coordination_block(tx, channel_id=channel_id, ctx=cand, run=run)
+
+    async def _signal_landing_quality(self, batch_data: dict[str, Any]) -> None:
+        """O8 质量回路直投（M8b L9，§8.2）：带调整落地 → GUARD_FEEDBACK 直投 proposer
+        使其学习提案被如何调整。线程留痕已在 landing :done 事务发（landing._post_quality_signal，
+        durable 且 @proposer 唤醒）；此为提交后的**直投**通道（daemon 离线 → 静默，留痕仍在）。
+        REJECTED 触发点按 M6b 教训仅被动留痕不直投（draft.reject_proposal），不在此。"""
+        from coagentia_server.orchestration import quality
+
+        source_ref = batch_data.get("source_ref")
+        content_hash = batch_data.get("content_hash")
+        if source_ref is None or content_hash is None:
+            return
+        with self._engine.connect() as c:
+            proposal = proposal_domain.fetch_proposal(c, source_ref)
+        if proposal is None:
+            return
+        body = quality.adjustment_signal_body(proposal, content_hash)
+        proposer = proposal.get("proposed_by_member_id")
+        if body is None or proposer is None:
+            return
+        with contextlib.suppress(DaemonOffline):
+            conn, _agent = self._require_conn_for_agent(proposer)
+            data = MessageInjectData(
+                agent_member_id=proposer,
+                body=body,
+                source=InjectSource(kind=InjectKind.GUARD_FEEDBACK, ref=proposal["id"]),
+                diagnostic_type="agent.tool_call",
+            )
+            await self.send_instr(conn, proposer, InstrType.MESSAGE_INJECT, data)
 
     async def _notify_active_task_owner(self, task_id: str) -> None:
         """树先于 owner 就绪时，assign/claim 后补一条且只补一条 durable 目录消息。"""

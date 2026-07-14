@@ -51,6 +51,7 @@ _NODE = models.tbl(models.CanvasNode)
 _EDGE = models.tbl(models.CanvasEdge)
 _CANVAS = models.tbl(models.Canvas)
 _DIAG = models.tbl(models.DiagnosticEvent)
+_MENTION = models.tbl(models.MessageMention)
 
 
 # ---------------------------------------------------------------- _Tx + 场景
@@ -684,6 +685,17 @@ def test_delta_confirm_partial_accept_lands_adjusted(migrated_engine: Engine) ->
     node_ids = {n["id"] for n in _nodes(migrated_engine, ids)}
     assert c_node in node_ids  # 被剔除的删除未执行
     assert (a, b) not in _edges(migrated_engine, ids)
+    # L9 质量回路（M8b）：带调整落地 → source 线程质量信号系统消息 @Orchestrator（proposer）。
+    with migrated_engine.connect() as conn:
+        sig = conn.execute(
+            select(func.count()).select_from(_MSG).where(
+                _MSG.c.thread_root_id == ids["root_msg"], _MSG.c.body.like("%质量信号%"))
+        ).scalar_one()
+        mention = conn.execute(
+            select(func.count()).select_from(_MENTION).where(
+                _MENTION.c.member_id == ids["orch"])
+        ).scalar_one()
+    assert sig == 1 and mention >= 1  # 信号发出且 @proposer
 
 
 def test_delta_confirm_http_paths(server_client: TestClient) -> None:

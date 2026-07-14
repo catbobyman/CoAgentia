@@ -88,6 +88,20 @@ def test_schema_version_string() -> None:
     assert "coagentia.decomposition.v1" in _sections_text()
 
 
+def test_l9_summary_and_quality_sections() -> None:
+    """M8b L9（汇总设计 §8.3）：第 9 汇总职责 / 第 10 质量信号两节 + 关键句。"""
+    names = {s["section"] for s in role_templates.build_orchestrator_prompt_sections()}
+    assert "summary_duty" in names and "quality_signal" in names
+    text = _sections_text()
+    # 第 9 汇总职责：摘要触发 / 未覆盖逐条照抄（W9 诚实兜底）/ replan 预算 O8 / 提问也是合法产出。
+    assert "汇总输入摘要" in text
+    assert "未覆盖范围逐条照抄" in text
+    assert "rule=O8" in text and "In Review" in text
+    # 第 10 质量信号：先复述再沉淀 MEMORY.md / 同类两次视为习惯问题。
+    assert "沉淀进你的 MEMORY.md" in text
+    assert "同类调整出现两次" in text
+
+
 def test_delta_section_finalized() -> None:
     """J11 定稿第 8 条（拆解设计 §11/O9）：落地后结构变更唯一通道 = delta 提案。
 
