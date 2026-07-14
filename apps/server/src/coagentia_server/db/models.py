@@ -44,6 +44,7 @@ from coagentia_contracts.enums import (
     TaskLevel,
     TaskStatus,
     UiTheme,
+    UpstreamPolicy,
     WorktreeStatus,
 )
 from sqlalchemy import (
@@ -99,6 +100,12 @@ M6B_TABLES: tuple[str, ...] = ("proposals", "agent_role_templates")
 M7A_TABLES: tuple[str, ...] = ("preview_sessions",)
 # M7b（契约 A v1.5 / B §13.2）：deployments 一张，0011 一次建齐（纯新表，无既有表改动）。
 M7B_TABLES: tuple[str, ...] = ("deployments",)
+# M8（契约 A v1.0.12 §4.8/§6.4）：summary_runs 一张新表（O8 汇总协调状态）；canvas_nodes.
+# upstream_policy 由 0012 增量补列（第三例既有表加列，沿 0008 tasks / 0009 agents 先例）。
+# summary_runs **可变**（round/stall/replan 计数条件 UPDATE、blocked_at 置位/清空）——不进
+# IMMUTABLE 集、无触发器。W9 内核双档 satisfied 与 landing 默认 partial 归 M8b L7 消费（本批仅落
+# schema，列默认 strict 行为逐字节不变）。
+M8_TABLES: tuple[str, ...] = ("summary_runs",)
 
 # ── 不可变表触发器批次（契约 A §1 六表；坑2）────────────────────────
 # task_events 在 0002 才建，故 0001 只能给 M1 的 5 张建触发器；0002 补第 6 张。
@@ -607,6 +614,12 @@ class CanvasNode(Base):
     system_action: Mapped[str | None] = mapped_column(_enum(SystemAction))
     command: Mapped[str | None] = mapped_column(Text)  # system_action='check' 必填（V14，app 级）
     system_status: Mapped[str | None] = mapped_column(_enum(SystemNodeStatus))
+    # v1.0.12（M8 / W9）：前驱 satisfied 判定档，默认 strict（现状语义；汇总节点落地默认 partial）。
+    # 不参与基线快照（放行策略非结构身份，改档不动 baseline/base）；W9 satisfied 由内核
+    # derive_blocked 按 live 行读取（M8b L7）。0012 增量补列（第三例既有表加列，沿 0008/0009）。
+    upstream_policy: Mapped[str] = mapped_column(
+        _enum(UpstreamPolicy), server_default=text("'strict'")
+    )
     pos_x: Mapped[float] = mapped_column(Float, server_default=text("0"))  # 不参与基线快照
     pos_y: Mapped[float] = mapped_column(Float, server_default=text("0"))
     created_at: Mapped[str] = mapped_column(Text)
@@ -751,6 +764,25 @@ class Proposal(Base):
     adjustments: Mapped[Any] = mapped_column(JSON, server_default=text("'[]'"))
     repair_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     proposed_by_member_id: Mapped[str] = mapped_column(_ULID, ForeignKey("members.id"))
+    created_at: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(Text)
+
+
+class SummaryRun(Base):
+    """M8（O8 汇总协调状态，契约 A v1.0.12 §6.4）：汇总任务的循环护栏计数。**可变表**——
+    round/stall/replan 三计数走条件 UPDATE CAS 推进，blocked_at 置位/清空。行创建 = 汇总节点
+    gating 首次解除（lazy）。task_id 为 PK（与汇总任务 1:1）。"""
+
+    __tablename__ = "summary_runs"
+
+    task_id: Mapped[str] = mapped_column(_ULID, ForeignKey("tasks.id"), primary_key=True)
+    canvas_id: Mapped[str] = mapped_column(_ULID, ForeignKey("canvases.id"))
+    workspace_id: Mapped[str] = mapped_column(_ULID, ForeignKey("workspaces.id"))
+    round_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    stall_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    replan_used: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_fingerprint: Mapped[str | None] = mapped_column(Text)  # §6.2 summary_fp
+    blocked_at: Mapped[str | None] = mapped_column(Text)  # 非空 = 协调阻断中
     created_at: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[str] = mapped_column(Text)
 

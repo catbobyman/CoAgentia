@@ -510,6 +510,11 @@ class NodeCreate(ContractModel):
     task_plan: TaskPlanBody | None = None  # kind='agent' 立项载体
     writes_code: bool = False
     project_id: Ulid | None = None
+    # v1.5.1（M8 L1 方案 A，加固批）：可选上游节点集——server 同一写事务内原子建节点 + 全部入边
+    # （复用落地步进原子路径），根治「手动系统节点无入边窗口 → 认领扫描空成功」竞态（K1）。
+    # None/[] = 无入边（现状路径不变，向后兼容）；引用悬空 → 422 VALIDATION_FAILED（全量收集）；
+    # 引入环 → 422 GRAPH_CYCLE。O9 面不变：Agent 主体建节点仍 403 rule=O9。
+    upstream_node_ids: list[Ulid] | None = None
 
 
 class NodePatch(ContractModel):

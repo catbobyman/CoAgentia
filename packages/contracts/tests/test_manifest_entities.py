@@ -79,7 +79,7 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
     }),
     "canvas_nodes": (entities.CanvasNodeRow, {
         "id", "canvas_id", "kind", "task_id", "is_summary", "system_action", "command",
-        "system_status", "pos_x", "pos_y", "created_at",
+        "system_status", "upstream_policy", "pos_x", "pos_y", "created_at",
     }),
     "canvas_edges": (entities.CanvasEdgeRow, {"id", "canvas_id", "from_node_id", "to_node_id"}),
     # ---- 4.5 护栏与提醒
@@ -118,6 +118,10 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
         "body", "proposal_hash", "base_hash", "landed_hash", "adjustments", "repair_count",
         "proposed_by_member_id", "created_at", "updated_at",
     }),
+    "summary_runs": (entities.SummaryRunRow, {
+        "task_id", "canvas_id", "workspace_id", "round_count", "stall_count", "replan_used",
+        "last_fingerprint", "blocked_at", "created_at", "updated_at",
+    }),
     # ---- 4.9 交付链路
     "projects": (entities.ProjectRow, {
         "id", "workspace_id", "computer_id", "name", "repo_path", "dev_command", "deploy_command",
@@ -146,8 +150,8 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
 
 
 def test_table_count() -> None:
-    """契约 A §4 实际定义 34 张表（头表"31 表"为统计笔误，见收口报告）。"""
-    assert len(TABLES) == 34
+    """契约 A §4 实际定义 35 张表（M8 v1.0.12 新增 summary_runs；此前 34）。"""
+    assert len(TABLES) == 35
 
 
 def test_every_table_fields_match_contract() -> None:
@@ -180,3 +184,8 @@ def test_defaults_match_contract() -> None:
     assert entities.HeldDraftRow.model_fields["held_count"].default == 1
     assert entities.ProposalRow.model_fields["repair_count"].default == 0
     assert entities.TaskRow.model_fields["writes_code"].default is False
+    # v1.0.12：W9 放行档默认 strict（"新增档不动旧档"——普通节点行为逐字节不变）
+    from coagentia_contracts.enums import UpstreamPolicy
+    assert entities.CanvasNodeRow.model_fields["upstream_policy"].default is UpstreamPolicy.STRICT
+    for c in ("round_count", "stall_count", "replan_used"):
+        assert entities.SummaryRunRow.model_fields[c].default == 0

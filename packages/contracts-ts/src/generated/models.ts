@@ -138,6 +138,14 @@ export type PosY = number;
 export type SystemAction = 'merge' | 'check';
 export type SystemNodeStatus = 'idle' | 'running' | 'success' | 'failed';
 export type TaskId2 = string | null;
+/**
+ * canvas_nodes.upstream_policy（契约 A v1.0.12 / W9 部分失败）：被配置节点对其前驱集合的
+ * satisfied 双档判定。strict = 每个前驱须 Done（agent）/success（system）——现状语义原样；
+ * partial = 每个前驱**到达终态**即放行（agent∈{done,closed} / system∈{success,failed 不可
+ * retry}）。仍要求全部前驱到达终态（非「任一完成」），只是不限 Done——防单点卡死全 DAG。
+ * 汇总节点落地默认 partial（裁决 #5），普通节点默认 strict；人类经 patch_node 改档（O9 面）。
+ */
+export type UpstreamPolicy = 'strict' | 'partial';
 export type Nodes = CanvasNodePublic[];
 export type EdgeId = string;
 export type CanvasId3 = string;
@@ -160,6 +168,14 @@ export type IsSummary1 = boolean;
 export type PosX1 = number;
 export type PosY1 = number;
 export type TaskId3 = string | null;
+/**
+ * canvas_nodes.upstream_policy（契约 A v1.0.12 / W9 部分失败）：被配置节点对其前驱集合的
+ * satisfied 双档判定。strict = 每个前驱须 Done（agent）/success（system）——现状语义原样；
+ * partial = 每个前驱**到达终态**即放行（agent∈{done,closed} / system∈{success,failed 不可
+ * retry}）。仍要求全部前驱到达终态（非「任一完成」），只是不限 Done——防单点卡死全 DAG。
+ * 汇总节点落地默认 partial（裁决 #5），普通节点默认 strict；人类经 patch_node 改档（O9 面）。
+ */
+export type UpstreamPolicy1 = 'strict' | 'partial';
 export type BaselineHash3 = string;
 export type BaselineVersion3 = number;
 export type ChannelId3 = string;
@@ -744,6 +760,7 @@ export type Goal = string;
 export type OutOfScope = string[];
 export type Version1 = 'coagentia.task-plan.v1';
 export type Title4 = string;
+export type UpstreamNodeIds = string[] | null;
 export type WritesCode1 = boolean;
 export type Command7 = string | null;
 export type Title5 = string | null;
@@ -955,33 +972,53 @@ export type Type4 = 'sub' | 'unsub';
 export type AgentMemberId21 = string;
 export type Stream1 = 'diagnostic';
 export type Type5 = 'sub' | 'unsub';
+export type BlockedAt = string | null;
+export type CanvasId6 = string;
+export type CreatedAt29 = string;
+export type LastFingerprint = string | null;
+export type ReplanUsed = number;
+export type RoundCount = number;
+export type StallCount = number;
+export type TaskId14 = string;
+export type UpdatedAt4 = string;
+export type WorkspaceId33 = string;
+export type BlockedAt1 = string | null;
+export type CanvasId7 = string;
+export type CreatedAt30 = string;
+export type LastFingerprint1 = string | null;
+export type ReplanUsed1 = number;
+export type RoundCount1 = number;
+export type StallCount1 = number;
+export type TaskId15 = string;
+export type UpdatedAt5 = string;
+export type WorkspaceId34 = string;
 export type ConnId = string;
 export type HeartbeatSec1 = number;
 export type ProtocolV1 = number;
 export type ServerVersion1 = string;
-export type WorkspaceId33 = string;
+export type WorkspaceId35 = string;
 export type ActorMemberId3 = string | null;
 export type TaskStatus1 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type TaskEventKind =
   'status_change' | 'claim' | 'unclaim' | 'assign' | 'force_start' | 'reminder_sent' | 'escalated';
-export type CreatedAt29 = string;
+export type CreatedAt31 = string;
 export type CreatedByMemberId3 = string;
 export type Id36 = string;
 export type ReminderId1 = string | null;
 export type Revision2 = number;
 export type SupersededAt = string | null;
-export type TaskId14 = string | null;
+export type TaskId16 = string | null;
 export type Version2 = string;
-export type WorkspaceId34 = string;
-export type CreatedAt30 = string;
+export type WorkspaceId36 = string;
+export type CreatedAt32 = string;
 export type CreatedByMemberId4 = string;
 export type Id37 = string;
 export type ReminderId2 = string | null;
 export type Revision3 = number;
 export type SupersededAt1 = string | null;
-export type TaskId15 = string | null;
+export type TaskId17 = string | null;
 export type Version3 = string;
-export type WorkspaceId35 = string;
+export type WorkspaceId37 = string;
 export type Contracts = TaskContractPublic[];
 export type CacheReadTokens1 = number;
 export type CacheWriteTokens1 = number;
@@ -990,25 +1027,25 @@ export type InputTokens1 = number;
 export type OutputTokens1 = number;
 export type Branch3 = string;
 export type CleanedAt = string | null;
-export type CreatedAt31 = string;
+export type CreatedAt33 = string;
 export type Id38 = string;
 export type MergeCommit = string | null;
 export type MergedAt = string | null;
 export type Path4 = string;
 export type ProjectId9 = string;
 export type WorktreeStatus = 'active' | 'merged' | 'conflicted' | 'cleaned';
-export type TaskId16 = string;
-export type WorkspaceId36 = string;
+export type TaskId18 = string;
+export type WorkspaceId38 = string;
 export type ActorMemberId4 = string | null;
-export type CreatedAt32 = string;
+export type CreatedAt34 = string;
 export type OwnerMemberId1 = string | null;
 export type Seq5 = number;
-export type TaskId17 = string;
+export type TaskId19 = string;
 export type ActorMemberId5 = string | null;
-export type CreatedAt33 = string;
+export type CreatedAt35 = string;
 export type OwnerMemberId2 = string | null;
 export type Seq6 = number;
-export type TaskId18 = string;
+export type TaskId20 = string;
 export type Deliverables = Deliverable[];
 export type Evidence1 = Evidence[];
 export type FromMember = string;
@@ -1024,7 +1061,7 @@ export type TaskLevel1 = 'l1' | 'l2';
 export type SilenceOverrideH1 = number | null;
 export type Title6 = string | null;
 export type ChannelId30 = string;
-export type CreatedAt34 = string;
+export type CreatedAt36 = string;
 export type CreatedByMemberId5 = string;
 export type Id39 = string;
 export type TaskLevel2 = 'l1' | 'l2';
@@ -1036,7 +1073,7 @@ export type SilenceOverrideH2 = number | null;
 export type TaskStatus2 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
 export type StatusChangedAt1 = string;
 export type Title7 = string;
-export type WorkspaceId37 = string;
+export type WorkspaceId39 = string;
 export type WritesCode2 = boolean;
 export type Briefing = string;
 export type FromKey = string;
@@ -1062,19 +1099,19 @@ export type ChannelId32 = string;
 export type Description10 = string | null;
 export type Name21 = string | null;
 export type Builtin2 = boolean;
-export type CreatedAt35 = string;
+export type CreatedAt37 = string;
 export type CreatedByMemberId6 = string;
 export type Description11 = string;
 export type Id40 = string;
 export type Name22 = string;
-export type WorkspaceId38 = string;
+export type WorkspaceId40 = string;
 export type Builtin3 = boolean;
-export type CreatedAt36 = string;
+export type CreatedAt38 = string;
 export type CreatedByMemberId7 = string;
 export type Description12 = string;
 export type Id41 = string;
 export type Name23 = string;
-export type WorkspaceId39 = string;
+export type WorkspaceId41 = string;
 export type CacheReadTokens2 = number;
 export type CacheWriteTokens2 = number;
 export type InputTokens2 = number;
@@ -1098,8 +1135,8 @@ export type InputTokens4 = number;
 export type OutputTokens4 = number;
 export type ReportedAt1 = string;
 export type SourceSession2 = string | null;
-export type TaskId19 = string | null;
-export type WorkspaceId40 = string;
+export type TaskId21 = string | null;
+export type WorkspaceId42 = string;
 export type AgentMemberId24 = string;
 export type CacheReadTokens5 = number;
 export type CacheWriteTokens5 = number;
@@ -1109,10 +1146,10 @@ export type InputTokens5 = number;
 export type OutputTokens5 = number;
 export type ReportedAt2 = string;
 export type SourceSession3 = string | null;
-export type TaskId20 = string | null;
-export type WorkspaceId41 = string;
+export type TaskId22 = string | null;
+export type WorkspaceId43 = string;
 export type AgentMemberId25 = string;
-export type TaskId21 = string | null;
+export type TaskId23 = string | null;
 export type Events4 = TokenUsageEventIn[];
 export type Label = string;
 export type Ref4 = string;
@@ -1135,7 +1172,7 @@ export type SetupState = {
 export type Slug1 = string | null;
 export type UiTheme = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb1 = number;
-export type CreatedAt37 = string;
+export type CreatedAt39 = string;
 export type Id45 = string;
 export type Name26 = string;
 export type NotifDesktop1 = boolean;
@@ -1144,7 +1181,7 @@ export type OnboardingGreeting1 = boolean;
 export type Slug2 = string;
 export type UiTheme1 = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb2 = number;
-export type CreatedAt38 = string;
+export type CreatedAt40 = string;
 export type Id46 = string;
 export type Name27 = string;
 export type NotifDesktop2 = boolean;
@@ -1152,32 +1189,32 @@ export type NotifSound2 = boolean;
 export type OnboardingGreeting2 = boolean;
 export type Slug3 = string;
 export type UiTheme2 = 'dark' | 'light' | 'system';
-export type TaskId22 = string;
+export type TaskId24 = string;
 export type Branch4 = string;
 export type ProjectId12 = string;
 export type RepoPath7 = string;
-export type TaskId23 = string;
+export type TaskId25 = string;
 export type Branch5 = string;
 export type Message2 = string;
 export type ProjectId13 = string;
 export type RepoPath8 = string;
-export type TaskId24 = string;
+export type TaskId26 = string;
 export type Branch6 = string;
 export type CleanedAt1 = string | null;
-export type CreatedAt39 = string;
+export type CreatedAt41 = string;
 export type Id47 = string;
 export type MergeCommit1 = string | null;
 export type MergedAt1 = string | null;
 export type Path5 = string;
 export type ProjectId14 = string;
-export type TaskId25 = string;
-export type WorkspaceId42 = string;
+export type TaskId27 = string;
+export type WorkspaceId44 = string;
 export type Branch7 = string;
 export type ConflictFiles = string[] | null;
 export type MergeCommit2 = string | null;
 export type Path6 = string;
 export type Status4 = 'active' | 'merged' | 'conflicted' | 'cleaned';
-export type TaskId26 = string;
+export type TaskId28 = string;
 
 export interface CoAgentiaContracts {
   AcceptanceCriterion?: AcceptanceCriterion;
@@ -1365,6 +1402,8 @@ export interface CoAgentiaContracts {
   SkillsPut?: SkillsPut;
   SubDeployLogMsg?: SubDeployLogMsg;
   SubDiagnosticMsg?: SubDiagnosticMsg;
+  SummaryRunPublic?: SummaryRunPublic;
+  SummaryRunRow?: SummaryRunRow;
   SysHelloData?: SysHelloData;
   SysPongData?: SysPongData;
   TaskChange?: TaskChange;
@@ -1642,6 +1681,7 @@ export interface CanvasNodePublic {
   system_action?: SystemAction | null;
   system_status?: SystemNodeStatus | null;
   task_id?: TaskId2;
+  upstream_policy?: UpstreamPolicy;
 }
 export interface CanvasEdgeData {
   edge: CanvasEdgePublic;
@@ -1697,6 +1737,7 @@ export interface CanvasNodeRow {
   system_action?: SystemAction | null;
   system_status?: SystemNodeStatus | null;
   task_id?: TaskId3;
+  upstream_policy?: UpstreamPolicy1;
 }
 /**
  * M1 建表（预留 #2）。基线语义 = 契约 A §6。
@@ -2578,6 +2619,7 @@ export interface NodeCreate {
   system_action?: SystemAction | null;
   task_plan?: TaskPlanBody | null;
   title: Title4;
+  upstream_node_ids?: UpstreamNodeIds;
   writes_code?: WritesCode1;
 }
 /**
@@ -2909,12 +2951,43 @@ export interface SubDiagnosticMsg {
   stream: Stream1;
   type: Type5;
 }
+export interface SummaryRunPublic {
+  blocked_at?: BlockedAt;
+  canvas_id: CanvasId6;
+  created_at: CreatedAt29;
+  last_fingerprint?: LastFingerprint;
+  replan_used?: ReplanUsed;
+  round_count?: RoundCount;
+  stall_count?: StallCount;
+  task_id: TaskId14;
+  updated_at: UpdatedAt4;
+  workspace_id: WorkspaceId33;
+}
+/**
+ * M8（O8 汇总协调状态，契约 A v1.0.12 §6.4）——汇总任务的循环护栏计数。
+ *
+ * 行创建时机 = 汇总节点 gating 首次解除（lazy，非落地即建）；三计数（round/stall/replan）一切
+ * 推进走**条件 UPDATE CAS**（M6 三度印证教训 + CR-M8-1 合流）。阻断判定仅作用于非终态任务
+ * （汇总任务被 close/done → 行随任务终态失效，不清行留痕，F8）。
+ */
+export interface SummaryRunRow {
+  blocked_at?: BlockedAt1;
+  canvas_id: CanvasId7;
+  created_at: CreatedAt30;
+  last_fingerprint?: LastFingerprint1;
+  replan_used?: ReplanUsed1;
+  round_count?: RoundCount1;
+  stall_count?: StallCount1;
+  task_id: TaskId15;
+  updated_at: UpdatedAt5;
+  workspace_id: WorkspaceId34;
+}
 export interface SysHelloData {
   conn_id: ConnId;
   heartbeat_sec: HeartbeatSec1;
   protocol_v: ProtocolV1;
   server_version: ServerVersion1;
-  workspace_id: WorkspaceId33;
+  workspace_id: WorkspaceId35;
 }
 export interface SysPongData {}
 export interface TaskChange {
@@ -2928,32 +3001,32 @@ export interface TaskContractData {
 }
 export interface TaskContractPublic {
   body: JsonValue;
-  created_at: CreatedAt29;
+  created_at: CreatedAt31;
   created_by_member_id: CreatedByMemberId3;
   id: Id36;
   kind: ContractKind;
   reminder_id?: ReminderId1;
   revision?: Revision2;
   superseded_at?: SupersededAt;
-  task_id?: TaskId14;
+  task_id?: TaskId16;
   version: Version2;
-  workspace_id: WorkspaceId34;
+  workspace_id: WorkspaceId36;
 }
 /**
  * M3：L2 契约实例（D1 三种 schema）。task_id 与 reminder_id 恰一非空（CHECK）。
  */
 export interface TaskContractRow {
   body: JsonValue;
-  created_at: CreatedAt30;
+  created_at: CreatedAt32;
   created_by_member_id: CreatedByMemberId4;
   id: Id37;
   kind: ContractKind;
   reminder_id?: ReminderId2;
   revision?: Revision3;
   superseded_at?: SupersededAt1;
-  task_id?: TaskId15;
+  task_id?: TaskId17;
   version: Version3;
-  workspace_id: WorkspaceId35;
+  workspace_id: WorkspaceId37;
 }
 export interface TaskCreatedData {
   task: TaskPublic;
@@ -2980,24 +3053,24 @@ export interface TaskUsage {
 export interface WorktreePublic {
   branch: Branch3;
   cleaned_at?: CleanedAt;
-  created_at: CreatedAt31;
+  created_at: CreatedAt33;
   id: Id38;
   merge_commit?: MergeCommit;
   merged_at?: MergedAt;
   path: Path4;
   project_id: ProjectId9;
   status: WorktreeStatus;
-  task_id: TaskId16;
-  workspace_id: WorkspaceId36;
+  task_id: TaskId18;
+  workspace_id: WorkspaceId38;
 }
 export interface TaskEventPublic {
   actor_member_id?: ActorMemberId4;
-  created_at: CreatedAt32;
+  created_at: CreatedAt34;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
   owner_member_id?: OwnerMemberId1;
   seq: Seq5;
-  task_id: TaskId17;
+  task_id: TaskId19;
   to_status?: TaskStatus1 | null;
 }
 /**
@@ -3005,12 +3078,12 @@ export interface TaskEventPublic {
  */
 export interface TaskEventRow {
   actor_member_id?: ActorMemberId5;
-  created_at: CreatedAt33;
+  created_at: CreatedAt35;
   from_status?: TaskStatus1 | null;
   kind: TaskEventKind;
   owner_member_id?: OwnerMemberId2;
   seq: Seq6;
-  task_id: TaskId18;
+  task_id: TaskId20;
   to_status?: TaskStatus1 | null;
 }
 /**
@@ -3042,7 +3115,7 @@ export interface TaskPatch {
  */
 export interface TaskRow {
   channel_id: ChannelId30;
-  created_at: CreatedAt34;
+  created_at: CreatedAt36;
   created_by_member_id: CreatedByMemberId5;
   id: Id39;
   level?: TaskLevel2;
@@ -3054,7 +3127,7 @@ export interface TaskRow {
   status?: TaskStatus2;
   status_changed_at: StatusChangedAt1;
   title: Title7;
-  workspace_id: WorkspaceId37;
+  workspace_id: WorkspaceId39;
   writes_code?: WritesCode2;
 }
 /**
@@ -3148,12 +3221,12 @@ export interface TemplatePatch {
 export interface TemplatePublic {
   body: TemplateBody;
   builtin?: Builtin2;
-  created_at: CreatedAt35;
+  created_at: CreatedAt37;
   created_by_member_id: CreatedByMemberId6;
   description?: Description11;
   id: Id40;
   name: Name22;
-  workspace_id: WorkspaceId38;
+  workspace_id: WorkspaceId40;
 }
 /**
  * M5：DAG 结构 + 角色占位表 + 简报话术（C7）；实例化走落地事务器（tmpl:<batch_id>:…）。
@@ -3161,12 +3234,12 @@ export interface TemplatePublic {
 export interface TemplateRow {
   body: TemplateBody;
   builtin?: Builtin3;
-  created_at: CreatedAt36;
+  created_at: CreatedAt38;
   created_by_member_id: CreatedByMemberId7;
   description?: Description12;
   id: Id41;
   name: Name23;
-  workspace_id: WorkspaceId39;
+  workspace_id: WorkspaceId41;
 }
 export interface TokenTotals {
   cache_read_tokens?: CacheReadTokens2;
@@ -3200,8 +3273,8 @@ export interface TokenUsageEventPublic {
   output_tokens?: OutputTokens4;
   reported_at: ReportedAt1;
   source_session?: SourceSession2;
-  task_id?: TaskId19;
-  workspace_id: WorkspaceId40;
+  task_id?: TaskId21;
+  workspace_id: WorkspaceId42;
 }
 /**
  * M1 建表：W7 成本口径原始层（仅 provider 上报，永不推导费用）。
@@ -3216,12 +3289,12 @@ export interface TokenUsageEventRow {
   output_tokens?: OutputTokens5;
   reported_at: ReportedAt2;
   source_session?: SourceSession3;
-  task_id?: TaskId20;
-  workspace_id: WorkspaceId41;
+  task_id?: TaskId22;
+  workspace_id: WorkspaceId43;
 }
 export interface TokenUsageReportedData {
   agent_member_id: AgentMemberId25;
-  task_id?: TaskId21;
+  task_id?: TaskId23;
   totals: TokenTotals;
 }
 export interface UsageBatchData {
@@ -3264,7 +3337,7 @@ export interface WorkspacePatch {
 }
 export interface WorkspacePublic {
   attachment_max_mb?: AttachmentMaxMb1;
-  created_at: CreatedAt37;
+  created_at: CreatedAt39;
   id: Id45;
   name: Name26;
   notif_desktop?: NotifDesktop1;
@@ -3279,7 +3352,7 @@ export interface SetupState1 {
 }
 export interface WorkspaceRow {
   attachment_max_mb?: AttachmentMaxMb2;
-  created_at: CreatedAt38;
+  created_at: CreatedAt40;
   id: Id46;
   name: Name27;
   notif_desktop?: NotifDesktop2;
@@ -3296,33 +3369,33 @@ export interface WorkspaceUpdatedData {
   workspace: WorkspacePublic;
 }
 export interface WorktreeCleanupData {
-  task_id: TaskId22;
+  task_id: TaskId24;
 }
 export interface WorktreeEnsureData {
   branch: Branch4;
   project_id: ProjectId12;
   repo_path: RepoPath7;
-  task_id: TaskId23;
+  task_id: TaskId25;
 }
 export interface WorktreeMergeData {
   branch: Branch5;
   message: Message2;
   project_id: ProjectId13;
   repo_path: RepoPath8;
-  task_id: TaskId24;
+  task_id: TaskId26;
 }
 export interface WorktreeRow {
   branch: Branch6;
   cleaned_at?: CleanedAt1;
-  created_at: CreatedAt39;
+  created_at: CreatedAt41;
   id: Id47;
   merge_commit?: MergeCommit1;
   merged_at?: MergedAt1;
   path: Path5;
   project_id: ProjectId14;
   status: WorktreeStatus;
-  task_id: TaskId25;
-  workspace_id: WorkspaceId42;
+  task_id: TaskId27;
+  workspace_id: WorkspaceId44;
 }
 export interface WorktreeStatusData {
   branch: Branch7;
@@ -3330,7 +3403,7 @@ export interface WorktreeStatusData {
   merge_commit?: MergeCommit2;
   path: Path6;
   status: Status4;
-  task_id: TaskId26;
+  task_id: TaskId28;
 }
 export interface WorktreeUpdatedData {
   worktree: WorktreePublic;

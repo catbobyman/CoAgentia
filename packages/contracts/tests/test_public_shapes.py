@@ -104,6 +104,7 @@ def test_all_other_publics_equal_rows() -> None:
         (entities.LandingBatchRow, entities.LandingBatchPublic),
         (entities.LedgerEntryRow, entities.LedgerEntryPublic),
         (entities.ProposalRow, entities.ProposalPublic),
+        (entities.SummaryRunRow, entities.SummaryRunPublic),
         (entities.WorktreeRow, entities.WorktreePublic),
         (entities.PreviewSessionRow, entities.PreviewSessionPublic),
         (entities.DeploymentRow, entities.DeploymentPublic),

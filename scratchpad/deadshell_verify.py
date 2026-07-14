@@ -3,8 +3,9 @@
 用法：uv run python scratchpad/deadshell_verify.py
 然后另开 web dev（pnpm --filter @coagentia/web dev，代理 /api→8787），浏览器开 http://localhost:5173。
 
-seed = workspace + computer + owner + 2 agents + #all/#build 两频道 + #build 内若干消息（供 F1 未读→已读实证）。
-daemon 离线（未接 daemon-sim）→ F2 生命周期走 503 toast 路径（计划接受的验证路径）；F3/F4/F5… 走真端点。
+seed = workspace + computer + owner + 2 agents + #all/#build 两频道 + #build 内若干消息
+（供 F1 未读→已读实证）。daemon 离线（未接 daemon-sim）→ F2 生命周期走 503 toast 路径
+（计划接受的验证路径）；F3/F4/F5… 走真端点。
 """
 
 from __future__ import annotations

@@ -44,6 +44,7 @@ from coagentia_contracts.enums import (
     TaskLevel,
     TaskStatus,
     UiTheme,
+    UpstreamPolicy,
     VerifyBy,
     WorktreeStatus,
 )
@@ -463,6 +464,10 @@ class CanvasNodeRow(ContractModel):
     system_action: SystemAction | None = None  # CHECK: kind='system' → NOT NULL（W8）
     command: str | None = None  # system_action='check' 必填（V14）
     system_status: SystemNodeStatus | None = None
+    # v1.0.12（M8 / W9）：前驱 satisfied 判定档（默认 strict=现状语义；汇总节点落地默认 partial）。
+    # **不参与基线快照**（契约 A §6，与 pos 同——放行策略非结构身份，改档不动 baseline/base）；
+    # W9 satisfied 由 derive_blocked 按 live 行读取（纪律 8 graph 组，M8b L7）。
+    upstream_policy: UpstreamPolicy = UpstreamPolicy.STRICT
     pos_x: float = 0  # 不参与基线快照（契约 A §6）
     pos_y: float = 0
     created_at: TimestampZ
@@ -660,6 +665,30 @@ class ProposalRow(ContractModel):
 
 
 class ProposalPublic(ProposalRow):
+    pass
+
+
+class SummaryRunRow(ContractModel):
+    """M8（O8 汇总协调状态，契约 A v1.0.12 §6.4）——汇总任务的循环护栏计数。
+
+    行创建时机 = 汇总节点 gating 首次解除（lazy，非落地即建）；三计数（round/stall/replan）一切
+    推进走**条件 UPDATE CAS**（M6 三度印证教训 + CR-M8-1 合流）。阻断判定仅作用于非终态任务
+    （汇总任务被 close/done → 行随任务终态失效，不清行留痕，F8）。
+    """
+
+    task_id: Ulid  # PK, FK tasks——is_summary 节点引用的汇总任务
+    canvas_id: Ulid  # FK canvases（冗余定位列）
+    workspace_id: Ulid  # 多租户口径（K8 审查结论：新表必直挂）
+    round_count: int = 0  # 唤醒投递计数（每次因该任务向 owner 投递唤醒 +1；人类发言不计轮）
+    stall_count: int = 0  # 无进展计数（指纹未变 +1；重复 delta 加倍；≥3 阻断）
+    replan_used: int = 0  # 汇总期该 Orchestrator 对本画布发起的 delta 提案数（预算 1）
+    last_fingerprint: Sha256Hex | None = None  # §6.2 summary_fp（复用 fingerprint 内核）
+    blocked_at: TimestampZ | None = None  # 非空 = 协调阻断中（停自动唤醒 + @人类）
+    created_at: TimestampZ
+    updated_at: TimestampZ
+
+
+class SummaryRunPublic(SummaryRunRow):
     pass
 
 

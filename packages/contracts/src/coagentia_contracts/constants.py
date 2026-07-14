@@ -138,10 +138,14 @@ DIAGNOSTIC_NAMESPACES: tuple[str, ...] = (
 )
 
 # ---------------- 权限规则号（PRD §3；rule 字段值域）
+# O9（M6b）= Agent 结构变更唯一通道 = <control> 提案，画布结构写端点/模板 instantiate/confirm-reject
+# 对 Agent 主体 403 rule=O9（canvas.py/proposals.py/templates.py 在用；v1.0.12 回填登记漏项）。
+# O8（M8）= 汇总执行期 replan 预算耗尽——第 2 次 delta 提案 403 rule=O8（复用 O9 先例形状，
+# 错误码目录零新增仍 29；汇总设计 §6.3/§12 #4）。
 
 RULE_CODES: tuple[str, ...] = (
     "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8",
-    "C3", "W1", "T2", "T3", "T7", "admin",
+    "C3", "W1", "T2", "T3", "T7", "O8", "O9", "admin",
 )
 
 # ---------------- schema 版本号（PRD §4.3 / 拆解设计）

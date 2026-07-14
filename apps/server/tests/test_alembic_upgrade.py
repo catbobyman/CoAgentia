@@ -15,6 +15,7 @@ from coagentia_server.db.models import (
     M6B_TABLES,
     M7A_TABLES,
     M7B_TABLES,
+    M8_TABLES,
     PREVIEW_ACTIVE_STATUSES,
 )
 from sqlalchemy import Column, MetaData, String, Table, inspect, select
@@ -42,6 +43,8 @@ M6B_EXPECTED_TABLES = {"proposals", "agent_role_templates"}
 M7A_EXPECTED_TABLES = {"preview_sessions"}
 # 契约 A v1.5 §5 M7b 批次（0011：deployments 一张，纯新表）。
 M7B_EXPECTED_TABLES = {"deployments"}
+# 契约 A v1.0.12 §5 M8 批次（0012：summary_runs 一张新表 + canvas_nodes.upstream_policy 加列）。
+M8_EXPECTED_TABLES = {"summary_runs"}
 
 
 def _table_names(url: str) -> set[str]:
@@ -176,6 +179,8 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
     tasks = Table("tasks", metadata, Column("id", String(26), primary_key=True))
     # agents 是 M1 表（真实 M5 库恒有）；0009 对其加 role_template_key，故此切片须含 agents 桩。
     agents = Table("agents", metadata, Column("member_id", String(26), primary_key=True))
+    # canvas_nodes 是 M3 表（真实 M5 库恒有）；0012 对其加 upstream_policy，故此切片须含桩。
+    canvas_nodes = Table("canvas_nodes", metadata, Column("id", String(26), primary_key=True))
     alembic_version = Table(
         "alembic_version", metadata, Column("version_num", String(32), primary_key=True)
     )
@@ -188,6 +193,7 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
             conn.execute(channels.insert().values(id="channel"))
             conn.execute(tasks.insert().values(id="existing-task"))
             conn.execute(agents.insert().values(member_id="existing-agent"))
+            conn.execute(canvas_nodes.insert().values(id="existing-node"))
             conn.execute(alembic_version.insert().values(version_num="0007_m5"))
     finally:
         engine.dispose()
@@ -197,6 +203,7 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
     try:
         columns = {c["name"] for c in inspect(engine).get_columns("tasks")}
         agent_columns = {c["name"] for c in inspect(engine).get_columns("agents")}
+        node_columns = {c["name"] for c in inspect(engine).get_columns("canvas_nodes")}
         with engine.connect() as conn:
             row = conn.execute(
                 select(tasks.c.id).where(tasks.c.id == "existing-task")
@@ -207,13 +214,18 @@ def test_incremental_m5_schema_adds_task_columns_and_preserves_rows(
             agent_role = conn.exec_driver_sql(
                 "SELECT role_template_key FROM agents WHERE member_id='existing-agent'"
             ).one()
+            node_policy = conn.exec_driver_sql(
+                "SELECT upstream_policy FROM canvas_nodes WHERE id='existing-node'"
+            ).one()
     finally:
         engine.dispose()
     assert {"project_id", "writes_code"} <= columns
     assert "role_template_key" in agent_columns  # 0009 原位补列
+    assert "upstream_policy" in node_columns  # 0012 原位补列
     assert row.id == "existing-task"
     assert values == (None, 0)
     assert agent_role == (None,)  # 既有 agent 行加列默认 NULL，零回归
+    assert node_policy == ("strict",)  # 既有节点加列默认 strict，零行为回归（W9 "新增档不动旧档"）
     assert M6A_EXPECTED_TABLES <= _table_names(db_url)
 
 
@@ -706,6 +718,49 @@ def test_deployment_active_statuses_align_with_contract(
         assert f"'{literal}'" not in index_sql
 
 
+def test_upgrade_head_creates_m8_summary_runs_and_canvas_column(
+    db_url: str, alembic_cfg: Config
+) -> None:
+    """0012 从零建 summary_runs（全列，task_id PK）+ canvas_nodes 加 upstream_policy 列。"""
+    assert set(M8_TABLES) == M8_EXPECTED_TABLES
+    command.upgrade(alembic_cfg, "head")
+    engine = make_engine(url=db_url)
+    try:
+        insp = inspect(engine)
+        summary_cols = {c["name"] for c in insp.get_columns("summary_runs")}
+        summary_pk = insp.get_pk_constraint("summary_runs")["constrained_columns"]
+        canvas_cols = {c["name"] for c in insp.get_columns("canvas_nodes")}
+    finally:
+        engine.dispose()
+    assert M8_EXPECTED_TABLES <= _table_names(db_url)
+    assert summary_cols == {
+        "task_id", "canvas_id", "workspace_id", "round_count", "stall_count",
+        "replan_used", "last_fingerprint", "blocked_at", "created_at", "updated_at",
+    }
+    assert summary_pk == ["task_id"]
+    assert "upstream_policy" in canvas_cols
+
+
+def test_incremental_from_0011_to_head(db_url: str, alembic_cfg: Config) -> None:
+    # 增量路径：先到 0011（M1..M7b 库），再升 head——模拟线上 M7b 库升 M8（L0 出口）。
+    # 从零 create_all 读实时 CanvasNode 模型故 canvas_nodes 在 0003 即带 upstream_policy 列；
+    # 「真实旧库无此列 → 加列」由 0012 的反射-补列守（第三例既有表加列，沿 0009 agents 先例）。
+    command.upgrade(alembic_cfg, "0011_m7b")
+    mid = _table_names(db_url)
+    assert M7B_EXPECTED_TABLES <= mid
+    assert M8_EXPECTED_TABLES.isdisjoint(mid)  # 0011 不得泄漏建出 M8 表（坑1 回归守门）
+    command.upgrade(alembic_cfg, "head")
+    final = _table_names(db_url)
+    assert M8_EXPECTED_TABLES <= final          # 0012 增量建出 summary_runs
+    engine = make_engine(url=db_url)
+    try:
+        assert "upstream_policy" in {
+            c["name"] for c in inspect(engine).get_columns("canvas_nodes")
+        }
+    finally:
+        engine.dispose()
+
+
 def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path: Path) -> None:
     command.upgrade(alembic_cfg, "head")
     command.downgrade(alembic_cfg, "base")
@@ -719,4 +774,5 @@ def test_downgrade_base_drops_tables(db_url: str, alembic_cfg: Config, tmp_path:
     assert M6B_EXPECTED_TABLES.isdisjoint(names)
     assert M7A_EXPECTED_TABLES.isdisjoint(names)
     assert M7B_EXPECTED_TABLES.isdisjoint(names)
+    assert M8_EXPECTED_TABLES.isdisjoint(names)
     assert "messages_fts" not in names

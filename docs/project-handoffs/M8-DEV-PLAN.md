@@ -50,13 +50,13 @@
 
 | 模块 | 状态 | 完成提交 | 备注 |
 | --- | --- | --- | --- |
-| L0 契约落笔+登记 | 未开工 | — | |
+| L0 契约落笔+登记 | ✅ 完成 | （待提交） | A v1.0.12 / B v1.5.1 落笔 + contracts（UpstreamPolicy/SummaryRun/upstream_node_ids/RULE_CODES O8·O9）+ gen 确定。**执行决策：迁移 0012（summary_runs + canvas_nodes.upstream_policy）与 ORM 随 L0 落地**（原 DEV-PLAN 置于 L7）——因 test_schema_conformance 反射 canvas_nodes 列集须与 CanvasNodeRow 同步，否则块 M8a 全绿门守不住；列默认 strict 行为逐字节不变、summary_runs 无运行期消费，纯 schema 前移零风险。**L7（M8b）改为只做 W9 内核双档 + golden partial + landing 默认 partial + patch_node 改档**（迁移已落）。守门：contracts 125 / 全量 1082 / gen 确定 / pyright 0 / ruff 净 |
 | L1 原子建边 | 未开工 | — | |
 | L4 残留收敛（a/b/c） | 未开工 | — | L4a Fable 亲做 |
 | L6 R-10/R-14 | 未开工 | — | |
 | B-M8-1 加固前端四件 | 未开工 | — | ②③④ 可即刻开工 |
 | —— 块 M8a 收口 —— | — | — | |
-| L7 0012+W9 内核 | 未开工 | — | Fable 亲核 |
+| L7 W9 内核（0012 已随 L0 落） | 未开工 | — | Fable 亲核；**迁移 0012 已随 L0 落地**，L7 只剩 W9 内核双档 satisfied + golden partial + landing 默认 partial + patch_node 改档 |
 | L8 汇总执行域 | 未开工 | — | |
 | L9 质量回路+话术 | 未开工 | — | |
 | B-M8-2 O8 可见面 | 未开工 | — | |
