@@ -243,6 +243,23 @@ def test_recover_resets_counts_keeps_replan(migrated_engine: Engine) -> None:
         assert summary_domain.recover(tx, task_id=ids["up_task"]) is False
 
 
+def test_crash_continuation_persisted_counts(migrated_engine: Engine) -> None:
+    """F6 崩溃续算（§10）：summary_runs 落库 + 条件 UPDATE——「重启」（新连接/事务）后按行内计数
+    续算，不从零重来。模拟：tx1 计到 round=2，tx2（全新事务=重启后）读到 2 并续推到 3。"""
+    ids = _build(migrated_engine)
+    with _tx(migrated_engine) as tx:
+        summary_domain.ensure_run(
+            tx, task_id=ids["sum_task"], canvas_id=ids["canvas"], workspace_id=ids["ws"]
+        )
+        summary_domain.advance_progress(tx, task_id=ids["sum_task"], new_fp="a")
+        summary_domain.advance_progress(tx, task_id=ids["sum_task"], new_fp="b")
+    mid = _run(migrated_engine, ids["sum_task"])
+    assert mid is not None and mid["round_count"] == 2  # 已落库
+    with _tx(migrated_engine) as tx:  # 全新事务 = 崩溃重启后
+        cont = summary_domain.advance_progress(tx, task_id=ids["sum_task"], new_fp="c")
+    assert cont["round_count"] == 3  # 从 2 续算，非从 0
+
+
 def test_active_summary_task_gated_by_run_and_terminal(migrated_engine: Engine) -> None:
     ids = _build(migrated_engine)
     with migrated_engine.connect() as c:
