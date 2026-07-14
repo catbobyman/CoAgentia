@@ -19,7 +19,7 @@ import {
 } from '@xyflow/react';
 import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react';
 import {
-  ChevronDown, CircleAlert, Eye, GitMerge, LayoutTemplate, ListTree, Lock, Play, Plus, RefreshCw,
+  Check, ChevronDown, CircleAlert, Eye, GitMerge, LayoutTemplate, ListTree, Lock, Play, Plus, RefreshCw,
   Rocket, Save, Terminal, Trash2, Workflow,
 } from 'lucide-react';
 
@@ -196,6 +196,20 @@ const nodeTypes: NodeTypes = { task: TaskNodeView, system: SystemNodeView };
 function systemTitle(n: CanvasNodePublic): string {
   if (n.system_action === 'merge') return 'Merge';
   return n.command ? `Check · ${n.command}` : 'Check';
+}
+
+// L1 原子建边(①)：上游多选列表项标注——task 节点取 taskById 的 #编号+标题,system 节点复用 systemTitle。
+function nodeLabel(n: CanvasNodePublic, taskById: Record<string, TaskPublic>): string {
+  if (n.kind === 'system') return systemTitle(n);
+  const task = n.task_id ? taskById[n.task_id] : undefined;
+  return task ? `#${task.number} ${task.title}` : '(未命名任务)';
+}
+
+// R-13:部署确认弹窗触发者取"当前 acting member"——单人 MVP 无真会话,与全局既有 me 惯用式
+// (kind=human && role=owner,ChannelChatScreen/RootLayout 等同源)对齐;抽为具名纯函数避免各处
+// 内联 find 读成"频道 owner"语义漂移,并便于脱离整屏组件单测。
+export function resolveActingMember(members: MemberPublic[]): MemberPublic | undefined {
+  return members.find((m) => m.kind === 'human' && m.role === 'owner');
 }
 
 // ---- 从快照 + tasks 缓存构建 RF 图模型（纯函数,可单测:节点 join、blocked 派生、边着色）。
@@ -561,7 +575,7 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
         <DeployButton
           projectId={boundProjects[0]?.id}
           deployCommand={boundProjects[0]?.deploy_command}
-          triggererName={members.find((m) => m.kind === 'human' && m.role === 'owner')?.name}
+          triggererName={resolveActingMember(members)?.name}
         />
         <span className="canvasbar-sp" />
         {/* M7b 成本汇总条（轻量 chip）：本频道画布任务 token 汇总 + 覆盖率。 */}
@@ -628,7 +642,13 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
         <NewNodeModal canvasId={canvasId} projects={boundProjects} onClose={() => setNewOpen(false)} onError={onCanvasError} />
       )}
       {systemOpen && canvasId && (
-        <SystemNodeModal canvasId={canvasId} onClose={() => setSystemOpen(false)} onError={onCanvasError} />
+        <SystemNodeModal
+          canvasId={canvasId}
+          nodes={detail.nodes ?? []}
+          tasks={tasks}
+          onClose={() => setSystemOpen(false)}
+          onError={onCanvasError}
+        />
       )}
       {outputText && <SystemOutputModal body={outputText} onClose={() => setOutputText(null)} />}
       {forceTask && <ForceStartModal task={forceTask} onClose={() => setForceTask(null)} />}
@@ -815,21 +835,34 @@ export function NewNodeModal({ canvasId, projects = [], onClose, onError }: {
   );
 }
 
-export function SystemNodeModal({ canvasId, onClose, onError }: {
+export function SystemNodeModal({ canvasId, nodes = [], tasks = [], onClose, onError }: {
   canvasId: string;
+  /** L1 原子建边(①)：画布既有节点,供上游多选(避免手建 merge/check 节点无入边被空成功抢跑,K1)。 */
+  nodes?: CanvasNodePublic[];
+  tasks?: TaskPublic[];
   onClose: () => void;
   onError: (e: unknown) => void;
 }) {
   const [action, setAction] = useState<SystemAction>('merge');
   const [command, setCommand] = useState('');
+  const [upstream, setUpstream] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const taskById = useMemo(() => Object.fromEntries(tasks.map((t) => [t.id, t])), [tasks]);
   const valid = action === 'merge' || command.trim() !== '';
+  const toggleUpstream = (id: string) =>
+    setUpstream((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const submit = async () => {
     if (!valid) return;
     setBusy(true);
+    const upstreamIds = upstream.size > 0 ? Array.from(upstream) : undefined;
     const body: NodeCreate = action === 'merge'
-      ? { kind: 'system', title: 'Merge', system_action: 'merge' }
-      : { kind: 'system', title: 'Check', system_action: 'check', command: command.trim() };
+      ? { kind: 'system', title: 'Merge', system_action: 'merge', ...(upstreamIds ? { upstream_node_ids: upstreamIds } : {}) }
+      : { kind: 'system', title: 'Check', system_action: 'check', command: command.trim(), ...(upstreamIds ? { upstream_node_ids: upstreamIds } : {}) };
     try {
       await api.createCanvasNode(canvasId, body);
       onClose();
@@ -853,6 +886,31 @@ export function SystemNodeModal({ canvasId, onClose, onError }: {
             <div className="inp"><input id="check-command" className="val mono" aria-label="Check 命令" value={command} onChange={(e) => setCommand(e.target.value)} /></div>
           </div>
         )}
+        {/* L1 原子建边(①)：上游多选(可空)——建边随建节点原子完成,不再靠人事后手连,消解空成功竞态。 */}
+        <div className="field">
+          <span className="lb">上游节点(可多选,可空)</span>
+          <div className="tmpl-nodes">
+            {nodes.map((n) => {
+              const label = nodeLabel(n, taskById);
+              const on = upstream.has(n.id);
+              return (
+                <label className="chkrow" key={n.id}>
+                  <span
+                    className={`box${on ? ' on' : ''}`}
+                    role="checkbox"
+                    aria-checked={on}
+                    aria-label={label}
+                    tabIndex={0}
+                    onClick={() => toggleUpstream(n.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleUpstream(n.id); } }}
+                  ><Check /></span>
+                  <span>{label}</span>
+                </label>
+              );
+            })}
+            {nodes.length === 0 && <div className="tmpl-emptylist">画布暂无可选上游节点</div>}
+          </div>
+        </div>
         <div className="ops">
           <button type="button" className="btn btn-ghost" onClick={onClose}>取消</button>
           <button type="button" className="btn btn-primary" disabled={!valid || busy} onClick={() => void submit()}>创建系统节点</button>

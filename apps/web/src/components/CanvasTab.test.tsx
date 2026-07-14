@@ -9,7 +9,9 @@ vi.mock('../api', async (importOriginal) => {
   return { ...actual, api: { ...actual.api, createCanvasNode: vi.fn() } };
 });
 
-import type { CanvasDetail, MemberPublic, PresenceEntry, TaskPublic } from '@coagentia/contracts-ts';
+import type {
+  CanvasDetail, CanvasNodePublic, MemberPublic, NodeCreate, PresenceEntry, TaskPublic,
+} from '@coagentia/contracts-ts';
 
 import { api } from '../api';
 
@@ -19,6 +21,7 @@ import {
   TaskNodeCard,
   buildCanvasModel,
   planEdgeConnect,
+  resolveActingMember,
   type SystemNodeData,
   type TaskNodeData,
 } from './CanvasTab';
@@ -156,6 +159,62 @@ describe('SystemNodeModal', () => {
     await waitFor(() => expect(api.createCanvasNode).toHaveBeenCalledWith('cv_1', {
       kind: 'system', title: 'Check', system_action: 'check', command: 'pnpm test',
     }));
+  });
+
+  // ①(M8a 加固批 L1 原子建边)：上游多选——建边随建节点原子完成,不再靠人事后手连(消解空成功竞态 K1)。
+  const UP_TASK = task('t_up', 3, 'todo', '上游任务');
+  const UP_NODES: CanvasNodePublic[] = [
+    { id: 'n_up1', canvas_id: 'cv_1', kind: 'agent', task_id: 't_up', pos_x: 0, pos_y: 0, created_at: '2026-07-10T00:00:00Z' },
+    { id: 'n_up2', canvas_id: 'cv_1', kind: 'system', system_action: 'check', command: 'pnpm lint', pos_x: 300, pos_y: 0, created_at: '2026-07-10T00:00:00Z' },
+  ];
+
+  it('列出画布既有节点供上游多选;勾选后 POST body 携 upstream_node_ids', async () => {
+    vi.mocked(api.createCanvasNode).mockReset().mockResolvedValue({} as never);
+    render(
+      <SystemNodeModal canvasId="cv_1" nodes={UP_NODES} tasks={[UP_TASK]} onClose={vi.fn()} onError={vi.fn()} />,
+    );
+    // 任务节点标注 #编号+标题;系统节点复用 systemTitle(Check · 命令)。
+    expect(screen.getByLabelText('#3 上游任务')).toBeInTheDocument();
+    expect(screen.getByLabelText('Check · pnpm lint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('#3 上游任务'));
+    fireEvent.click(screen.getByRole('button', { name: '创建系统节点' }));
+    await waitFor(() => expect(api.createCanvasNode).toHaveBeenCalledWith('cv_1', {
+      kind: 'system', title: 'Merge', system_action: 'merge', upstream_node_ids: ['n_up1'],
+    }));
+  });
+
+  it('不勾选任何上游 → POST body 不携 upstream_node_ids 字段', async () => {
+    vi.mocked(api.createCanvasNode).mockReset().mockResolvedValue({} as never);
+    render(
+      <SystemNodeModal canvasId="cv_1" nodes={UP_NODES} tasks={[UP_TASK]} onClose={vi.fn()} onError={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '创建系统节点' }));
+    await waitFor(() => expect(api.createCanvasNode).toHaveBeenCalledTimes(1));
+    const [, body] = vi.mocked(api.createCanvasNode).mock.calls[0] as [string, NodeCreate];
+    expect(body).not.toHaveProperty('upstream_node_ids');
+  });
+
+  it('画布无既有节点 → 上游多选区显示空态提示', () => {
+    render(<SystemNodeModal canvasId="cv_1" onClose={vi.fn()} onError={vi.fn()} />);
+    expect(screen.getByText('画布暂无可选上游节点')).toBeInTheDocument();
+  });
+});
+
+// ④(M8a 加固批 R-13)：部署确认弹窗触发者取"当前 acting member"——与全局既有 me 惯用式
+// (kind=human && role=owner)对齐,不再读成"频道 owner"语义漂移。
+describe('resolveActingMember(R-13 acting member 惯用式)', () => {
+  const OWNER: MemberPublic = {
+    id: 'mem_owner', kind: 'human', role: 'owner', name: 'Aster', workspace_id: 'ws_1',
+    created_at: '2026-07-10T00:00:00Z',
+  };
+
+  it('取 kind=human && role=owner 的成员', () => {
+    expect(resolveActingMember([RIN, OWNER])?.name).toBe('Aster');
+  });
+
+  it('无匹配的人类 owner 成员 → undefined', () => {
+    expect(resolveActingMember([RIN])).toBeUndefined();
   });
 });
 

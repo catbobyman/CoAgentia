@@ -198,7 +198,10 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 /* ===== [P5] 线程面板 420px ===== */
 .chatwrap { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
 .chatwrap .main { flex: 1; min-width: 0; }
-.panel { width: 420px; flex: none; border-left: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
+/* K3(M8a 加固批)：position: relative + z-index 41(> .preview-deck 的 40，见 preview-panel.css)——
+   预览开启时 deck 是 position:fixed 全宽底部 44vh 浮层，本无 position/z-index 的静态定位面板会被其
+   盖住(遮挡线程内按钮如「审查增量」不可点)；升格到定位层级之上，恢复线程可交互。 */
+.panel { width: 420px; flex: none; border-left: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; min-height: 0; position: relative; z-index: 41; }
 
 .phead { flex: none; padding: 14px 16px 12px; border-bottom: 1px solid var(--border); }
 .phead .row1 { display: flex; align-items: baseline; gap: 8px; }

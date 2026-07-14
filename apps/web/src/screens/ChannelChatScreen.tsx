@@ -4,14 +4,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { TaskStatus } from '@coagentia/contracts-ts';
+import type { MessagePublic, TaskStatus } from '@coagentia/contracts-ts';
 import { UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 
 import type { ChannelSearch, Tab } from '../routes/search';
 import {
   memberMap, presenceMap, readPositionsMap,
   useCanvasSnapshot, useChannelFiles, useChannelsSnapshot, useHeldDrafts, useMembers, useMessages,
-  usePresence, useTasks, useUsageByTask,
+  usePresence, useTasks, useThread, useUsageByTask,
 } from '../data/queries';
 import { useReadCursor } from '../data/useReadCursor';
 import { useArchiveChannel, useDeleteChannel, useUnarchiveChannel } from '../data/queries';
@@ -31,6 +31,19 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
 import { notifyModeOf } from '../lib/notify';
 import { api, ApiError } from '../api';
+
+// K2(M8a 加固批)：?thread= 深链直开修复。activeChannelId 只存在 UI store(URL 无 channel 字段)——
+// 板块点击路径(WorkspaceBoardScreen.selectTask)会先 setActiveChannel(t.channel_id) 再导航,故命中；
+// 但直接携 ?thread= 打开(如粘贴链接/新标签)时 activeChannelId 可能仍是旧频道甚至默认 #build,与线程
+// 实际所属频道对不上 → 下方 !channel 早退永远卡在 loading…。从线程消息数组解析所属频道 id(抽为
+// 纯函数,可脱离整屏组件单测)。
+export function resolveThreadChannelId(
+  messages: MessagePublic[] | undefined,
+  rootMessageId: string | undefined,
+): string | undefined {
+  if (!messages || messages.length === 0) return undefined;
+  return messages.find((m) => m.id === rootMessageId)?.channel_id ?? messages[0]?.channel_id;
+}
 
 export function ChannelChatScreen({ search, setSearch }: {
   search: ChannelSearch;
@@ -62,6 +75,17 @@ export function ChannelChatScreen({ search, setSearch }: {
   const canvasQ = useCanvasSnapshot(activeChannelId ?? undefined);
   const heldDraftsQ = useHeldDrafts(activeChannelId ?? undefined);
   const markRead = useReadCursor();
+
+  // K2：独立按 rootMessageId 查一次线程(与 ThreadPanel 内 useThread 同 queryKey,命中缓存不重复拉取)，
+  // 解出线程所属频道；一旦与当前活跃频道不一致(深链直开/跨频道旧态)就纠偏切过去，让下方 !channel
+  // 早退能收敛,而不是永远卡在 loading…。search.thread 缺失时 useThread 内 enabled:false，零额外开销。
+  const deepLinkThreadQ = useThread(search.thread);
+  useEffect(() => {
+    const targetChannelId = resolveThreadChannelId(deepLinkThreadQ.data, search.thread);
+    if (targetChannelId && targetChannelId !== activeChannelId) {
+      setActiveChannel(targetChannelId);
+    }
+  }, [deepLinkThreadQ.data, search.thread, activeChannelId, setActiveChannel]);
 
   // F1 已读游标上报：会话（chat）页签可见且窗口聚焦时，把最新消息标记为已读（节流/去重在 markRead 内）。
   // 覆盖三情形：①打开频道 / 切到 chat 页签；②新消息到达（latestMsgId 变化）；③窗口重获焦点。
