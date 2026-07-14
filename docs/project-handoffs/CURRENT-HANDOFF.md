@@ -55,17 +55,19 @@
   - **Orchestrator 角色模板**（J11）：builtin 数据（§13.1 七条+§12 规模表原文+**第 8 条 delta 通道指引**）、启动 upsert、创建预选、NO_ORCHESTRATOR 引导；模板 PATCH/DELETE（builtin 409）。
   - **前端 B-M6-2**：拆解入口+创建引导链/提案卡（delta 卡读 operations 统计）/草稿层 overlay+确认条防呆（TS 镜像实时校验/CAS/409 latest 刷新/拒绝弹窗）/delta 面板（绿红高亮/逐 op 剔除实时重验[含 running 系统节点 NODE_ACTIVE]/base 横幅）/rev 替换/P12 编排组/wsBridge draft.*·delta.*·landing.* + LandingToaster。
 
-## 4. 接续 = 块 M8b「O8 编排质量线」（M8a 加固批已收口，2026-07-14）
+## 4. 接续 = 块 M8b「O8 编排质量线」**后端 L7·L8·L9 已收口；接续 = B-M8-2 前端 + 块 M8b 收口**（2026-07-14）
+
+> **块 M8b 进行中（owner「做完 L9 停下」，2026-07-14）**：后端三模块已收口并提交——**L7** W9 双档内核（`cb5d00b`）→ **L8** O8 汇总执行域（`7d4c910` + `e68abcd` F6 补测）→ **L9** 质量回路+话术（`872762a`）。守门后端 **pytest 1117/4**（L7 起点 1089，+28）· pyright 0 · ruff 净 · gen 确定。**接续 = B-M8-2（O8 前端可见面，未开工，恢复入口见 M8-DEV-PLAN 进度表 + 任务书 §5）→ 块 M8b 收口守门（vitest/build/交接文档同步）→ 块 M8c**。**实施补形（已如实登记）**：L7 发现 M8a L0 的 `NodePatch` 漏 `upstream_policy` 改档字段（设计 §5.2/裁决 #6 正文要求人类经 patch_node 改档）→ 纪律 1 升 **B v1.5.1→v1.5.2** + 设计 v1.0→v1.0.1（engineering_docs + README 速览已同步）；故 M8b **非零契约**（B 小修订，字段属设计既定要求非扩界；A/C/D/E/E2 零修订）。轮语义实施选择（进展轮在 scan/空转 stall 轮在 delivery，防返工锚点 4 单点化）见 summary.py/hub.py 注释与 DEV-PLAN L8 行。O8 全链真机演示归 M8c L13。
 
 **M1–M7 全部收口** + **M8a 加固批收口**（`ab84406`）。M8a 五模块全绿：L0 契约+迁移 0012 / L1 原子建边 / L4 读循环并发地基+discard after_commit / L6 部署日志残窗 / B-M8-1 前端五件。守门 pytest 1089/4·vitest 463·pyright 0·ruff 净·gen 确定·build 绿。
 
-**接续 = 块 M8b「O8 编排质量线」**（M8-HANDOFF §4：L7·L8·L9 + B-M8-2）：
+**接续 = 块 M8b「O8 编排质量线」**（M8-HANDOFF §4：~~L7·L8·L9~~ ✅ + **B-M8-2**）：
 - **L7 先行**（纪律 8 首改 graph 组，最需慎重）：W9 双档 satisfied 内核（kernel/graph.py 权威 + lib/graph.ts 镜像 + golden 扩 partial 判例，双跑逐字节；`_satisfied_nodes` 产双集合；landing 汇总节点默认 partial 一行；patch_node 人类可改档、Agent 403 rule=O9）。**迁移 0012 与 upstream_policy 列已随 M8a L0 落地**（防返工锚点 2「新增档不动旧档」：strict 默认必让全量既有 golden/测试逐字节不变）。
 - **L8 汇总执行域**：collect_summary_inputs（有界摘要）/ summary_runs 三计数 CAS（轮=唤醒投递、人类发言不计轮且重置 stall/stall 指纹复用 fingerprint 内核/replan 预算 1 → 403 rule=O8/触顶阻断 blocked_at）/ 摘要系统消息幂等（指纹未变不重发，防自激振荡）/ 恢复。
 - **L9 质量回路 + 话术**：落地带调整/提案 REJECTED → inject_guard_feedback 直投 + 线程留痕；role_templates builtin +2 节（汇总职责/质量信号）upsert 幂等。
 - **B-M8-2 O8 可见面**：横幅（轮数 N/8·stall·阻断-恢复）/ 汇总节点 partial badge / 节点详情改档控件 / 摘要卡片化。
 
-实现权威 = [Orchestrator汇总设计.md](../../../orchestrator_docs/Orchestrator汇总设计.md) v1.0（§4 摘要/§5 W9/§6 护栏/§8 质量回路）。**契约面已就绪**（A v1.0.12/B v1.5.1 M8a L0 落笔完毕）——M8b 是纯实现批，零新契约（C/D/E/E2 零修订）。M8b 后为块 M8c（外壳 B-M8-3+L10/L11 打招呼/L12 教程/L13 实机 verify）。
+实现权威 = [Orchestrator汇总设计.md](../../../orchestrator_docs/Orchestrator汇总设计.md) v1.0.1（§4 摘要/§5 W9/§6 护栏/§8 质量回路）。契约面 = A v1.0.12（M8a L0）+ **B v1.5.2**（M8b L7 补 NodePatch.upstream_policy，见上 §4 注）；C/D/E/E2 零修订。M8b 后为块 M8c（外壳 B-M8-3+L10/L11 打招呼/L12 教程/L13 实机 verify）。
 
 M8 之外的挂账（M9+ 需另立项，未开工）：
 
