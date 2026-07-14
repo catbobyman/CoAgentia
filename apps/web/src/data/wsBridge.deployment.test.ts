@@ -69,14 +69,34 @@ describe('wsBridge deployment.created/updated', () => {
 });
 
 describe('wsBridge deployment.log', () => {
-  it('已播种时把 lines 追加到累积缓存尾部（多帧顺序拼接）', () => {
+  it('历史已并入后把 lines 按 chunk_seq 追加到累积缓存尾部（多帧顺序拼接）', () => {
     const qc = new QueryClient();
-    qc.setQueryData<DeployLogState>(qk.deploymentLog(DEP_ID), EMPTY_DEPLOY_LOG);
+    // historyLoaded=true 表示历史首页已并入（R-14）——此后 live 块直接按 seq 去重追加。
+    qc.setQueryData<DeployLogState>(qk.deploymentLog(DEP_ID), { ...EMPTY_DEPLOY_LOG, historyLoaded: true });
     applyEnvelope(qc, logEnvelope(0, ['building…', 'step 1']));
     applyEnvelope(qc, logEnvelope(1, ['step 2', 'done']));
     expect(qc.getQueryData<DeployLogState>(qk.deploymentLog(DEP_ID))?.lines).toEqual([
       'building…', 'step 1', 'step 2', 'done',
     ]);
+  });
+
+  it('R-14：WS 重连重投同 chunk_seq → 按 seq 单调去重只并一次（不按行文本去重）', () => {
+    const qc = new QueryClient();
+    qc.setQueryData<DeployLogState>(qk.deploymentLog(DEP_ID), { ...EMPTY_DEPLOY_LOG, historyLoaded: true });
+    applyEnvelope(qc, logEnvelope(0, ['l0']));
+    applyEnvelope(qc, logEnvelope(1, ['l1']));
+    applyEnvelope(qc, logEnvelope(1, ['l1']));  // 重连重投 seq=1 → 去重
+    applyEnvelope(qc, logEnvelope(0, ['l0']));  // 迟到重投 seq=0 → 去重
+    expect(qc.getQueryData<DeployLogState>(qk.deploymentLog(DEP_ID))?.lines).toEqual(['l0', 'l1']);
+  });
+
+  it('R-14：历史首页并入前到达的 live 块进 pending 缓冲，不落 lines', () => {
+    const qc = new QueryClient();
+    qc.setQueryData<DeployLogState>(qk.deploymentLog(DEP_ID), EMPTY_DEPLOY_LOG);  // historyLoaded=false
+    applyEnvelope(qc, logEnvelope(2, ['live-a']));
+    const state = qc.getQueryData<DeployLogState>(qk.deploymentLog(DEP_ID));
+    expect(state?.lines).toEqual([]);  // 缓冲，未落尾
+    expect(state?.pending).toEqual([{ seq: 2, lines: ['live-a'] }]);
   });
 
   it('未播种（未打开日志视图）时不凭 WS 造日志缓存', () => {

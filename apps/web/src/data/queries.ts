@@ -34,7 +34,9 @@ import type {
 import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
 import { qk } from '../lib/queryKeys';
-import { type DeployLogState, EMPTY_DEPLOY_LOG, mergeDeployLogPage } from './deployLog';
+import {
+  type DeployLogState, EMPTY_DEPLOY_LOG, flushPendingDeployLog, mergeDeployLogPage,
+} from './deployLog';
 
 // ---- 单实体/列表查询
 export const useWorkspace = () =>
@@ -531,6 +533,14 @@ export async function loadDeployLogPage(
   const page = await api.deploymentLog(deploymentId, after);
   qc.setQueryData<DeployLogState>(qk.deploymentLog(deploymentId), (prev) =>
     mergeDeployLogPage(prev, page),
+  );
+}
+
+// R-14：历史首页拉取失败兜底——标记 historyLoaded 并 flush pending 缓冲的 live 块（否则实时流
+// 因历史永不 resolve 而卡在缓冲不显示）。DeploymentCard 打开日志的 loadDeployLogPage.catch 调用。
+export function flushDeployLogPending(qc: QueryClient, deploymentId: string): void {
+  qc.setQueryData<DeployLogState>(qk.deploymentLog(deploymentId), (prev) =>
+    flushPendingDeployLog(prev),
   );
 }
 

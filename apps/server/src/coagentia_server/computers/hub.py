@@ -1006,6 +1006,32 @@ class DaemonHub:
                 pass  # 落盘失败不阻断状态推进/广播（日志尽力而为）
         return str(path)
 
+    # R-10：chunk_seq 去重游标持久化——`<id>.log` 旁 `<id>.seq` sidecar 存已收 max chunk_seq。
+    # server 重启后 _deploy_log_seq 内存丢失，daemon 重连按 at-least-once 重发未 ack 的 deploy.log
+    # 帧（chunk_seq 从已收处），无持久游标则 last=None → 旧行被重复追加。sidecar 让重启后仍能去重。
+    def _deploy_log_seq_file(self, deployment_id: str) -> Path:
+        return self._deploy_log_dir / f"{deployment_id}.seq"
+
+    def _recover_deploy_log_seq(self, deployment_id: str) -> int | None:
+        """内存无游标时（如 server 重启）从 sidecar 恢复已收 max chunk_seq；缺失/损坏 → None。"""
+        try:
+            return int(self._deploy_log_seq_file(deployment_id).read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return None
+
+    def _persist_deploy_log_seq(self, deployment_id: str, chunk_seq: int) -> None:
+        """推进游标同刻落 sidecar（在日志追加之后调用；落盘失败尽力而为不阻断）。"""
+        try:
+            self._deploy_log_dir.mkdir(parents=True, exist_ok=True)
+            self._deploy_log_seq_file(deployment_id).write_text(str(chunk_seq), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _delete_deploy_log_seq(self, deployment_id: str) -> None:
+        """终态/fail-close 后清 sidecar（对齐内存游标 pop——部署已终结，无需再去重）。"""
+        with contextlib.suppress(OSError):
+            self._deploy_log_seq_file(deployment_id).unlink(missing_ok=True)
+
     def _report_deploy_log(self, conn: DaemonConnection, data: DeployLogReportData) -> None:
         """deploy.log（契约 D §7，需 ack）：chunk_seq 去重 + 落盘 + queued→running 条件 UPDATE +
         订阅制广播 deployment.log（+ 首条推进时 deployment.updated 全量广播）。
@@ -1014,8 +1040,10 @@ class DaemonHub:
         帧（daemon 重启后 chunk_seq 从 0 重计，但重启走对账 #10 fail-close，不重放旧日志）。
         收到任意 deploy.log 且行 status='queued' → 隐含起跑：条件 UPDATE 置 running。"""
         last = self._deploy_log_seq.get(data.deployment_id)
+        if last is None:  # R-10：server 重启后内存游标丢失 → 从 sidecar 恢复
+            last = self._recover_deploy_log_seq(data.deployment_id)
         if last is not None and data.chunk_seq <= last:
-            return  # 重连窗口重发已收帧：按已收 max 去重
+            return  # 重连窗口/重启后重发已收帧：按已收 max 去重（游标内存丢失则 sidecar 兜底）
         log_path = str(self._deploy_log_file(data.deployment_id))  # 纯路径，无 I/O（落盘在提交后）
         with gateway_tx(self._engine, self._bus) as tx:
             row = (
@@ -1060,6 +1088,7 @@ class DaemonHub:
         # 行。走到此处 = 事务已成功提交（row 为 None 已早返，异常已由 with 抛出）。
         self._append_deploy_log_file(data.deployment_id, data.lines)
         self._deploy_log_seq[data.deployment_id] = data.chunk_seq
+        self._persist_deploy_log_seq(data.deployment_id, data.chunk_seq)  # R-10：游标落 sidecar
 
     def _report_deploy_finished(
         self, conn: DaemonConnection, data: DeployFinishedData
@@ -1096,6 +1125,7 @@ class DaemonHub:
                 EventType.DEPLOYMENT_UPDATED, None, {"deployment": deployment_public(row)}
             )
             self._deploy_log_seq.pop(data.deployment_id, None)  # 终态后清去重游标
+            self._delete_deploy_log_seq(data.deployment_id)  # R-10：同清 sidecar
             self._post_deployment_cards(tx, row, body=_deploy_result_body(row))
             self._append_deploy_diagnostic(tx, row)
 
@@ -2751,6 +2781,7 @@ class DaemonHub:
                     {"deployment": deployment_public(frow)},
                 )
                 self._deploy_log_seq.pop(dep_id, None)
+                self._delete_deploy_log_seq(dep_id)  # R-10：fail-close 后同清 sidecar
                 self._post_deployment_cards(tx, frow, body=_DEPLOY_RESTART_CARD_BODY)
                 self._append_deploy_diagnostic(tx, frow)
         # 事务外下发重发指令（daemon 幂等：已在跑/终态 → noop + 重发终态）。

@@ -307,6 +307,33 @@ def test_deploy_log_persists_promotes_running_and_get_log(
     assert page2["lines"] == ["l2"]
 
 
+def test_r10_deploy_log_dedup_survives_server_restart(
+    ctx: tuple[TestClient, Env, Any], tmp_path: Path
+) -> None:
+    """R-10：chunk_seq 去重游标持久化（sidecar）——server 重启（内存游标丢失）后 daemon 按
+    at-least-once 重发已收帧，靠 `<id>.seq` 恢复去重，日志文件不重复落行。"""
+    client, env, hub = ctx
+    channel = env.add_channel(kind="channel", name="build")
+    repo = _git_repo(tmp_path)
+    project = _project(env, [channel], repo_path=repo)
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([])
+        d.recv_hello_ack()
+        did = _insert_deployment(env, project, status="queued")
+        _report_ack(d, "deploy.log", {"deployment_id": did, "chunk_seq": 0, "lines": ["l0", "l1"]})
+        assert _poll(lambda: _deployment_row(env, did)["status"] == "running")
+        # sidecar 已落（游标推进在 ack 之前完成）。
+        assert hub._deploy_log_seq_file(did).exists()
+        # 模拟 server 重启：清空内存去重游标（sidecar 仍在磁盘）。
+        hub._deploy_log_seq.clear()
+        # 崩溃时序（落盘后/ack 前重启）：daemon 重发已收 seq=0 → sidecar 恢复 last=0 → 去重不追加。
+        _report_ack(d, "deploy.log", {"deployment_id": did, "chunk_seq": 0, "lines": ["l0", "l1"]})
+        d.sync()
+    page = client.get(f"/api/deployments/{did}/log").json()
+    assert page["lines"] == ["l0", "l1"]  # 重启后重发未产生重复行
+
+
 def test_get_log_empty_when_no_log_path(
     ctx: tuple[TestClient, Env, Any], tmp_path: Path
 ) -> None:

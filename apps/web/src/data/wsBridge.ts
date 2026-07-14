@@ -32,7 +32,7 @@ import type {
 } from '@coagentia/contracts-ts';
 
 import { qk } from '../lib/queryKeys';
-import { type DeployLogState, appendDeployLogLines } from './deployLog';
+import { type DeployLogState, appendDeployLogChunk } from './deployLog';
 
 // canvas.* 事件 data 载 canvas_id（非 channel_id）,而快照缓存按 channel 存(qk.canvas)。
 // 二法反查承载该 canvas 的频道快照:①按 canvas.id 命中(带 canvas_id 的事件);
@@ -127,13 +127,15 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
     }
 
     // deployment.log = 订阅制实时日志（只发订阅该 deployment 的连接，ws/hub.py 过滤）。载
-    // { deployment_id, chunk_seq, lines }，把 lines 追加到 qk.deploymentLog 累积缓存尾部。未加载
-    // （卡未打开日志视图、未播种）则放行不建——卡打开时 GET 首页播种后本流才有锚点。
+    // { deployment_id, chunk_seq, lines }，按 chunk_seq 去重并入 qk.deploymentLog 累积缓存
+    // （R-14：单调去重 + 历史首页前进 pending 缓冲）。未加载（卡未打开日志视图、未播种）则放行不建。
     case 'deployment.log': {
       const d = data as DeploymentLogData;
       const key = qk.deploymentLog(d.deployment_id);
       if (qc.getQueryData<DeployLogState>(key) === undefined) break;
-      qc.setQueryData<DeployLogState>(key, (prev) => appendDeployLogLines(prev, d.lines ?? []));
+      qc.setQueryData<DeployLogState>(key, (prev) =>
+        appendDeployLogChunk(prev, d.chunk_seq, d.lines ?? []),
+      );
       break;
     }
 

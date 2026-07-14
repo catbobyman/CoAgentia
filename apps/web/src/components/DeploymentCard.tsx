@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { DeploymentPublic, DeploymentStatus, TokenSummary, UsageBucket } from '@coagentia/contracts-ts';
 
 import {
+  flushDeployLogPending,
   loadDeployLogPage,
   seedDeployLog,
   useDeployLogState,
@@ -102,15 +103,17 @@ function DeploymentLogView({ deploymentId }: { deploymentId: string }) {
   const [following, setFollowing] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // 打开日志视图：播种缓存（让 WS deployment.log 有锚点可追加）→ 拉首页历史 → 订阅 deploy_log 流。
+  // 打开日志视图（R-14）：播种 → **先订阅**（让并发到达的 live 块进 pending 缓冲，不丢帧）→ 拉首页
+  // 历史（并入时按 chunk_seq 升序 flush pending 到历史尾部，历史行先于实时块，消解交叠重复）。
   // 卸载/关闭：退订。首页拉取只跑一次（seed 幂等；缓存已播种即视为已初始化）。
   useEffect(() => {
     const already = qc.getQueryData(qk.deploymentLog(deploymentId)) !== undefined;
     seedDeployLog(qc, deploymentId);
-    if (!already) {
-      void loadDeployLogPage(qc, deploymentId).catch(() => {}); // 历史尽力而为，失败不阻塞实时流
-    }
     subscribeDeployLog(deploymentId);
+    if (!already) {
+      // 历史尽力而为：失败也要 flush pending（否则 live 块永卡缓冲不显示）。
+      void loadDeployLogPage(qc, deploymentId).catch(() => flushDeployLogPending(qc, deploymentId));
+    }
     return () => {
       unsubscribeDeployLog(deploymentId);
     };
