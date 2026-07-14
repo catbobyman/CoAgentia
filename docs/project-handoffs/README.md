@@ -5,6 +5,9 @@
 | 文档 | 定位 | 维护规则 |
 |---|---|---|
 | [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) | 当前唯一有效的交接入口 | 每次阶段收口时更新 |
+| [M8-HANDOFF.md](M8-HANDOFF.md) | **M8 任务书（当前进行中）**：加固批 + O8 编排质量线 + 单机产品化外壳 + 体验收官（2026-07-14 立项；O8 实现权威 = orchestrator_docs/Orchestrator汇总设计.md） | 里程碑推进期维护，收口后移入 archive/ |
+| [M8-DEV-PLAN.md](M8-DEV-PLAN.md) | M8 逐模块执行计划与进度表 | 随模块完成更新 |
+| [M8-SCOPE-DRAFT.md](M8-SCOPE-DRAFT.md) | M8 立项草案（**已废止**，由 M8-HANDOFF 取代；立项过程存档） | 只读 |
 | [M7-DEV-PLAN.md](M7-DEV-PLAN.md) | M7 逐模块执行计划与进度表（**已收口，只读**；任务书 = archive/M7-HANDOFF.md） | 阶段记录，收口后保留只读 |
 | [M6-DEV-PLAN.md](M6-DEV-PLAN.md) | M6 逐模块执行计划与进度表（**已收口，只读**；任务书 = archive/M6-HANDOFF.md） | 阶段记录，收口后保留只读 |
 | [CODEX-CONTEXT.md](CODEX-CONTEXT.md) | **接手任务的 AI 工程师完整项目上下文**（自足：术语解码/架构/纪律/坑清单；Codex CLI / Claude Code 会话通用）；仓库根 `AGENTS.md` 为其精炼版工作规程（Codex CLI 自动加载） | 大版本状态变化时更新时点注记 |

@@ -3,7 +3,7 @@
 | 项 | 内容 |
 | --- | --- |
 | 更新 | 2026-07-13，**M7 里程碑整体收口 = MVP 全部规划里程碑（M1–M7）完成**（`b18adbe`）。本会话（Fable 单窗编排，COLLAB-MODEL v2 全程实盘，workflow 编排多 Opus 子代理执行/评审）完成**块 M7b「部署、成本与收尾」**：K4 部署域全链（0011 迁移/routes/deployments.py R8·409·Idempotency·主干 HEAD 快照·token_summary 新账/hub deploy.log·deploy.finished CAS·结果卡多频道·**对账 #10 fail-closed**/daemon DeployRunner 流式+末 URL+30min 杀树，`8d26abe`）→ 波2 K5 trigger_deploy 工具 ∥ K6 GET /usage 三层 ∥ B-M7-2 部署卡+成本面（`e06a793`）→ 波3 K7 性能小批四件（语义逐字节等价）∥ K8 预留位审查文档 R-1~R-15（`9082827`）→ **K9 实机 verify 29/29 ALL PASS + 浏览器可视 E2E**（`f6655d1`）→ **/code-review high**（8 维 Opus finder→对抗核实 12 CONFIRMED，Fable 终裁修 4 真缺陷：next_after 空按钮 / deploy.log 提交后落盘防丢帧·重复 / usage level=agent 一致性 / 诊断去重抽单点，`b18adbe`）。上一轮：M7a 预览链收口（`d238988`）、M6 里程碑（`d303475`）。 |
-| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 [PROJECT-RECORD.md](PROJECT-RECORD.md)（§13=M6a、§14=M6b、**§15=M7**）。**无后续 PRD 里程碑**——M1–M7 全收口；后续工作 = 挂账消费（[M7-RESERVATION-AUDIT.md](../M7-RESERVATION-AUDIT.md) R-1~R-15：多租户/多机/单进程假设 + M7b 残窗）与 O8 汇总设计另文，均未立项（M8+）。 |
+| 定位 | **当前唯一有效的交接入口**（README 约定 1/2）：新会话先读本文；历史背景读 [PROJECT-RECORD.md](PROJECT-RECORD.md)（§13=M6a、§14=M6b、**§15=M7**）。**M8 已立项（2026-07-14）**：任务书 = [M8-HANDOFF.md](M8-HANDOFF.md)（加固批 + O8 编排质量线 + 单机产品化外壳 + 体验收官），执行计划 = [M8-DEV-PLAN.md](M8-DEV-PLAN.md)，O8 实现权威 = [Orchestrator汇总设计.md](../../../orchestrator_docs/Orchestrator汇总设计.md) v1.0；未开工。多租户/多机/多副本挂账（[M7-RESERVATION-AUDIT.md](../M7-RESERVATION-AUDIT.md) R-1~R-9/R-11/R-12/R-15）维持 M9+ 未立项。 |
 | 一句话状态 | **M1–M7 全完成 = MVP 收口**。系统现能：需求消息 → 拆解 → 并行交付 → **Diff/预览验收**（daemon 长驻 dev server / iframe 真机可达 / 并排 / idle 回收）→ 合并 → **一键部署**（人类点击 + Agent `trigger_deploy` 双通道 / 409 串行 / 日志实时流 / 结果卡 URL）→ **成本核算**（GET /usage 三层 / 部署新账 token 小结 / 覆盖率诚实标注永不折算货币）——"从对话到上线"产品承诺闭环。 |
 | 守门终态 | 后端 **1071 passed / 4 skipped**（M7 起点 955）· web vitest **403**（+44）· pyright **0**（并入 `pnpm typecheck`）· ruff 干净 · `pnpm gen` 确定（golden **58** 双跑逐字节）· web build 绿 · **K9 实机 29/29** · **工作树干净**。（注：全量 pytest 重负载下 2 个 M6 daemon worktree 测试偶发超时，隔离复跑 2/2 绿、与本里程碑 server-only 改动正交——登记为既有时序敏感性，非回归。） |
 | M7 里程碑证据 | **[M7-EVIDENCE.md](../verify/M7-EVIDENCE.md)**：块 M7a 14/14 + 块 M7b **29/29 ALL PASS**（真 uvicorn+真 daemon-sim[真 PreviewRunner/真 DeployRunner 起真子进程]+真 scratch git；预览 iframe 200→合并 --no-ff→部署双通道 URL+新账小结→409→GET /usage 三层→对账 #9/#10 崩溃探针）+ [M7B-VERIFY-results.json](../verify/M7B-VERIFY-results.json) + **浏览器可视 E2E** [M7B-BROWSER-E2E.txt](../verify/M7B-BROWSER-E2E.txt)（真前端渲染部署卡 URL·退出码·耗时·新账 Σ1.6k·上报 1/1，Agent 卡 Σ0 新账正确）；脚本 = `scratchpad/m7b_verify.py`（可复跑）。 |
@@ -55,14 +55,16 @@
   - **Orchestrator 角色模板**（J11）：builtin 数据（§13.1 七条+§12 规模表原文+**第 8 条 delta 通道指引**）、启动 upsert、创建预选、NO_ORCHESTRATOR 引导；模板 PATCH/DELETE（builtin 409）。
   - **前端 B-M6-2**：拆解入口+创建引导链/提案卡（delta 卡读 operations 统计）/草稿层 overlay+确认条防呆（TS 镜像实时校验/CAS/409 latest 刷新/拒绝弹窗）/delta 面板（绿红高亮/逐 op 剔除实时重验[含 running 系统节点 NODE_ACTIVE]/base 横幅）/rev 替换/P12 编排组/wsBridge draft.*·delta.*·landing.* + LandingToaster。
 
-## 4. 接续 = 无 PRD 里程碑（MVP 全收口；后续 = M8+ 挂账消费，均未立项）
+## 4. 接续 = M8 已立项未开工（2026-07-14）
 
-**M1–M7 全部收口**（M7 = 块 M7a 预览链 `d238988` + 块 M7b 部署·成本·收尾 `b18adbe`，见 PROJECT-RECORD §15）。CoAgentia 的全部 PRD 规划里程碑已完成，"从对话到上线"闭环达成。**当前无待开工任务书**——`M7-HANDOFF.md` 与 `M7-DEV-PLAN.md` 已随收口完成使命（按 README 约定 3 归 archive/）。
+**M1–M7 全部收口**（M7 = 块 M7a 预览链 `d238988` + 块 M7b 部署·成本·收尾 `b18adbe`，见 PROJECT-RECORD §15）。CoAgentia 的全部 PRD 规划里程碑已完成，"从对话到上线"闭环达成。
 
-后续工作全部为 **M8+ 挂账消费**（需 owner 立项，未开工）：
+**M8 立项（owner 2026-07-14 两轮拍板）**：范围 = ①**加固批**（真机实测缺陷 K1 空成功竞态[方案 A 原子建边]/深链/预览遮挡 + CR-M8-1 同族残留 + R-10/R-13/R-14）②**O8 编排质量线**（汇总执行期护栏/W9 部分失败/质量回路——实现权威 [Orchestrator汇总设计.md](../../../orchestrator_docs/Orchestrator汇总设计.md) v1.0）③**单机产品化外壳** ④**编排体验打磨+教程收官**。任务书 = [M8-HANDOFF.md](M8-HANDOFF.md)（模块 L 系列，三块竖切 M8a/M8b/M8c），执行计划 = [M8-DEV-PLAN.md](M8-DEV-PLAN.md)。契约影响：A→v1.0.12（summary_runs + upstream_policy，迁移 0012）/ B→v1.5.1（NodeCreate.upstream_node_ids + 403 rule=O8，错误码仍 29）/ C·D·E·E2 零修订核对 / **内核 graph 组首改语义**（W9 双档 satisfied，纪律 8 三处同步）。第一步 = L0 契约落笔。
 
-- **预留位审查登记**：[M7-RESERVATION-AUDIT.md](../M7-RESERVATION-AUDIT.md) **R-1~R-15**——多租户批（R-1~R-3：关联表同租户约束/请求级租户路由/Joint Channel）、多机批（R-4~R-6：跨机路由验证/端口代理/repo_path daemon 查询帧）、多副本批（R-7~R-8：landing_batches 唯一约束/boot_nonce 下沉列）、观察项（R-9 注入面中和）、M7b 残窗（R-10 deploy.log 去重游标持久化 / R-11 queued 重发契约授权残窗 / R-12 硬崩溃孤儿子进程 / R-13 前端触发者展示 / R-14 日志重开交叠 / R-15 fail-close 与缓冲 success 竞争）。
-- **O8 汇总执行期护栏 / 递归拆解 / 拆解质量回路** → 汇总设计另文（M7 任务书 §8 登记，M8 立项动作）。
+M8 之外的挂账（M9+ 需另立项，未开工）：
+
+- **预留位审查登记**：[M7-RESERVATION-AUDIT.md](../M7-RESERVATION-AUDIT.md) 剩余 **R-1~R-9 / R-11 / R-12 / R-15**——多租户批（R-1~R-3）、多机批（R-4~R-6）、多副本批（R-7~R-8）、观察项（R-9 注入面中和）、契约授权/硬崩溃残窗（R-11 / R-12 / R-15）。~~R-10 / R-13 / R-14~~ 已入 M8（L6 / B-M8-1）。
+- ~~O8 汇总执行期护栏 / 递归拆解 / 拆解质量回路~~ → **已随 M8 立项完成设计另文**（[Orchestrator汇总设计.md](../../../orchestrator_docs/Orchestrator汇总设计.md) v1.0；实施 = M8 块 M8b）。
 - **部署适配器**（Vercel/Netlify 专用集成，FR-12.4 P2）· preview 运行期日志流（MVP 仅失败日志尾）· 独立 usage 页面（裁决 #15 不做）——需求出现再议。
 - **通用观察项**（承接见下 §5）：briefing @全部 by-design / `_layout_positions` 双实现 / OAuth 冷启动复验 / 前端低危观察项等。
 
@@ -72,6 +74,7 @@
 
 | 项 | 说明 | 归属 |
 | --- | --- | --- |
+| ~~前端死壳与断链批~~ | **已收口（2026-07-14，`d2d4a20`）**：F1–F13 全实现（含 F9，owner 拍板甲+F9），问题清单 = [M8-DEADSHELL-AUDIT.md](../M8-DEADSHELL-AUDIT.md) 逐条勾销、计划 = [DEADSHELL-FIX-PLAN.md](../DEADSHELL-FIX-PLAN.md)。纯前端零契约零迁移；web vitest 403→**444**（+41）、pyright+tsc 0 错、build 绿、后端零改动；/code-review 对抗式复审 8 确认全修（线程回复 thread_root_id 等）；真机浏览器实证 F1–F5 全过（`scratchpad/deadshell_verify.py`）。**唯一非死壳残项**：「新建频道」「创建 Agent」按钮归 M8 B-M8-3 | **完成**（本提交仅含 apps/web 代码，与 M8 立项文档改动分离） |
 | **CR-M8-1 同族残留** | inject-等-ack 与持锁写事务自死锁（2026-07-14 真机首暴露，decompose/T1 已修=预检+tx.after_commit，`test_decompose_inject_fires_after_commit`）：①hub 读循环内同步写 DB（`_handle_report`/心跳在事件循环上 `engine.begin()`，撞锁即撕连接+阻塞 loop 最长 busy_timeout 5s）②held_drafts discard/reevaluate 写 held 终态后事务内 inject_guard_feedback（同死锁形；真适配器下必现）——修法同族：after_commit 或报文写移出读循环 | 观察项（多 Agent 实用化前收） |
 | ~~M6b CR-9~~ | ~~`_post_landed_message` 逐节点 fetch_task/_member_name（N+1）~~ | **M7 K7 收**（拍板 #3） |
 | **M6b CR-10** | proposals 部分唯一索引 sqlite_where 谓词字面量与 ProposalStatus 终态集双源 | 观察项（改终态集须同步；可加断言测试） |
