@@ -394,3 +394,56 @@ def test_serve_stdio_full_roundtrip() -> None:
     assert responses[1]["id"] == 2
     assert responses[1]["result"]["isError"] is False
     assert len(http.calls) == 1
+
+
+def test_serve_stdio_parse_error_replies_not_silent() -> None:
+    """CR-M8-2：不可解析行必须回 JSON-RPC parse error（id=null）——修复前静默丢弃，
+    claude 侧对应 tools/call 无限等待（win32 GBK 吞结构引号即触发此路径）。"""
+    stdin = io.StringIO('{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params\n')
+    stdout = io.StringIO()
+    mcp.serve_stdio(StubHttp(), stdin=stdin, stdout=stdout)
+    responses = [json.loads(x) for x in stdout.getvalue().splitlines() if x.strip()]
+    assert len(responses) == 1
+    assert responses[0]["id"] is None
+    assert responses[0]["error"]["code"] == -32700
+
+
+def test_mcp_subprocess_utf8_roundtrip_without_ioencoding() -> None:
+    """CR-M8-2 实机回归：以「claude 拉起」的真实形态（无 PYTHONIOENCODING/PYTHONUTF8 的
+    子进程管道，win32 中文系统默认 GBK）spawn 真 MCP 进程，UTF-8 中文载荷双向 roundtrip。
+
+    修复前：win32 上 tools/call 的中文 body 经 GBK 误码（mojibake 422 / 崩循环 / 静默丢弃
+    无限挂起）；修复后 _reconfigure_stdio_utf8 双向 UTF-8，响应含中文工具描述逐字节可读。
+    """
+    import os
+    import subprocess
+    import sys as _sys
+
+    env = dict(os.environ)
+    env.pop("PYTHONIOENCODING", None)
+    env.pop("PYTHONUTF8", None)
+    proc = subprocess.Popen(
+        [_sys.executable, "-m", "coagentia_daemon", "mcp",
+         "--agent-member", "01K5AGENT0000000000000000A",
+         "--server-url", "http://127.0.0.1:1",  # 不连——只验 stdio 编码面
+         "--api-key", "cak_test"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+    )
+    try:
+        reqs = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                        "clientInfo": {"name": "回归探针", "version": "0"}}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        ]
+        payload = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in reqs)
+        out, _err = proc.communicate(payload.encode("utf-8"), timeout=30)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    lines = [ln for ln in out.decode("utf-8").splitlines() if ln.strip()]  # 修复前此处 GBK 字节即抛
+    responses = [json.loads(ln) for ln in lines]
+    assert [r["id"] for r in responses] == [1, 2]
+    tools = responses[1]["result"]["tools"]
+    send = next(t for t in tools if t["name"] == "send_message")
+    assert "唯一发言出口" in send["description"]  # 中文逐字节存活 = 双向 UTF-8 生效

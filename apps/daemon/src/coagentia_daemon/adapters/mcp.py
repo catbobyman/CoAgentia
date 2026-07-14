@@ -469,26 +469,50 @@ def _err(mid: Any, code: int, message: str) -> dict[str, Any]:
 
 
 def serve_stdio(http: HttpFn, stdin: Any = None, stdout: TextIO | None = None) -> None:
-    """同步 newline-delimited JSON-RPC 循环（stdin EOF → 退出）。"""
+    """同步 newline-delimited JSON-RPC 循环（stdin EOF → 退出）。
+
+    解析失败必须回 JSON-RPC parse error（id=null）而非静默丢弃（CR-M8-2）：请求丢了不回声，
+    claude 侧对应 tools/call 会**无限等待**——wedge 教训「状态怎么出去」同族。
+    """
     rin = stdin if stdin is not None else sys.stdin
     rout = stdout if stdout is not None else sys.stdout
     state = _RpcState(http=http)
+
+    def reply(obj: dict[str, Any]) -> None:
+        rout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        rout.flush()
+
     for line in rin:
         line = line.strip()
         if not line:
             continue
         try:
             msg = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            reply(_err(None, -32700, f"parse error: {exc}"))
             continue
         response = handle_rpc(msg, state)
         if response is not None:
-            rout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            rout.flush()
+            reply(response)
+
+
+def _reconfigure_stdio_utf8() -> None:
+    """win32 stdio 编码校准（CR-M8-2；GIT-CALIBRATION「git stdout 显式 UTF-8」同族）。
+
+    claude 子进程写给 MCP 的管道恒为 UTF-8，但 win32 Python(<3.15) 对管道 stdio 默认
+    locale 编码（中文系统 = GBK）：中文载荷必 mojibake；GBK 非法序列 UnicodeDecodeError
+    崩掉读循环（claude 报工具超时）；GBK 前导字节吞掉 JSON 结构引号 → JSONDecodeError
+    （修复前被静默丢弃 → claude 无限挂起）。双向 reconfigure 为 UTF-8 根治。
+    """
+    for stream in (sys.stdin, sys.stdout):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
 
 
 def run(agent_member_id: str, server_url: str, api_key: str) -> int:
     """`coagentia-daemon mcp` 入口。"""
+    _reconfigure_stdio_utf8()
     http = make_urllib_http(server_url, api_key, agent_member_id)
     serve_stdio(http)
     return 0
