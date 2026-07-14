@@ -1463,7 +1463,11 @@ def awaiting_confirm_reminder_scan(tx: Any, *, cutoff_iso: str) -> int:
 
 def flush_injects(hub: Any, injects: list[PendingInject]) -> None:
     """经 daemon_hub.inject_orchestrator 投递；best_effort 者吞 DaemonOffline（修复循环靠对账 #6
-    续传；context 注入靠人类重触发）。"""
+    续传；context 注入靠 24h 提醒/人类重触发）。
+
+    **调用纪律（CR-M8-1）**：必须在写事务提交后执行（REST 路由经 tx.after_commit 登记）——
+    inject 同步等 daemon ack，等待期间持 SQLite 写锁会与 daemon 的 agent.status/心跳写入
+    互锁（真 claude 适配器 ack 前必先报 busy），把 daemon 连接撕掉。"""
     from coagentia_server.computers import DaemonOffline
 
     for inj in injects:

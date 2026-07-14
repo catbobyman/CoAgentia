@@ -342,8 +342,9 @@ def persist_message(
         tx.emit(EventType.TASK_CREATED, channel["id"], {"task": task_pub})
 
     # 提案域 phase2（J8）：命中提案提交 → apply（状态机/修复循环/rev+1/直落）；否则顶级 @Orch
-    # → T1 归一 decompose（转任务 + 建提案 + 注入）。inject 经 daemon_hub best-effort 投递（S1 不动
-    # 游标、无写锁死锁；修复循环离线靠对账 #6 续传）。
+    # → T1 归一 decompose（转任务 + 建提案 + 注入）。inject 经 tx.after_commit **提交后**
+    # best-effort 投递（CR-M8-1：inject 同步等 daemon ack，事务内等 ack 会让 daemon 的
+    # agent.status 上报撞本事务写锁 → 连接被撕 → 注入必然丢失；离线丢失靠对账 #6 续传）。
     injects: list[proposal_domain.PendingInject] = []
     if submission is not None:
         injects += submission.apply(tx)
@@ -358,7 +359,8 @@ def persist_message(
             mentioned=mentioned,
         )
     if injects:
-        proposal_domain.flush_injects(tx.request.app.state.daemon_hub, injects)
+        hub = tx.request.app.state.daemon_hub
+        tx.after_commit(lambda: proposal_domain.flush_injects(hub, injects))
     return pub, task_pub
 
 

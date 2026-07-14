@@ -844,6 +844,9 @@ def _http_orchestrator(client: TestClient, channel_id: str) -> dict[str, Any]:
 
 
 class _SpyHub:
+    def agent_daemon_online(self, agent_member_id: str) -> bool:
+        return True
+
     def inject_orchestrator(self, *a: Any, **k: Any) -> str:
         return "done"
 

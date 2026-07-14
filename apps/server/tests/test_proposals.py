@@ -679,6 +679,9 @@ class _SpyHub:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, Any, str | None]] = []
 
+    def agent_daemon_online(self, agent_member_id: str) -> bool:
+        return True
+
     def inject_orchestrator(
         self, agent_member_id: str, body: str, *, kind: Any, ref: str | None = None
     ) -> str:
@@ -687,6 +690,9 @@ class _SpyHub:
 
 
 class _OfflineHub:
+    def agent_daemon_online(self, agent_member_id: str) -> bool:
+        return False
+
     def inject_orchestrator(self, *a: Any, **k: Any) -> str:
         from coagentia_server.computers import DaemonOffline
 
@@ -764,6 +770,7 @@ def test_decompose_no_orchestrator_409(server_client: TestClient) -> None:
 
 
 def test_decompose_daemon_offline_503_rolls_back(server_client: TestClient) -> None:
+    """CR-M8-1 后离线判定=agent_daemon_online 预检（写前快速失败），「不落库」语义不变。"""
     channel = _build_channel(server_client)
     _http_orchestrator(server_client, channel)
     server_client.app.state.daemon_hub = _OfflineHub()  # type: ignore[attr-defined]
@@ -796,6 +803,54 @@ def test_decompose_text_creates_proposal_and_injects(server_client: TestClient) 
         server_client.get(f"/api/proposals/{proposal.id}").json()
     )
     assert got.id == proposal.id
+
+
+class _CommitProbeHub:
+    """CR-M8-1 回归探针：inject 时从**独立连接**回读提案行——只有事务已提交才可见。"""
+
+    def __init__(self, engine: Engine) -> None:
+        self.engine = engine
+        self.committed_at_inject: list[bool] = []
+
+    def agent_daemon_online(self, agent_member_id: str) -> bool:
+        return True
+
+    def inject_orchestrator(
+        self, agent_member_id: str, body: str, *, kind: Any, ref: str | None = None
+    ) -> str:
+        with self.engine.connect() as c:
+            row = c.execute(select(_PROPOSAL.c.id).where(_PROPOSAL.c.id == ref)).first()
+        self.committed_at_inject.append(row is not None)
+        return "done"
+
+
+def test_decompose_inject_fires_after_commit(server_client: TestClient) -> None:
+    """CR-M8-1 自死锁回归：上下文注入必须发生在写事务提交后（等 ack 期间不持 SQLite 写锁，
+    daemon 的 agent.status/心跳写入不再被 decompose 事务阻塞）。inject 时独立连接须已能读到
+    drafting 提案行。"""
+    channel = _build_channel(server_client)
+    _http_orchestrator(server_client, channel)
+    engine: Engine = server_client.app.state.engine  # type: ignore[attr-defined]
+    probe = _CommitProbeHub(engine)
+    server_client.app.state.daemon_hub = probe  # type: ignore[attr-defined]
+    r = server_client.post(f"/api/channels/{channel}/decompose", json={"text": "做个登录"})
+    assert r.status_code == 202, r.text
+    assert probe.committed_at_inject == [True]
+
+
+def test_t1_inject_fires_after_commit(server_client: TestClient) -> None:
+    """CR-M8-1 同族（T1 顶级 @Orchestrator 消息）：flush_injects 经 tx.after_commit 提交后
+    投递——inject 时独立连接须已能读到 drafting 提案行与需求消息。"""
+    channel = _build_channel(server_client)
+    _http_orchestrator(server_client, channel)
+    engine: Engine = server_client.app.state.engine  # type: ignore[attr-defined]
+    probe = _CommitProbeHub(engine)
+    server_client.app.state.daemon_hub = probe  # type: ignore[attr-defined]
+    r = server_client.post(
+        f"/api/channels/{channel}/messages", json={"body": "@OrchBot 帮我拆解登录功能"}
+    )
+    assert r.status_code == 201, r.text
+    assert probe.committed_at_inject == [True]
 
 
 def test_decompose_task_id_source(server_client: TestClient) -> None:

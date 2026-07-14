@@ -72,6 +72,7 @@
 
 | 项 | 说明 | 归属 |
 | --- | --- | --- |
+| **CR-M8-1 同族残留** | inject-等-ack 与持锁写事务自死锁（2026-07-14 真机首暴露，decompose/T1 已修=预检+tx.after_commit，`test_decompose_inject_fires_after_commit`）：①hub 读循环内同步写 DB（`_handle_report`/心跳在事件循环上 `engine.begin()`，撞锁即撕连接+阻塞 loop 最长 busy_timeout 5s）②held_drafts discard/reevaluate 写 held 终态后事务内 inject_guard_feedback（同死锁形；真适配器下必现）——修法同族：after_commit 或报文写移出读循环 | 观察项（多 Agent 实用化前收） |
 | ~~M6b CR-9~~ | ~~`_post_landed_message` 逐节点 fetch_task/_member_name（N+1）~~ | **M7 K7 收**（拍板 #3） |
 | **M6b CR-10** | proposals 部分唯一索引 sqlite_where 谓词字面量与 ProposalStatus 终态集双源 | 观察项（改终态集须同步；可加断言测试） |
 | **M6b CR-11** | 0009 downgrade batch recreate agents 时 agent_skills FK 处置未测 | 择机（downgrade 罕跑） |

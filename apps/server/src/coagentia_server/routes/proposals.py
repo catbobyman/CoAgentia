@@ -113,8 +113,11 @@ def decompose(
     """拆解触发三入口归一（B §12.1；T1/T2/T3 均锚定一个 source 任务）。
 
     无 Orchestrator（频道成员中无 role_template_key='orchestrator' 未软删 Agent）→ 409
-    NO_ORCHESTRATOR；Orchestrator 所在 daemon 离线 → 503 DAEMON_OFFLINE。成功 → 建 drafting
-    提案 + 唤醒注入上下文 → 202 ProposalPublic。
+    NO_ORCHESTRATOR；Orchestrator 所在 daemon 离线 → 503 DAEMON_OFFLINE（**预检快速失败**，
+    写事务开始前即返回，不落库语义保留）。成功 → 建 drafting 提案 → 202 ProposalPublic，
+    上下文注入经 tx.after_commit **提交后**投递（CR-M8-1：inject 同步等 daemon ack，等待期间
+    不得持 SQLite 写锁——真适配器 ack 前必先发 agent.status=busy 上报，该上报要写 DB，事务内
+    等 ack = 自死锁必然 503；提交后离线丢失 best-effort 吞，drafting 卡壳靠 24h 提醒兜底）。
     """
     ws = require_workspace(tx.conn)
     channel = _require_channel(tx, channel_id)
@@ -131,6 +134,11 @@ def decompose(
             rest.ErrorCode.NO_ORCHESTRATOR,
             "本频道无可用 Orchestrator（先创建 Orchestrator 角色 Agent 并加入频道）",
         )
+    hub = request.app.state.daemon_hub
+    if not hub.agent_daemon_online(orchestrator["member_id"]):
+        raise ApiError(
+            503, rest.ErrorCode.DAEMON_OFFLINE, "Orchestrator 所在 daemon 离线，无法注入拆解上下文"
+        )
 
     source_task = _resolve_source_task(
         tx, workspace_id=ws["id"], channel=channel, body=body, requester_id=me["id"]
@@ -145,20 +153,10 @@ def decompose(
     )
     # inject=None（并行审计 SM-F1/F2 退化路径）：现行提案在 landing / 并发建案竞败——复用现行
     # 提案 202（请求方由状态知情），不重注入不建新行。
-    if inject is None:
-        return proposal_public(proposal)
-    # 上下文注入（strict）：daemon 离线 → 503，异常冒泡回滚（drafting 提案/需求消息均不落库）。
-    from coagentia_server.computers import DaemonOffline
-
-    hub = request.app.state.daemon_hub
-    try:
-        hub.inject_orchestrator(
-            inject.agent_member_id, inject.body, kind=inject.kind, ref=inject.ref
-        )
-    except DaemonOffline as exc:
-        raise ApiError(
-            503, rest.ErrorCode.DAEMON_OFFLINE, "Orchestrator 所在 daemon 离线，无法注入拆解上下文"
-        ) from exc
+    if inject is not None:
+        # 提交后投递（CR-M8-1）：等 ack 期间写锁已释放，daemon 的 status/心跳写入畅通；
+        # 此刻离线由 flush_injects best-effort 吞（预检已挡住常见离线路径）。
+        tx.after_commit(lambda: proposal_domain.flush_injects(hub, [inject]))
     return proposal_public(proposal)
 
 

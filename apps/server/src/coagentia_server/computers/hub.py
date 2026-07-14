@@ -2196,13 +2196,28 @@ class DaemonHub:
         )
         return ack.result.value
 
+    def agent_daemon_online(self, agent_member_id: str) -> bool:
+        """快检 Agent 宿主 daemon 是否有活跃连接（只查 DB 行 + 进程内连接表，不发帧不等 ack）。
+
+        decompose 预检用（CR-M8-1）：离线的常见路径在写事务开始前即 503，「不落库」语义保留；
+        注入本体则挪到 tx.after_commit 提交后投递。"""
+        try:
+            self._require_conn_for_agent(agent_member_id)
+        except DaemonOffline:
+            return False
+        return True
+
     def inject_orchestrator(
         self, agent_member_id: str, body: str, *, kind: InjectKind, ref: str | None = None
     ) -> str:
         """Orchestrator 定向直投（J8；契约 D §5.2）：上下文注入（kind=SYSTEM）与修复循环错误清单
-        （kind=REPAIR）共用。离线（无活跃 daemon 连接）→ DaemonOffline（decompose 端点收敛 503；
-        修复循环 best-effort 吞，靠对账 #6 续传）。inject 不动 read_positions（S1），与未提交 REST
-        写事务无写锁死锁（同 inject_guard_feedback 裁决 9）。"""
+        （kind=REPAIR）共用。离线（无活跃 daemon 连接）→ DaemonOffline（调用方 best-effort 吞：
+        修复循环靠对账 #6 续传、drafting 卡壳靠 24h 提醒）。
+
+        **调用纪律（CR-M8-1）**：本方法同步等 daemon ack（上限 _run_sync 总超时），期间不得持
+        SQLite 写锁——真 claude 适配器在回 ack 前必先上报 agent.status=busy，该上报要写 DB；
+        若调用方写事务未提交，status 写入撞 busy_timeout 崩掉读循环 → 连接被撕 → ack 永不达
+        → 必然 DaemonOffline（自死锁）。REST 路由一律经 tx.after_commit 提交后调用。"""
         conn, _agent = self._require_conn_for_agent(agent_member_id)
         data = MessageInjectData(
             agent_member_id=agent_member_id,
