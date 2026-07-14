@@ -384,7 +384,12 @@ class StubDaemon:
         return f
 
     def sync(self) -> None:
-        """屏障：ping→pong 往返确保此前所有下行帧与 ack 副作用已被网关顺序处理。"""
+        """屏障：ping→pong 往返确保此前所有下行帧已被读循环顺序**接收** + ack/reply 副作用已处理。
+
+        L4a 起：非 ack 上报（worktree/preview/status 等）改由独立 writer 异步落库（读循环只入队，
+        不因写阻塞/撞锁滞留）——故 sync() **不再**保证此类上报已落库/已 emit。需观测其效果的测试
+        改用 hub.drain_reports(computer_id) 屏障（queue.join），或轮询效果。ack 类上报（usage/
+        diagnostics/deploy_*/check）仍可 recv() 其 ack 作为落库完成屏障。"""
         self.ping()
         self.recv_pong()
 

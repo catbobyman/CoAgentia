@@ -16,6 +16,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import logging
+import threading
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -114,6 +116,8 @@ from coagentia_server.routes.serialize import (
 from coagentia_server.system_nodes import service as system_node_service
 from coagentia_server.tasks import silence as silence_logic
 from coagentia_server.worktrees import service as worktree_service
+
+_log = logging.getLogger(__name__)
 
 _COMPUTER = models.tbl(models.Computer)
 _AGENT = models.tbl(models.Agent)
@@ -243,6 +247,9 @@ class DaemonConnection:
     deliver_meta: dict[str, DeliverMeta] = field(default_factory=dict)
     present: dict[str, str] = field(default_factory=dict)  # agent_member_id -> status
     tasks: set[asyncio.Task] = field(default_factory=set)
+    # L4a（CR-M8-1 收尾）：读循环只收帧入队，独立 writer 协程消费 REPORT——DB 写 offload
+    # 到线程池（asyncio.to_thread），既不阻塞事件循环、又不因撞锁把整条连接撕掉。None = 关停哨兵。
+    report_queue: asyncio.Queue[dict[str, Any] | None] = field(default_factory=asyncio.Queue)
     last_ping_monotonic: float = field(default_factory=time.monotonic)
     last_seen_written: float = 0.0
     superseded: bool = False
@@ -301,6 +308,10 @@ class DaemonHub:
         self._worktree_locks: dict[str, asyncio.Lock] = {}
         self._system_node_locks: dict[str, asyncio.Lock] = {}
         self._system_pending: dict[str, tuple[tuple[str, str], str]] = {}
+        # L4a：_system_pending 现被 loop 侧协程（_drive_system_node）与 writer 线程侧上报处理
+        # （worktree/check 完成后 pop）并发访问 → threading.Lock 守全部读改写（GIL 只保单 op 原子，
+        # 不保 get-then-set 复合）。仅护本 dict，锁内不做 I/O，无死锁面。
+        self._pending_lock = threading.Lock()
         self._landing_lock = asyncio.Lock()  # J9 落地扫描进程内防重入（跨进程由账本三态兜）
         # 部署日志落盘目录（K4）：deploy.log 逐 chunk 追加 <data_root>/deploy-logs/<id>.log；首条落
         # 盘时把绝对路径写回 deployments.log_path（GET log 端点 server 直读）。data_root 与
@@ -429,7 +440,19 @@ class DaemonHub:
                 loop.call_soon_threadsafe(self._spawn, self._run_landing_scan())
 
     def _spawn(self, coro: Any) -> None:
-        task = self._loop.create_task(coro)  # type: ignore[union-attr]
+        # L4a：可能从 writer 线程（上报处理 offload 到 to_thread 内）调用——create_task 是 loop 亲和
+        # 的，跨线程须经 call_soon_threadsafe 回投 loop（先例：REST 路由用 call_soon_threadsafe(
+        # self._spawn, …)）。在 loop 线程则直接建任务。
+        loop = self._loop
+        assert loop is not None
+        try:
+            on_loop = asyncio.get_running_loop() is loop
+        except RuntimeError:
+            on_loop = False
+        if not on_loop:
+            loop.call_soon_threadsafe(self._spawn, coro)
+            return
+        task = loop.create_task(coro)
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     # ---------------------------------------------------------------- 接入认证 + 握手
@@ -460,6 +483,9 @@ class DaemonHub:
             self._register_hello(conn, hello_data)
             await self._send_hello_ack(conn, hello_frame_id)
             self._conns[computer_id] = conn
+            # L4a：独立 writer 消费 report_queue（DB 写 offload 线程）；随 conn.tasks 在 teardown
+            # 被 cancel。须在 _reader 前起，否则入队的上报无人消费。
+            self._spawn_on_conn(conn, self._writer(conn))
             # 握手对账复验既有 active worktree 行（#3）；周期 _reconcile_loop 不复验（避免噪声）。
             self._spawn_on_conn(conn, self.reconcile(conn, revalidate_worktrees=True))
             await self._reader(conn)
@@ -500,11 +526,12 @@ class DaemonHub:
     def _register_hello(self, conn: DaemonConnection, hello: DaemonHelloData) -> None:
         """更新 computers 行 + 广播 computer.connected/updated（契约 D §4.1）。"""
         # 新连接可能来自 daemon 进程重启：解除该机器已 ack 的运行记忆，由 running 事实重派同自然键。
-        self._system_pending = {
-            node_id: pending
-            for node_id, pending in self._system_pending.items()
-            if pending[1] != conn.computer_id
-        }
+        with self._pending_lock:  # L4a：与 writer 线程侧上报 pop 互斥
+            self._system_pending = {
+                node_id: pending
+                for node_id, pending in self._system_pending.items()
+                if pending[1] != conn.computer_id
+            }
         conn.present = {a.agent_member_id: a.status.value for a in hello.agents}
         # hello v1.0.5：登记 boot nonce 与预览进程表快照（对账 #9 消费）。nonce 未变 = 同 daemon
         # 进程 WS jitter；变化/缺失/无前值 = 按真重启口径。
@@ -561,6 +588,9 @@ class DaemonHub:
     # ---------------------------------------------------------------- 收帧循环 + 分发
 
     async def _reader(self, conn: DaemonConnection) -> None:
+        # L4a：读循环只做**收帧**——ack/reply/ping 是快路径（唤醒 Future / 回 PONG，无长阻塞 DB
+        # 写）就地处理；REPORT 入队交独立 writer 消费（DB 写 offload 到线程），故任一上报撞锁既不
+        # 阻塞本读循环收下一帧、也不因写异常把连接撕掉（裁决 #7）。帧内顺序由 FIFO 队列保序。
         while True:
             raw = await conn.sock.receive_json()
             kind = raw.get("kind")
@@ -571,8 +601,30 @@ class DaemonHub:
             elif kind == FrameKind.PING:
                 await self._handle_ping(conn)
             elif kind == FrameKind.REPORT:
-                await self._handle_report(conn, raw)
+                conn.report_queue.put_nowait(raw)
             # instr / query 仅 server→daemon，daemon 侧不应发；忽略
+
+    async def _writer(self, conn: DaemonConnection) -> None:
+        """L4a 独立上报消费者（每连接一个）：从 report_queue 顺序取帧 → DB 写 offload 到线程池
+        （不阻塞 loop）→ 成功后按需回 ack。保三不变量：**帧内顺序**（FIFO 串行消费）、**ack 语义**
+        （写成功后才 ack，daemon 重传判据不变）、**emit 时序**（gateway_tx 提交后才 bus.emit，在
+        offload 线程内经 call_soon_threadsafe 投队列，与 loop 内等价）。单帧写异常**只记日志不撕
+        连接**（daemon 按 at-least-once 重传或对账兜底）。"""
+        while True:
+            raw = await conn.report_queue.get()
+            try:
+                if raw is None:
+                    return  # 关停哨兵
+                try:
+                    ack_ref = await asyncio.to_thread(self._handle_report_write, conn, raw)
+                except Exception:  # noqa: BLE001 —— 单帧写失败不得撕连接（如 SQLITE_BUSY）
+                    _log.exception("daemon report write failed; connection kept alive")
+                    continue
+                if ack_ref is not None:
+                    with contextlib.suppress(Exception):
+                        await self._ack(conn, ack_ref, AckResult.DONE)
+            finally:
+                conn.report_queue.task_done()  # 支撑 drain_reports 的 queue.join() 屏障
 
     def _handle_ack(self, conn: DaemonConnection, ack: AckFrame) -> None:
         """ack 到达：deliver 帧先写 read_positions（§8.3）再唤醒等待方。
@@ -597,19 +649,43 @@ class DaemonHub:
     async def _handle_ping(self, conn: DaemonConnection) -> None:
         conn.last_ping_monotonic = time.monotonic()
         now = time.monotonic()
+        # PONG 先回（liveness 优先，不等 DB 写）；last_seen 心跳写节流 + offload 到线程，撞锁既不
+        # 阻塞读循环、也不撕连接（L4a：心跳裸 engine.begin 移出事件循环）。
+        await self._send_raw(conn, {"v": DAEMON_PROTOCOL_V, "kind": FrameKind.PONG.value})
         if now - conn.last_seen_written >= _LAST_SEEN_THROTTLE_SEC:
             conn.last_seen_written = now
+            self._spawn(self._write_last_seen(conn.computer_id))
+
+    async def _write_last_seen(self, computer_id: str) -> None:
+        """L4a：心跳 last_seen 写移出读循环——offload 到线程池（best-effort，失败仅记日志）。"""
+        def _write() -> None:
             with self._engine.begin() as c:
                 c.execute(
                     update(_COMPUTER)
-                    .where(_COMPUTER.c.id == conn.computer_id)
+                    .where(_COMPUTER.c.id == computer_id)
                     .values(last_seen_at=now_iso())
                 )
-        await self._send_raw(conn, {"v": DAEMON_PROTOCOL_V, "kind": FrameKind.PONG.value})
+
+        try:
+            await asyncio.to_thread(_write)
+        except Exception:  # noqa: BLE001 —— 心跳写失败非致命
+            _log.exception("last_seen heartbeat write failed")
+
+    async def drain_reports(self, computer_id: str) -> None:
+        """L4a 测试确定性屏障：等某连接 report_queue 全部消费完（含在途一条）。生产不用——
+        `sync()`（ping）只保帧接收/ack 副作用，不再保非 ack 上报的落库（上报改由 writer 异步消费，
+        故 reader 不因写阻塞/撞锁而滞留）。需观测非 ack 上报效果的测试改调本屏障（queue.join）。"""
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            return
+        await conn.report_queue.join()
 
     # ---------------------------------------------------------------- 上报处理（契约 D §7）
 
-    async def _handle_report(self, conn: DaemonConnection, raw: dict[str, Any]) -> None:
+    def _handle_report_write(self, conn: DaemonConnection, raw: dict[str, Any]) -> str | None:
+        """L4a：**同步**上报落库分发（由 _writer 经 asyncio.to_thread 在线程池执行，故不阻塞
+        loop）。返回**需回 ack 的 frame_id**（ack 类上报：diagnostics/usage/check/deploy_log/
+        deploy_finished），无需 ack 的返回 None——ack 由 writer 在 loop 上写（写成功后才 ack）。"""
         rtype = raw.get("type")
         data = raw.get("data") or {}
         frame_id = raw.get("frame_id")
@@ -621,24 +697,25 @@ class DaemonHub:
             self._report_runtimes(conn, RuntimesDetectedData.model_validate(data))
         elif rtype == ReportType.DIAGNOSTICS_BATCH:
             self._report_diagnostics(conn, DiagnosticsBatchData.model_validate(data))
-            await self._ack(conn, frame_id, AckResult.DONE)
+            return frame_id
         elif rtype == ReportType.USAGE_BATCH:
             self._report_usage(conn, UsageBatchData.model_validate(data))
-            await self._ack(conn, frame_id, AckResult.DONE)
+            return frame_id
         elif rtype == ReportType.WORKTREE_STATUS:
             self._report_worktree_status(conn, WorktreeStatusData.model_validate(data))
         elif rtype == ReportType.CHECK_FINISHED:
             self._report_check_finished(conn, CheckFinishedData.model_validate(data))
-            await self._ack(conn, frame_id, AckResult.DONE)
+            return frame_id
         elif rtype == ReportType.PREVIEW_STATUS:
             self._report_preview_status(conn, PreviewStatusData.model_validate(data))
         elif rtype == ReportType.DEPLOY_LOG:
             self._report_deploy_log(conn, DeployLogReportData.model_validate(data))
-            await self._ack(conn, frame_id, AckResult.DONE)
+            return frame_id
         elif rtype == ReportType.DEPLOY_FINISHED:
             self._report_deploy_finished(conn, DeployFinishedData.model_validate(data))
-            await self._ack(conn, frame_id, AckResult.DONE)
+            return frame_id
         # hello（重复）：忽略
+        return None
 
     def _report_worktree_status(
         self, conn: DaemonConnection, data: WorktreeStatusData
@@ -661,8 +738,9 @@ class DaemonHub:
                         task_id=data.task_id,
                         reason="daemon merged 上报缺 merge_commit",
                     )
-            for node_id in merge_node_ids:
-                self._system_pending.pop(node_id, None)
+            with self._pending_lock:  # L4a
+                for node_id in merge_node_ids:
+                    self._system_pending.pop(node_id, None)
             # #10 fail-closed：缺 merge_commit 不能标 MERGED（否则 apply_status 误置假终态），
             # 故跳过 apply_status。merge_node_ids 非空 → fail_dispatch 走人工 retry；空集=迟到/
             # 重复/跨机越界报（live merge 节点已 SUCCESS/FAILED，worktree 行终态经有效 merged 报或
@@ -727,8 +805,9 @@ class DaemonHub:
                 )
         for channel_id in continue_channels:
             self._spawn(self._scan_channel_system_nodes(channel_id))
-        for node_id in merge_node_ids:
-            self._system_pending.pop(node_id, None)
+        with self._pending_lock:  # L4a
+            for node_id in merge_node_ids:
+                self._system_pending.pop(node_id, None)
 
     def _report_check_finished(
         self, conn: DaemonConnection, data: CheckFinishedData
@@ -739,7 +818,8 @@ class DaemonHub:
                 tx, computer_id=conn.computer_id, data=data
             )
         if handled:
-            self._system_pending.pop(data.node_id, None)
+            with self._pending_lock:  # L4a
+                self._system_pending.pop(data.node_id, None)
         if continue_channel is not None:
             self._spawn(self._scan_channel_system_nodes(continue_channel))
 
@@ -1854,10 +1934,12 @@ class DaemonHub:
                 task_id = dispatch.data.task_id
                 lock_key = f"project:{dispatch.data.project_id}"
                 identity = (instruction.value, dispatch.data.task_id)
-            pending = self._system_pending.get(node_id)
-            if pending is not None and pending[0] == identity:
-                return
-            self._system_pending[node_id] = (identity, dispatch.computer_id)
+            # L4a：get-then-set 复合须原子（与 writer 线程侧完成上报的 pop 互斥）；锁不跨 await。
+            with self._pending_lock:
+                pending = self._system_pending.get(node_id)
+                if pending is not None and pending[0] == identity:
+                    return
+                self._system_pending[node_id] = (identity, dispatch.computer_id)
             try:
                 ack = await self.send_instr(
                     conn,
@@ -1866,10 +1948,12 @@ class DaemonHub:
                     dispatch.data,
                 )
             except DaemonOffline:
-                self._system_pending.pop(node_id, None)
+                with self._pending_lock:
+                    self._system_pending.pop(node_id, None)
                 return
             if ack is not None and ack.result == AckResult.FAILED:
-                self._system_pending.pop(node_id, None)
+                with self._pending_lock:
+                    self._system_pending.pop(node_id, None)
                 error = ack.error.model_dump(mode="json") if ack.error is not None else None
                 with gateway_tx(self._engine, self._bus) as tx:
                     system_node_service.fail_dispatch(

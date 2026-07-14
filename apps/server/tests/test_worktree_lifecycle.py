@@ -478,7 +478,7 @@ def test_cleanup_terminal_and_daemon_noop_converges_cleaned(
 def test_cleaned_report_emits_original_and_changed_alias_once(
     ctx: tuple[TestClient, Env, Any],
 ) -> None:
-    client, env, _hub = ctx
+    client, env, hub = ctx
     channel, task_id, original_tree, alias_tree, branch = _aliased_worktrees(env)
     events: list[Any] = []
     token = client.app.state.bus.subscribe(events.append)  # type: ignore[union-attr]
@@ -499,6 +499,11 @@ def test_cleaned_report_emits_original_and_changed_alias_once(
             daemon.sync()
             daemon.report("worktree.status", cleaned)
             daemon.sync()
+            # L4a：worktree.status 是非 ack 上报（异步 writer 落库）——sync() 只保接收，须用
+            # drain_reports 屏障等 writer 消费完再断言 emit（否则读到未处理的中间态）。
+            asyncio.run_coroutine_threadsafe(
+                hub.drain_reports(env.comp_id), hub._loop
+            ).result(timeout=5)
     finally:
         client.app.state.bus.unsubscribe(token)  # type: ignore[union-attr]
 

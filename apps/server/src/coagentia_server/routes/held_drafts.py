@@ -11,6 +11,7 @@ held 行只由 §4.6 freshness 门（202 路径）创建，无 POST 创建端点
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from coagentia_contracts import entities, rest
@@ -163,14 +164,21 @@ def release_held_draft(held_draft_id: str, request: Request, tx: Tx = Depends(ge
 def discard_held_draft(held_draft_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
     """丢弃草稿：held→discarded + 直投 guard_feedback 告知 Agent。
 
-    顺序（裁决 9）：先写 held 终态（tx 未提交）→ _run_sync(inject)（只发帧不写游标，无死锁）
-    → 离线抛 DaemonOffline → 503（路由 tx 回滚，状态不落）→ 成功则 emit + 诊断、tx 提交。
+    顺序（L4b，CR-M8-1 同族收敛，铁律 4「跨进程同步等待不得跨持锁事务」）：**预检** daemon 在线
+    （离线常见路径在写事务开始前即 503，「不落库」语义保留）→ 写 held 终态 + 诊断 + emit → inject
+    本体挪 `tx.after_commit`（等 ack 期间写锁已释放，真适配器回 ack 前上报 agent.status/心跳的 DB
+    写畅通，不撞锁自死锁）。预检后到 after_commit 间罕见的 daemon 掉线 → inject best-effort 吞
+    （丢弃已提交，符合人类意图；Agent 少收一条一次性告知，非关键）。
     """
     from coagentia_server.computers import DaemonOffline
 
     me = _require_human(request, tx)
     held = _require_held(tx, held_draft_id)
     _reject_terminal(held)
+
+    hub = request.app.state.daemon_hub
+    if not hub.agent_daemon_online(held["agent_member_id"]):
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法投递丢弃通知")
 
     now = service.now_iso()
     tx.conn.execute(
@@ -181,18 +189,6 @@ def discard_held_draft(held_draft_id: str, request: Request, tx: Tx = Depends(ge
             resolved_at=now,
         )
     )
-    hub = request.app.state.daemon_hub
-    try:
-        hub.inject_guard_feedback(
-            held["agent_member_id"],
-            "[system → 仅你可见] 你此前被扣的草稿已被人类丢弃，无需再发送。",
-            ref=held_draft_id,
-        )
-    except DaemonOffline as exc:
-        raise ApiError(
-            503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法投递丢弃通知"
-        ) from exc
-
     held_row = models.row_dict(
         tx.conn.execute(select(_HELD).where(_HELD.c.id == held_draft_id)).mappings().first()
     )
@@ -207,6 +203,19 @@ def discard_held_draft(held_draft_id: str, request: Request, tx: Tx = Depends(ge
         created_at=now,
     )
     tx.emit(EventType.HELD_DRAFT_UPDATED, held["channel_id"], {"draft": held_pub})
+
+    agent_member_id = held["agent_member_id"]
+
+    def _fire_discard_inject() -> None:
+        # 提交后投递（L4b）：写锁已释放，_run_sync 等 ack 期间不持锁 → 无自死锁。
+        with contextlib.suppress(DaemonOffline):
+            hub.inject_guard_feedback(
+                agent_member_id,
+                "[system → 仅你可见] 你此前被扣的草稿已被人类丢弃，无需再发送。",
+                ref=held_draft_id,
+            )
+
+    tx.after_commit(_fire_discard_inject)
     return {"held_draft": held_pub}
 
 

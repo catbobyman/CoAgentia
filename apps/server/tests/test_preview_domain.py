@@ -390,7 +390,7 @@ def test_duplicate_running_frame_is_idempotent_no_regress(
 ) -> None:
     """重复/乱序 running 帧幂等：CAS(WHERE status='starting') 首帧命中一次，重复帧 rowcount=0
     不回退、不重播广播。"""
-    client, env, _hub = ctx
+    client, env, hub = ctx
     channel, task_id, worktree_id = _seed(env)
     assert worktree_id is not None
     events: list[Any] = []
@@ -409,6 +409,10 @@ def test_duplicate_running_frame_is_idempotent_no_regress(
             d.sync()
             d.report("preview.status", frame)  # 冗余补报
             d.sync()
+            # L4a：preview.status 非 ack 上报（异步 writer 落库）——drain 屏障等消费完再读 DB/emit。
+            asyncio.run_coroutine_threadsafe(
+                hub.drain_reports(env.comp_id), hub._loop
+            ).result(timeout=5)
             assert _preview_row(env, session_id)["status"] == "running"
             assert _preview_row(env, session_id)["port"] == 5200
     finally:

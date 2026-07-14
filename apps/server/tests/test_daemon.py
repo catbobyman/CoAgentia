@@ -629,3 +629,72 @@ def test_home_tree_timeout_503(ctx: tuple[TestClient, Env, Any]) -> None:
         assert r.status_code == 503
         q = d.recv()  # 帧确已下发（超时非因未发）
         assert q["type"] == "home.tree"
+
+
+# ---------------------------------------------------------------- L4a 收帧入队 + 独立 writer
+
+
+def _drain_reports(hub: Any, comp_id: str) -> None:
+    asyncio.run_coroutine_threadsafe(hub.drain_reports(comp_id), hub._loop).result(timeout=5)
+
+
+def test_l4a_report_write_error_keeps_connection_alive(
+    ctx: tuple[TestClient, Env, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L4a：读循环收帧入队 + 独立 writer 消费——单条上报的 DB 写抛错（模拟 SQLITE_BUSY 撞锁）只记
+    日志、**绝不撕连接**：后续上报仍落库、ping-pong 仍通（旧码写异常沿 _reader 冒泡即撕连接）。"""
+    from sqlalchemy.exc import OperationalError
+
+    client, env, hub = ctx
+    a = env.add_agent("A", "offline")
+    orig = hub._report_status_changed
+    calls = {"n": 0}
+
+    def flaky(conn: Any, data: Any) -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OperationalError("stmt", {}, Exception("database is locked"))
+        orig(conn, data)
+
+    monkeypatch.setattr(hub, "_report_status_changed", flaky)
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(a, "offline")])
+        d.recv_hello_ack()
+        d.report("agent.status_changed", {"agent_member_id": a, "status": "busy"})  # 写抛错
+        d.report("agent.status_changed", {"agent_member_id": a, "status": "error"})  # 第二条成功
+        _drain_reports(hub, env.comp_id)
+        d.sync()  # ping→pong 成功 = 连接未被撕
+    assert calls["n"] == 2  # 首条抛错未阻断第二条消费
+    assert env.agent_status(a) == "error"  # 第二条落库，连接存活
+
+
+def test_l4a_blocked_report_write_does_not_block_reader(
+    ctx: tuple[TestClient, Env, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L4a busy_timeout 探针：上报 DB 写 offload 到线程池——某条上报的写在 worker 线程阻塞时，读循环
+    仍能及时处理后续帧（ping→pong）。旧码（写在事件循环上同步跑）此处 loop 被占死收不到 ping。"""
+    client, env, hub = ctx
+    a = env.add_agent("A", "offline")
+    gate = threading.Event()
+    orig = hub._report_status_changed
+
+    def blocking(conn: Any, data: Any) -> None:
+        gate.wait(5.0)  # 在 worker 线程阻塞该上报的落库
+        orig(conn, data)
+
+    monkeypatch.setattr(hub, "_report_status_changed", blocking)
+    try:
+        with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+            d = StubDaemon(ws)
+            d.hello([(a, "offline")])
+            d.recv_hello_ack()
+            d.report("agent.status_changed", {"agent_member_id": a, "status": "busy"})  # 阻塞的写
+            d.ping()
+            pong = d.recv()  # 读循环未被阻塞 → 及时 PONG
+            assert pong["kind"] == "pong"
+            gate.set()  # 放行阻塞的写
+            _drain_reports(hub, env.comp_id)
+        assert env.agent_status(a) == "busy"  # 放行后落库
+    finally:
+        gate.set()
