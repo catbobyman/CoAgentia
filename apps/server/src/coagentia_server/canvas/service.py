@@ -255,7 +255,15 @@ def message_delivery_gated(conn: Connection, msg: dict[str, Any]) -> bool:
     ).first()
     if task_row is None:
         return False
-    return is_task_blocked(conn, task_row[0])
+    task_id = task_row[0]
+    # O8 协调阻断（M8b L8）：汇总任务 blocked_at 非空 → 抑制自动唤醒（投递双面同 M3b gating 语义）。
+    # 人类线程发言的恢复在 REST 发帖点已同事务清 blocked_at（summary.recover），故此处到达时若仍
+    # blocked 即应抑制（非人类触发）——不必在本热路径查作者。局部 import 避画布层↔编排层循环耦合。
+    from coagentia_server.orchestration import summary as summary_service
+
+    if summary_service.is_summary_blocked(conn, task_id):
+        return True
+    return is_task_blocked(conn, task_id)
 
 
 # ---------------------------------------------------------------- 基线快照与推进

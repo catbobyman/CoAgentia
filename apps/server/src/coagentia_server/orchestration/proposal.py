@@ -20,6 +20,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from coagentia_contracts import rest
 from coagentia_contracts.constants import (
     SCHEMA_DECOMPOSITION_DELTA_V1,
     SCHEMA_DECOMPOSITION_ERRORS_V1,
@@ -44,10 +45,12 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
+from coagentia_server.api import ApiError
 from coagentia_server.canvas import service as canvas_service
 from coagentia_server.db import models
 from coagentia_server.ledger.service import new_ulid, now_iso
 from coagentia_server.orchestration import delta as delta_domain
+from coagentia_server.orchestration import summary as summary_domain
 from coagentia_server.routes.serialize import proposal_public
 
 _PROPOSAL = models.tbl(models.Proposal)
@@ -970,11 +973,32 @@ def _create_delta_row_guarded(
         return None
 
 
+def _guard_summary_replan(tx: Any, channel: dict[str, Any]) -> None:
+    """O8 replan 预算门（M8b L8，汇总设计 §6.3）：本画布处于汇总执行期时，Orchestrator 对本画布的
+    delta 提案即 replan——CAS 消费预算，超额（第 2 次）→ **403 rule=O8**（复用 O9 先例形状，错误码
+    零新增）。消费成功不落痕（提案继续建）；未进入汇总期（无 active summary_run）→ 不受限直接返回。
+    在 delta 建行前调用（phase2 持写锁，CAS 防并发双花）。"""
+    canvas = canvas_service.fetch_canvas_by_channel(tx.conn, channel["id"])
+    if canvas is None:
+        return
+    summary_task = summary_domain.active_summary_task(tx.conn, canvas["id"])
+    if summary_task is None:
+        return
+    if not summary_domain.consume_replan(tx, task_id=summary_task):
+        raise ApiError(
+            403,
+            rest.ErrorCode.PERMISSION_DENIED,
+            "汇总执行期 replan 预算已耗尽（本画布仅允许一次结构调整）——请人类介入或恢复协调",
+            rule="O8",
+        )
+
+
 def _apply_new_delta_valid(
     tx: Any, channel: dict[str, Any], task: dict[str, Any], author: str,
     parsed: dict[str, Any], new_hash: str, new_id: str,
 ) -> list[PendingInject]:
     """有效 delta → drafting → validating → present（awaiting/DELTA_PROPOSED）或直落 landing。"""
+    _guard_summary_replan(tx, channel)  # O8 replan 预算（汇总期第 2 次 delta → 403 rule=O8）
     proposal = _create_delta_row_guarded(
         tx, channel, task, author,
         new_id=new_id, body=parsed, proposal_hash=new_hash, base_hash=_delta_base_of(parsed),
@@ -992,6 +1016,7 @@ def _apply_new_delta_repair(
     raw_body: str, parsed: dict[str, Any] | None, errors: list[dict[str, Any]], new_id: str,
 ) -> list[PendingInject]:
     """无效 delta → 建行 drafting → 复用 J8 修复循环（同配额/升级/S1 直投，携 delta 错误清单）。"""
+    _guard_summary_replan(tx, channel)  # O8：汇总期 delta 尝试（含无效）即消费 replan 预算
     body = parsed if isinstance(parsed, dict) else {}
     proposal = _create_delta_row_guarded(
         tx, channel, task, author,
@@ -1008,7 +1033,11 @@ def _apply_new_delta_repair(
 def _apply_delta_active_exists(
     tx: Any, task: dict[str, Any], active: dict[str, Any]
 ) -> list[PendingInject]:
-    """source 已有非终态提案 → 忽略新 delta + 诊断留痕（reason=active_proposal_exists）。"""
+    """source 已有非终态提案 → 忽略新 delta + 诊断留痕（reason=active_proposal_exists）。
+
+    O8 重复决策加倍（M8b L8，§6.3）：汇总执行期内 Orchestrator 一边挂着未决 delta 一边重推
+    delta = 原地空转的重复决策信号 → summary stall 额外 +1（可能就此触顶阻断 @人类）。非汇总期
+    零副作用（active_summary_task→None）。"""
     write_diagnostic(
         tx, DIAG_DUPLICATE_IGNORED,
         workspace_id=active["workspace_id"], channel_id=active["channel_id"],
@@ -1018,6 +1047,17 @@ def _apply_delta_active_exists(
             "reason": "active_proposal_exists",
         },
     )
+    canvas = canvas_service.fetch_canvas_by_channel(tx.conn, active["channel_id"])
+    if canvas is not None:
+        summary_task = summary_domain.active_summary_task(tx.conn, canvas["id"])
+        if summary_task is not None:
+            run = summary_domain.add_repeat_stall(tx, task_id=summary_task)
+            if run is not None and run["just_blocked"]:
+                ctx = summary_domain.node_context_for_task(tx.conn, summary_task)
+                if ctx is not None:
+                    summary_domain.post_coordination_block(
+                        tx, channel_id=active["channel_id"], ctx=ctx, run=run
+                    )
     return []
 
 

@@ -118,6 +118,8 @@ DIAGNOSTIC_TYPES: tuple[str, ...] = (
     "preview.started",
     "preview.recycled",
     "preview.failed",
+    # summary.*（O8 汇总协调，M8b L8；护栏留痕，命名守 summary.* 命名空间）
+    "summary.coordination_blocked",  # 轮/stall 触顶阻断（§6.3；携三计数事实）
     # system / daemon（契约 D）
     "system.file_gc",
     "daemon.buffer_overflow",
@@ -133,6 +135,7 @@ DIAGNOSTIC_NAMESPACES: tuple[str, ...] = (
     "landing.",
     "deploy.",
     "preview.",
+    "summary.",
     "system.",
     "daemon.",
 )

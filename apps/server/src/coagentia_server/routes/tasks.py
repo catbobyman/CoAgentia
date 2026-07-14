@@ -27,6 +27,7 @@ from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx
 from coagentia_server.messages import service as messages_service
+from coagentia_server.orchestration import summary as summary_service
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
     message_public,
@@ -353,6 +354,15 @@ def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -
         task["channel_id"],
         {"message": message_public(msg_row, [])},
     )
+    # O8 恢复（M8b L8，汇总设计 §6.3/裁决 #8）：force-start 汇总任务 → 归零 round/stall、清
+    # blocked_at（replan_used 不重置）。同事务清，提交后自动唤醒即解抑制。恢复走既有 task.updated
+    # （change=None）刷新前端 O8 横幅。summary.recover 对非汇总任务无行 → False，零副作用。
+    if summary_service.recover(tx, task_id=task_id):
+        tx.emit(
+            tasks_service.EventType.TASK_UPDATED,
+            task["channel_id"],
+            {"task": task_public(task), "change": None},
+        )
     # hub 桥「本次放行」（best-effort；owner 人类/空 或 daemon 离线 → 仅留痕，不报错）。
     # 不改状态：直接回既有 task 行（本请求未 UPDATE tasks）。
     request.app.state.daemon_hub.force_start_wake(

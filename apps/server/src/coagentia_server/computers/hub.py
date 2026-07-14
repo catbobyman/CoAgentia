@@ -102,6 +102,7 @@ from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger.service import format_iso, new_ulid, now_iso
 from coagentia_server.orchestration import landing as landing_domain
 from coagentia_server.orchestration import proposal as proposal_domain
+from coagentia_server.orchestration import summary as summary_domain
 from coagentia_server.reminders import cadence as reminder_cadence
 from coagentia_server.routes.serialize import (
     computer_public,
@@ -307,6 +308,7 @@ class DaemonHub:
         self._activity_last: dict[str, float] = {}
         self._worktree_locks: dict[str, asyncio.Lock] = {}
         self._system_node_locks: dict[str, asyncio.Lock] = {}
+        self._summary_node_locks: dict[str, asyncio.Lock] = {}  # L8：汇总协调轮串行
         self._system_pending: dict[str, tuple[tuple[str, str], str]] = {}
         # L4a：_system_pending 现被 loop 侧协程（_drive_system_node）与 writer 线程侧上报处理
         # （worktree/check 完成后 pop）并发访问 → threading.Lock 守全部读改写（GIL 只保单 op 原子，
@@ -371,7 +373,8 @@ class DaemonHub:
             task = event.data.get("task") or {}
             change = event.data.get("change") or {}
             # 快速/as_task 的普通任务占绝大多数；只在自身写代码或 done 可能解锁下游时扫。
-            needs_scan = bool(task.get("writes_code")) or change.get("to_status") == "done"
+            to_status = change.get("to_status")
+            needs_scan = bool(task.get("writes_code")) or to_status == "done"
             channel_id = event.channel_id
             if channel_id and needs_scan:
                 loop.call_soon_threadsafe(
@@ -379,6 +382,15 @@ class DaemonHub:
                 )
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_system_nodes(channel_id)
+                )
+            # O8 汇总协调（M8b L8）：上游到达**终态**即可能解除 partial 汇总节点 gating——done **或
+            # closed** 都要扫（W9 partial 认终态，非仅 done）。结构变/落地进展另在下方触发。
+            if channel_id and to_status in {
+                TaskStatus.DONE.value,
+                TaskStatus.CLOSED.value,
+            }:
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_summary_nodes(channel_id)
                 )
             if event.type == EventType.TASK_UPDATED and task.get("writes_code"):
                 if task.get("id") and change.get("kind") in {
@@ -411,6 +423,9 @@ class DaemonHub:
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_system_nodes(channel_id)
                 )
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_summary_nodes(channel_id)
+                )
             return
         # J9 落地执行器低延迟触发：confirm 建批（landing.started）与直落转态（proposal.updated
         # status=landing）即刻领批执行；周期 _landing_loop 兜崩溃恢复（对账 #4）。
@@ -432,6 +447,10 @@ class DaemonHub:
                 )
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_worktrees(channel_id)
+                )
+                # 落地完成即结构进展 → 汇总协调续算一轮（delta 落地后新一版摘要）。
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_summary_nodes(channel_id)
                 )
             return
         if event.type == EventType.PROPOSAL_UPDATED:
@@ -1509,6 +1528,7 @@ class DaemonHub:
                     ),
                 )
                 await self._deliver_backlog(conn, agent_id, channel_id)
+                self._note_summary_wakeup(msg, agent_id)
             # idle + 未命中 → 静默积压（不发帧，随下次唤醒随批投递）
 
     def _filter_agent_delivery(
@@ -1993,6 +2013,97 @@ class DaemonHub:
                         task_id=task_id,
                         reason=f"daemon 指令失败：{error}",
                     )
+
+    def _note_summary_wakeup(self, msg: dict[str, Any], agent_id: str) -> None:
+        """无进展唤醒计一轮（M8b L8，delivery 单点，§6.1「唤醒即计」）：Orchestrator 被**非系统、
+        非人类**消息唤醒于汇总任务线程 → note_wakeup（fp 未变 → stall++）。系统消息（含摘要 post
+        自身）author=None → 跳过（进展轮由 scan 的 advance_progress 计，防双计）；人类唤醒不计轮
+        （恢复已在 REST 发帖点同事务清 blocked_at）。触顶阻断 @人类 + 诊断。非汇总线程短路。"""
+        if msg.get("author_member_id") is None:
+            return
+        with self._engine.connect() as c:
+            task_id = summary_domain.summary_task_for_thread(c, msg)
+            if task_id is None:
+                return
+            ctx = summary_domain.node_context_for_task(c, task_id)
+            if ctx is None or ctx["owner_id"] != agent_id:
+                return  # 唤醒的不是该汇总任务的 owner（Orchestrator）
+            author_kind = c.execute(
+                select(_MEMBER.c.kind).where(_MEMBER.c.id == msg["author_member_id"])
+            ).scalar()
+        if author_kind == MemberKind.HUMAN.value:
+            return
+        with gateway_tx(self._engine, self._bus) as tx:
+            run = summary_domain.get_run(tx.conn, task_id)
+            if run is None or run["blocked_at"] is not None:
+                return  # 未进入汇总期 / 已阻断（阻断态不再计轮）
+            inputs = summary_domain.collect_summary_inputs(
+                tx.conn, ctx["canvas_id"], ctx["node_id"]
+            )
+            fp = summary_domain.summary_fingerprint(tx.conn, inputs)
+            advanced = summary_domain.note_wakeup(tx, task_id=task_id, new_fp=fp)
+            if advanced["just_blocked"]:
+                self._post_summary_blocked(tx, msg["channel_id"], ctx, advanced)
+
+    def _summary_node_lock(self, node_id: str) -> asyncio.Lock:
+        lock = self._summary_node_locks.get(node_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._summary_node_locks[node_id] = lock
+        return lock
+
+    async def _scan_channel_summary_nodes(self, channel_id: str) -> None:
+        """O8 汇总协调扫描（M8b L8）：上游到达终态 → 汇总节点 gating 解除 → 逐个驱动一轮结构进展
+        （§3 主流程）。触发同系统节点扫描（task 终态 / 画布结构变 / 落地完成）。"""
+        with self._engine.connect() as c:
+            candidates = summary_domain.candidate_summary_nodes(c, channel_id)
+        for cand in candidates:
+            await self._drive_summary_node(channel_id, cand)
+
+    async def _drive_summary_node(self, channel_id: str, cand: dict[str, Any]) -> None:
+        """单汇总节点一轮结构进展（节点级串行，防重复 bus 扫描重复计轮/刷屏）：ensure 行 → 采集
+        有界摘要 + 指纹 → advance_progress（fp 变化才计轮 + 发/追发摘要系统消息 @Orchestrator，触顶
+        阻断 @人类）。阻断态由 advance/gating 各自抑制，此处只驱动进展轮。"""
+        node_id = cand["node_id"]
+        async with self._summary_node_lock(node_id):
+            with gateway_tx(self._engine, self._bus) as tx:
+                run = summary_domain.ensure_run(
+                    tx,
+                    task_id=cand["task_id"],
+                    canvas_id=cand["canvas_id"],
+                    workspace_id=cand["workspace_id"],
+                )
+                if run["blocked_at"] is not None:
+                    return  # 协调阻断中——停自动唤醒，等人类恢复（§6.3）
+                inputs = summary_domain.collect_summary_inputs(
+                    tx.conn, cand["canvas_id"], node_id
+                )
+                fp = summary_domain.summary_fingerprint(tx.conn, inputs)
+                advanced = summary_domain.advance_progress(tx, task_id=cand["task_id"], new_fp=fp)
+                if not advanced["counted"]:
+                    return  # 状态未变——幂等，不重计不刷屏（§4.2）
+                # 摘要系统消息（进线程账本、@Orchestrator 触发唤醒；护栏可见，人机同源）。
+                body = summary_domain.render_summary_message(
+                    inputs, round_count=advanced["round_count"]
+                )
+                mentions = [cand["owner_id"]] if cand["owner_id"] is not None else []
+                self._post_system_message(
+                    tx,
+                    workspace_id=cand["workspace_id"],
+                    channel_id=channel_id,
+                    body=body,
+                    thread_root_id=cand["thread_root_id"],
+                    mention_member_ids=mentions,
+                )
+                if advanced["just_blocked"]:
+                    self._post_summary_blocked(tx, channel_id, cand, advanced)
+
+    def _post_summary_blocked(
+        self, tx: Any, channel_id: str, cand: dict[str, Any], run: dict[str, Any]
+    ) -> None:
+        """协调触顶阻断（§6.3）：@人类系统消息 + DiagnosticEvent 留痕——单点在
+        summary.post_coordination_block（hub scan / delta 共用防漂移）。cand 携 ctx 五键。"""
+        summary_domain.post_coordination_block(tx, channel_id=channel_id, ctx=cand, run=run)
 
     async def _notify_active_task_owner(self, task_id: str) -> None:
         """树先于 owner 就绪时，assign/claim 后补一条且只补一条 durable 目录消息。"""

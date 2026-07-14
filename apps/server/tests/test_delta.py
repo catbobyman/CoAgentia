@@ -24,6 +24,7 @@ from coagentia_contracts.constants import SCHEMA_DECOMPOSITION_DELTA_V1
 from coagentia_contracts.enums import LandingBatchStatus
 from coagentia_contracts.kernel.decomposition import proposal_fingerprint
 from coagentia_contracts.ws import EventType
+from coagentia_server.api import ApiError
 from coagentia_server.canvas import service as canvas_service
 from coagentia_server.db import models
 from coagentia_server.events import EventBus, PendingEvent
@@ -31,6 +32,7 @@ from coagentia_server.ledger.service import new_ulid, now_iso
 from coagentia_server.orchestration import delta as delta_domain
 from coagentia_server.orchestration import landing as landing_domain
 from coagentia_server.orchestration import proposal as pd
+from coagentia_server.orchestration import summary as summary_domain
 from coagentia_server.orchestration.role_templates import (
     ORCHESTRATOR_ROLE_KEY,
     upsert_builtin_role_templates,
@@ -1243,6 +1245,70 @@ def test_delta_same_revision_refreshes_base_hash(migrated_engine: Engine) -> Non
     row = _proposal_row(migrated_engine, pid)
     assert row["status"] == "awaiting_confirm"
     assert row["base_hash"] == good_base  # 刷新到位（修复前会留 wrong_base）
+
+
+def _add_active_summary_run(engine: Engine, ids: dict[str, str], *, replan_used: int) -> str:
+    """在画布上直插一个 is_summary agent 节点 + 非终态汇总任务 + summary_runs 行（模拟已进入汇总
+    执行期）。返回汇总任务 id。"""
+    anchor, task_id, node_id = new_ulid(), new_ulid(), new_ulid()
+    with engine.begin() as c:
+        c.execute(insert(_MSG).values(
+            id=anchor, workspace_id=ids["ws"], channel_id=ids["channel"], thread_root_id=None,
+            author_member_id=None, kind="system", body="汇总", created_at=now_iso(),
+        ))
+        c.execute(insert(_TASK).values(
+            id=task_id, workspace_id=ids["ws"], channel_id=ids["channel"], number=900,
+            root_message_id=anchor, title="汇总", status="in_progress", level="l2",
+            owner_member_id=ids["orch"], created_by_member_id=ids["human"],
+            status_changed_at=now_iso(), created_at=now_iso(),
+        ))
+        c.execute(insert(_NODE).values(
+            id=node_id, canvas_id=ids["canvas"], kind="agent", task_id=task_id,
+            is_summary=True, upstream_policy="partial", pos_x=0, pos_y=0, created_at=now_iso(),
+        ))
+        c.execute(insert(models.SummaryRun.__table__).values(
+            task_id=task_id, canvas_id=ids["canvas"], workspace_id=ids["ws"],
+            round_count=1, stall_count=0, replan_used=replan_used,
+            created_at=now_iso(), updated_at=now_iso(),
+        ))
+    return task_id
+
+
+def test_o8_replan_budget_second_delta_403(migrated_engine: Engine) -> None:
+    """O8 replan 预算（M8b L8，汇总设计 §6.3）：本画布处于汇总执行期时，Orchestrator 第 2 次 delta
+    提案（预算耗尽）→ **403 rule=O8**（复用 O9 先例 403+rule 形状，错误码目录零新增仍 29）。"""
+    ids = _seed(migrated_engine)
+    _add_active_summary_run(migrated_engine, ids, replan_used=summary_domain.REPLAN_BUDGET)
+    base = _sync_baseline(migrated_engine, ids)
+    body = _delta_body(base, [_add_node_op("N1", "跟进")])
+    channel = _channel_dict(migrated_engine, ids["channel"])
+    with _tx(migrated_engine) as tx:
+        decision = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(body), thread_root_id=ids["root_msg"])
+        assert decision is not None
+        with pytest.raises(ApiError) as exc:
+            decision.apply(tx)
+    assert exc.value.status == 403 and exc.value.body.rule == "O8"
+    assert len({c.value for c in rest.ErrorCode}) == 29  # 错误码目录不因 O8 扩容
+
+
+def test_o8_replan_budget_first_delta_consumes(migrated_engine: Engine) -> None:
+    """预算未耗尽（首次 delta）→ 放行建案并 CAS 消费 replan_used（0→1）。"""
+    ids = _seed(migrated_engine)
+    sum_task = _add_active_summary_run(migrated_engine, ids, replan_used=0)
+    base = _sync_baseline(migrated_engine, ids)
+    body = _delta_body(base, [_add_node_op("N1", "跟进")])
+    channel = _channel_dict(migrated_engine, ids["channel"])
+    with _tx(migrated_engine) as tx:
+        decision = pd.classify_submission(
+            tx, channel=channel, author_member_id=ids["orch"],
+            body=_control_msg(body), thread_root_id=ids["root_msg"])
+        assert decision is not None
+        decision.apply(tx)  # 首次放行不抛
+    with migrated_engine.connect() as c:
+        run = summary_domain.get_run(c, sum_task)
+    assert run is not None and run["replan_used"] == 1  # 预算已 CAS 消费
 
 
 def test_o9_template_instantiate_agent_403(server_client: TestClient) -> None:

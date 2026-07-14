@@ -22,6 +22,7 @@ from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger import service
 from coagentia_server.orchestration import proposal as proposal_domain
+from coagentia_server.orchestration import summary as summary_service
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
     file_public,
@@ -493,6 +494,21 @@ def post_message(
         as_task_title=body.as_task.title if body.as_task is not None else None,
         create_as_task=body.as_task is not None,
     )
+    # O8 恢复（M8b L8，汇总设计 §6.3/裁决 #8）：人类在汇总任务线程发言 → 归零 round/stall、清
+    # blocked_at（replan_used 不重置——预算随人类介入不自动续杯）。同事务清，故提交后投递已解抑制。
+    # 恢复可见走既有 task.updated（change=None，同 patch_node 体例），刷新前端 O8 横幅。
+    if me["kind"] == MemberKind.HUMAN and body.thread_root_id is not None:
+        summary_task = summary_service.summary_task_for_thread(
+            tx.conn, {"thread_root_id": body.thread_root_id}
+        )
+        if summary_task is not None and summary_service.recover(tx, task_id=summary_task):
+            recovered = tasks_service.fetch_task(tx.conn, summary_task)
+            if recovered is not None:
+                tx.emit(
+                    EventType.TASK_UPDATED,
+                    channel_id,
+                    {"task": task_public(recovered), "change": None},
+                )
     return {"message": pub, "task": task_pub}
 
 
