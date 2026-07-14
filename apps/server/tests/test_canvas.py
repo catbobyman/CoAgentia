@@ -471,3 +471,106 @@ def test_unknown_canvas_returns_404(server_client: TestClient, kind: str) -> Non
         json={"title": "x", "kind": "agent"},
     )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------- L1 原子建入边（方案 A，M8a）
+
+
+def _canvas_blocked_node_ids(client: TestClient, canvas_id: str) -> set[str]:
+    from coagentia_server.canvas import service as canvas_service
+
+    engine = client.app.state.engine  # type: ignore[attr-defined]
+    with engine.connect() as conn:
+        return canvas_service.blocked_node_ids(conn, canvas_id)
+
+
+def test_create_system_node_with_upstream_builds_edges_atomically(
+    server_client: TestClient,
+) -> None:
+    """方案 A：建 merge 系统节点携 upstream_node_ids → 同一请求原子建节点 + 全部入边。"""
+    build = _build_channel(server_client)
+    canvas_id = _canvas_id(server_client, build)
+    a, b = _mk_nodes(server_client, canvas_id, 2)
+
+    r = server_client.post(
+        f"/api/canvases/{canvas_id}/nodes",
+        json={
+            "title": "合并",
+            "kind": "system",
+            "system_action": "merge",
+            "upstream_node_ids": [a["id"], b["id"]],
+        },
+    )
+    assert r.status_code == 201, r.text
+    merge_id = r.json()["node"]["id"]
+
+    detail = server_client.get(f"/api/channels/{build['id']}/canvas").json()
+    edges = {(e["from_node_id"], e["to_node_id"]) for e in detail["edges"]}
+    assert edges == {(a["id"], merge_id), (b["id"], merge_id)}  # 两条入边原子落地
+    # 基线指纹与含边快照对账（upstream_policy 不入快照，_recompute_hash 无该字段仍逐字节一致）。
+    assert detail["canvas"]["baseline_hash"] == _recompute_hash(detail["nodes"], detail["edges"])
+
+
+def test_upstream_edges_close_empty_success_window(server_client: TestClient) -> None:
+    """K1 回归：merge 节点**携**未完成上游 → 立即 blocked（不被认领扫描空成功）；对照组
+    无上游的 merge 节点 = 空上游即 satisfied → 不 blocked（旧路径的空成功窗口本身）。"""
+    build = _build_channel(server_client)
+    canvas_id = _canvas_id(server_client, build)
+    a, b = _mk_nodes(server_client, canvas_id, 2)  # 两个 agent 节点，任务皆 todo（未 done）
+
+    with_upstream = server_client.post(
+        f"/api/canvases/{canvas_id}/nodes",
+        json={
+            "title": "合并A",
+            "kind": "system",
+            "system_action": "merge",
+            "upstream_node_ids": [a["id"], b["id"]],
+        },
+    ).json()["node"]["id"]
+    without_upstream = server_client.post(
+        f"/api/canvases/{canvas_id}/nodes",
+        json={"title": "合并B", "kind": "system", "system_action": "merge"},
+    ).json()["node"]["id"]
+
+    blocked = _canvas_blocked_node_ids(server_client, canvas_id)
+    assert with_upstream in blocked  # 有未完成入边 → blocked，无空成功窗口
+    assert without_upstream not in blocked  # 无入边 = 空上游即 satisfied（对照：这正是被根治的窗口）
+
+
+def test_create_node_dangling_upstream_422_and_rolls_back(server_client: TestClient) -> None:
+    """悬空 upstream_node_ids → 422 VALIDATION_FAILED（全量收集 details.missing）；整请求回滚
+    （不留已建的锚点/任务/节点——同一 tx 原子性）。"""
+    build = _build_channel(server_client)
+    canvas_id = _canvas_id(server_client, build)
+    (a,) = _mk_nodes(server_client, canvas_id, 1)
+    before = len(server_client.get(f"/api/channels/{build['id']}/canvas").json()["nodes"])
+
+    ghost = "01K00000000000000000000000"  # 合法 ULID 字符集、画布内不存在
+    r = server_client.post(
+        f"/api/canvases/{canvas_id}/nodes",
+        json={
+            "title": "合并",
+            "kind": "system",
+            "system_action": "merge",
+            "upstream_node_ids": [a["id"], ghost],
+        },
+    )
+    assert r.status_code == 422, r.text
+    err = rest.ErrorResponse.model_validate(r.json()).error
+    assert err.code is rest.ErrorCode.VALIDATION_FAILED
+    assert err.details is not None and ghost in err.details["missing"]  # 全量收集悬空
+    after = len(server_client.get(f"/api/channels/{build['id']}/canvas").json()["nodes"])
+    assert after == before  # 回滚：merge 节点未落库
+
+
+def test_create_node_without_upstream_unchanged(server_client: TestClient) -> None:
+    """无 upstream_node_ids → 现状路径不变（无入边，向后兼容）。"""
+    build = _build_channel(server_client)
+    canvas_id = _canvas_id(server_client, build)
+    r = server_client.post(
+        f"/api/canvases/{canvas_id}/nodes",
+        json={"title": "合并", "kind": "system", "system_action": "merge"},
+    )
+    assert r.status_code == 201, r.text
+    detail = server_client.get(f"/api/channels/{build['id']}/canvas").json()
+    assert detail["edges"] == []

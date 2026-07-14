@@ -104,6 +104,73 @@ def _emit_baseline(tx: Tx, canvas: dict[str, Any]) -> tuple[int, str]:
     return version, hash_
 
 
+# ---------------------------------------------------------------- L1：原子建入边（方案 A）
+
+
+def _dedup_upstream_ids(
+    tx: Tx, canvas_id: str, upstream_node_ids: list[str]
+) -> list[str]:
+    """L1 方案 A 预校验（建节点前，fail-fast）：去重保序 + **全量收集**悬空引用（不属本画布的
+    upstream id）→ 422 VALIDATION_FAILED。返回去重后的上游 id 列表。新节点是纯汇点（只入边、无
+    出边），建入边不可能成环，故此处只校验悬空；建边后仍跑 detect_cycle 防御（含新节点+新边）。"""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for uid in upstream_node_ids:
+        if uid not in seen:
+            seen.add(uid)
+            unique.append(uid)
+    existing = set(canvas_service.node_ids(tx.conn, canvas_id))
+    missing = [uid for uid in unique if uid not in existing]
+    if missing:
+        raise ApiError(
+            422,
+            rest.ErrorCode.VALIDATION_FAILED,
+            "upstream_node_ids 含不属本画布的节点",
+            rule="V9",
+            details={"field": "upstream_node_ids", "missing": missing},
+        )
+    return unique
+
+
+def _create_upstream_edges(
+    tx: Tx, canvas: dict[str, Any], node_id: str, upstream_ids: list[str]
+) -> None:
+    """L1：同一写事务内建新节点的全部入边（upstream → node），封「无入边系统节点」被认领扫描
+    误判空成功的窗口（K1 竞态根治）。新节点为纯汇点建入边理论不成环，仍跑 detect_cycle 防御
+    （含新节点+新边，自引用即自环命中）；逐边 emit canvas.edge_added（node_added 已先发）。"""
+    if not upstream_ids:
+        return
+    canvas_id = canvas["id"]
+    all_ids = list(canvas_service.node_ids(tx.conn, canvas_id))
+    new_edges = [(uid, node_id) for uid in upstream_ids]
+    cycle = detect_cycle(all_ids, [*canvas_service.edge_pairs(tx.conn, canvas_id), *new_edges])
+    if cycle is not None:
+        raise ApiError(
+            422,
+            rest.ErrorCode.GRAPH_CYCLE,
+            "入边会形成环，画布须保持 DAG",
+            rule="V9",
+            details={"cycle": cycle},
+        )
+    edge_tbl = models.tbl(models.CanvasEdge)
+    for uid in upstream_ids:
+        edge_id = service.new_ulid()
+        tx.conn.execute(
+            insert(edge_tbl).values(
+                id=edge_id, canvas_id=canvas_id, from_node_id=uid, to_node_id=node_id
+            )
+        )
+        edge_row = (
+            tx.conn.execute(select(edge_tbl).where(edge_tbl.c.id == edge_id)).mappings().first()
+        )
+        assert edge_row is not None
+        tx.emit(
+            EventType.CANVAS_EDGE_ADDED,
+            canvas["channel_id"],
+            {"edge": canvas_edge_public(dict(edge_row))},
+        )
+
+
 # ---------------------------------------------------------------- 快照读
 
 
@@ -142,6 +209,8 @@ def create_node(
     canvas = _writable_canvas(tx, canvas_id)
     me = _require_human_actor(request, tx)  # O9：Agent 结构写 403（结构变更走 delta 提案）
     ts = service.now_iso()
+    # L1（方案 A）：先校验上游引用（建节点前 fail-fast，避免悬空引用留下已建的锚点/任务）。
+    upstream_ids = _dedup_upstream_ids(tx, canvas_id, body.upstream_node_ids or [])
 
     if body.kind == CanvasNodeKind.AGENT:
         if body.writes_code and body.project_id is None:
@@ -284,6 +353,8 @@ def create_node(
 
     node_pub = canvas_node_public(node)
     tx.emit(EventType.CANVAS_NODE_ADDED, canvas["channel_id"], {"node": node_pub})
+    # L1（方案 A）：同一 tx 内原子建全部入边（node_added 已先发，边引用新节点安全）。
+    _create_upstream_edges(tx, canvas, node["id"], upstream_ids)
     version, hash_ = _emit_baseline(tx, canvas)
     return {"baseline_version": version, "baseline_hash": hash_, "node": node_pub}
 
