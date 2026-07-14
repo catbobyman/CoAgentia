@@ -56,7 +56,7 @@
 | L6 R-10/R-14 + B-M8-1⑤ | ✅ 完成 | `ab84406` | **R-10**：deploy.log 去重游标 `<id>.seq` sidecar 持久化——server 重启内存游标丢失后从 sidecar 恢复去重，崩溃时序探针无重复行（test_deployments +1）；终态/fail-close 同清 sidecar。**R-14/⑤**：前端 deployLog 累积模型加 chunk_seq 单调去重 + 历史首页前 live 块进 pending 缓冲、首页并入按 seq 升序 flush（历史先于实时，消交叠重复）；DeploymentCard 改**先订阅后拉历史** + 失败兜底 flush；vitest 453→463。残留：某 chunk 落盘先于 GET 快照的精确交叠去重需 GET 暴露 max chunk_seq（升 B 契约），裁决 #8 暂挂 |
 | B-M8-1 加固前端四件 | ✅ ①②③④ 完成（⑤随 L6） | `b8f9e64` | ①上游多选(配 L1)/②深链纠偏 resolveThreadChannelId/③.panel z-index 41 越 preview-deck/④R-13 resolveActingMember；vitest 444→453、web tsc 0。⑤ R-14 日志缓冲随 L6 提交 |
 | —— 块 M8a 收口 —— | — | — | |
-| L7 W9 内核（0012 已随 L0 落） | 未开工 | — | Fable 亲核；**迁移 0012 已随 L0 落地**，L7 只剩 W9 内核双档 satisfied + golden partial + landing 默认 partial + patch_node 改档 |
+| L7 W9 内核（0012 已随 L0 落） | ✅ 完成 | `<pending>` | 内核 `derive_blocked` 扩双档（done_satisfied/terminal_satisfied + 节点 policy 映射，签名向后兼容 3 参=纯 strict 回归）py 权威 + lib/graph.ts 镜像 + golden 扩 5 partial 判例，双跑逐字节；`_satisfied_sets` 产双集合 + `_node_policy` + `_blocked_nodes` 单点（3 caller 收敛）；landing 汇总节点默认 `upstream_policy=partial`（一行）；**patch_node 人类改档**（O9 门挡 Agent 403）——**实施补形：NodePatch 扩可选 upstream_policy → B v1.5.1→v1.5.2**（L0 汇总设计 §9 漏列该字段，纪律 1 升版回改；设计 §5.2/裁决 #6 正文既定）+ 设计 v1.0→v1.0.1。守门：pytest **1094**/4（+5：kernel partial×3/contract shape/gating W9）· vitest **472**（+9：deriveBlocked golden partial + deriveCanvasBlocked 双档组装）· pyright 0 · ruff 净 · gen 确定（仅 NodePatch.upstream_policy）· tsc 绿 |
 | L8 汇总执行域 | 未开工 | — | |
 | L9 质量回路+话术 | 未开工 | — | |
 | B-M8-2 O8 可见面 | 未开工 | — | |

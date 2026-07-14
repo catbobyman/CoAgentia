@@ -15,6 +15,10 @@ interface GraphCase {
   edges: Array<[string, string]>;
   cycle?: string[] | null;
   satisfied?: string[];
+  // W9 双档判例（M8b L7）：新格式携双集合 + policy；旧格式仍用单 satisfied（strict）。
+  done_satisfied?: string[];
+  terminal_satisfied?: string[];
+  policy?: Record<string, string>;
   blocked?: string[];
 }
 
@@ -41,7 +45,21 @@ describe('deriveBlocked 黄金判例平价', () => {
   });
   for (const c of blockedCases) {
     it(`derive_blocked: ${c.name}`, () => {
-      const got = [...deriveBlocked(c.node_ids, c.edges, new Set(c.satisfied ?? []))].sort();
+      let got: string[];
+      if (c.done_satisfied || c.policy) {
+        // W9 双档判例（M8b L7）
+        got = [
+          ...deriveBlocked(
+            c.node_ids,
+            c.edges,
+            new Set(c.done_satisfied ?? []),
+            new Set(c.terminal_satisfied ?? c.done_satisfied ?? []),
+            c.policy ?? {},
+          ),
+        ].sort();
+      } else {
+        got = [...deriveBlocked(c.node_ids, c.edges, new Set(c.satisfied ?? []))].sort();
+      }
       expect(got).toEqual([...(c.blocked ?? [])].sort());
     });
   }
@@ -101,5 +119,43 @@ describe('deriveCanvasBlocked satisfied+blocked 单源', () => {
     const { satisfied, blocked } = deriveCanvasBlocked(nodes, [edge('s_1', 'n_2')], taskById);
     expect([...satisfied]).toEqual(['s_1']);
     expect(blocked.size).toBe(0);
+  });
+});
+
+// W9 双档 partial 组装(M8b L7):汇总节点 upstream_policy='partial' → 上游到达终态(closed/failed)即
+// 放行,但不着"已完成"色(satisfied=doneSatisfied)。deriveBlocked 算法本体由上方黄金判例保证,此处
+// 锁 deriveCanvasBlocked 的双档组装规则(前端专属,golden 不覆盖)。
+function pnode(id: string, task_id: string, policy: 'strict' | 'partial'): CanvasNodePublic {
+  return { id, canvas_id: 'cv_1', kind: 'agent', task_id, upstream_policy: policy, is_summary: policy === 'partial', pos_x: 0, pos_y: 0, created_at: '2026-07-10T00:00:00Z' };
+}
+
+describe('deriveCanvasBlocked W9 双档 partial', () => {
+  it('汇总 partial 节点:上游任务 closed(终态非 done)→ 放行且不入 satisfied', () => {
+    const nodes = [tnode('n_1', 't_1'), pnode('n_sum', 't_sum', 'partial')];
+    const taskById = { t_1: task('t_1', 'closed'), t_sum: task('t_sum', 'todo') };
+    const { satisfied, blocked } = deriveCanvasBlocked(nodes, [edge('n_1', 'n_sum')], taskById);
+    expect(satisfied.has('n_1')).toBe(false); // closed 非 done → 不着已完成色
+    expect(blocked.has('n_sum')).toBe(false); // partial:上游终态即放行
+  });
+
+  it('strict 节点同场景(上游 closed)仍 blocked', () => {
+    const nodes = [tnode('n_1', 't_1'), tnode('n_2', 't_2')];
+    const taskById = { t_1: task('t_1', 'closed'), t_2: task('t_2', 'todo') };
+    const { blocked } = deriveCanvasBlocked(nodes, [edge('n_1', 'n_2')], taskById);
+    expect(blocked.has('n_2')).toBe(true); // strict:closed 非 done → 仍 blocked
+  });
+
+  it('partial 节点:system 上游 failed(终态)→ 放行', () => {
+    const nodes = [snode('s_1', 'failed'), pnode('n_sum', 't_sum', 'partial')];
+    const taskById = { t_sum: task('t_sum', 'todo') };
+    const { blocked } = deriveCanvasBlocked(nodes, [edge('s_1', 'n_sum')], taskById);
+    expect(blocked.has('n_sum')).toBe(false);
+  });
+
+  it('partial 非"任一完成":上游仍在跑(未达终态)→ 仍 blocked', () => {
+    const nodes = [tnode('n_1', 't_1'), pnode('n_sum', 't_sum', 'partial')];
+    const taskById = { t_1: task('t_1', 'in_progress'), t_sum: task('t_sum', 'todo') };
+    const { blocked } = deriveCanvasBlocked(nodes, [edge('n_1', 'n_sum')], taskById);
+    expect(blocked.has('n_sum')).toBe(true);
   });
 });

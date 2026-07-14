@@ -15,7 +15,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from coagentia_contracts.enums import CanvasNodeKind, SystemNodeStatus, TaskStatus
+from coagentia_contracts.enums import (
+    CanvasNodeKind,
+    SystemNodeStatus,
+    TaskStatus,
+    UpstreamPolicy,
+)
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.kernel.graph import derive_blocked
 from sqlalchemy import delete, insert, select, update
@@ -123,37 +128,72 @@ def edge_pairs(conn: Connection, canvas_id: str) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------- blocked 派生（M3b E5）
 
 
-def _satisfied_nodes(conn: Connection, nodes: list[dict[str, Any]]) -> set[str]:
-    """把上游"完成"语义折进 satisfied 节点集（derive_blocked 的 caller 决策，纪律 8）：
-    kind=agent 且其 task.status=='done'、kind=system 且 system_status=='success' 即 satisfied。"""
+def _satisfied_sets(
+    conn: Connection, nodes: list[dict[str, Any]]
+) -> tuple[set[str], set[str]]:
+    """把上游"完成"语义折进双档 satisfied 集（W9 M8b L7，derive_blocked 的 caller 决策，纪律 8）：
+
+    - `done_satisfied`（strict 判据）：kind=agent 且 task.status=='done' / kind=system 且
+      system_status=='success'——**现状语义原样**。
+    - `terminal_satisfied`（partial 判据）：agent task ∈ {done, closed} / system ∈ {success,
+      failed}——上游到达终态即可（无论成败），防单点卡死全 DAG（W9 动机）。
+
+    逐 agent 节点一次性预取任务状态（≤ 画布节点数，无 N+1）。done ⊆ terminal 自然成立。"""
     agent_task_ids = {
         n["task_id"]
         for n in nodes
         if n["kind"] == CanvasNodeKind.AGENT and n["task_id"] is not None
     }
-    done: set[str] = set()
+    task_status: dict[str, str] = {}
     if agent_task_ids:
-        done = set(
-            conn.execute(
-                select(_TASK.c.id).where(
-                    _TASK.c.id.in_(agent_task_ids), _TASK.c.status == TaskStatus.DONE
-                )
-            ).scalars()
-        )
-    satisfied: set[str] = set()
+        task_status = {
+            r[0]: r[1]
+            for r in conn.execute(
+                select(_TASK.c.id, _TASK.c.status).where(_TASK.c.id.in_(agent_task_ids))
+            ).all()
+        }
+    done: set[str] = set()
+    terminal: set[str] = set()
     for n in nodes:
         if n["kind"] == CanvasNodeKind.AGENT:
-            if n["task_id"] in done:
-                satisfied.add(n["id"])
+            st = task_status.get(n["task_id"])
+            if st == TaskStatus.DONE:
+                done.add(n["id"])
+                terminal.add(n["id"])
+            elif st == TaskStatus.CLOSED:
+                terminal.add(n["id"])
         elif n["system_status"] == SystemNodeStatus.SUCCESS:
-            satisfied.add(n["id"])
-    return satisfied
+            done.add(n["id"])
+            terminal.add(n["id"])
+        elif n["system_status"] == SystemNodeStatus.FAILED:
+            terminal.add(n["id"])
+    return done, terminal
+
+
+def _node_policy(nodes: list[dict[str, Any]]) -> dict[str, str]:
+    """节点 → upstream_policy 映射（derive_blocked 双档选档，缺列默认 strict）。"""
+    return {n["id"]: n.get("upstream_policy") or UpstreamPolicy.STRICT for n in nodes}
+
+
+def _blocked_nodes(
+    conn: Connection, canvas_id: str, nodes: list[dict[str, Any]]
+) -> set[str]:
+    """单画布 blocked 节点集（W9 双档，纪律 8 单点）：组装双 satisfied + 节点 policy → 图内核
+    derive_blocked。strict 节点看 done_satisfied（现状语义），partial 节点看 terminal_satisfied。"""
+    done, terminal = _satisfied_sets(conn, nodes)
+    return derive_blocked(
+        [n["id"] for n in nodes],
+        edge_pairs(conn, canvas_id),
+        done,
+        terminal,
+        _node_policy(nodes),
+    )
 
 
 def blocked_task_ids(conn: Connection) -> set[str]:
     """全画布派生 blocked 任务集（裁决 2：不落库，画布边 + 上游任务/系统状态实时推导）。
 
-    逐画布载入节点/边 → 算 satisfied → contracts.kernel.graph.derive_blocked（E0b 图内核，
+    逐画布载入节点/边 → 算双档 satisfied → contracts.kernel.graph.derive_blocked（E0b 图内核，
     权威在 server，纪律 8）→ blocked agent 节点映射回其 task_id（system 节点无任务，不入 gating
     集）。gating 只在投递层消费本集合；读面不塞派生字段（裁决 4，前端经画布快照 + 图内核自算）。
     """
@@ -164,10 +204,7 @@ def blocked_task_ids(conn: Connection) -> set[str]:
         nodes = fetch_nodes(conn, canvas_id)
         if not nodes:
             continue
-        satisfied = _satisfied_nodes(conn, nodes)
-        blocked_nodes = derive_blocked(
-            [n["id"] for n in nodes], edge_pairs(conn, canvas_id), satisfied
-        )
+        blocked_nodes = _blocked_nodes(conn, canvas_id, nodes)
         for n in nodes:
             if (
                 n["id"] in blocked_nodes
@@ -179,21 +216,17 @@ def blocked_task_ids(conn: Connection) -> set[str]:
 
 
 def blocked_node_ids(conn: Connection, canvas_id: str) -> set[str]:
-    """单画布全部 blocked 节点；系统节点触发器与 retry 共用既有 satisfied 语义。"""
+    """单画布全部 blocked 节点；系统节点触发器与 retry 共用 W9 双档 satisfied（纪律 8 单点）。"""
     nodes = fetch_nodes(conn, canvas_id)
     if not nodes:
         return set()
-    return derive_blocked(
-        [n["id"] for n in nodes],
-        edge_pairs(conn, canvas_id),
-        _satisfied_nodes(conn, nodes),
-    )
+    return _blocked_nodes(conn, canvas_id, nodes)
 
 
 def is_task_blocked(conn: Connection, task_id: str) -> bool:
     """单任务 blocked 判定（裁决 2）：**只算该任务所在画布**，不扫全库（投递热路径省 I/O）。
 
-    找 task 的 agent 节点 → 其画布 → 该画布 satisfied + derive_blocked（图内核，纪律 8）→ 判该
+    找 task 的 agent 节点 → 其画布 → 该画布双档 satisfied + derive_blocked（图内核，纪律 8）→ 判该
     节点是否 blocked。任务不在任何画布 → False。语义与 blocked_task_ids 逐图一致，仅范围收窄到
     唯一相关画布（O(1 画布) 取代 O(全库画布)）。
     """
@@ -204,11 +237,7 @@ def is_task_blocked(conn: Connection, task_id: str) -> bool:
         return False
     node_id, canvas_id = row[0], row[1]
     nodes = fetch_nodes(conn, canvas_id)
-    satisfied = _satisfied_nodes(conn, nodes)
-    blocked_nodes = derive_blocked(
-        [n["id"] for n in nodes], edge_pairs(conn, canvas_id), satisfied
-    )
-    return node_id in blocked_nodes
+    return node_id in _blocked_nodes(conn, canvas_id, nodes)
 
 
 def message_delivery_gated(conn: Connection, msg: dict[str, Any]) -> bool:

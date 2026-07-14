@@ -66,6 +66,16 @@ def test_node_create_upstream_node_ids_optional() -> None:
     assert with_upstream.upstream_node_ids == [U1, U2]
 
 
+def test_node_patch_upstream_policy_optional() -> None:
+    """NodePatch.upstream_policy（M8b L7 / W9，B v1.5.2）：人类改放行档；缺省 None（不改档，
+    向后兼容）。Agent 主体经此端点仍 403 rule=O9（服务端 _require_human_actor 门，非契约面）。"""
+    plain = rest.NodePatch.model_validate({"title": "新标题"})
+    assert plain.upstream_policy is None
+
+    changed = rest.NodePatch.model_validate({"upstream_policy": "partial"})
+    assert changed.upstream_policy is UpstreamPolicy.PARTIAL
+
+
 def test_rule_codes_carry_o8_o9() -> None:
     """rule 字段值域含 O8（M8 replan 超额）+ O9（M6b Agent 结构变更，v1.0.12 回填）；
     错误码目录不因 rule 扩容——rule 是 403 的正交维度，非 ErrorCode（仍 29）。"""

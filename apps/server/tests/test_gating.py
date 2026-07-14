@@ -143,6 +143,28 @@ def _add_system_node(
     return node_id
 
 
+def _add_summary_node(
+    env: Env, canvas_id: str, task_id: str, *, policy: str = "partial"
+) -> str:
+    """汇总节点（is_summary agent 节点，W9 M8b L7）：默认 upstream_policy='partial'。"""
+    node_id = nid()
+    with env.engine.begin() as c:
+        c.execute(
+            insert(models.CanvasNode.__table__).values(
+                id=node_id,
+                canvas_id=canvas_id,
+                kind="agent",
+                task_id=task_id,
+                is_summary=True,
+                upstream_policy=policy,
+                pos_x=0,
+                pos_y=0,
+                created_at=now_iso(),
+            )
+        )
+    return node_id
+
+
 def _add_edge(env: Env, canvas_id: str, from_id: str, to_id: str) -> str:
     edge_id = nid()
     with env.engine.begin() as c:
@@ -240,6 +262,31 @@ def test_upstream_done_unblocks(migrated_engine: Engine) -> None:
     _add_edge(env, canvas, na, nb)
 
     assert _blocked(env) == {tb}
+    _set_status(env, ta, "done")
+    assert _blocked(env) == set()
+
+
+def test_w9_partial_summary_unblocks_on_closed_upstream(migrated_engine: Engine) -> None:
+    """W9 双档（M8b L7）：汇总节点 upstream_policy='partial'——上游任务 Closed（终态非 done）
+    即放行汇总；同图 strict 下游仍 blocked（终态不等于 done）。防单点 Closed 卡死全 DAG。"""
+    env = Env(migrated_engine)
+    ch = env.add_channel(name="build")
+    canvas = _add_canvas(env, ch)
+    ta, _ = _add_task(env, ch, number=1)
+    tsum, _ = _add_task(env, ch, number=2)  # 汇总任务
+    tstrict, _ = _add_task(env, ch, number=3)  # strict 对照下游
+    na = _add_agent_node(env, canvas, ta)
+    nsum = _add_summary_node(env, canvas, tsum, policy="partial")
+    nstrict = _add_agent_node(env, canvas, tstrict)  # 默认 strict
+    _add_edge(env, canvas, na, nsum)
+    _add_edge(env, canvas, na, nstrict)
+
+    # A 仍 todo（未达终态）→ partial 也不放行（非「任一完成」；防脏读）。
+    assert _blocked(env) == {tsum, tstrict}
+    # A Closed（终态非 done）→ partial 汇总放行；strict 下游仍 blocked。
+    _set_status(env, ta, "closed")
+    assert _blocked(env) == {tstrict}
+    # A 改 done → strict 也解锁（现状语义），partial 亦解锁。
     _set_status(env, ta, "done")
     assert _blocked(env) == set()
 

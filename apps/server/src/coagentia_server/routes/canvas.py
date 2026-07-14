@@ -415,6 +415,14 @@ def patch_node(
             canvas["channel_id"],
             {"task": task_public(task_row), "change": None},
         )
+    if "upstream_policy" in changes:
+        # W9 放行档改写（M8b L7，B v1.5.2）：人类专属（O9 门已挡 Agent，裁决 #6）。upstream_policy
+        # 不参与基线快照——改档只广播 node_updated（下方），不 bump baseline/base（契约 A §6）。
+        tx.conn.execute(
+            _NODE.update()
+            .where(_NODE.c.id == node_id)
+            .values(upstream_policy=changes["upstream_policy"])
+        )
 
     fresh = canvas_service.fetch_node(tx.conn, canvas_id, node_id)
     assert fresh is not None

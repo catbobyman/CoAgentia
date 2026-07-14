@@ -63,15 +63,25 @@ export function detectCycle(nodeIds: string[], edges: Array<[string, string]>): 
   return null;
 }
 
+// W9 partial 档字面量（= UpstreamPolicy 'partial';镜像 kernel/graph.py._PARTIAL）。
+const PARTIAL = 'partial';
+
 /**
- * 派生 blocked 节点集:节点 blocked ⇔ 至少一个直接前驱不在 satisfied 中;无前驱的根永不 blocked。
- * 纯结构函数——上游"完成"语义由 caller 折进 satisfied（此处只做结构派生）。
+ * 派生 blocked 节点集(W9 双档 satisfied,M8b L7):节点 blocked ⇔ 至少一个直接前驱不在该节点适用的
+ * satisfied 集中;无前驱的根永不 blocked。纯结构函数——上游"完成"语义与节点 policy 由 caller 折进入参。
+ * - doneSatisfied:strict 判据集(上游 Done/success,现状语义)。
+ * - terminalSatisfied:partial 判据集(上游到达终态,含 closed/failed);省略 ≡ doneSatisfied(纯 strict 回归)。
+ * - policy:{nodeId:'strict'|'partial'},缺席默认 strict;放行档是被评估节点(下游)的属性。
  */
 export function deriveBlocked(
   nodeIds: string[],
   edges: Array<[string, string]>,
-  satisfied: Set<string>,
+  doneSatisfied: Set<string>,
+  terminalSatisfied?: Set<string>,
+  policy?: Record<string, string>,
 ): Set<string> {
+  const terminal = terminalSatisfied ?? doneSatisfied;
+  const pol = policy ?? {};
   const preds = new Map<string, string[]>();
   for (const n of nodeIds) preds.set(n, []);
   for (const [a, b] of edges) {
@@ -80,37 +90,53 @@ export function deriveBlocked(
   }
   const blocked = new Set<string>();
   for (const [n, ps] of preds) {
-    if (ps.some((p) => !satisfied.has(p))) blocked.add(n);
+    const sat = pol[n] === PARTIAL ? terminal : doneSatisfied;
+    if (ps.some((p) => !sat.has(p))) blocked.add(n);
   }
   return blocked;
 }
 
 /**
  * 画布「就绪/阻塞」派生（纪律 8 单源）——画布着色(satisfied+blocked)与看板 blocked 徽标共用此一处,
- * 避免 satisfied 组装规则在 CanvasTab / BoardTab 两处漂移。satisfied = 上游完成集(agent 节点其任务
- * status==done / system 节点 system_status==success);blocked = deriveBlocked 结构派生。
- * 此处只做 satisfied 组装 + 调用,detectCycle/deriveBlocked 既有算法不动（保持与 server 镜像平价）。
+ * 避免 satisfied 组装规则在 CanvasTab / BoardTab 两处漂移。**W9 双档(M8b L7)**：组装
+ * doneSatisfied(agent done / system success——现状语义,用于着色的"已完成"集)与 terminalSatisfied
+ * (agent∈{done,closed} / system∈{success,failed}——partial 节点放行判据),按各节点 upstream_policy
+ * 交 deriveBlocked 选档。返回的 satisfied = doneSatisfied(着色语义不变:partial 放行但未 Done 的汇总
+ * 节点不着"已完成"色)。此处只做双档组装 + 调用,detectCycle/deriveBlocked 算法本体不动(与 server 平价)。
  */
 export function deriveCanvasBlocked(
   nodes: CanvasNodePublic[],
   edges: CanvasEdgePublic[],
   taskById: Record<string, TaskPublic>,
 ): { satisfied: Set<string>; blocked: Set<string> } {
-  const satisfied = new Set(
-    nodes
-      .filter((n) =>
-        n.kind === 'agent'
-          ? taskById[n.task_id ?? '']?.status === 'done'
-          : n.system_status === 'success',
-      )
-      .map((n) => n.id),
-  );
+  const doneSatisfied = new Set<string>();
+  const terminalSatisfied = new Set<string>();
+  const policy: Record<string, string> = {};
+  for (const n of nodes) {
+    if (n.upstream_policy === PARTIAL) policy[n.id] = PARTIAL;
+    if (n.kind === 'agent') {
+      const st = taskById[n.task_id ?? '']?.status;
+      if (st === 'done') {
+        doneSatisfied.add(n.id);
+        terminalSatisfied.add(n.id);
+      } else if (st === 'closed') {
+        terminalSatisfied.add(n.id);
+      }
+    } else if (n.system_status === 'success') {
+      doneSatisfied.add(n.id);
+      terminalSatisfied.add(n.id);
+    } else if (n.system_status === 'failed') {
+      terminalSatisfied.add(n.id);
+    }
+  }
   const blocked = deriveBlocked(
     nodes.map((n) => n.id),
     edges.map((e) => [e.from_node_id, e.to_node_id]),
-    satisfied,
+    doneSatisfied,
+    terminalSatisfied,
+    policy,
   );
-  return { satisfied, blocked };
+  return { satisfied: doneSatisfied, blocked };
 }
 
 /**

@@ -764,6 +764,14 @@ export type UpstreamNodeIds = string[] | null;
 export type WritesCode1 = boolean;
 export type Command7 = string | null;
 export type Title5 = string | null;
+/**
+ * canvas_nodes.upstream_policy（契约 A v1.0.12 / W9 部分失败）：被配置节点对其前驱集合的
+ * satisfied 双档判定。strict = 每个前驱须 Done（agent）/success（system）——现状语义原样；
+ * partial = 每个前驱**到达终态**即放行（agent∈{done,closed} / system∈{success,failed 不可
+ * retry}）。仍要求全部前驱到达终态（非「任一完成」），只是不限 Done——防单点卡死全 DAG。
+ * 汇总节点落地默认 partial（裁决 #5），普通节点默认 strict；人类经 patch_node 改档（O9 面）。
+ */
+export type UpstreamPolicy2 = 'strict' | 'partial';
 export type NotificationMode2 = 'all' | 'mentions' | 'mute';
 export type Items1 = unknown[];
 export type NextCursor = string | null;
@@ -2633,11 +2641,12 @@ export interface TaskPlanBody {
   version?: Version1;
 }
 /**
- * PATCH /canvases/{id}/nodes/{node_id}：改节点标题 / check 命令。
+ * PATCH /canvases/{id}/nodes/{node_id}：改节点标题 / check 命令 / W9 放行档。
  */
 export interface NodePatch {
   command?: Command7;
   title?: Title5;
+  upstream_policy?: UpstreamPolicy2 | null;
 }
 /**
  * PUT /channels/{id}/notification-setting（B §4.5/§11.4）：upsert 懒建；人类成员本人自治

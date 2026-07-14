@@ -79,5 +79,60 @@
     "edges": [["A", "B"], ["B", "C"]],
     "satisfied": ["A", "B", "C"],
     "blocked": []
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "partial_join_closed_upstream_unblocks",
+    "_note": "W9 M8b L7：D=partial,前驱 B(done)/C(closed 终态但非 done)→ D 放行",
+    "node_ids": ["A", "B", "C", "D"],
+    "edges": [["A", "B"], ["A", "C"], ["B", "D"], ["C", "D"]],
+    "done_satisfied": ["A", "B"],
+    "terminal_satisfied": ["A", "B", "C"],
+    "policy": {"D": "partial"},
+    "blocked": []
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "strict_join_closed_upstream_stays_blocked",
+    "_note": "同图 D=strict(默认)：C 仅终态非 done → D 仍 blocked(strict 语义原样)",
+    "node_ids": ["A", "B", "C", "D"],
+    "edges": [["A", "B"], ["A", "C"], ["B", "D"], ["C", "D"]],
+    "done_satisfied": ["A", "B"],
+    "terminal_satisfied": ["A", "B", "C"],
+    "policy": {},
+    "blocked": ["D"]
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "partial_failed_system_upstream_unblocks",
+    "_note": "system 前驱 S=failed(不可 retry 终态)→ partial 下游 D 放行",
+    "node_ids": ["S", "D"],
+    "edges": [["S", "D"]],
+    "done_satisfied": [],
+    "terminal_satisfied": ["S"],
+    "policy": {"D": "partial"},
+    "blocked": []
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "partial_running_upstream_stays_blocked",
+    "_note": "partial 非'任一完成'：前驱 A 仍在跑(未达终态)→ D 仍 blocked(防脏读)",
+    "node_ids": ["A", "D"],
+    "edges": [["A", "D"]],
+    "done_satisfied": [],
+    "terminal_satisfied": [],
+    "policy": {"D": "partial"},
+    "blocked": ["D"]
+  },
+  {
+    "fn": "derive_blocked",
+    "name": "partial_requires_all_terminal",
+    "_note": "partial 要求全部前驱到达终态：A(closed 终态)但 B(running)→ D 仍 blocked",
+    "node_ids": ["A", "B", "D"],
+    "edges": [["A", "D"], ["B", "D"]],
+    "done_satisfied": [],
+    "terminal_satisfied": ["A"],
+    "policy": {"D": "partial"},
+    "blocked": ["D"]
   }
 ]

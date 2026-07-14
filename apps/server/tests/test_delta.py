@@ -1190,6 +1190,21 @@ def test_o9_patch_node_agent_403_and_layout_identity(server_client: TestClient) 
                             headers=headers)
     assert lay.status_code == 200, lay.text
 
+    # W9 放行档改写（M8b L7）：Agent 403 rule=O9；人类放行、落库、不 bump 基线（不参与快照）。
+    bad_pol = server_client.patch(f"/api/canvases/{cv}/nodes/{node_id}",
+                                  json={"upstream_policy": "partial"}, headers=headers)
+    assert bad_pol.status_code == 403, bad_pol.text
+    assert rest.ErrorResponse.model_validate(bad_pol.json()).error.rule == "O9"
+    base_before = server_client.get(f"/api/channels/{ids['channel']}/canvas").json()[
+        "canvas"
+    ]["baseline_version"]
+    ok_pol = server_client.patch(f"/api/canvases/{cv}/nodes/{node_id}",
+                                 json={"upstream_policy": "partial"})
+    assert ok_pol.status_code == 200, ok_pol.text
+    mut = rest.CanvasMutation.model_validate(ok_pol.json())
+    assert mut.node is not None and mut.node.upstream_policy == "partial"
+    assert mut.baseline_version == base_before  # upstream_policy 不入快照 → 不 bump
+
 
 # ====================================================== code-review 修复回归（阶段 4 收口）
 

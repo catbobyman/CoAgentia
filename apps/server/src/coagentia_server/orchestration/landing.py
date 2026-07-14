@@ -68,6 +68,7 @@ from coagentia_contracts.enums import (
     SystemNodeStatus,
     TaskLevel,
     TaskStatus,
+    UpstreamPolicy,
 )
 from coagentia_contracts.kernel.decomposition import proposal_fingerprint
 from coagentia_contracts.kernel.fingerprint import fingerprint
@@ -629,6 +630,10 @@ def _apply_create_summary_node(tx: Any, ctx: _ExecContext, op: LandingOp) -> dic
         system_action=None,
         command=None,
         system_status=None,
+        # W9 部分失败（M8b L7，裁决 #5）：汇总节点落地默认 partial——上游任一节点 Closed/failed
+        # 到达终态即放行汇总（防单点卡死全 DAG），未覆盖清单由摘要与账本兜底。人类经 patch_node
+        # 改档，Agent 不可经 delta 设置（O9 面，裁决 #6）。upstream_policy 不参与基线快照。
+        upstream_policy=UpstreamPolicy.PARTIAL,
         pos_x=x,
         pos_y=y,
         created_at=ts,

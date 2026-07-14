@@ -44,6 +44,7 @@ from coagentia_contracts.enums import (
     TaskLevel,
     TaskStatus,
     UiTheme,
+    UpstreamPolicy,
     UsageLevel,
 )
 from coagentia_contracts.ids import Sha256Hex, Ulid
@@ -518,10 +519,14 @@ class NodeCreate(ContractModel):
 
 
 class NodePatch(ContractModel):
-    """PATCH /canvases/{id}/nodes/{node_id}：改节点标题 / check 命令。"""
+    """PATCH /canvases/{id}/nodes/{node_id}：改节点标题 / check 命令 / W9 放行档。"""
 
     title: str | None = None
     command: str | None = None
+    # v1.5.2（M8b L7 / W9）：人类改 upstream_policy 放行档（strict↔partial）——放行宽松化是人类
+    # 专属决定（裁决 #6）；Agent 主体经此端点仍 403 rule=O9（既有 _require_human_actor 门）。
+    # 不参与基线快照（改档不动 baseline/base，契约 A §6）。None = 不改档（向后兼容）。
+    upstream_policy: UpstreamPolicy | None = None
 
 
 class EdgeCreate(ContractModel):
