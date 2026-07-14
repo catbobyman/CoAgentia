@@ -155,6 +155,13 @@ export function PreviewPanel({ target, onClose }: { target: PreviewTarget; onClo
   // [重试] / [重新启动] = 再次 POST（failed/recycled 非活跃态自然走 ensure 重建，交互 §12）。
   const retry = () => startM.mutate(taskId);
 
+  // F11 关闭面板即回收：人关面板 = 人不看了，主动 DELETE 下发 preview.stop 回收 dev server（省资源，
+  // 与 M7 裁决 #11「人开的面板人再点」对称）。失败静默——idle 超时回收兜底仍在。
+  const closeAndRecycle = () => {
+    void api.stopPreview(taskId).catch(() => {});
+    onClose();
+  };
+
   return (
     <section className="preview-panel" aria-label={`预览 #${taskNumber}`} data-status={status ?? 'starting'}>
       <header className="preview-top">
@@ -186,7 +193,7 @@ export function PreviewPanel({ target, onClose }: { target: PreviewTarget; onClo
             <RefreshCw />{status === 'recycled' ? '重新启动' : '重试'}
           </button>
         )}
-        <button type="button" className="preview-close" aria-label="关闭预览" onClick={onClose}>
+        <button type="button" className="preview-close" aria-label="关闭预览" onClick={closeAndRecycle}>
           <X />
         </button>
       </header>

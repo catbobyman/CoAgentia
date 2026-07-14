@@ -1,6 +1,7 @@
 // REST 数据层：类型全部来自 @coagentia/contracts-ts 生成物（零手写实体形状——同源的证明）。
 import type {
   AgentCreate,
+  AgentPatch,
   AgentPublic,
   AgentSkillPublic,
   CanvasDetail,
@@ -25,7 +26,9 @@ import type {
   HeldDraftResponse,
   InstantiateResult,
   LayoutPut,
+  LifecycleAction,
   MemberPublic,
+  MemberRole,
   MessageCreated,
   MessagePublic,
   NodeCreate,
@@ -52,6 +55,7 @@ import type {
   UsageLevel,
   UsageReport,
   WorkspaceCreate,
+  WorkspacePatch,
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
@@ -165,6 +169,10 @@ async function get<T>(path: string): Promise<T> {
 
 export const api = {
   workspace: () => get<WorkspacePublic>('/api/workspace'),
+  // 工作区设置（B §4.1 WorkspacePatch）：主题/桌面通知/声音/附件上限/欢迎语/setup_state。
+  // 服务端另发 workspace.updated 广播（wsBridge 反流），成功回最新 WorkspacePublic。
+  patchWorkspace: (patch: WorkspacePatch) =>
+    writeJson<WorkspacePublic>('/api/workspace', 'PATCH', patch),
   channels: () => get<ChannelsSnapshot>('/api/channels'),
   members: () => get<MemberPublic[]>('/api/members'),
   presence: () => get<PresenceSnapshot>('/api/presence'),
@@ -297,11 +305,16 @@ export const api = {
 
   // 走统一写路径:发消息/As Task 失败时同样拿到结构化 ApiError(code/details),
   // 而非裸 `send -> 422`(M2 二轮 review:主写路径绕过了 writeJson 基础设施)。
-  sendMessage: (channelId: string, body: string, asTask: boolean) =>
+  // threadRootId 非空 = 线程回复（F5-④）：携 thread_root_id 让回复归线程、不进主流（PRD §4.1）。
+  sendMessage: (channelId: string, body: string, asTask: boolean, threadRootId?: string) =>
     writeJson<MessageCreated>(
       `/api/channels/${channelId}/messages`,
       'POST',
-      asTask ? { body, as_task: {} } : { body },
+      {
+        body,
+        ...(asTask ? { as_task: {} } : {}),
+        ...(threadRootId ? { thread_root_id: threadRootId } : {}),
+      },
     ),
 
   thread: (rootMessageId: string) =>
@@ -309,7 +322,22 @@ export const api = {
 
   // ---- 机器(P7)与 Agent 详情(P6)
   computers: () => get<ComputerPublic[]>('/api/computers'),
+  // 机器改名（B §4.2 ComputerPatch，require_admin）：另发 computer.updated 广播。
+  patchComputer: (computerId: string, name: string) =>
+    writeJson<ComputerPublic>(`/api/computers/${computerId}`, 'PATCH', { name }),
+  // 移除机器（FR-2.7）：有 Agent → 409 COMPUTER_HAS_AGENTS；被 Project 用 → 409 COMPUTER_HAS_PROJECTS。
+  // 204 无体，无 WS 事件——调用方 invalidate computers 收敛。
+  deleteComputer: (computerId: string) =>
+    writeJson<void>(`/api/computers/${computerId}`, 'DELETE'),
   agent: (memberId: string) => get<AgentPublic>(`/api/agents/${memberId}`),
+  // Agent runtime/model/description 编辑（FR-3.5「下次启动生效」，R3 门：仅创建者/admin）。
+  // 只送非空字段（server 忽略 None）；成功另发 agent.updated 广播（wsBridge 反流）。
+  patchAgent: (memberId: string, patch: AgentPatch) =>
+    writeJson<AgentPublic>(`/api/agents/${memberId}`, 'PATCH', patch),
+  // Agent 三档重置生命周期（FR-3.4，R2 门：Agent 主体 → 403）：同步语义，连接 daemon 下发等 ack；
+  // 无连接 → 503 DAEMON_OFFLINE（不参与对账补发）。action 枚举照契约 B LifecycleRequest 冻结形状。
+  agentLifecycle: (memberId: string, action: LifecycleAction) =>
+    writeJson<{ result: unknown }>(`/api/agents/${memberId}/lifecycle`, 'POST', { action }),
   agentSkills: (memberId: string) => get<AgentSkillPublic[]>(`/api/agents/${memberId}/skills`),
   // M5(B §11.3 / R6):技能白名单全量替换制(PUT 覆写),body = { skills: string[] };server 去重保序,
   // R3 门(非创建者/admin → 403 PERMISSION_DENIED)。成功回最新授予列表;另发 AGENT_UPDATED 广播。
@@ -354,6 +382,25 @@ export const api = {
   // 判定按「频道成员中 role_template_key='orchestrator' 的 Agent」（server find_orchestrator）。
   addChannelMember: (channelId: string, memberId: string) =>
     writeJson<void>(`/api/channels/${channelId}/members`, 'POST', { member_id: memberId }),
+
+  // 发私信（B §4.5 DmCreate）：POST /dms，body { member_id }。dm_key 去重幂等——已存在同对 DM
+  // 直接返既有频道（不重复建）。与自己建 → 422 VALIDATION_FAILED；成员不存在 → 404。
+  createDm: (memberId: string) =>
+    writeJson<ChannelPublic>('/api/dms', 'POST', { member_id: memberId }),
+  // 成员改角色（B §3.1，require_admin）：admin 仅可动 Member 级、owner 任意；R1 Agent 永不 Owner。
+  // 服务端另发 member.updated 广播（wsBridge 反流）。403 PERMISSION_DENIED 据 code/rule 组 toast。
+  patchMember: (memberId: string, role: MemberRole) =>
+    writeJson<MemberPublic>(`/api/members/${memberId}`, 'PATCH', { role }),
+
+  // 频道归档 / 取消归档 / 删除（B §4.5，require_admin）。归档/取消归档回最新 ChannelPublic +
+  // 另发 channel.updated；删除 204 无体：仅空频道可删（含消息 → 409 CHANNEL_NOT_EMPTY，改用归档），
+  // 另发 channel.deleted。均结构化错误上浮（writeJson）。
+  archiveChannel: (channelId: string) =>
+    writeJson<ChannelPublic>(`/api/channels/${channelId}/archive`, 'POST'),
+  unarchiveChannel: (channelId: string) =>
+    writeJson<ChannelPublic>(`/api/channels/${channelId}/unarchive`, 'POST'),
+  deleteChannel: (channelId: string) =>
+    writeJson<void>(`/api/channels/${channelId}`, 'DELETE'),
 
   // ---- M5(B-M5-1)频道设置弹窗:阈值/描述/公开私有走既有 ChannelPatch(PATCH /channels/{id},
   // require_admin);通知设置走 notification-setting 端点(人类本人自治)。均结构化错误上浮(writeJson)。

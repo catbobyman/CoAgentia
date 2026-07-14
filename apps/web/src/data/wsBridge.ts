@@ -4,6 +4,8 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import type {
   ActivityItemPublic,
+  AgentPublic,
+  AgentUpdatedData,
   CanvasDetail,
   CanvasEdgePublic,
   CanvasNodePublic,
@@ -21,8 +23,11 @@ import type {
   ProposalPublic,
   ReadPositionPublic,
   ReminderPublic,
+  TaskContractData,
   TaskPublic,
   TaskDetail,
+  WorkspacePublic,
+  WorkspaceUpdatedData,
   WorktreeUpdatedData,
 } from '@coagentia/contracts-ts';
 
@@ -376,10 +381,17 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       break;
     }
 
-    // draft.superseded = 对话修正 rev+1，旧提案转 Superseded 终态（新 draft.presented 随后到，草稿层
-    // 于 WS 同步层切到新 rev——见 data/draftRev）。仅载 {proposal_id}，无完整实体——失效该提案 query
-    // 让已挂载的提案卡/草稿层 refetch 到 superseded 终态（未挂载无观察者、不触发请求）。
-    case 'draft.superseded': {
+    // full 草稿生命周期的「仅载 proposal_id」族（契约 C：draft.superseded/confirmed/rejected =
+    // ProposalRefData `{proposal_id}`；draft.adjusted = DraftAdjustedData `{proposal_id, adjustments}`）
+    // ——**均无完整 ProposalPublic**，无法整体替换，故一律失效该提案 query 让已挂载的提案卡/草稿层
+    // refetch 到最新态（未挂载无观察者、不触发请求）。
+    //   注意（易错点）：**delta.**adjusted/confirmed/rejected 载完整 `{proposal}` 走上面的整体替换 case；
+    // 而 **draft.**adjusted/confirmed/rejected 只载 proposal_id 走本 case——两族同名后缀但 payload 形状
+    // 不同（DraftAdjustedData/ProposalRefData vs ProposalData），切勿并进上面的 setQueryData 分支。
+    case 'draft.superseded':
+    case 'draft.adjusted':
+    case 'draft.confirmed':
+    case 'draft.rejected': {
       const { proposal_id } = data as { proposal_id: string };
       void qc.invalidateQueries({ queryKey: qk.proposal(proposal_id) });
       break;
@@ -399,6 +411,64 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
     }
     case 'landing.started':
       break; // 占位提示态，无结构变更（confirm 202 的「落地执行中」toast 已覆盖起步反馈）
+
+    // ---- F10 死壳补齐：契约登记但 wsBridge 原零处理的实时缺口（靠重连 resyncAll 兜底 → 补精确 patch）。
+
+    // F10a 机器上下线（daemon 核心信号）：computer.* 载完整 ComputerPublic，但 computers 是全量列表
+    // 查询（部分播种会不完整）——失效让在场观察者（ComputersScreen/AgentDetailScreen）refetch，在线点
+    // 实时变灰/变绿。未打开则无观察者、不额外请求（REST 是事实源，铁律 1）。
+    case 'computer.connected':
+    case 'computer.disconnected':
+    case 'computer.updated':
+      void qc.invalidateQueries({ queryKey: qk.computers() });
+      break;
+
+    // F10b 契约实时（"让 @Agent 起草"闭环）：task_contract.* 载 {contract}，按 contract.task_id 失效
+    // 对应 taskDetail（契约卡挂在线程面板的 TaskDetail.contracts 上）。loop_contract 的 task_id 为空
+    // （挂 reminder）→ 无任务详情面，跳过。
+    case 'task_contract.created':
+    case 'task_contract.updated': {
+      const { contract } = data as TaskContractData;
+      if (contract.task_id) {
+        void qc.invalidateQueries({ queryKey: qk.taskDetail(contract.task_id) });
+      }
+      break;
+    }
+
+    // F10d 频道/成员实时（F8/F3/F9 的实时面配套）：channel.*（五种）失效 channels 快照（新频道/设置/
+    // 归档/删除/成员进出）；member.*（三种）失效 members（新成员/改角色/移除）。均 REST 收敛（铁律 1）。
+    case 'channel.created':
+    case 'channel.updated':
+    case 'channel.deleted':
+    case 'channel.member_added':
+    case 'channel.member_removed':
+      void qc.invalidateQueries({ queryKey: qk.channels() });
+      break;
+
+    case 'member.created':
+    case 'member.updated':
+    case 'member.removed':
+      void qc.invalidateQueries({ queryKey: qk.members() });
+      break;
+
+    // F10（F7 配套）agent.updated 载完整 {agent}，按 agent.member_id 整体替换 qk.agent 缓存（下次启动
+    // 生效的 runtime/model 改动实时反映）。未加载（详情页未打开、getQueryData===undefined）则放行不建，
+    // 同 reminder/preview 范式。
+    case 'agent.updated': {
+      const { agent } = data as AgentUpdatedData;
+      const key = qk.agent(agent.member_id);
+      if (qc.getQueryData(key) === undefined) break;
+      qc.setQueryData<AgentPublic>(key, agent);
+      break;
+    }
+
+    // F10（F4 配套）workspace.updated 载完整 {workspace}，整体替换 workspace 缓存（他端改主题/桌面通知
+    // 等设置实时收敛——主题经 RootLayout 的 ui_theme effect 落 data-theme）。workspace 是恒加载单例。
+    case 'workspace.updated': {
+      const { workspace } = data as WorkspaceUpdatedData;
+      qc.setQueryData<WorkspacePublic>(qk.workspace(), workspace);
+      break;
+    }
 
     default:
       // 未知/未处理事件:忽略(契约 C §3)

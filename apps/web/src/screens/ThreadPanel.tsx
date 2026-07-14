@@ -177,13 +177,15 @@ export function TaskHandoffCard({
 }
 
 export function ThreadPanel({
-  task, rootMessageId, channelId, memberById, memberNames, meName, meId, presenceOf, usage,
+  task, rootMessageId, channelId, archived, memberById, memberNames, meName, meId, presenceOf, usage,
   heldDrafts, canResolve, onLocateMessage, locateId, onLocateDone, onClose, onSend,
   onReviewProposal, onReviewDelta,
 }: {
   task?: TaskPublic;
   rootMessageId: string;
   channelId: string;
+  /** F8：所属频道已归档 → 线程内也只读（与主流 Composer 同口径，可读不可发）。 */
+  archived?: boolean;
   memberById: Record<string, MemberPublic>;
   memberNames: string[];
   meName: string;
@@ -214,8 +216,9 @@ export function ThreadPanel({
   const [handoffMissing, setHandoffMissing] = useState<string[] | undefined>(undefined);
 
   const items = threadQ.data ?? [];
-  // 回复流 = 线程条目去掉 root(root 内容已在牌头呈现)。
-  const replies = items.filter((m) => m.id !== rootMessageId);
+  // 任务线程：root 内容由任务牌头呈现，回复流去掉 root；普通消息线程（F5-④ 泛化）：无任务牌，
+  // root 直接进流在最上（回复不进主流，PRD §4.1）。
+  const replies = task ? items.filter((m) => m.id !== rootMessageId) : items;
 
   const status = task?.status ?? 'todo';
   const owner = task?.owner_member_id ? memberById[task.owner_member_id] : undefined;
@@ -325,31 +328,33 @@ export function ThreadPanel({
 
   return (
     <aside className="panel" data-screen-label={`任务线程 #${task?.number ?? ''}`}>
-      {/* [1] 任务牌头 */}
+      {/* [1] 牌头：任务线程 = 任务牌头（编号/状态/契约摘要）；普通消息线程 = 简单标题（root 进回复流）。 */}
       <header className="phead">
         <div className="row1">
-          <span className="no">#{task?.number ?? '—'}</span>
-          <span className="ttl">{task?.title ?? '线程'}</span>
+          {task && <span className="no">#{task.number}</span>}
+          <span className="ttl">{task?.title ?? '线程回复'}</span>
           <span className="icobtn close" aria-label="关闭面板" onClick={onClose}><X /></span>
         </div>
-        <div className="row2">
-          <span className="stchip">
-            <i style={{ background: `var(${STATUS_VAR[status]})` }} />{STATUS_WORD[status]}
-          </span>
-          {owner && (
-            <span className="who"><Avatar name={owner.name} presence={presenceOf(owner.id)} size="nav" />{owner.name}</span>
-          )}
-          {creator && <span className="meta">by {creator.name}{created ? ` · ${created}` : ''}</span>}
-          {usageTotal !== undefined && usageTotal > 0 && (
-            <span className="tokbadge">{(usageTotal / 1000).toFixed(1)}k tok</span>
-          )}
-        </div>
-        {(activePlan || activeHandoff) && (
+        {task && (
+          <div className="row2">
+            <span className="stchip">
+              <i style={{ background: `var(${STATUS_VAR[status]})` }} />{STATUS_WORD[status]}
+            </span>
+            {owner && (
+              <span className="who"><Avatar name={owner.name} presence={presenceOf(owner.id)} size="nav" />{owner.name}</span>
+            )}
+            {creator && <span className="meta">by {creator.name}{created ? ` · ${created}` : ''}</span>}
+            {usageTotal !== undefined && usageTotal > 0 && (
+              <span className="tokbadge">{(usageTotal / 1000).toFixed(1)}k tok</span>
+            )}
+          </div>
+        )}
+        {task && (activePlan || activeHandoff) && (
           <div className="row3">
             {activePlan && (
+              // F13：去 ▾ 假展开箭头（真契约卡在下方 [2] 已渲染，摘要芯片是纯标注）。
               <span className="planentry">
                 TaskPlan · AC×{(activePlan.body as TaskPlanBody).acceptance_criteria.length}
-                <span className="ar">▾</span>
               </span>
             )}
             {activeHandoff ? (
@@ -388,7 +393,9 @@ export function ThreadPanel({
         </section>
       )}
 
-      {/* [2] 契约折叠卡:活动 TaskPlan/TaskHandoff 各一张 + 历史修订折叠 + 起草入口 */}
+      {/* [2] 契约折叠卡（任务专属：活动 TaskPlan/TaskHandoff + 历史修订 + 起草/升格/拆解入口）——
+          普通消息线程无契约概念，整段不渲染（F5-④ 泛化：任务专属区按 root 是否任务条件渲染）。 */}
+      {task && (
       <section className="contract">
         {contracts.length > 0 ? (
           <>
@@ -459,6 +466,7 @@ export function ThreadPanel({
           </div>
         )}
       </section>
+      )}
 
       {/* [3] 线程回复流(复用 MessageFlow;附件卡 = 消息读面派生 files,与主流同源) */}
       <MessageFlow
@@ -473,6 +481,7 @@ export function ThreadPanel({
         onLocateDone={onLocateDone}
         onReviewProposal={onReviewProposal}
         onReviewDelta={onReviewDelta}
+        onToast={(msg) => toast.push(msg, { tone: 'success' })}
       />
 
       {/* [3b] 本线程内被扣草稿(thread_root_id === rootMessageId)——主流的由会话屏渲染。 */}
@@ -485,7 +494,8 @@ export function ThreadPanel({
         onLocateMessage={onLocateMessage}
       />
 
-      {/* [4] 状态操作条:claim/unclaim 三态 + 合法目标态流转下拉 */}
+      {/* [4] 状态操作条（任务专属：claim/unclaim + 合法目标态流转）——普通消息线程无任务状态，不渲染。 */}
+      {task && (
       <div className="opsbar">
         <span className="lb">Status</span>
         {iAmOwner ? (
@@ -510,9 +520,14 @@ export function ThreadPanel({
           )}
         </div>
       </div>
+      )}
 
-      {/* [5] 面板编辑器(无 As Task) */}
-      <Composer channelName="thread" variant="panel" hideAsTask onSend={(body) => onSend(body)} />
+      {/* [5] 面板编辑器(无 As Task)——F8 归档频道只读：以提示替代编辑器（与主流同口径）。 */}
+      {archived ? (
+        <footer className="pcomposer archived-note" role="note">此频道已归档 · 只读</footer>
+      ) : (
+        <Composer channelName="thread" variant="panel" hideAsTask onSend={(body) => onSend(body)} />
+      )}
 
       {/* M6b 拆解引导链（T2 路径的 409/503 引导；创建完成 toast 引导重新点击「拆解」）。 */}
       <DecomposeGuideModals

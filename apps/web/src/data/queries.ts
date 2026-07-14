@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 
 import type {
   AgentCreate,
+  AgentPatch,
   CanvasDetail,
   ChannelNotificationSettingPublic,
   ChannelPatch,
@@ -11,7 +12,9 @@ import type {
   ChannelsSnapshot,
   DeploymentPublic,
   HeldDraftPublic,
+  LifecycleAction,
   MemberPublic,
+  MemberRole,
   MessagePublic,
   NotificationMode,
   PresenceEntry,
@@ -24,6 +27,7 @@ import type {
   TemplateCreate,
   TemplateInstantiate,
   UsageLevel,
+  WorkspacePatch,
   WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
@@ -35,6 +39,17 @@ import { type DeployLogState, EMPTY_DEPLOY_LOG, mergeDeployLogPage } from './dep
 // ---- 单实体/列表查询
 export const useWorkspace = () =>
   useQuery({ queryKey: qk.workspace(), queryFn: () => api.workspace() });
+
+// 工作区设置 PATCH（F4：主题/桌面通知/声音/附件上限/欢迎语）。成功以响应体替换 workspace 缓存
+// （主题切换即时生效——RootLayout 的主题 effect 监听 ui_theme 落 documentElement）；server 另发
+// workspace.updated 广播（wsBridge 反流），本地替换是即时收敛。错误由调用方处理（主题失败回滚）。
+export const usePatchWorkspace = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: WorkspacePatch) => api.patchWorkspace(patch),
+    onSuccess: (ws: WorkspacePublic) => qc.setQueryData<WorkspacePublic>(qk.workspace(), ws),
+  });
+};
 
 export const useMembers = () =>
   useQuery({ queryKey: qk.members(), queryFn: () => api.members() });
@@ -73,6 +88,26 @@ export const useThread = (rootMessageId: string | undefined) =>
 // 机器(P7)与 Agent 详情(P6)只读查询。
 export const useComputers = () =>
   useQuery({ queryKey: qk.computers(), queryFn: () => api.computers() });
+
+// F6 机器改名 / 移除。改名 server 另发 computer.updated（wsBridge 反流）；移除 204 无 WS 事件——
+// 成功后 invalidate computers 收敛（REST 是事实源）。错误（COMPUTER_HAS_AGENTS/PROJECTS 409）由
+// 调用方据 code 组 toast——防呆 disabled 是 UI 责任、API 兜底。
+export const usePatchComputer = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ computerId, name }: { computerId: string; name: string }) =>
+      api.patchComputer(computerId, name),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.computers() }),
+  });
+};
+
+export const useDeleteComputer = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (computerId: string) => api.deleteComputer(computerId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.computers() }),
+  });
+};
 
 export const useAgent = (memberId: string | undefined) =>
   useQuery({
@@ -115,6 +150,27 @@ export const usePutAgentSkills = (memberId: string) => {
   });
 };
 
+// F2 Agent 生命周期（Stop/Restart/Session reset/Full reset）：调 lifecycle 端点，成功后失效该 agent
+// 详情（presence 变化由 WS agent.status/presence.changed 反流，invalidate 是兜底）。错误（如 daemon
+// 离线 503）由调用方据 code 组 toast（F2 要求离线单独文案）——故本 hook 不内置 error toast。
+export const useAgentLifecycle = (memberId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (action: LifecycleAction) => api.agentLifecycle(memberId, action),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.agent(memberId) }),
+  });
+};
+
+// F7 Agent runtime/model/description 编辑（PATCH，R3 门）。成功以响应体替换 agent 缓存（下次启动
+// 生效；server 另发 agent.updated 广播，wsBridge 反流，本地替换是即时收敛）。错误由调用方 toast。
+export const usePatchAgent = (memberId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: AgentPatch) => api.patchAgent(memberId, patch),
+    onSuccess: (agent) => qc.setQueryData(qk.agent(memberId), agent),
+  });
+};
+
 // M5(B-M5-1)频道阈值/描述/公开私有 PATCH。server 另发 CHANNEL_UPDATED，但 wsBridge 无该 case
 // （契约 C 零修订，裁决 #7）——故成功后 invalidate channels 收敛（REST 是事实源，铁律 1）。
 export const usePatchChannel = () => {
@@ -125,6 +181,47 @@ export const usePatchChannel = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.channels() }),
   });
 };
+
+// F3 发私信：POST /dms 幂等（已存在同对 DM 返既有）。成功后 invalidate channels 让 DM 分组出现
+// （server 另发 channel.created，wsBridge 反流，invalidate 是兜底）。返回频道供调用方 mutateAsync
+// 后路由跳转。错误由调用方 toast。
+export const useCreateDm = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) => api.createDm(memberId),
+    // DM 频道须进 channels 快照，跳转后 ChannelChatScreen 才能按 activeChannelId 命中渲染。
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.channels() }),
+  });
+};
+
+// F9 成员改角色（owner 拍板做）。权限矩阵在 server 执法（admin 仅 Member 级、R1 Agent 永不 Owner）。
+// 成功 server 另发 member.updated（wsBridge 反流），本地 invalidate members 兜底。错误（403
+// PERMISSION_DENIED 携 rule）由调用方据 code/rule 组 toast。
+export const usePatchMember = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: MemberRole }) =>
+      api.patchMember(memberId, role),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.members() }),
+  });
+};
+
+// F8 频道归档 / 取消归档 / 删除（require_admin）。归档/取消归档 server 发 channel.updated + 系统消息
+// （wsBridge 反流）；删除发 channel.deleted。成功后 invalidate channels（+ 归档态变化影响侧栏分组
+// 与主流可发性）；REST 是事实源，invalidate 是收敛路径。错误（CHANNEL_NOT_EMPTY 409）由调用方 toast。
+function useChannelStateMutation<A>(call: (arg: A) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: call,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.channels() }),
+  });
+}
+export const useArchiveChannel = () =>
+  useChannelStateMutation<string>((channelId) => api.archiveChannel(channelId));
+export const useUnarchiveChannel = () =>
+  useChannelStateMutation<string>((channelId) => api.unarchiveChannel(channelId));
+export const useDeleteChannel = () =>
+  useChannelStateMutation<string>((channelId) => api.deleteChannel(channelId));
 
 /** 通知设置 PUT 后本地更新 ChannelsSnapshot.notification_settings（裁决 #7 零新增 WS 事件，PUT 后
  *  操作方本地更新）：非默认 mode → upsert 该频道行；mode=all（默认）→ 从「非默认行」列表剔除。 */

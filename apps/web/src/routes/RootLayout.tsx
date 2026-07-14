@@ -12,8 +12,9 @@ import { useUiStore } from '../lib/store';
 import { useWsSync } from '../data/useWsSync';
 import {
   channelsOf, memberMap, presenceMap, readPositionsMap,
-  useChannelsSnapshot, useMembers, usePresence,
+  useChannelsSnapshot, useMembers, usePresence, useWorkspace,
 } from '../data/queries';
+import { applyTheme } from '../lib/theme';
 import { Rail } from '../components/Rail';
 import { ChannelList } from '../components/ChannelList';
 import { hasUnreadMention, notifyModeOf } from '../lib/notify';
@@ -47,6 +48,20 @@ export function RootLayout() {
   const channelsQ = useChannelsSnapshot();
   const membersQ = useMembers();
   const presenceQ = usePresence();
+  const workspaceQ = useWorkspace();
+
+  // F4 主题应用：workspace.ui_theme 落 documentElement[data-theme]（PATCH 落库 + WS workspace.updated
+  // 反流均经 workspace 缓存流过此处）。'system' 期间跟随 OS 明暗切换实时重应用。
+  const uiTheme = workspaceQ.data?.ui_theme;
+  useEffect(() => {
+    if (!uiTheme) return;
+    applyTheme(uiTheme);
+    if (uiTheme !== 'system' || typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = () => applyTheme('system');
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [uiTheme]);
 
   const channels = channelsOf(channelsQ.data);
   const members = membersQ.data ?? [];

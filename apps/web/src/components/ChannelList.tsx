@@ -1,6 +1,8 @@
 // 频道侧栏(240px):频道分组(含 ops-private🔒 复发点 4)+ DM 分组 + 已归档折叠分组 + 新建频道。
 // 复发点 4:频道列表须含 ops-private(锁标)与「已归档」折叠分组。
-import { Archive, BellOff, ChevronRight, Lock, Plus } from 'lucide-react';
+// F8：主分组排除 archived；「已归档」分组头接展开逻辑，展开渲染 archived 频道（只读进入可浏览）。
+import { useState } from 'react';
+import { Archive, BellOff, ChevronDown, ChevronRight, Lock, Plus } from 'lucide-react';
 
 import type { ChannelPublic, MemberPublic, NotificationMode, PresenceEntry } from '@coagentia/contracts-ts';
 
@@ -24,8 +26,15 @@ export interface ChannelListProps {
 
 export function ChannelList(props: ChannelListProps) {
   const { channels, activeChannelId, unreadCount, presenceOf, dmPeer, onSelectChannel } = props;
-  const roomChannels = channels.filter((c) => c.kind === 'channel');
+  const roomChannels = channels.filter((c) => c.kind === 'channel' && !c.archived_at);
+  const archivedChannels = channels.filter((c) => c.kind === 'channel' && !!c.archived_at);
   const dms = channels.filter((c) => c.kind === 'dm');
+  const [archOpen, setArchOpen] = useState(false);
+
+  const selectChannel = (ch: ChannelPublic) => {
+    onSelectChannel(ch);
+    props.onMobileClose?.();
+  };
 
   return (
     <aside className={`chlist${props.mobileOpen ? ' mobile-open' : ''}`}>
@@ -76,7 +85,33 @@ export function ChannelList(props: ChannelListProps) {
       })}
 
       <div className="sp" />
-      <div className="arch"><ChevronRight /><Archive /><span>已归档</span></div>
+      {/* F8「已归档」折叠分组：仅有归档频道时出现；展开渲染 archived 频道（只读进入可浏览）。 */}
+      {archivedChannels.length > 0 && (
+        <>
+          <div
+            className="arch"
+            role="button"
+            aria-expanded={archOpen}
+            aria-label="已归档频道"
+            onClick={() => setArchOpen((v) => !v)}
+          >
+            {archOpen ? <ChevronDown /> : <ChevronRight />}<Archive /><span>已归档</span>
+            <span className="arch-n">{archivedChannels.length}</span>
+          </div>
+          {archOpen && archivedChannels.map((ch) => (
+            <div
+              key={ch.id}
+              className={`ch archived${ch.id === activeChannelId ? ' active' : ''}`}
+              onClick={() => selectChannel(ch)}
+            >
+              {ch.is_private
+                ? <span className="lock"><Lock /></span>
+                : <span className="hash">#</span>}
+              <span className="nm">{ch.name}</span>
+            </div>
+          ))}
+        </>
+      )}
       <div className="newch"><Plus /><span>新建频道</span></div>
       {props.onPlayTimeline && (
         <button className="playbtn" onClick={props.onPlayTimeline}>▶ 播放时间线</button>

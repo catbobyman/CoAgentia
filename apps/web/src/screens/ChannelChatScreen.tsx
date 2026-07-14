@@ -1,7 +1,7 @@
 // P1 会话屏(主列),在新路由/基座下渲染,行为不回退(静载 + WS 五事件无刷新更新,NFR1)。
 // 视图状态来自类型化深链 search(tab/task/thread);服务端数据来自 TanStack Query 缓存。
 // P5 线程面板由 ?thread= 驱动,在主列右侧展开(不新增顶层路由)。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
 import type { TaskStatus } from '@coagentia/contracts-ts';
@@ -13,6 +13,8 @@ import {
   useCanvasSnapshot, useChannelFiles, useChannelsSnapshot, useHeldDrafts, useMembers, useMessages,
   usePresence, useTasks, useUsageByTask,
 } from '../data/queries';
+import { useReadCursor } from '../data/useReadCursor';
+import { useArchiveChannel, useDeleteChannel, useUnarchiveChannel } from '../data/queries';
 import { useUiStore } from '../lib/store';
 import { Composer } from '../components/Composer';
 import { MessageFlow } from '../components/MessageFlow';
@@ -25,21 +27,30 @@ import { ThreadPanel } from './ThreadPanel';
 import { PreviewDeck } from '../components/PreviewPanel';
 import { HeldDraftList } from './HeldDraftCard';
 import { ChannelSettingsModal } from '../components/ChannelSettingsModal';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { useToast } from '../components/Toast';
 import { notifyModeOf } from '../lib/notify';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 
 export function ChannelChatScreen({ search, setSearch }: {
   search: ChannelSearch;
   setSearch: (next: Partial<ChannelSearch>) => void;
 }) {
   const activeChannelId = useUiStore((s) => s.activeChannelId);
+  const setActiveChannel = useUiStore((s) => s.setActiveChannel);
   const setActiveDraft = useUiStore((s) => s.setActiveDraft);
   const setActiveDelta = useUiStore((s) => s.setActiveDelta);
   const navigate = useNavigate();
+  const toast = useToast();
+  const archiveM = useArchiveChannel();
+  const unarchiveM = useUnarchiveChannel();
+  const deleteM = useDeleteChannel();
   // 「定位到消息」目标(P4 → 会话流):瞬态视图状态,不进深链。
   const [locateId, setLocateId] = useState<string | undefined>();
   // 频道设置弹窗(B-M5-1):⋯ 菜单入口,瞬态视图状态。
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // F8 删除频道确认弹窗。
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const channelsQ = useChannelsSnapshot();
   const membersQ = useMembers();
@@ -50,6 +61,21 @@ export function ChannelChatScreen({ search, setSearch }: {
   const filesQ = useChannelFiles(activeChannelId ?? undefined);
   const canvasQ = useCanvasSnapshot(activeChannelId ?? undefined);
   const heldDraftsQ = useHeldDrafts(activeChannelId ?? undefined);
+  const markRead = useReadCursor();
+
+  // F1 已读游标上报：会话（chat）页签可见且窗口聚焦时，把最新消息标记为已读（节流/去重在 markRead 内）。
+  // 覆盖三情形：①打开频道 / 切到 chat 页签；②新消息到达（latestMsgId 变化）；③窗口重获焦点。
+  // 只报当前活跃频道 + chat 页签 → 后台频道/非会话页签不误报（交互 §… 未读永不误清）。
+  const latestMsgId = messagesQ.data?.length
+    ? messagesQ.data[messagesQ.data.length - 1]!.id
+    : undefined;
+  useEffect(() => {
+    if (search.tab !== 'chat' || !activeChannelId || !latestMsgId) return;
+    const mark = () => { if (document.hasFocus()) markRead(activeChannelId, latestMsgId); };
+    mark();
+    window.addEventListener('focus', mark);
+    return () => window.removeEventListener('focus', mark);
+  }, [search.tab, activeChannelId, latestMsgId, markRead]);
 
   const snap = channelsQ.data;
   const channel = snap?.items?.find((c) => c.id === activeChannelId);
@@ -90,7 +116,48 @@ export function ChannelChatScreen({ search, setSearch }: {
   const send = (body: string, asTask: boolean) => {
     void api.sendMessage(channel.id, body, asTask); // 回显靠 WS 广播(契约 C §5)
   };
+  // F8 频道归档 / 取消归档 / 删除（Topbar ⋯ 菜单入口）。
+  const archived = !!channel.archived_at;
+  const doArchive = () => archiveM.mutate(channel.id, {
+    onSuccess: () => toast.push('频道已归档', { tone: 'success' }),
+    onError: (e: unknown) => toast.push(e instanceof ApiError ? e.message : '归档失败', { tone: 'error' }),
+  });
+  const doUnarchive = () => unarchiveM.mutate(channel.id, {
+    onSuccess: () => toast.push('频道已取消归档', { tone: 'success' }),
+    onError: (e: unknown) => toast.push(e instanceof ApiError ? e.message : '取消归档失败', { tone: 'error' }),
+  });
+  const doDelete = () => deleteM.mutate(channel.id, {
+    onSuccess: () => {
+      setDeleteOpen(false);
+      toast.push('频道已删除', { tone: 'success' });
+      // 当前频道已删 → 切到另一个非归档频道（无则清空，RootLayout 会重设默认）。
+      const next = (snap?.items ?? []).find(
+        (c) => c.id !== channel.id && c.kind === 'channel' && !c.archived_at,
+      );
+      setActiveChannel(next?.id ?? null);
+    },
+    onError: (e: unknown) => {
+      setDeleteOpen(false);
+      toast.push(
+        e instanceof ApiError && e.code === 'CHANNEL_NOT_EMPTY'
+          ? '频道含消息，无法删除（消息不可变）——请改用归档'
+          : e instanceof ApiError ? e.message : '删除频道失败',
+        { tone: 'error' },
+      );
+    },
+  });
   const selectTab = (tab: Tab) => setSearch({ tab });
+  // F5 在线程中回复：普通消息为 root 开线程（回复不进主流，PRD §4.1）；回复本身有 root 则归其根线程。
+  const openThread = (m: { id: string; thread_root_id?: string | null }) =>
+    setSearch({ tab: 'chat', thread: m.thread_root_id ?? m.id });
+  // F5 转为任务（仅顶级频道消息，MessageFlow 已按 !isTask && !thread_root_id && canConvertToTask 守门）。
+  // 成功后任务牌由 WS task.created 反流在消息处出现（无需导航）。
+  const convertToTask = (m: { id: string }) => {
+    void api.convertToTask(m.id)
+      .then(() => toast.push('已转为任务', { tone: 'success' }))
+      .catch((e: unknown) => toast.push(e instanceof ApiError ? e.message : '转为任务失败', { tone: 'error' }));
+  };
+  const canConvertToTask = channel.kind !== 'dm';
   // M6b 提案卡入口：full「查看草稿」→ 激活草稿层；delta「审查增量」→ 激活 delta 面板；均切画布页签。
   // 二者互斥（并行审计修复）：切页签不卸 store 态,不清对方会双层叠加遮挡（频道内单提案审阅）。
   const reviewDraft = (proposalId: string) => {
@@ -129,7 +196,14 @@ export function ChannelChatScreen({ search, setSearch }: {
   return (
     <div className="chatwrap">
       <main className="main">
-        <Topbar channel={channel} stackNames={stackNames} onOpenSettings={() => setSettingsOpen(true)} />
+        <Topbar
+          channel={channel}
+          stackNames={stackNames}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onArchive={doArchive}
+          onUnarchive={doUnarchive}
+          onDelete={() => setDeleteOpen(true)}
+        />
         <Tabs
           active={search.tab}
           canvasCount={canvasCount}
@@ -157,6 +231,10 @@ export function ChannelChatScreen({ search, setSearch }: {
               onReviewProposal={reviewDraft}
               onReviewDelta={reviewDelta}
               onOpenProposalThread={(m) => setSearch({ tab: 'chat', thread: m.thread_root_id ?? m.id })}
+              onReplyInThread={openThread}
+              onConvertToTask={convertToTask}
+              canConvertToTask={canConvertToTask}
+              onToast={(msg) => toast.push(msg, { tone: 'success' })}
             />
             {/* 主流被扣草稿(thread_root_id 为空)——线程内的由 ThreadPanel 渲染。 */}
             <HeldDraftList
@@ -194,7 +272,14 @@ export function ChannelChatScreen({ search, setSearch }: {
           </section>
         )}
 
-        <Composer channelName={channel.name ?? ''} onSend={send} />
+        {/* F8 归档频道只读：可浏览历史，不可发消息（FR-1.3 冻结语义）。 */}
+        {archived ? (
+          <footer className="composer archived-note" role="note">
+            此频道已归档 · 只读。可在顶栏 ⋯ 菜单「取消归档」恢复。
+          </footer>
+        ) : (
+          <Composer channelName={channel.name ?? ''} onSend={send} />
+        )}
       </main>
 
       {settingsOpen && (
@@ -207,12 +292,33 @@ export function ChannelChatScreen({ search, setSearch }: {
         />
       )}
 
+      {/* F8 删除频道确认（不可撤销）：键入频道名防呆；仅空频道可删，含消息 → 409 改用归档（toast）。 */}
+      {deleteOpen && (
+        <ConfirmModal
+          title="删除频道"
+          danger
+          confirmLabel="删除频道"
+          requireText={channel.name ?? ''}
+          requireTextLabel={`键入 “${channel.name}” 以确认删除`}
+          busy={deleteM.isPending}
+          message={
+            <>
+              删除频道 <span className="em">#{channel.name}</span> <span className="em">不可撤销</span>。
+              仅空频道可删；含消息的频道请改用「归档」（消息不可变）。
+            </>
+          }
+          onConfirm={doDelete}
+          onClose={() => setDeleteOpen(false)}
+        />
+      )}
+
       {threadRootId && (
         <ThreadPanel
           key={threadRootId}
           task={threadTask}
           rootMessageId={threadRootId}
           channelId={channel.id}
+          archived={archived}
           memberById={byId}
           memberNames={memberNames}
           meName={me?.name ?? ''}
@@ -225,7 +331,11 @@ export function ChannelChatScreen({ search, setSearch }: {
           locateId={locateId}
           onLocateDone={() => setLocateId(undefined)}
           onClose={() => setSearch({ thread: undefined, task: undefined })}
-          onSend={(body) => void api.sendMessage(channel.id, body, false)}
+          // 线程回复携 thread_root_id（归线程不进主流）；失败 toast（不静默吞掉发送）。
+          onSend={(body) =>
+            void api.sendMessage(channel.id, body, false, threadRootId).catch((e: unknown) =>
+              toast.push(e instanceof ApiError ? e.message : '发送失败', { tone: 'error' }),
+            )}
           onReviewProposal={reviewDraft}
           onReviewDelta={reviewDelta}
         />

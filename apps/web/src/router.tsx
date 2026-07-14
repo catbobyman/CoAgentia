@@ -67,7 +67,9 @@ function AgentScreen() {
   const navigate = useNavigate();
   const setTab = (tab: AgentSearch['tab']) =>
     void navigate({ to: '/agents/$memberId', params: { memberId }, search: { tab } });
-  return <AgentDetailScreen memberId={memberId} tab={search.tab} setTab={setTab} />;
+  // key=memberId：切换 Agent 时整棵子树重挂载，避免 ProfileTab 就地编辑草稿（editDesc/descDraft）
+  // 跨 Agent 残留、把编辑存到错的 Agent 上（code-review 修）。
+  return <AgentDetailScreen key={memberId} memberId={memberId} tab={search.tab} setTab={setTab} />;
 }
 
 const computersRoute = createRoute({

@@ -63,8 +63,14 @@ body { background: var(--bg); font-family: var(--font-sans); color: var(--text);
 .datesep { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; }
 .datesep::before, .datesep::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .datesep span { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
-.msg { display: grid; grid-template-columns: 36px 1fr; padding: 4px 8px 4px 0; border-radius: var(--radius-s); }
+.msg { display: grid; grid-template-columns: 36px 1fr; padding: 4px 8px 4px 0; border-radius: var(--radius-s); position: relative; }
 .msg:hover { background: var(--surface-hover); }
+/* F5 逐条消息 hover 动作条（右上浮出，Slack 体例）。 */
+.msg .msg-actions { position: absolute; top: -10px; right: 8px; display: flex; gap: 2px; padding: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-s); box-shadow: var(--shadow-popover); opacity: 0; pointer-events: none; transition: opacity var(--t-fast) var(--ease); z-index: 5; }
+.msg:hover .msg-actions, .msg .msg-actions:focus-within { opacity: 1; pointer-events: auto; }
+.msg .msg-act { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-s); color: var(--text-secondary); cursor: pointer; }
+.msg .msg-act:hover { background: var(--surface-hover); color: var(--text); }
+.msg .msg-act svg.lucide { width: 15px; height: 15px; }
 .msg .avc { width: 36px; position: relative; }
 .msg .av { width: 26px; height: 26px; border-radius: var(--radius-s); color: var(--avatar-ink); font-size: 12px; font-weight: 500; display: flex; align-items: center; justify-content: center; position: relative; }
 .msg .av.human { border-radius: var(--radius-round); }
@@ -113,6 +119,9 @@ body { background: var(--bg); font-family: var(--font-sans); color: var(--text);
 
 /* 编辑器 */
 .composer { flex: none; padding: 8px 24px 16px; }
+/* F8 归档频道只读提示（替代 Composer / 线程面板 Composer）。 */
+.composer.archived-note, .pcomposer.archived-note { display: flex; align-items: center; justify-content: center; min-height: 44px; font-size: 13px; color: var(--text-muted); font-family: var(--font-mono); border: 1px dashed var(--border); border-radius: var(--radius-s); background: var(--surface-1); }
+.pcomposer.archived-note { margin: 8px; }
 .combox { border: 1px solid var(--accent); box-shadow: 0 0 0 2px var(--focus-ring); border-radius: var(--radius-s); background: var(--surface-1); min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 12px; }
 .combox .prompt { font-family: var(--font-mono); font-size: 14px; font-weight: 500; color: var(--accent); flex: none; }
 .combox .line { flex: 1; font-size: 14px; color: var(--text); background: transparent; border: none; outline: none; min-width: 0; }
@@ -133,7 +142,8 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .rail .rit:hover { background: var(--surface-hover); color: var(--text); }
 .rail .rit.active { background: var(--accent-subtle); color: var(--accent); }
 .rail .rit .dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: var(--danger); }
-.rail .me { margin-top: 4px; cursor: pointer; }
+/* F13：底部头像本批不挂个人菜单——去 hover 可点暗示（cursor 默认）。 */
+.rail .me { margin-top: 4px; cursor: default; }
 
 /* ===== 频道侧栏:锁标 / 已归档 / 新建频道 ===== */
 .ch .lock { color: var(--text-muted); width: 12px; flex: none; display: inline-flex; }
@@ -141,6 +151,10 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .arch { height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 12px; margin: 0 4px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-radius: var(--radius-s); }
 .arch:hover { background: var(--surface-hover); }
 .arch svg.lucide { width: 14px; height: 14px; }
+.arch .arch-n { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+/* F8 已归档频道行：弱化底色，示意只读。 */
+.ch.archived { color: var(--text-muted); }
+.ch.archived .nm { color: var(--text-secondary); }
 .newch { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 12px; margin: 0 4px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-radius: var(--radius-s); }
 .newch:hover { background: var(--surface-hover); color: var(--text); }
 .newch svg.lucide { width: 16px; height: 16px; }
@@ -197,9 +211,8 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .phead .who { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
 .phead .meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 .phead .row3 { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.planentry { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface-2); font-family: var(--font-mono); font-size: 12px; color: var(--text); cursor: pointer; }
-.planentry:hover { background: var(--surface-hover); }
-.planentry .ar { color: var(--text-muted); }
+/* F13：TaskPlan 摘要芯片是纯标注（真契约卡在下方）——去可点暗示（cursor 默认、无 hover、无 ▾）。 */
+.planentry { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--surface-2); font-family: var(--font-mono); font-size: 12px; color: var(--text); cursor: default; }
 .handoff { font-family: var(--font-mono); font-size: 11px; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 2px 8px; color: var(--text-secondary); }
 
 .contract { flex: none; margin: 12px 16px 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-0); }
@@ -282,6 +295,12 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 
 /* ===== [P0c] 起步清单终端卡 ===== */
 .app--setup { height: 100vh; }
+/* F12 首跑屏示意态：假页签/假编辑器/⋯/收起 明确不可点（去可点暗示 + 低饱和），只作引导示意。 */
+.app--setup .setup-demo { pointer-events: none; cursor: default; }
+.app--setup .setup-demo.composer { opacity: .5; }
+.app--setup .setup-demo.icobtn { opacity: .4; }
+.app--setup .setup-demo.tabs .tab:not(.active) { opacity: .5; }
+.app--setup .setup-demo.btn { opacity: .5; }
 .combox .line.ph { color: var(--text-muted); }
 .combox .astask .box { width: 14px; height: 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: var(--surface-2); }
 .tcard-wrap { position: relative; max-width: 560px; margin-top: 8px; }
@@ -332,8 +351,23 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .machine .st i { width: 8px; height: 8px; }
 .selbtn { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: transparent; font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; }
 .selbtn:hover { background: var(--surface-hover); }
+.selbtn:disabled { opacity: .55; cursor: default; }
+.selbtn:disabled:hover { background: transparent; }
 .selbtn svg.lucide { width: 14px; height: 14px; color: var(--text-muted); }
 .selbtn .rb { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+/* F7 Agent 编辑：下拉禁用项（未装置 runtime）/ 自定义 model 输入行 / 说明就地编辑。 */
+.drop .it.disabled { color: var(--text-muted); cursor: default; }
+.drop .it.disabled:hover { background: transparent; }
+.drop .it.modeladd { padding: 4px 6px; }
+.drop .it.modeladd:hover { background: transparent; }
+.drop .it.modeladd input { width: 100%; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); color: var(--text); font-size: 12px; padding: 4px 6px; outline: none; }
+.agent-edit-ic { display: inline-flex; align-items: center; margin-left: 8px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 2px; vertical-align: middle; }
+.agent-edit-ic:hover { color: var(--text); }
+.agent-edit-ic svg.lucide { width: 13px; height: 13px; }
+.agent-desc-edit { display: flex; flex-direction: column; gap: 8px; }
+.agent-desc-ta { width: 100%; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s); color: var(--text); font-family: var(--font-sans); font-size: 13px; line-height: 1.5; padding: 6px 8px; resize: vertical; outline: none; }
+.agent-desc-ta:focus { border-color: var(--border-strong); }
+.agent-desc-ops { display: flex; justify-content: flex-end; gap: 8px; }
 .emptytab { padding: 16px 14px; font-size: 13px; color: var(--text-muted); }
 /* M5 技能编辑态：勾选行 + 自由输入行 */
 .skillrow { cursor: pointer; align-items: center; }
@@ -359,6 +393,9 @@ svg.lucide { width: 20px; height: 20px; stroke-width: 1.5; }
 .mcard .mhd { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .mcard .mhd svg.lucide { width: 18px; height: 18px; color: var(--text-secondary); }
 .mcard .mhd b { font-size: 16px; font-weight: 500; color: var(--text); }
+/* F6 就地改名输入行。 */
+.mcard .mhd .mrename { display: inline-flex; align-items: center; gap: 4px; }
+.mcard .mhd .mrename input.val { background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: var(--radius-s); color: var(--text); font-size: 15px; padding: 3px 8px; outline: none; min-width: 160px; }
 .mcard .mhd .meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 .mcard .mhd .conn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); margin-left: auto; }
 .mcard .mhd .conn i { width: 8px; height: 8px; }

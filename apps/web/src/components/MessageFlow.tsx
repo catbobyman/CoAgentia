@@ -2,7 +2,7 @@
 // M6b:card_kind==='proposal' 的消息 → 正文剥离 <control> 块显示散文(lib/decomposition.stripControl,
 // 勿重写定界)+ 渲染提案卡(ProposalCard,数据源 GET /proposals/{card_ref} + WS 实时刷新)。
 import { useEffect } from 'react';
-import { ExternalLink, GitMerge } from 'lucide-react';
+import { Copy, ExternalLink, GitMerge, Link, ListPlus, Reply } from 'lucide-react';
 
 import type { MemberPublic, MessagePublic, PresenceEntry, TaskPublic } from '@coagentia/contracts-ts';
 
@@ -34,6 +34,52 @@ export interface MessageFlowProps {
   onReviewProposal?: (proposalId: string) => void; // full「查看草稿/在画布中审阅」→ 切画布 + 激活草稿层
   onReviewDelta?: (proposalId: string) => void; // delta「审查增量」→ 切画布 + 激活 delta 面板
   onOpenProposalThread?: (message: MessagePublic) => void; // failed 态「查看线程」
+  // F5 逐条消息 hover 动作菜单（未传对应回调 → 该动作不显示；Copy text/link 恒有，纯前端）：
+  onReplyInThread?: (message: MessagePublic) => void; // ④ 在线程中回复（root = thread_root_id ?? id）
+  onConvertToTask?: (message: MessagePublic) => void; // ③ 转为任务（仅顶级频道消息，DM/线程回复不显示）
+  canConvertToTask?: boolean; // 该视图是否承载任务（DM/线程 = false → 隐藏「转为任务」）
+  onToast?: (msg: string) => void; // Copy 成功反馈（未传则静默）
+}
+
+/** F5 逐条消息 hover 动作条（Slack 体例，右上浮出，≤4 图标）。Copy text/link 纯前端；Reply/Convert
+ *  经父回调。转任务仅对「顶级频道消息且尚非任务」显示（T3/DM 不承载任务，PRD §4.9）。 */
+function MessageActions({ message, isTask, canConvert, onReply, onConvert, onToast }: {
+  message: MessagePublic;
+  isTask: boolean;
+  canConvert: boolean;
+  onReply?: (m: MessagePublic) => void;
+  onConvert?: (m: MessagePublic) => void;
+  onToast?: (msg: string) => void;
+}) {
+  const copy = (text: string, label: string) => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+    void navigator.clipboard.writeText(text).then(() => onToast?.(label)).catch(() => {});
+  };
+  // Copy link：深链统一格式 ?thread=<root>&msg=<id>（依赖 M8a 深链修复才算完整；本批先以"能还原
+  // 频道+线程"为准——B-M8-1 落地后自动兼容）。
+  const copyLink = () => {
+    const root = message.thread_root_id ?? message.id;
+    const { origin, pathname } = window.location;
+    copy(`${origin}${pathname}?thread=${root}&msg=${message.id}`, '已复制链接');
+  };
+  // 排除承载卡片的消息（提案卡/部署卡/未来任何 user-message card）——转任务会与卡片叠加、语义错乱。
+  const showConvert = !!onConvert && canConvert && !isTask && !message.thread_root_id && !message.card_kind;
+  return (
+    <div className="msg-actions" role="toolbar" aria-label="消息操作">
+      <button type="button" className="msg-act" aria-label="复制文本" title="复制文本"
+        onClick={() => copy(message.body, '已复制文本')}><Copy /></button>
+      <button type="button" className="msg-act" aria-label="复制链接" title="复制链接"
+        onClick={copyLink}><Link /></button>
+      {onReply && (
+        <button type="button" className="msg-act" aria-label="在线程中回复" title="在线程中回复"
+          onClick={() => onReply(message)}><Reply /></button>
+      )}
+      {showConvert && (
+        <button type="button" className="msg-act" aria-label="转为任务" title="转为任务"
+          onClick={() => onConvert!(message)}><ListPlus /></button>
+      )}
+    </div>
+  );
 }
 
 /** J5 冲突锚点正文的稳定段：`冲突文件:` 后连续 `- path` 行；遇到其他正文立即停止。 */
@@ -55,6 +101,7 @@ export function MessageFlow(props: MessageFlowProps) {
     messages, memberById, memberNames, meName, presenceOf, taskByRoot, usageByTask,
     lastReadId, selectedTaskId, locateId, onLocateDone, onSelectTask, onOpenAgent,
     onReviewProposal, onReviewDelta, onOpenProposalThread,
+    onReplyInThread, onConvertToTask, canConvertToTask = false, onToast,
   } = props;
   const lastReadIdx = messages.findIndex((m) => m.id === lastReadId);
 
@@ -132,6 +179,15 @@ export function MessageFlow(props: MessageFlowProps) {
               </div>
             ) : (
               <div className={`msg${cont ? ' cont' : ''}`}>
+                {/* Copy text/link 恒在；Reply/Convert 由回调决定是否显示。 */}
+                <MessageActions
+                  message={m}
+                  isTask={!!task}
+                  canConvert={canConvertToTask}
+                  onReply={onReplyInThread}
+                  onConvert={onConvertToTask}
+                  onToast={onToast}
+                />
                 <div className="avc">
                   {cont
                     ? <span className="htime">{fmtTime(m.created_at)}</span>

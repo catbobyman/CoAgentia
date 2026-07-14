@@ -1,0 +1,9 @@
+/* 确认弹窗（ConfirmModal）：复用 .scrim/.modal 骨架，仅补文案区与危险图标间距（token 变量，零发明）。 */
+.confirm-modal { width: 420px; }
+.confirm-modal .mtitle { display: flex; align-items: center; gap: 8px; }
+.confirm-danger-ic { width: 16px; height: 16px; color: var(--danger); }
+.confirm-msg {
+  font-size: 13px; line-height: 1.6; color: var(--text-secondary);
+  margin-bottom: 12px; white-space: pre-wrap; word-break: break-word;
+}
+.confirm-msg .em { color: var(--text); font-weight: 500; }

@@ -41,6 +41,8 @@ export function SetupChecklistScreen() {
   const depDone = (i: number) => i === 0 || done(steps[i - 1].key);
 
   return (
+    // 首跑态整屏套 ToastProvider（Rail 的主题切换/未来 toast 依赖它；原仅包 TemplateWizard）。
+    <ToastProvider>
     <div className="app app--setup">
       {/* rail 复用(首跑态) */}
       <Rail meName="M" />
@@ -61,9 +63,10 @@ export function SetupChecklistScreen() {
             <span className="sav" style={{ background: 'var(--avatar-3)', borderRadius: 'var(--radius-round)' }}>M</span>
             <span className="n">1</span>
           </div>
-          <div className="icobtn" aria-label="频道菜单"><Ellipsis /></div>
+          {/* F12：首跑屏是引导示意，非功能面——假元素降级为明确的示意态（去可点、低饱和）。 */}
+          <div className="icobtn setup-demo" aria-hidden="true"><Ellipsis /></div>
         </header>
-        <nav className="tabs">
+        <nav className="tabs setup-demo" aria-hidden="true">
           <div className="tab active">会话</div>
           <div className="tab">画布</div>
           <div className="tab">看板</div>
@@ -97,12 +100,13 @@ export function SetupChecklistScreen() {
                   </div>
                 );
               })}
-              <div className="ft"><button className="btn btn-ghost">收起</button></div>
+              <div className="ft"><button className="btn btn-ghost setup-demo" aria-hidden="true">收起</button></div>
             </div>
           </div>
         </section>
 
-        <footer className="composer">
+        {/* F12：首跑屏假编辑器/假发送降级为示意态（真发消息在完成三步、进入会话屏后可用）。 */}
+        <footer className="composer setup-demo" aria-hidden="true">
           <div className="combox">
             <span className="prompt">❯</span>
             <span className="line ph">发消息到 #all…</span>
@@ -112,22 +116,21 @@ export function SetupChecklistScreen() {
         </footer>
       </main>
 
-      {/* 模板向导(首跑态在主壳之外，自带 ToastProvider——mutation 的 toast 依赖它)。 */}
+      {/* 模板向导(首跑态在主壳之外——共用整屏 ToastProvider，mutation 的 toast 依赖它)。 */}
       {wizardOpen && targetChannel && (
-        <ToastProvider>
-          <TemplateWizard
-            channelId={targetChannel.id}
-            members={members}
-            onClose={() => setWizardOpen(false)}
-            onInstantiated={(channelId) => {
-              setWizardOpen(false);
-              setActiveChannel(channelId);
-              void navigate({ to: '/', search: { tab: 'canvas' } });
-            }}
-          />
-          <Toaster />
-        </ToastProvider>
+        <TemplateWizard
+          channelId={targetChannel.id}
+          members={members}
+          onClose={() => setWizardOpen(false)}
+          onInstantiated={(channelId) => {
+            setWizardOpen(false);
+            setActiveChannel(channelId);
+            void navigate({ to: '/', search: { tab: 'canvas' } });
+          }}
+        />
       )}
+      <Toaster />
     </div>
+    </ToastProvider>
   );
 }
