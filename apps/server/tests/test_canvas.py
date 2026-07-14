@@ -534,7 +534,7 @@ def test_upstream_edges_close_empty_success_window(server_client: TestClient) ->
 
     blocked = _canvas_blocked_node_ids(server_client, canvas_id)
     assert with_upstream in blocked  # 有未完成入边 → blocked，无空成功窗口
-    assert without_upstream not in blocked  # 无入边 = 空上游即 satisfied（对照：这正是被根治的窗口）
+    assert without_upstream not in blocked  # 无入边 = 空上游即 satisfied（对照：被根治的窗口）
 
 
 def test_create_node_dangling_upstream_422_and_rolls_back(server_client: TestClient) -> None:

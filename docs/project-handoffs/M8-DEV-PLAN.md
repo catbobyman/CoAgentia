@@ -52,9 +52,9 @@
 | --- | --- | --- | --- |
 | L0 契约落笔+登记 | ✅ 完成 | `3532b6a` | A v1.0.12 / B v1.5.1 落笔 + contracts（UpstreamPolicy/SummaryRun/upstream_node_ids/RULE_CODES O8·O9）+ gen 确定。**执行决策：迁移 0012（summary_runs + canvas_nodes.upstream_policy）与 ORM 随 L0 落地**（原 DEV-PLAN 置于 L7）——因 test_schema_conformance 反射 canvas_nodes 列集须与 CanvasNodeRow 同步，否则块 M8a 全绿门守不住；列默认 strict 行为逐字节不变、summary_runs 无运行期消费，纯 schema 前移零风险。**L7（M8b）改为只做 W9 内核双档 + golden partial + landing 默认 partial + patch_node 改档**（迁移已落）。守门：contracts 125 / 全量 1082 / gen 确定 / pyright 0 / ruff 净 |
 | L1 原子建边 | ✅ 完成 | `3f002fd` | POST /nodes 消费 upstream_node_ids 同 tx 建节点+入边；悬空 422 全量收集 + 回滚；K1 空成功窗口回归转绿（携未完成上游即 blocked）。canvas 22 / gating·system_nodes·conformance 88 绿 |
-| L4 残留收敛（a/b/c） | ✅ 完成 | （待提交） | **L4a**：读循环收帧入队 + 独立 writer 消费（DB 写 offload 到 to_thread，不阻塞 loop、不撞锁撕连接）；_spawn 线程安全 + _system_pending threading.Lock；心跳写移出读循环；ack 语义/帧序/emit 时序保。**L4b**：discard 预检 agent_daemon_online + inject 挪 tx.after_commit。**L4c**：reevaluate 勘查确认已提交后（既有钉住测试 test_reevaluate_advances_read_position）。sync() 屏障语义调整（非 ack 上报改异步）+ drain_reports 屏障；daemon 55 / 全量 801 绿；+2 L4a 探针（写错不撕连接 / 阻塞写不阻塞读循环） |
+| L4 残留收敛（a/b/c） | ✅ 完成 | `4cd79a8` | **L4a**：读循环收帧入队 + 独立 writer 消费（DB 写 offload 到 to_thread，不阻塞 loop、不撞锁撕连接）；_spawn 线程安全 + _system_pending threading.Lock；心跳写移出读循环；ack 语义/帧序/emit 时序保。**L4b**：discard 预检 agent_daemon_online + inject 挪 tx.after_commit。**L4c**：reevaluate 勘查确认已提交后（既有钉住测试 test_reevaluate_advances_read_position）。sync() 屏障语义调整（非 ack 上报改异步）+ drain_reports 屏障；daemon 55 / 全量 801 绿；+2 L4a 探针（写错不撕连接 / 阻塞写不阻塞读循环） |
 | L6 R-10/R-14 | 未开工 | — | |
-| B-M8-1 加固前端四件 | 未开工 | — | ②③④ 可即刻开工 |
+| B-M8-1 加固前端四件 | 🔵 ①②③④ 完成（⑤待 L6） | `b8f9e64` | ①上游多选(配 L1)/②深链纠偏 resolveThreadChannelId/③.panel z-index 41 越 preview-deck/④R-13 resolveActingMember；vitest 444→453、web tsc 0。⑤ R-14 日志缓冲配 L6 |
 | —— 块 M8a 收口 —— | — | — | |
 | L7 W9 内核（0012 已随 L0 落） | 未开工 | — | Fable 亲核；**迁移 0012 已随 L0 落地**，L7 只剩 W9 内核双档 satisfied + golden partial + landing 默认 partial + patch_node 改档 |
 | L8 汇总执行域 | 未开工 | — | |
