@@ -2942,7 +2942,7 @@ export interface components {
             notif_sound: boolean;
             /**
              * Onboarding Greeting
-             * @default true
+             * @default false
              */
             onboarding_greeting: boolean;
             /** Setup State */

@@ -158,7 +158,9 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(Text)
     slug: Mapped[str] = mapped_column(Text, unique=True)
     attachment_max_mb: Mapped[int] = mapped_column(Integer, server_default=text("200"))
-    onboarding_greeting: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
+    # L11 入职问候开关（PRD FR-1.4）：默认关（任务书裁决 #9）——0001 由本 metadata 建表，
+    # 故此 server_default 即所有新建库的 DDL 默认；改此一处即令 seed/POST /workspace/测试全默认关。
+    onboarding_greeting: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
     ui_theme: Mapped[str] = mapped_column(_enum(UiTheme), server_default=text("'dark'"))
     notif_desktop: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
     notif_sound: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))

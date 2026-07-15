@@ -2511,6 +2511,30 @@ class DaemonHub:
         )
         return ack.result.value
 
+    def inject_onboarding_greeting(self, agent_member_id: str, *, ref: str | None = None) -> str:
+        """L11 新 Agent 入职问候一次性直投（PRD FR-1.4；InjectKind.SYSTEM）。
+
+        离线（无活跃 daemon 连接）→ DaemonOffline（调用方 best-effort 吞——问候是锦上添花，
+        不阻断上线）。调用纪律同 inject_orchestrator：经 tx.after_commit 提交后调用、不跨持锁
+        事务（真 claude 适配器回 ack 前先写 agent.status，跨未提交写锁会自死锁）。幂等由调用方
+        的 diagnostic 标记保证（本方法只管发帧）。"""
+        conn, _agent = self._require_conn_for_agent(agent_member_id)
+        body = (
+            "[system → 仅你可见] 欢迎加入这个工作区！请到 #all 频道用工作区主导语言"
+            "（观察 #all 已有消息判断该用哪种语言）发一条简短的自我介绍问候，并阅读 #all 的历史"
+            "消息了解当前协作上下文以便自我融入。这是一次性的入职提示，无需重复。"
+        )
+        data = MessageInjectData(
+            agent_member_id=agent_member_id,
+            body=body,
+            source=InjectSource(kind=InjectKind.SYSTEM, ref=ref),
+            diagnostic_type="agent.tool_call",
+        )
+        ack = self._run_sync(
+            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
+        )
+        return ack.result.value
+
     async def _held_reevaluation_combo(
         self, conn: DaemonConnection, agent_id: str, channel_id: str, held_id: str
     ) -> None:

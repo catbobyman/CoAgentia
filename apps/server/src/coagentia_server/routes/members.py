@@ -7,7 +7,9 @@ from typing import Any
 from coagentia_contracts import entities, rest
 from coagentia_contracts.enums import (
     AgentStatus,
+    ChannelKind,
     ContractKind,
+    LifecycleAction,
     MemberKind,
     MemberRole,
     MessageKind,
@@ -53,6 +55,10 @@ _MSG = models.tbl(models.Message)
 
 # 提醒取消留痕类型（system. 命名空间，契约 A §4.6；见 open_issues：contracts 未登记专用类型）。
 _DIAG_REMINDER_CANCELLED = "system.reminder_cancelled"
+
+# L11 入职问候幂等标记（agent. 命名空间，DIAGNOSTIC_TYPES 开放集；同 _DIAG_REMINDER_CANCELLED
+# 体例作本地专用类型）——一条即代表「该 Agent 已问候过」，重启/再上线不再重复（PRD FR-1.4）。
+_DIAG_ONBOARDING_GREETING = "agent.onboarding_greeting"
 
 
 def _fetch_member(tx: Tx, member_id: str) -> dict[str, Any]:
@@ -268,7 +274,63 @@ def agent_lifecycle(
         raise ApiError(
             503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法执行生命周期指令"
         ) from exc
+    # L11：首次成功上线 → 一次性入职问候（工作区开关 + 幂等标记双门；PRD FR-1.4，裁决 #9 默认关）。
+    if body.action == LifecycleAction.START and result != "failed":
+        _maybe_onboarding_greet(tx, request, member_id)
     return {"result": result}
+
+
+def _maybe_onboarding_greet(tx: Tx, request: Request, agent_member_id: str) -> None:
+    """新 Agent 首次上线且工作区开启欢迎语 → 一次性问候（PRD FR-1.4；裁决 #9 默认关）。
+
+    双门：① 工作区 onboarding_greeting 开关（seed 默认 false）；② diagnostic 幂等标记未落。
+    问候本体经 tx.after_commit 提交后 best-effort 直投（离线静默——问候不阻断上线；铁律 4：
+    跨进程等 ack 的直投不得跨持锁事务）。标记写在提交前，故「重启不重复」airtight——上线
+    前须先 send_lifecycle(START) 成功，daemon 必在线，问候几乎必达，标记不会白烧。"""
+    ws = require_workspace(tx.conn)
+    if not ws.get("onboarding_greeting"):
+        return
+    already = tx.conn.execute(
+        select(_DIAG.c.seq)
+        .where(
+            _DIAG.c.agent_member_id == agent_member_id,
+            _DIAG.c.type == _DIAG_ONBOARDING_GREETING,
+        )
+        .limit(1)
+    ).first()
+    if already is not None:
+        return
+    hub = request.app.state.daemon_hub
+    # 上线刚成功 daemon 必在线；预检只作防御（离线则不落标记，下次上线再问候）。
+    if not hub.agent_daemon_online(agent_member_id):
+        return
+    all_channel = tx.conn.execute(
+        select(_CHANNEL.c.id).where(
+            _CHANNEL.c.workspace_id == ws["id"],
+            _CHANNEL.c.kind == ChannelKind.CHANNEL,
+            _CHANNEL.c.name == "all",
+        )
+    ).first()
+    tx.conn.execute(
+        insert(_DIAG).values(
+            workspace_id=ws["id"],
+            agent_member_id=agent_member_id,
+            type=_DIAG_ONBOARDING_GREETING,
+            channel_id=all_channel[0] if all_channel is not None else None,
+            payload={"trigger": "lifecycle_start"},
+            created_at=now_iso(),
+        )
+    )
+
+    def _fire() -> None:
+        from coagentia_server.computers import DaemonOffline
+
+        try:
+            hub.inject_onboarding_greeting(agent_member_id, ref=agent_member_id)
+        except DaemonOffline:
+            pass  # 离线静默——问候 best-effort，标记已落防重复
+
+    tx.after_commit(_fire)
 
 
 @router.get("/agents/{member_id}/home/tree")

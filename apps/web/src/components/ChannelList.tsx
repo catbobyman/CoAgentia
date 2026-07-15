@@ -7,6 +7,7 @@ import { Archive, BellOff, ChevronDown, ChevronRight, Lock, Plus } from 'lucide-
 import type { ChannelPublic, MemberPublic, NotificationMode, PresenceEntry } from '@coagentia/contracts-ts';
 
 import { Avatar } from './Avatar';
+import { NewChannelModal } from './NewChannelModal';
 import { badgeStyle } from '../lib/notify';
 
 export interface ChannelListProps {
@@ -30,6 +31,8 @@ export function ChannelList(props: ChannelListProps) {
   const archivedChannels = channels.filter((c) => c.kind === 'channel' && !!c.archived_at);
   const dms = channels.filter((c) => c.kind === 'dm');
   const [archOpen, setArchOpen] = useState(false);
+  // B-M8-3 新建频道弹窗（补齐「新建频道」死壳的真实入口）。
+  const [newChannelOpen, setNewChannelOpen] = useState(false);
 
   const selectChannel = (ch: ChannelPublic) => {
     onSelectChannel(ch);
@@ -112,9 +115,24 @@ export function ChannelList(props: ChannelListProps) {
           ))}
         </>
       )}
-      <div className="newch"><Plus /><span>新建频道</span></div>
+      <div
+        className="newch"
+        role="button"
+        aria-label="新建频道"
+        onClick={() => setNewChannelOpen(true)}
+      ><Plus /><span>新建频道</span></div>
       {props.onPlayTimeline && (
         <button className="playbtn" onClick={props.onPlayTimeline}>▶ 播放时间线</button>
+      )}
+      {newChannelOpen && (
+        <NewChannelModal
+          onClose={() => setNewChannelOpen(false)}
+          onCreated={(ch) => {
+            setNewChannelOpen(false);
+            onSelectChannel(ch);
+            props.onMobileClose?.();
+          }}
+        />
       )}
     </aside>
   );

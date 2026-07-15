@@ -4,7 +4,7 @@
   "name": "Memcyo",
   "slug": "memcyo",
   "attachment_max_mb": 200,
-  "onboarding_greeting": true,
+  "onboarding_greeting": false,
   "ui_theme": "dark",
   "notif_desktop": true,
   "notif_sound": false,

@@ -6,6 +6,7 @@ import type {
   AgentCreate,
   AgentPatch,
   CanvasDetail,
+  ChannelCreate,
   ChannelNotificationSettingPublic,
   ChannelPatch,
   ChannelPublic,
@@ -192,6 +193,17 @@ export const useCreateDm = () => {
   return useMutation({
     mutationFn: (memberId: string) => api.createDm(memberId),
     // DM 频道须进 channels 快照，跳转后 ChannelChatScreen 才能按 activeChannelId 命中渲染。
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.channels() }),
+  });
+};
+
+// B-M8-3 新建频道（POST /channels）。成功后 invalidate channels 让新频道进侧栏快照（server 另发
+// channel.created，wsBridge 反流，invalidate 是兜底/收敛，REST 是事实源，同 useCreateDm 体例）。返回
+// 创建的 ChannelPublic 供调用方选中/跳转。NAME_TAKEN(409) 等结构化错误上浮，由弹窗就地报错处理。
+export const useCreateChannel = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ChannelCreate) => api.createChannel(body),
     onSuccess: () => void qc.invalidateQueries({ queryKey: qk.channels() }),
   });
 };

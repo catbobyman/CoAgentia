@@ -16,6 +16,7 @@ import { presenceMap, useCreateDm, useMembers, usePatchMember, usePresence } fro
 import { useUiStore } from '../lib/store';
 import { useToast } from '../components/Toast';
 import { Avatar } from '../components/Avatar';
+import { CreateAgentModal } from '../components/CreateAgentModal';
 import './members.css';
 
 const ROLE_WORD: Record<string, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' };
@@ -32,6 +33,8 @@ export function MembersScreen() {
   const patchMember = usePatchMember();
   const toast = useToast();
   const setActiveChannel = useUiStore((s) => s.setActiveChannel);
+  // B-M8-3 创建 Agent 弹窗（useCreateAgent 成功后 invalidate members，新行自动现身）。
+  const [createOpen, setCreateOpen] = useState(false);
 
   const members = (membersQ.data ?? []).filter((m) => !m.removed_at);
   const presence = presenceMap(presenceQ.data);
@@ -85,7 +88,11 @@ export function MembersScreen() {
   return (
     <main className="main membersscr">
       <div className="ms-head">
+        {/* h1 的 flex:1 把按钮顶到右侧（members.css）。 */}
         <h1>Members</h1>
+        <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+          创建 Agent
+        </button>
       </div>
 
       <div className="ms-scroll">
@@ -126,6 +133,13 @@ export function MembersScreen() {
           {agents.length === 0 && <div className="ms-empty">无 Agent 成员</div>}
         </div>
       </div>
+
+      {createOpen && (
+        <CreateAgentModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => setCreateOpen(false)}
+        />
+      )}
     </main>
   );
 }

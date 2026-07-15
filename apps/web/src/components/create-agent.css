@@ -31,3 +31,8 @@
   margin-top: 12px; padding: 8px 10px; font-size: 12px; color: var(--danger);
   border: 1px solid var(--danger); border-radius: var(--radius-s); background: var(--danger-bg);
 }
+
+/* B-M8-3 新建频道弹窗私有开关（复用 create-agent 弹窗骨架，只补此专属件）。 */
+.nc-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.nc-toggle input { cursor: pointer; }
+.nc-toggle-txt { font-size: 13px; color: var(--text-secondary); }

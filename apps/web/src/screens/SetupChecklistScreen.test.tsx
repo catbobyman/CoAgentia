@@ -28,12 +28,17 @@ vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>();
   return {
     ...actual,
-    api: { ...actual.api, templates: vi.fn(), instantiateTemplate: vi.fn(), agent: vi.fn() },
+    api: {
+      ...actual.api,
+      templates: vi.fn(), instantiateTemplate: vi.fn(), agent: vi.fn(),
+      computers: vi.fn(), createAgent: vi.fn(),
+    },
   };
 });
 
 import type {
-  AgentPublic, ChannelPublic, ChannelsSnapshot, MemberPublic, TemplatePublic, WorkspacePublic,
+  AgentPublic, ChannelPublic, ChannelsSnapshot, ComputerPublic, MemberPublic, TemplatePublic,
+  WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
 import { api } from '../api';
@@ -63,6 +68,10 @@ function member(id: string, name: string): MemberPublic {
 
 function agentOf(id: string): AgentPublic {
   return { member_id: id, computer_id: 'c', created_by_member_id: 'm', home_path: '/h', model: 'x', runtime: 'claude_code' };
+}
+
+function computerOf(): ComputerPublic {
+  return { id: 'computer_1', workspace_id: WS, name: '本机', created_at: '2026-07-11T00:00:00Z' };
 }
 
 // 单角色模板(简化驱动到实例化提交，聚焦本屏 onInstantiated 冒泡而非向导内部映射逻辑——
@@ -144,5 +153,34 @@ describe('SetupChecklistScreen 003 打开模板向导', () => {
     await waitFor(() => expect(screen.queryByTestId('template-wizard')).not.toBeInTheDocument());
     expect(setActiveChannelMock).toHaveBeenCalledWith('ch_all');
     expect(navigateMock).toHaveBeenCalledWith({ to: '/', search: { tab: 'canvas' } });
+  });
+});
+
+// B-M8-3 步骤 002「创建第一个 Agent」死壳补齐：依赖(001)达成、002 未完成 → 按钮 actionable，
+// 点击打开 CreateAgentModal。
+describe('SetupChecklistScreen 002 创建 Agent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.templates).mockResolvedValue([soloTemplate()]);
+    vi.mocked(api.agent).mockImplementation((id: string) => Promise.resolve(agentOf(id)));
+    vi.mocked(api.computers).mockResolvedValue([computerOf()]);
+  });
+
+  it('依赖(001)达成、002 未完成 → 按钮 actionable，点击打开 CreateAgentModal', async () => {
+    renderScreen({ add_computer: true, create_agent: false, first_task: false });
+    const btn = screen.getByRole('button', { name: '创建 Agent' });
+    expect(btn).not.toBeDisabled();
+
+    expect(screen.queryByRole('dialog', { name: '创建 Agent' })).not.toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(await screen.findByRole('dialog', { name: '创建 Agent' })).toBeInTheDocument();
+  });
+
+  it('依赖(001)未达成 → 002 按钮 disabled，不开弹窗', () => {
+    renderScreen({ add_computer: false, create_agent: false, first_task: false });
+    const btn = screen.getByRole('button', { name: '创建 Agent' });
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(screen.queryByRole('dialog', { name: '创建 Agent' })).not.toBeInTheDocument();
   });
 });

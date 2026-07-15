@@ -65,7 +65,7 @@ class WorkspaceRow(ContractModel):
     name: str
     slug: str
     attachment_max_mb: int = 200
-    onboarding_greeting: bool = True
+    onboarding_greeting: bool = False  # L11 默认关（PRD FR-1.4；任务书裁决 #9）
     ui_theme: UiTheme = UiTheme.DARK
     notif_desktop: bool = True
     notif_sound: bool = False

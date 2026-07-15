@@ -7,6 +7,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { channelsOf, useChannelsSnapshot, useMembers, useWorkspace } from '../data/queries';
 import { useUiStore } from '../lib/store';
 import { Rail } from '../components/Rail';
+import { CreateAgentModal } from '../components/CreateAgentModal';
 import { TemplateWizard } from '../components/TemplateWizard';
 import { ToastProvider, Toaster } from '../components/Toast';
 
@@ -23,6 +24,8 @@ export function SetupChecklistScreen() {
   const setActiveChannel = useUiStore((s) => s.setActiveChannel);
   const setup = (wsQ.data?.setup_state ?? {}) as Record<string, boolean>;
   const [wizardOpen, setWizardOpen] = useState(false);
+  // B-M8-3 步骤 002「创建第一个 Agent」的真实入口（原 onAction 缺失，按钮死壳）。
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
 
   const channels = channelsOf(channelsQ.data);
   const members = membersQ.data ?? [];
@@ -32,7 +35,8 @@ export function SetupChecklistScreen() {
   const steps: StepDef[] = [
     { no: '001', txt: '连接一台机器', action: 'Add Computer', key: 'add_computer',
       onAction: () => void navigate({ to: '/computers' }) },
-    { no: '002', txt: '创建第一个 Agent', action: '创建 Agent', key: 'create_agent', dep: '001' },
+    { no: '002', txt: '创建第一个 Agent', action: '创建 Agent', key: 'create_agent', dep: '001',
+      onAction: () => setAgentModalOpen(true) },
     { no: '003', txt: '发第一条消息或从模板开始', action: '打开模板向导', key: 'first_task', dep: '002',
       onAction: () => { if (targetChannel) setWizardOpen(true); } },
   ];
@@ -115,6 +119,15 @@ export function SetupChecklistScreen() {
           </div>
         </footer>
       </main>
+
+      {/* B-M8-3 创建 Agent 弹窗（首跑态在主壳之外——共用整屏 ToastProvider）。useCreateAgent 成功后
+          invalidate members；setup_state.create_agent 由 server 侧在建 Agent 后置真，勾选态随 workspace 收敛。 */}
+      {agentModalOpen && (
+        <CreateAgentModal
+          onClose={() => setAgentModalOpen(false)}
+          onCreated={() => setAgentModalOpen(false)}
+        />
+      )}
 
       {/* 模板向导(首跑态在主壳之外——共用整屏 ToastProvider，mutation 的 toast 依赖它)。 */}
       {wizardOpen && targetChannel && (

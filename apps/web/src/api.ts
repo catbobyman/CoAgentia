@@ -7,6 +7,7 @@ import type {
   CanvasDetail,
   CanvasMutation,
   CanvasNodePublic,
+  ChannelCreate,
   ChannelProjectPublic,
   ChannelNotificationSettingPublic,
   ChannelPatch,
@@ -383,6 +384,11 @@ export const api = {
   addChannelMember: (channelId: string, memberId: string) =>
     writeJson<void>(`/api/channels/${channelId}/members`, 'POST', { member_id: memberId }),
 
+  // 新建频道（B §4.5 ChannelCreate）：POST /channels，body { name, description?, is_private?,
+  // member_ids? }。201 ChannelPublic；同名 → 409 NAME_TAKEN（结构化错误上浮，弹窗就地报错不关窗）。
+  // 注：POST /channels 不自动把创建者拉入频道——新建空频道即可（MVP，成员可后续加）。
+  createChannel: (body: ChannelCreate) =>
+    writeJson<ChannelPublic>('/api/channels', 'POST', body),
   // 发私信（B §4.5 DmCreate）：POST /dms，body { member_id }。dm_key 去重幂等——已存在同对 DM
   // 直接返既有频道（不重复建）。与自己建 → 422 VALIDATION_FAILED；成员不存在 → 404。
   createDm: (memberId: string) =>
