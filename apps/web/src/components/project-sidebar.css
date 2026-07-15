@@ -1,0 +1,40 @@
+/* PS-WT ① 侧栏「项目」区（复用 .ch/.nm/.hash/.lock 频道行基础，此处补分组头与项目行专属件）。 */
+.ps-section { display: flex; flex-direction: column; }
+
+.ps-head {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px; margin: 10px 0 6px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.ps-head-line { flex: 1; height: 1px; background: var(--border); }
+.ps-add {
+  width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
+  border-radius: var(--radius-s); flex: none;
+}
+.ps-add:hover { color: var(--text); background: var(--surface-hover); }
+.ps-add svg.lucide { width: 14px; height: 14px; }
+
+.ps-proj {
+  height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 12px; margin: 0 4px;
+  font-size: 13px; color: var(--text-secondary); cursor: pointer; border-radius: var(--radius-s);
+}
+.ps-proj:hover { background: var(--surface-hover); color: var(--text); }
+.ps-proj > svg.lucide { width: 14px; height: 14px; flex: none; color: var(--text-muted); }
+.ps-proj .ps-proj-ic { color: var(--text-muted); }
+.ps-proj .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-proj-add {
+  width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
+  border-radius: var(--radius-s); flex: none; opacity: 0;
+}
+.ps-proj:hover .ps-proj-add { opacity: 1; }
+.ps-proj-add:hover { color: var(--text); background: var(--surface-1); }
+.ps-proj-add svg.lucide { width: 13px; height: 13px; }
+
+/* 项目下的绑定频道行（引用，缩进区分主 CHANNELS 列表）。 */
+.ch.ps-chan { margin-left: 20px; }
+.ps-chan-empty {
+  margin: 0 4px 0 32px; padding: 4px 12px; font-size: 11px; color: var(--text-muted);
+}
+.ps-empty { padding: 4px 16px; font-size: 12px; color: var(--text-muted); }

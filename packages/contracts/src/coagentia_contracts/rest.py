@@ -46,8 +46,9 @@ from coagentia_contracts.enums import (
     UiTheme,
     UpstreamPolicy,
     UsageLevel,
+    WorktreeStatus,
 )
-from coagentia_contracts.ids import Sha256Hex, Ulid
+from coagentia_contracts.ids import Sha256Hex, TimestampZ, Ulid
 
 API_BASE = "/api"  # 只绑定 127.0.0.1（契约 B §1 / NFR5）
 PAGE_DEFAULT_LIMIT = 50
@@ -84,6 +85,9 @@ class ErrorCode(StrEnum):
     SYSTEM_NODE_NOT_RETRYABLE = "SYSTEM_NODE_NOT_RETRYABLE"  # 409（M6；仅 failed 可 retry）
     TEMPLATE_BUILTIN_IMMUTABLE = "TEMPLATE_BUILTIN_IMMUTABLE"  # 409（M6；builtin 不可改删）
     PROJECT_IN_USE = "PROJECT_IN_USE"  # 409（M6；存在未清理 worktree）
+    WORKTREE_NOT_TERMINAL = "WORKTREE_NOT_TERMINAL"  # 409（PS-WT；仅 merged/conflicted 可清理）
+    WORKTREE_PREVIEW_ACTIVE = "WORKTREE_PREVIEW_ACTIVE"  # 409（PS-WT；活跃预览占用，先停止）
+    WORKTREE_NOT_ORPHAN = "WORKTREE_NOT_ORPHAN"  # 409（PS-WT；存在非 cleaned 登记行，非孤儿）
     PERMISSION_DENIED = "PERMISSION_DENIED"  # 403（rule 注明 R2/R3/C3/admin 等）
     NOT_FOUND = "NOT_FOUND"  # 404
 
@@ -677,6 +681,73 @@ class ProjectBind(ContractModel):
     project_id: Ulid
 
 
+# ---- PS-WT：工作树管理台读面 + 目录浏览 + 清理（方案 A：DB 骨架 + 实时对账 enrich）
+#
+# `GET /computers/{id}/fs` 直接复用 daemon.FsTreeReply（同 /diff 复用 daemon.DiffPayload 先例），
+# 此处不另立 fs 模型。`GET /worktrees?live=0|1` 回 WorktreeConsoleReply：live=0 纯 DB 骨架、
+# live=1 附 daemon 扫描对账（derived + live 字段 + scans 逐机状态）。合账矩阵/CAS/清理护栏在
+# server 与 daemon 侧执法（B §4.11 扩），此处只登记形状。
+
+
+class WorktreeLive(ContractModel):
+    """live=1 时 daemon 扫描附加的实时字段（该机离线/扫描失败 → 整个 live=None）。"""
+
+    dirty: bool = False
+    ahead: int | None = None
+    behind: int | None = None
+    head_commit: str | None = None
+
+
+class WorktreeConsoleItem(ContractModel):
+    """管理台一行：DB 登记行 ∪ 磁盘孤儿行（合账 key = project_id+task_id）。
+
+    derived：ok = DB∩磁盘或终态无树的正常态；missing = active 登记但磁盘无（丢失）；
+    orphan = 磁盘有树但无非-cleaned 登记（id/status/时间戳皆 None，task_id 由目录名解析）。
+    """
+
+    id: Ulid | None = None  # None = 孤儿行（无 worktrees 表登记）
+    project_id: str  # 已知行 = DB Ulid；孤儿行 = 目录名解析（daemon 保证 ULID 形）
+    project_name: str
+    computer_id: Ulid
+    task_id: str | None = None
+    task_title: str | None = None
+    channel_id: Ulid | None = None  # 跳转 ThreadPanel 锚点
+    branch: str | None = None
+    path: str
+    status: WorktreeStatus | None = None  # 孤儿行 = None
+    derived: Literal["ok", "missing", "orphan"]
+    merge_commit: str | None = None
+    created_at: TimestampZ | None = None
+    merged_at: TimestampZ | None = None
+    cleaned_at: TimestampZ | None = None
+    live: WorktreeLive | None = None  # live=0 或该机扫描失败 → None
+
+
+class WorktreeScanStatus(ContractModel):
+    computer_id: Ulid
+    status: Literal["ok", "offline", "timeout"]
+
+
+class WorktreeConsoleReply(ContractModel):
+    items: list[WorktreeConsoleItem]
+    scans: list[WorktreeScanStatus] = []  # live=0 → 空表
+
+
+class OrphanCleanup(ContractModel):
+    """POST /computers/{id}/worktrees/cleanup-orphan：ids-only 定位（永不传裸路径）。"""
+
+    project_id: str
+    task_id: str
+
+
+class OrphanCleanupResult(ContractModel):
+    """孤儿清理响应：无 DB 行可写、不产生 worktree.updated，前端以本响应刷新。"""
+
+    project_id: str
+    task_id: str
+    removed: bool
+
+
 # ---- §13 预览、部署与成本（M7；行为语义见 B §13，此处只登记读响应形状）
 #
 # 预览三端点无请求体（POST=ensure+touch 幂等空体推进 last_active_at；DELETE=下发 preview.stop）；
@@ -862,4 +933,15 @@ ENDPOINTS_M7: tuple[tuple[str, str], ...] = (
     ("GET", "/deployments/{deployment_id}/log"),
     # §13.4 成本
     ("GET", "/usage"),
+)
+
+# ------------------------------------------- PS-WT 端点清单（项目侧栏目录浏览 + 工作树管理台）
+# 目录浏览 1（fs 代理，选择器用）+ 管理台读 1 + 清理 2 = 4。全部人类-only（Agent → 403 O9 同门），
+# 不注册 MCP 工具。项目 CRUD/频道绑定复用既有 M6 端点（GET/POST /projects、频道绑定），零新增。
+
+ENDPOINTS_PSWT: tuple[tuple[str, str], ...] = (
+    ("GET", "/computers/{computer_id}/fs"),
+    ("GET", "/worktrees"),
+    ("POST", "/worktrees/{worktree_id}/cleanup"),
+    ("POST", "/computers/{computer_id}/worktrees/cleanup-orphan"),
 )

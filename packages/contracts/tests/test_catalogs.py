@@ -13,6 +13,7 @@ ERROR_CODES = {
     "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE",
     "HELD_DRAFT_RESOLVED", "NOTIF_IN_DM", "TEMPLATE_CANVAS_NOT_READY",
     "SYSTEM_NODE_NOT_RETRYABLE", "TEMPLATE_BUILTIN_IMMUTABLE", "PROJECT_IN_USE",
+    "WORKTREE_NOT_TERMINAL", "WORKTREE_PREVIEW_ACTIVE", "WORKTREE_NOT_ORPHAN",
     "PERMISSION_DENIED", "NOT_FOUND",
 }
 
@@ -54,7 +55,7 @@ INSTR_TYPES = {
     "worktree.merge", "worktree.cleanup", "preview.start", "preview.stop", "deploy.run",
     "check.run", "runtime.rescan",
 }
-QUERY_TYPES = {"home.tree", "home.file", "git.diff"}
+QUERY_TYPES = {"home.tree", "home.file", "git.diff", "fs.tree", "worktree.scan"}
 REPORT_TYPES = {
     "hello", "agent.status_changed", "agent.activity", "runtimes.detected",
     "diagnostics.batch", "usage.batch", "deploy.log", "deploy.finished", "preview.status",
@@ -65,7 +66,7 @@ REPORT_TYPES = {
 
 def test_error_codes_exact() -> None:
     assert {c.value for c in rest.ErrorCode} == ERROR_CODES
-    assert len(ERROR_CODES) == 29
+    assert len(ERROR_CODES) == 32
 
 
 def test_ws_event_catalog_exact() -> None:
@@ -242,6 +243,28 @@ def test_m7_endpoint_catalog_size() -> None:
     )
     for endpoints in prior:
         assert set(endpoints).isdisjoint(rest.ENDPOINTS_M7)
+
+
+def test_pswt_endpoint_catalog_size() -> None:
+    """PS-WT 端点清单：fs 代理 1 + 管理台读 1 + 清理 2 = 4，与 M1–M7 全不相交。"""
+    assert len(rest.ENDPOINTS_PSWT) == 4
+    assert len(set(rest.ENDPOINTS_PSWT)) == 4
+    prior = (
+        rest.ENDPOINTS_M1,
+        rest.ENDPOINTS_M2,
+        rest.ENDPOINTS_M3,
+        rest.ENDPOINTS_M4,
+        rest.ENDPOINTS_M5,
+        rest.ENDPOINTS_M6,
+        rest.ENDPOINTS_M7,
+    )
+    for endpoints in prior:
+        assert set(endpoints).isdisjoint(rest.ENDPOINTS_PSWT)
+
+
+def test_pswt_adds_no_mcp_tools() -> None:
+    """PS-WT 全部人类-only（Agent 403 O9 同门），不注册 MCP 工具——工具总数维持 M7 的 16。"""
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 16
 
 
 def test_m7_adds_trigger_deploy_tool() -> None:

@@ -22,7 +22,7 @@ from coagentia_server.db import models
 from coagentia_server.ledger.service import now_iso
 from daemon_helpers import AUTH, Env, StubDaemon, nid
 from fastapi.testclient import TestClient
-from sqlalchemy import insert, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.engine import Engine
 
 DAEMON_WS = "/api/daemon/ws"
@@ -102,7 +102,14 @@ def _add_task(
     return tid, anchor
 
 
-def _add_agent_node(env: Env, canvas_id: str, task_id: str) -> str:
+def _add_agent_node(
+    env: Env,
+    canvas_id: str,
+    task_id: str,
+    *,
+    suggested: str | None = None,
+    policy: str = "strict",
+) -> str:
     node_id = nid()
     with env.engine.begin() as c:
         c.execute(
@@ -112,6 +119,8 @@ def _add_agent_node(env: Env, canvas_id: str, task_id: str) -> str:
                 kind="agent",
                 task_id=task_id,
                 is_summary=False,
+                suggested_owner=suggested,  # B-1 ②′：解锁唤醒的建议认领人（None=不 @）
+                upstream_policy=policy,  # partial → 上游终态（含 closed）即放行
                 pos_x=0,
                 pos_y=0,
                 created_at=now_iso(),
@@ -415,42 +424,41 @@ def test_non_owner_agent_also_gated_on_blocked_thread(ctx: tuple[TestClient, Env
 
 
 def test_busy_prefix_flush_when_new_message_behind_held(ctx: tuple[TestClient, Env, Any]) -> None:
-    """F6 回归（M6 review）：busy agent 的可投前缀不因「触发消息位于 held 之后」而滞留——
-    新消息不在前缀内只取消以它为由的唤醒，不取消前缀冲洗（旧版对 busy 无条件冲洗，
-    收窄成等 60s 对账是回归）。"""
+    """B-1 ②′：busy agent 的可投前缀不因位于 gated 之后而滞留——gated 锚点被**跳过**（不截断），
+    其后的非 gated 新消息与滞留前缀一同冲洗（旧版 gated 截断会把它挡到 60s 对账，②′ 根除）。"""
     client, env, _hub = ctx
     ch, bee, _ta, rb = _blocked_setup(env)
     with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
         d = StubDaemon(ws)
         d.hello([(bee, "busy")])
         d.recv_hello_ack()
-        # 握手对账冲洗前缀 [anchor_a]（anchor_b 属 blocked 任务 B 线程被扣）——ack failed：
+        # 握手对账冲洗前缀 [anchor_a]（anchor_b 属 blocked 任务 B 线程，②′ 跳过）——ack failed：
         # read_position 不推进，anchor_a 成为「可投但滞留」的前缀。
         deliver0 = d.recv_instr()
         assert deliver0["type"] == "message.deliver"
         pending = [m["id"] for m in deliver0["data"]["messages"]]
         d.ack(deliver0, "failed")
         d.sync()
-        # 新消息位于 held（anchor_b）之后 → 不在可投前缀内，不构成唤醒/直投理由；
-        # 修复后其事件仍冲洗既有前缀 [anchor_a]；修复前 membership 门直接 continue，
-        # 前缀滞留到 60s 对账。
-        r = client.post(
+        # 新消息（顶级、非 gated）位于 gated anchor_b 之后 → ②′ 下 anchor_b 跳过不截断 → 新消息
+        # 与滞留前缀 [anchor_a] 一同冲洗（旧版 gated 截断会把它挡到 60s 对账）。
+        new_id = client.post(
             f"/api/channels/{ch}/messages", json={"body": "随口一句", "file_ids": []}
-        )
-        assert r.status_code == 201
+        ).json()["message"]["id"]
         deliver1 = d.recv_instr()
         assert deliver1["type"] == "message.deliver"
         got = [m["id"] for m in deliver1["data"]["messages"]]
-        assert got == pending, (got, pending)  # 冲洗的仍是滞留前缀，不含 held 之后的新消息
+        assert got == pending + [new_id], (got, pending, new_id)  # 前缀 + 越过 gated 的新消息
         d.ack(deliver1, "done")
         d.sync()
 
 
 def test_blocked_thread_message_not_leaked_in_backlog(ctx: tuple[TestClient, Env, Any]) -> None:
-    """gating 只投 held 前连续前缀；later 不越过最大 id，解锁后整段按序补投。"""
+    """B-1 ②′：blocked 线程消息**跳过不投**（不 leak 进投递批、不自成唤醒），但**不截断**其后的非
+    gated 消息——后者照常投递并唤醒（根除前缀死锁）。被跳过消息水位越过后不再推送（F5：Agent 经
+    get_thread 拉取补齐；本例 B 已有 owner 且无 suggested_owner，故无解锁唤醒——见专测）。"""
     client, env, _hub = ctx
     ch, bee, ta, rb = _blocked_setup(env)
-    # 先在 B（blocked）线程发 @Bee → gated（held），read_position 不推进，消息留积压。
+    # 在 B（blocked）线程发 @Bee → gated（跳过），read_position 不推进，消息留积压。
     gated_id = client.post(
         f"/api/channels/{ch}/messages",
         json={"body": "@Bee 做 B", "thread_root_id": rb, "file_ids": []},
@@ -460,27 +468,306 @@ def test_blocked_thread_message_not_leaked_in_backlog(ctx: tuple[TestClient, Env
         d = StubDaemon(ws)
         d.hello([(bee, "idle")])
         d.recv_hello_ack()
-        d.sync()  # 握手对账：积压里 blocked 线程消息不构成触发，无残留 wake/deliver
-        # 无关顶级 @Bee 虽非 gated，但位于 held 之后；不可越过它先投（daemon 以 max id 去重）。
+        d.sync()  # 纯 gated 积压：跳过后无可投触发 → 零 wake/deliver
+        # 顶级 @Bee（非 gated）位于 gated 之后 → ②′ 跳过 gated 不截断 → 该消息照常投递并唤醒。
         good_id = client.post(
             f"/api/channels/{ch}/messages",
             json={"body": "@Bee 顺便看下别的", "file_ids": []},
         ).json()["message"]["id"]
-        d.sync()  # 连续前缀在 held 处截断：零 wake/零 deliver，游标不越过
+        wake = d.recv_instr()
+        assert wake["type"] == "agent.wake"
+        assert wake["data"]["reason"] == "mention"
+        d.ack(wake, "done")
+        deliver = d.recv_instr()
+        assert deliver["type"] == "message.deliver"
+        delivered = {m["id"] for m in deliver["data"]["messages"]}
+        assert good_id in delivered  # 非 gated 消息越过 gated 投出（死锁根除）
+        assert gated_id not in delivered  # blocked 线程消息跳过、不 leak 进投递批
+        d.ack(deliver, "done")
+        d.sync()
 
-    # 上游 A done → B 解锁 → 之前被 gate 的消息不再 gated，且未被消费 → 重连补投时可被投递。
+    # 水位已越过 gated（good_id > gated_id）→ 上游 done 后 gated 不再推送（F5：get_thread 补齐）。
     _set_status(env, ta, "done")
     with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws2:
         d2 = StubDaemon(ws2)
         d2.hello([(bee, "idle")])
         d2.recv_hello_ack()
-        wake = d2.recv_instr()  # reconcile 补投：解锁后 @Bee 积压构成 mention 触发
+        d2.sync()  # gated 已在水位下无补投；B 有 owner + 无 suggested_owner → 无解锁唤醒
+
+
+# ---------------------------------------------------------------- B-1 ②′ 解锁主动唤醒（刀2）
+
+
+def _unblock_msgs(env: Env, root_id: str) -> list[Any]:
+    """任务线程内的解锁唤醒系统消息（body 前缀 = 幂等标记 _UNBLOCK_PREFIX）。"""
+    m = models.Message.__table__
+    with env.engine.connect() as c:
+        rows = c.execute(
+            select(m.c.id, m.c.body).where(m.c.thread_root_id == root_id, m.c.kind == "system")
+        ).all()
+    return [r for r in rows if str(r[1]).startswith("上游已全部完成")]
+
+
+def test_downstream_unblock_wakes_suggested_owner(ctx: tuple[TestClient, Env, Any]) -> None:
+    """B-1 ②′ 刀2：上游 done → 下游未认领节点（有入边+建议人）解除 blocked → 任务线程发 @建议人
+    系统消息 → REMINDER 唤醒建议人（补齐 F2『解锁无唤醒』缺口）。重连再扫幂等，不重发。"""
+    client, env, _hub = ctx
+    ch = env.add_channel(name="build")
+    env.join(ch, env.owner_id)
+    cass = env.add_agent("Cass", "idle")
+    env.join(ch, cass)
+    canvas = _add_canvas(env, ch)
+    ta, _ra = _add_task(env, ch, number=1, status="done")  # 上游已终态
+    tb, rb = _add_task(env, ch, number=2, status="todo")  # 下游未认领（owner=None）
+    na = _add_agent_node(env, canvas, ta)
+    nb = _add_agent_node(env, canvas, tb, suggested=cass)  # 有入边 + 建议人
+    _add_edge(env, canvas, na, nb)
+    assert tb not in _blocked(env)  # A done → B 已解除 blocked
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(cass, "idle")])
+        d.recv_hello_ack()
+        # 重连对账内 _scan_workspace_unblocked_nodes 发 @Cass 系统消息 → 该消息触发 REMINDER 唤醒。
+        wake = d.recv_instr()
+        assert wake["type"] == "agent.wake"
+        assert wake["data"]["reason"] == "reminder"  # system + mention = REMINDER
+        d.ack(wake, "done")
+        deliver = d.recv_instr()
+        assert deliver["type"] == "message.deliver"
+        d.ack(deliver, "done")
+        d.sync()
+    assert len(_unblock_msgs(env, rb)) == 1  # 恰一条解锁消息
+
+    # 重连再扫：解锁消息已存在 → 幂等不重发，Cass 不再被唤醒。
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws2:
+        d2 = StubDaemon(ws2)
+        d2.hello([(cass, "idle")])
+        d2.recv_hello_ack()
+        d2.sync()  # 无新解锁消息、无新唤醒
+    assert len(_unblock_msgs(env, rb)) == 1  # 仍恰一条
+
+
+def test_no_unblock_wake_when_claimed_or_no_suggested(ctx: tuple[TestClient, Env, Any]) -> None:
+    """B-1 ②′ 刀2 守卫：已认领（owner 非空）或无 suggested_owner 的解锁节点**不**发解锁唤醒——前者
+    由 worktree 激活路径接管、后者无有效唤醒目标。"""
+    client, env, _hub = ctx
+    ch = env.add_channel(name="build")
+    env.join(ch, env.owner_id)
+    dee = env.add_agent("Dee", "idle")
+    env.join(ch, dee)
+    canvas = _add_canvas(env, ch)
+    ta, _ra = _add_task(env, ch, number=1, status="done")
+    # B1：已认领（owner=Dee）+ 有建议人 → 不发（认领路径接管）。
+    tb, rb = _add_task(env, ch, number=2, status="todo", owner=dee)
+    # B2：未认领 + 无建议人 → 不发（无唤醒目标）。
+    tc, rc = _add_task(env, ch, number=3, status="todo")
+    na = _add_agent_node(env, canvas, ta)
+    nb = _add_agent_node(env, canvas, tb, suggested=dee)
+    ncc = _add_agent_node(env, canvas, tc)  # 无 suggested
+    _add_edge(env, canvas, na, nb)
+    _add_edge(env, canvas, na, ncc)
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(dee, "idle")])
+        d.recv_hello_ack()
+        d.sync()  # 两个下游都不满足条件 → 零解锁唤醒
+    assert _unblock_msgs(env, rb) == []
+    assert _unblock_msgs(env, rc) == []
+
+
+def test_serial_chain_run_of_gated_anchors_does_not_deadlock(
+    ctx: tuple[TestClient, Env, Any]
+) -> None:
+    """B-1 ②′ 刀1 realtest 复刻：串行链落地后**多个连续 blocked 锚点**排在『已落地』@入口人之前——
+    旧版首个 gated 截断整条前缀 → 全频道 Agent 永久饿死；②′ 逐个跳过 gated 锚点 → 『已落地』唤醒
+    照常送达入口人。"""
+    client, env, _hub = ctx
+    ch = env.add_channel(name="build")
+    alice = env.add_agent("Alice", "idle")
+    env.join(ch, alice)
+    env.join(ch, env.owner_id)
+    canvas = _add_canvas(env, ch)
+    # A(todo,入口)→B→C 串行链：B、C 属 blocked 任务，其锚点 gated。
+    ta, _ra = _add_task(env, ch, number=1, status="todo")
+    tb, _rb = _add_task(env, ch, number=2, status="todo")
+    tc, _rc = _add_task(env, ch, number=3, status="todo")
+    na = _add_agent_node(env, canvas, ta)
+    nb = _add_agent_node(env, canvas, tb)
+    ncc = _add_agent_node(env, canvas, tc)
+    _add_edge(env, canvas, na, nb)
+    _add_edge(env, canvas, nb, ncc)
+    assert tb in _blocked(env) and tc in _blocked(env)  # B、C 连续 gated
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(alice, "idle")])
+        d.recv_hello_ack()
+        d.sync()  # 握手：入口锚点非 @Alice，无触发；gated 锚点跳过不截断
+        # 「已落地」@Alice（顶级、非 gated）排在 B、C 两个 gated 锚点之后。
+        landed_id = client.post(
+            f"/api/channels/{ch}/messages",
+            json={"body": "@Alice 拆解已落地，可开工", "file_ids": []},
+        ).json()["message"]["id"]
+        wake = d.recv_instr()  # ②′：越过 B/C gated 锚点，「已落地」唤醒送达（旧版死锁于此）
+        assert wake["type"] == "agent.wake"
+        assert wake["data"]["reason"] == "mention"
+        d.ack(wake, "done")
+        deliver = d.recv_instr()
+        assert deliver["type"] == "message.deliver"
+        assert landed_id in {m["id"] for m in deliver["data"]["messages"]}
+        d.ack(deliver, "done")
+        d.sync()
+
+
+def _add_running_batch(env: Env, channel_id: str, *, kind: str = "delta") -> str:
+    bid = nid()
+    with env.engine.begin() as c:
+        c.execute(
+            insert(models.LandingBatch.__table__).values(
+                id=bid,
+                workspace_id=env.ws_id,
+                channel_id=channel_id,
+                kind=kind,
+                content_hash="x",
+                source_ref="src",
+                confirmed_by="auto",
+                status="running",
+                created_at=now_iso(),
+            )
+        )
+    return bid
+
+
+def test_unblock_scan_suppressed_during_running_landing(
+    ctx: tuple[TestClient, Env, Any]
+) -> None:
+    """B-1 ②′ 刀2 守卫（对齐 _scan_channel_system_nodes 的 in_progress 门）：running 落地批期间不补
+    发解锁唤醒——delta 先删后加的截断中间图会让下游瞬时解除 blocked，幂等消息发出不可撤，故落地期
+    抑制；批 :done 后（LANDING_COMPLETED / 对账重扫）再补发。"""
+    client, env, _hub = ctx
+    ch = env.add_channel(name="build")
+    env.join(ch, env.owner_id)
+    cass = env.add_agent("Cass", "idle")
+    env.join(ch, cass)
+    canvas = _add_canvas(env, ch)
+    ta, _ra = _add_task(env, ch, number=1, status="done")
+    tb, rb = _add_task(env, ch, number=2, status="todo")
+    na = _add_agent_node(env, canvas, ta)
+    nb = _add_agent_node(env, canvas, tb, suggested=cass)
+    _add_edge(env, canvas, na, nb)
+    assert tb not in _blocked(env)  # A done → B 已解除 blocked
+    _add_running_batch(env, ch)  # 但有 running 落地批 → 抑制
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(cass, "idle")])
+        d.recv_hello_ack()
+        d.sync()  # 落地期抑制 → 零解锁唤醒
+    assert _unblock_msgs(env, rb) == []
+
+    # 落地批 :done → 抑制解除 → 重连对账重扫补发。
+    with env.engine.begin() as c:
+        c.execute(update(models.LandingBatch.__table__).values(status="done"))
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws2:
+        d2 = StubDaemon(ws2)
+        d2.hello([(cass, "idle")])
+        d2.recv_hello_ack()
+        wake = d2.recv_instr()
         assert wake["type"] == "agent.wake"
         d2.ack(wake, "done")
         deliver = d2.recv_instr()
         assert deliver["type"] == "message.deliver"
-        redelivered = {m["id"] for m in deliver["data"]["messages"]}
-        assert gated_id in redelivered  # 之前被 gate 的消息解锁后补投，未丢
-        assert good_id in redelivered  # held 后的消息也从未提前喂给 daemon，按序同批补投
         d2.ack(deliver, "done")
         d2.sync()
+    assert len(_unblock_msgs(env, rb)) == 1
+
+
+def test_batch_tail_gated_not_swallowed_by_watermark(
+    ctx: tuple[TestClient, Env, Any]
+) -> None:
+    """B-1 ②′ 不变量 5（设计 §5 要求钉住的探针）：批尾连续 gated 时水位止于**最后实投消息**，不越过
+    未投的 gated 尾巴——尾巴解锁后仍可投（若水位越过则尾巴永远在 read_position 下被 noop 吞没 = B-1
+    饿死类回归，且全套测试仍绿）。用 busy agent 观测：首投只含非 gated 前缀、水位不含 gated 尾巴，
+    解锁后尾巴补投。"""
+    client, env, _hub = ctx
+    ch = env.add_channel(name="build")
+    bee = env.add_agent("Bee", "busy")
+    env.join(ch, bee)
+    env.join(ch, env.owner_id)
+    canvas = _add_canvas(env, ch)
+    ta, _ra = _add_task(env, ch, number=1, status="todo")  # 入口，非 blocked，anchor 非 gated
+    tb, rb = _add_task(env, ch, number=2, status="todo")  # blocked
+    na = _add_agent_node(env, canvas, ta)
+    nb = _add_agent_node(env, canvas, tb)
+    _add_edge(env, canvas, na, nb)
+    assert tb in _blocked(env)
+    # 批尾 = B（blocked）线程内的消息（gated），id 最大（在 anchor_a/anchor_b 之后）。
+    tail_id = client.post(
+        f"/api/channels/{ch}/messages",
+        json={"body": "尾巴", "thread_root_id": rb, "file_ids": []},
+    ).json()["message"]["id"]
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(bee, "busy")])
+        d.recv_hello_ack()
+        # busy 直投：anchor_a 投出，anchor_b + tail（gated 尾巴）跳过，水位止于 anchor_a。
+        deliver = d.recv_instr()
+        assert deliver["type"] == "message.deliver"
+        assert tail_id not in {m["id"] for m in deliver["data"]["messages"]}  # 尾巴 gated 不投
+        d.ack(deliver, "done")  # read_position 推进到实投最大 id（不含 tail）
+        d.sync()
+    # 解锁 B → tail 不再 gated。若首投水位曾越过 tail，则 tail 在 read_position 下永不重投（吞没）；
+    # 正确实现下水位止于 anchor_a、tail 仍在其上 → 重连补投得到 tail。
+    _set_status(env, ta, "done")
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws2:
+        d2 = StubDaemon(ws2)
+        d2.hello([(bee, "busy")])
+        d2.recv_hello_ack()
+        deliver2 = d2.recv_instr()
+        assert deliver2["type"] == "message.deliver"
+        assert tail_id in {m["id"] for m in deliver2["data"]["messages"]}  # 尾巴未被水位吞
+        d2.ack(deliver2, "done")
+        d2.sync()
+
+
+def test_downstream_unblock_via_task_terminal_bus_path(
+    ctx: tuple[TestClient, Env, Any]
+) -> None:
+    """B-1 ②′ 刀2 主路径（bus，非对账兜底）：上游经 REST 转终态时 TASK_UPDATED → _on_bus_event 即刻
+    触发解锁扫描 → 下游 @建议人低延迟唤醒（不等重连/周期对账）。用 todo→closed（无 handoff 门）驱动
+    真 REST 转态、partial 下游（终态含 closed 即放行）验证 bus 触发面（覆盖 to_status∈{done,closed}
+    分支的 closed 侧）。"""
+    client, env, _hub = ctx
+    ch = env.add_channel(name="build")
+    env.join(ch, env.owner_id)
+    cass = env.add_agent("Cass", "idle")
+    env.join(ch, cass)
+    canvas = _add_canvas(env, ch)
+    ta, _ra = _add_task(env, ch, number=1, status="todo")  # 上游，人类可直接 todo→closed
+    tb, rb = _add_task(env, ch, number=2, status="todo")  # 下游未认领
+    na = _add_agent_node(env, canvas, ta)
+    nb = _add_agent_node(env, canvas, tb, suggested=cass, policy="partial")  # 终态即放行
+    _add_edge(env, canvas, na, nb)
+    assert tb in _blocked(env)  # A 未终态 → B blocked
+
+    with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
+        d = StubDaemon(ws)
+        d.hello([(cass, "idle")])
+        d.recv_hello_ack()
+        d.sync()  # 连接建立、B 仍 blocked → 无帧
+        # 人类（无 X-Acting-Member = Owner）经 REST 把 A todo→closed（合法边，无 handoff 门）。
+        r = client.post(f"/api/tasks/{ta}/status", json={"to": "closed"})
+        assert r.status_code == 200
+        # bus TASK_UPDATED(closed) → 解锁扫描 → @Cass 系统消息 → REMINDER 唤醒。
+        wake = d.recv_instr()
+        assert wake["type"] == "agent.wake"
+        assert wake["data"]["reason"] == "reminder"
+        d.ack(wake, "done")
+        deliver = d.recv_instr()
+        assert deliver["type"] == "message.deliver"
+        d.ack(deliver, "done")
+        d.sync()
+    assert len(_unblock_msgs(env, rb)) == 1

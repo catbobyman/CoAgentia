@@ -19,6 +19,7 @@ from coagentia_server.routes import (
     templates,
     usage,
     workspace,
+    worktrees,
 )
 
 
@@ -40,5 +41,6 @@ def install_routes(app: FastAPI) -> None:
         templates,
         deployments,
         usage,
+        worktrees,
     ):
         app.include_router(module.router)

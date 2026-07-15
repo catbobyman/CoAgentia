@@ -1,0 +1,86 @@
+{
+  "passed": 16,
+  "total": 16,
+  "results": [
+    {
+      "probe": "P0 真 daemon(真 git.py) websockets 连上真 server",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "V1 fs 根视图真盘符枚举",
+      "ok": true,
+      "detail": "drives=['C:\\\\', 'D:\\\\', 'E:\\\\']"
+    },
+    {
+      "probe": "V2 fs 子目录列 + has_git 命中真仓库",
+      "ok": true,
+      "detail": "repo=app-repo has_git=True"
+    },
+    {
+      "probe": "V3 fs Agent 主体 → 403（O9 同门）",
+      "ok": true,
+      "detail": "status=403"
+    },
+    {
+      "probe": "V4 fs daemon 离线 → 503 DAEMON_OFFLINE",
+      "ok": true,
+      "detail": "status=503"
+    },
+    {
+      "probe": "V5 live=0 纯 DB 骨架（4 行 derived=ok，scans 空）",
+      "ok": true,
+      "detail": "items=4"
+    },
+    {
+      "probe": "V6a live=1 有盘活跃树 derived=ok + live.dirty=True",
+      "ok": true,
+      "detail": "derived=ok dirty=True"
+    },
+    {
+      "probe": "V6b live=1 活跃无盘树 derived=missing（丢失）",
+      "ok": true,
+      "detail": "derived=missing"
+    },
+    {
+      "probe": "V6c live=1 盘上无登记树浮出 orphan 行（id=None，目录名解析 task）",
+      "ok": true,
+      "detail": "orphans=['01KXJ6QS']"
+    },
+    {
+      "probe": "V6d scans 报本机 ok",
+      "ok": true,
+      "detail": "scans=[{'computer_id': '01K6CMPT00000000000000000A', 'status': 'ok'}]"
+    },
+    {
+      "probe": "V7 active 树清理 → 409 WORKTREE_NOT_TERMINAL（裁决 #10）",
+      "ok": true,
+      "detail": "status=409"
+    },
+    {
+      "probe": "V11 清理 Agent 主体 → 403（O9 同门）",
+      "ok": true,
+      "detail": "status=403"
+    },
+    {
+      "probe": "V12 预览活跃树清理 → 409 WORKTREE_PREVIEW_ACTIVE",
+      "ok": true,
+      "detail": "status=409"
+    },
+    {
+      "probe": "V8 merged 清理：真删盘 + 登记 CAS 收敛 cleaned",
+      "ok": true,
+      "detail": "resp=cleaned db=cleaned disk_gone=True"
+    },
+    {
+      "probe": "V9 孤儿清理：ids-only 真删盘 removed=True",
+      "ok": true,
+      "detail": "removed=True disk_gone=True"
+    },
+    {
+      "probe": "V10 存在非 cleaned 登记行 → 409 WORKTREE_NOT_ORPHAN（防误删登记树）",
+      "ok": true,
+      "detail": "status=409"
+    }
+  ]
+}

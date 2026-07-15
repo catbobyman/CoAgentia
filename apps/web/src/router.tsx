@@ -17,6 +17,7 @@ import { RootLayout } from './routes/RootLayout';
 import { ChannelChatScreen } from './screens/ChannelChatScreen';
 import { AgentDetailScreen } from './screens/AgentDetailScreen';
 import { ComputersScreen } from './screens/ComputersScreen';
+import { WorktreesScreen } from './screens/WorktreesScreen';
 import { WorkspaceBoardScreen } from './screens/WorkspaceBoardScreen';
 import { MembersScreen } from './screens/MembersScreen';
 import { ActivityScreen } from './screens/ActivityScreen';
@@ -78,6 +79,13 @@ const computersRoute = createRoute({
   component: ComputersScreen,
 });
 
+// PS-WT ② 工作树管理台（顶级屏，复用主壳，无深链 search，照 computersRoute 范式）。
+const worktreesRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/worktrees',
+  component: WorktreesScreen,
+});
+
 // M2 工作区级表面(P11/P8/P9),复用主壳,无深链 search(照 computersRoute 范式)。
 const tasksRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -108,7 +116,7 @@ const setupRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   appLayoutRoute.addChildren([
-    indexRoute, agentRoute, computersRoute, tasksRoute, membersRoute, activityRoute,
+    indexRoute, agentRoute, computersRoute, worktreesRoute, tasksRoute, membersRoute, activityRoute,
   ]),
   bootRoute,
   createWorkspaceRoute,

@@ -1,0 +1,6 @@
+/* PS-WT ① 仓库路径字段：文本框 + 「浏览…」按钮同行。 */
+.repo-path-row { display: flex; align-items: stretch; gap: 8px; }
+.repo-path-row .inp { flex: 1; min-width: 0; }
+.repo-browse-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; white-space: nowrap; flex: none;
+}

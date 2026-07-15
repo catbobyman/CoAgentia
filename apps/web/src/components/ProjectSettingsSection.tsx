@@ -18,6 +18,7 @@ import {
   useProjects,
   useUnbindProject,
 } from '../data/queries';
+import { RepoPathField } from './RepoPathField';
 import './project-settings.css';
 
 export function ProjectSettingsSection({ channelId, canManage }: {
@@ -167,7 +168,7 @@ function ProjectEditorModal({ project, computers, onClose }: {
       <div className="modal project-editor" role="dialog" aria-label="Project 编辑器" onClick={(e) => e.stopPropagation()}>
         <div className="mtitle">{project ? '编辑 Project' : '新建 Project'}</div>
         <ProjectInput label="Project 名称" value={name} onChange={setName} />
-        <ProjectInput label="仓库路径" value={repoPath} onChange={setRepoPath} mono />
+        <RepoPathField value={repoPath} onChange={setRepoPath} computerId={computerId} />
         <div className="field">
           <label className="lb" htmlFor="project-computer">Computer</label>
           <span className="project-select"><Server /><select id="project-computer" aria-label="Computer" value={computerId} onChange={(e) => setComputerId(e.target.value)}>
