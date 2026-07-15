@@ -27,6 +27,10 @@
   <a href="#核心能力"><b>核心能力</b></a> · <a href="#架构"><b>架构</b></a> · <a href="#仓库布局"><b>仓库布局</b></a> · <a href="#快速开始"><b>快速开始</b></a> · <a href="site/index.html"><b>项目介绍页</b></a>
 </p>
 
+<p>
+  <a href="README_EN.md">English</a> | <b>中文</b> | <a href="README_JA.md">日本語</a>
+</p>
+
 <code>需求消息 → 拆解提案 → 确认落地 → 并行交付 → Diff/预览验收 → 合并 → 一键部署 → 成本核算</code>
 
 </div>
@@ -56,21 +60,20 @@ Agent 编排工具大多长成「工作流画布 + 日志控制台」。CoAgenti
 ## 架构
 
 ```
-┌──────────────┐   REST + WebSocket   ┌───────────────────┐
-│   apps/web   │ ◄──────────────────► │    apps/server    │
-│ React + Vite │                      │ FastAPI + SQLite  │
-└──────────────┘                      │  （所有裁决在此）   │
-                                      └─────────┬─────────┘
-                                    WS 帧协议（契约 D）
-                                      ┌─────────┴─────────┐
-                                      │    apps/daemon    │
-                                      │  执行器，不做决策    │
-                                      └─────────┬─────────┘
-                                        stdio / JSON-RPC
-                                      ┌─────────┴─────────┐
-                                      │ Claude Code / Codex│
-                                      │  CLI（MCP 16 工具） │
-                                      └───────────────────┘
+┌──────────────┐    REST + WebSocket    ┌───────────────────┐
+│   apps/web   │ <====================> │    apps/server    │
+│ React + Vite │                        │ FastAPI + SQLite  │
+└──────────────┘                        └─────────┬─────────┘
+                                                  │  WS frames (Contract D)
+                                        ┌─────────┴─────────┐
+                                        │    apps/daemon    │
+                                        │   executor only   │
+                                        └─────────┬─────────┘
+                                                  │  stdio / JSON-RPC
+                                        ┌─────────┴─────────┐
+                                        │ Claude Code/Codex │
+                                        │   CLI, MCP x16    │
+                                        └───────────────────┘
 ```
 
 - **server 是唯一裁决者**：gating、DAG 序、冲突处置、触发判定全部在 server；daemon 只执行。
