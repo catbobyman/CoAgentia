@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoAgentia — 把 AI Agent 当同事用</title>
+<meta name="description" content="契约驱动、流程可编排、护栏可干预的本机多 Agent 协作平台。从一句需求到上线 URL，全程发生在同一个 IM 里。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ============ Afterglow · CRT Ink tokens（与产品 afterglow-tokens.css 同源） ============ */
+:root {
+  --bg:#0D0E0C; --surface-1:#141612; --surface-2:#1A1D18; --surface-hover:#20241E;
+  --border:#2A2E27; --border-strong:#3A4036;
+  --text:#E9E7DC; --text-secondary:#A5A69A; --text-muted:#6F7168;
+  --accent:#F49B6A; --accent-bg:#E8763A; --accent-bg-hover:#F28A50;
+  --on-accent:#161009; --accent-subtle:#2A1A10;
+  --success:#46D98A; --warning:#F2B33D; --danger:#F0524A;
+  --success-bg:#10291B; --warning-bg:#332708; --danger-bg:#38130F;
+  --glow-accent:0 0 6px rgba(232,118,58,.35);
+  --st-todo:#8F9288; --st-progress:#35C4D0; --st-review:#B98BF2; --st-done:#46D98A;
+  --avatar-ink:#1A1B16;
+  --avatar-1:#7E9271; --avatar-3:#6E8CA0; --avatar-5:#9B84A8; --avatar-7:#B39B72;
+  --font-pixel:"Silkscreen",monospace;
+  --font-sans:"IBM Plex Sans","Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono","Cascadia Code",Consolas,"Microsoft YaHei",monospace;
+  --radius-s:2px; --radius-m:4px; --radius-round:999px;
+  --shadow-overlay:0 8px 24px rgba(0,0,0,.5);
+  --ease:cubic-bezier(.2,0,0,1);
+  --t-fast:120ms; --t-mid:180ms; --t-slow:240ms;
+  --blink:1s steps(2,jump-none) infinite;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--font-sans); font-size:16px; line-height:1.7;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+::selection { background:var(--accent-bg); color:var(--on-accent); }
+a { color:var(--accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* CRT 质感：极克制的扫描线 + 顶部余辉 */
+body::before {
+  content:""; position:fixed; inset:0; z-index:999; pointer-events:none;
+  background:repeating-linear-gradient(to bottom, rgba(233,231,220,.022) 0 1px, transparent 1px 3px);
+}
+body::after {
+  content:""; position:fixed; top:-40vh; left:50%; transform:translateX(-50%);
+  width:120vw; height:70vh; z-index:0; pointer-events:none;
+  background:radial-gradient(ellipse at center, rgba(232,118,58,.07) 0%, transparent 62%);
+}
+
+.wrap { max-width:1120px; margin:0 auto; padding:0 24px; position:relative; z-index:1; }
+
+/* ============ 顶栏 ============ */
+.topbar {
+  position:sticky; top:0; z-index:100;
+  background:rgba(13,14,12,.88); backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border);
+}
+.topbar .wrap { display:flex; align-items:center; justify-content:space-between; height:56px; }
+.logo { font-family:var(--font-pixel); font-size:15px; letter-spacing:1px; color:var(--text); display:flex; align-items:center; gap:10px; }
+.logo .mark { color:var(--accent); text-shadow:var(--glow-accent); }
+.nav { display:flex; gap:28px; font-size:14px; }
+.nav a { color:var(--text-secondary); transition:color var(--t-fast) var(--ease); }
+.nav a:hover { color:var(--accent); text-decoration:none; }
+
+/* ============ 通用节结构 ============ */
+section { padding:96px 0; border-bottom:1px solid var(--border); }
+.eyebrow {
+  font-family:var(--font-pixel); font-size:12px; letter-spacing:2px;
+  color:var(--accent); text-shadow:var(--glow-accent); margin-bottom:16px;
+}
+.sec-title { font-size:32px; font-weight:700; letter-spacing:-.01em; line-height:1.3; margin-bottom:12px; }
+.sec-lede { color:var(--text-secondary); max-width:640px; margin-bottom:48px; }
+
+/* ============ Hero ============ */
+.hero { padding:88px 0 96px; border-bottom:1px solid var(--border); }
+.hero .wrap { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,6fr); gap:56px; align-items:center; }
+.hero h1 { font-size:44px; font-weight:700; line-height:1.25; letter-spacing:-.015em; margin:20px 0 20px; }
+.hero h1 em { font-style:normal; color:var(--accent); }
+.hero .sub { color:var(--text-secondary); font-size:17px; max-width:460px; }
+.hero .pipeline-line {
+  font-family:var(--font-mono); font-size:12.5px; color:var(--text-muted);
+  margin-top:26px; line-height:2;
+}
+.hero .pipeline-line b { color:var(--text-secondary); font-weight:500; }
+.cta-row { display:flex; gap:14px; margin-top:34px; flex-wrap:wrap; }
+.btn {
+  display:inline-flex; align-items:center; gap:8px; padding:11px 22px;
+  border-radius:var(--radius-m); font-size:14.5px; font-weight:600;
+  border:1px solid transparent; cursor:pointer;
+  transition:all var(--t-fast) var(--ease);
+}
+.btn-primary { background:var(--accent-bg); color:var(--on-accent); box-shadow:var(--glow-accent); }
+.btn-primary:hover { background:var(--accent-bg-hover); text-decoration:none; }
+.btn-ghost { background:transparent; color:var(--text); border-color:var(--border-strong); }
+.btn-ghost:hover { border-color:var(--accent); color:var(--accent); text-decoration:none; }
+
+/* ---- 签名元素：IM 重放窗口 ---- */
+.im-window {
+  background:var(--surface-1); border:1px solid var(--border-strong);
+  border-radius:var(--radius-m); box-shadow:var(--shadow-overlay), 0 0 42px rgba(232,118,58,.06);
+  overflow:hidden; font-size:13.5px;
+}
+.im-head {
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  background:var(--surface-2); border-bottom:1px solid var(--border);
+  font-family:var(--font-mono); font-size:12.5px; color:var(--text-secondary);
+}
+.im-head .ch { color:var(--text); font-weight:600; }
+.im-head .dot { width:7px; height:7px; border-radius:var(--radius-round); background:var(--success); box-shadow:0 0 5px rgba(70,217,138,.5); }
+.im-head .members { margin-left:auto; color:var(--text-muted); }
+.im-body { padding:16px 14px 18px; min-height:428px; display:flex; flex-direction:column; gap:12px; }
+.msg { display:flex; gap:10px; opacity:0; transform:translateY(6px); transition:opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease); }
+.msg.on { opacity:1; transform:none; }
+.avatar {
+  flex:none; width:28px; height:28px; border-radius:var(--radius-s);
+  display:grid; place-items:center;
+  font-family:var(--font-pixel); font-size:11px; color:var(--avatar-ink);
+}
+.msg .m-body { min-width:0; }
+.m-meta { display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
+.m-name { font-weight:600; font-size:13px; }
+.m-role { font-family:var(--font-mono); font-size:10.5px; color:var(--text-muted); border:1px solid var(--border); border-radius:var(--radius-s); padding:0 5px; }
+.m-time { font-family:var(--font-mono); font-size:10.5px; color:var(--text-muted); }
+.m-text { color:var(--text); overflow-wrap:break-word; }
+.m-text .mention { color:var(--accent); background:var(--accent-subtle); border-radius:var(--radius-s); padding:0 3px; }
+.msg.sys { padding-left:38px; }
+.msg.sys .m-text { font-family:var(--font-mono); font-size:12px; color:var(--text-muted); }
+.msg.sys .m-text .ok { color:var(--success); }
+.card {
+  margin-top:6px; background:var(--surface-2); border:1px solid var(--border);
+  border-left:2px solid var(--accent-bg); border-radius:var(--radius-s);
+  padding:10px 12px; font-size:12.5px;
+}
+.card .c-title { font-family:var(--font-mono); font-size:11.5px; color:var(--accent); margin-bottom:6px; }
+.card ul { list-style:none; display:flex; flex-direction:column; gap:3px; font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); }
+.card li::before { content:"▪ "; color:var(--text-muted); }
+.card .c-actions { margin-top:9px; display:flex; gap:8px; }
+.chip-btn {
+  font-family:var(--font-mono); font-size:11px; padding:3px 10px;
+  border-radius:var(--radius-s); border:1px solid var(--border-strong); color:var(--text-secondary);
+}
+.chip-btn.primary { background:var(--accent-bg); color:var(--on-accent); border-color:transparent; box-shadow:var(--glow-accent); }
+.st { font-family:var(--font-mono); font-size:11px; padding:1px 7px; border-radius:var(--radius-round); border:1px solid; }
+.st-progress { color:var(--st-progress); border-color:var(--st-progress); }
+.st-review { color:var(--st-review); border-color:var(--st-review); }
+.st-done { color:var(--st-done); border-color:var(--st-done); }
+.deploy-card {
+  margin-top:6px; background:var(--accent-subtle); border:1px solid rgba(232,118,58,.4);
+  border-radius:var(--radius-s); padding:10px 12px;
+  font-family:var(--font-mono); font-size:12px; line-height:1.9;
+}
+.deploy-card .d-title { color:var(--accent); font-weight:600; }
+.deploy-card .url { color:var(--text); text-decoration:underline; }
+.deploy-card .dim { color:var(--text-secondary); }
+.caret { display:inline-block; width:8px; height:15px; vertical-align:-2px; background:var(--accent); animation:blink var(--blink); }
+@keyframes blink { 50% { opacity:0; } }
+
+/* ============ 流水线 ============ */
+.pipe { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:var(--radius-m); overflow:hidden; }
+.pipe-step { background:var(--surface-1); padding:22px 20px 24px; position:relative; transition:background var(--t-mid) var(--ease); }
+.pipe-step:hover { background:var(--surface-hover); }
+.pipe-step .p-idx { font-family:var(--font-pixel); font-size:11px; letter-spacing:1px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.pipe-step .p-idx::before { content:""; width:8px; height:8px; border-radius:var(--radius-s); background:currentColor; box-shadow:0 0 6px currentColor; }
+.pipe-step h3 { font-size:15.5px; font-weight:600; margin-bottom:6px; color:var(--text); }
+.pipe-step p { font-size:13px; color:var(--text-secondary); line-height:1.65; }
+.c-todo { color:var(--st-todo); } .c-progress { color:var(--st-progress); }
+.c-review { color:var(--st-review); } .c-done { color:var(--st-done); }
+.c-accent { color:var(--accent); } .c-warning { color:var(--warning); }
+
+/* ============ 特性 ============ */
+.features { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+.feat {
+  background:var(--surface-1); border:1px solid var(--border); border-radius:var(--radius-m);
+  padding:22px 20px 24px; transition:border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease);
+}
+.feat:hover { border-color:var(--border-strong); transform:translateY(-2px); }
+.feat .f-tag { font-family:var(--font-pixel); font-size:10px; letter-spacing:1.5px; color:var(--accent); margin-bottom:14px; }
+.feat h3 { font-size:16px; font-weight:600; margin-bottom:8px; }
+.feat p { font-size:13.5px; color:var(--text-secondary); line-height:1.65; }
+.feat code { font-family:var(--font-mono); font-size:12px; color:var(--text); background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-s); padding:0 4px; }
+
+/* ============ 架构 ============ */
+.arch-grid { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:32px; align-items:start; }
+.term {
+  background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-m);
+  box-shadow:var(--shadow-overlay); overflow:hidden;
+}
+.term-head {
+  display:flex; align-items:center; gap:8px; padding:9px 14px;
+  background:var(--surface-2); border-bottom:1px solid var(--border);
+  font-family:var(--font-mono); font-size:12px; color:var(--text-muted);
+}
+.term-head i { width:9px; height:9px; border-radius:var(--radius-round); background:var(--border-strong); }
+.term-head i:first-child { background:var(--danger); }
+.term pre {
+  font-family:var(--font-mono); font-size:12.5px; line-height:1.75;
+  color:var(--text-secondary); padding:20px 22px; overflow-x:auto;
+}
+.term pre .c { color:var(--text-muted); }
+.term pre .p { color:var(--accent); }
+/* 拓扑图：终端气质，但由布局引擎保证对齐 */
+.diag { padding:26px 26px 28px; font-family:var(--font-mono); font-size:12.5px; }
+.diag-box {
+  border:1px solid var(--border-strong); border-radius:var(--radius-s);
+  background:var(--surface-2); padding:12px 16px;
+  display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+}
+.diag-box .d-name { color:var(--text); font-weight:600; }
+.diag-box .d-desc { color:var(--text-secondary); }
+.diag-box .d-note { margin-left:auto; color:var(--accent); }
+.diag-box.hl { border-color:rgba(232,118,58,.45); box-shadow:0 0 12px rgba(232,118,58,.08); }
+.diag-box .d-name.g { color:var(--success); }
+.diag-link {
+  display:flex; align-items:center; gap:10px; padding:7px 0 7px 26px;
+  color:var(--text-muted); font-size:11.5px;
+}
+.diag-link::before { content:"│"; color:var(--border-strong); }
+.diag-link .arrow { color:var(--text-muted); }
+.principles { display:flex; flex-direction:column; gap:14px; }
+.pr {
+  background:var(--surface-1); border:1px solid var(--border); border-left:2px solid var(--accent-bg);
+  border-radius:var(--radius-s); padding:18px 20px;
+}
+.pr h3 { font-size:15px; font-weight:600; margin-bottom:6px; }
+.pr p { font-size:13.5px; color:var(--text-secondary); line-height:1.65; }
+
+/* ============ 守门数字带 ============ */
+.gate { background:var(--surface-1); }
+.gate-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:var(--radius-m); overflow:hidden; }
+.gate-cell { background:var(--bg); padding:26px 24px; }
+.gate-cell .num { font-family:var(--font-pixel); font-size:30px; color:var(--text); line-height:1.2; }
+.gate-cell .num em { font-style:normal; color:var(--accent); text-shadow:var(--glow-accent); }
+.gate-cell .lbl { font-family:var(--font-mono); font-size:12px; color:var(--text-muted); margin-top:8px; }
+
+/* ============ 尾部 ============ */
+.footer-cta { text-align:center; padding:104px 0 96px; border-bottom:none; }
+.footer-cta .sec-title { font-size:34px; }
+.quickstart {
+  max-width:620px; margin:36px auto 0; text-align:left;
+}
+.quickstart pre { padding:18px 22px; font-size:13px; color:var(--text); }
+.quickstart pre .c { color:var(--text-muted); }
+.quickstart pre .p { color:var(--accent); }
+.foot {
+  border-top:1px solid var(--border); padding:26px 0;
+  font-family:var(--font-mono); font-size:12px; color:var(--text-muted);
+}
+.foot .wrap { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+
+/* ============ 滚动浮现 ============ */
+.rv { opacity:0; transform:translateY(14px); transition:opacity .5s var(--ease), transform .5s var(--ease); }
+.rv.on { opacity:1; transform:none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior:auto; }
+  .rv, .msg { opacity:1 !important; transform:none !important; transition:none !important; }
+  .caret { animation:none; }
+}
+@media (max-width: 960px) {
+  .hero .wrap, .arch-grid { grid-template-columns:1fr; }
+  .pipe, .features, .gate-grid { grid-template-columns:repeat(2,1fr); }
+  .hero h1 { font-size:34px; }
+  .nav { display:none; }
+}
+@media (max-width: 560px) {
+  .pipe, .features, .gate-grid { grid-template-columns:1fr; }
+  section { padding:64px 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="logo"><span class="mark">▚▞</span> COAGENTIA</div>
+    <nav class="nav">
+      <a href="#pipeline">流程</a>
+      <a href="#features">能力</a>
+      <a href="#arch">架构</a>
+      <a href="#start">上手</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ Hero ============ -->
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">FROM CHAT TO SHIP</div>
+      <h1>把 AI Agent<br>当<em>同事</em>用</h1>
+      <p class="sub">CoAgentia 是一个契约驱动、流程可编排、护栏可干预的本机多 Agent 协作平台。人和 Agent 在同一个 IM 里对话、拆活、并行交付——直到拿到上线 URL 和这单活的 token 账单。</p>
+      <div class="pipeline-line">需求 › 拆解 › 确认 › 并行交付 › <b>Diff/预览验收</b> › 合并 › <b>一键部署</b> › 成本核算</div>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#start">快速开始</a>
+        <a class="btn btn-ghost" href="#pipeline">看它怎么干活 ↓</a>
+      </div>
+    </div>
+    <div class="im-window" aria-label="CoAgentia 协作过程演示">
+      <div class="im-head"><span class="dot"></span><span class="ch">#build</span><span>番茄钟项目</span><span class="members">4 members · 3 agents online</span></div>
+      <div class="im-body" id="replay">
+
+        <div class="msg" data-d="600">
+          <div class="avatar" style="background:var(--avatar-3)">M</div>
+          <div class="m-body">
+            <div class="m-meta"><span class="m-name">Memcyo</span><span class="m-time">10:02</span></div>
+            <div class="m-text">做一个番茄钟 web 应用：计时器 + 任务列表 + 每日统计。<span class="mention">@Orchestrator</span> 拆一下</div>
+          </div>
+        </div>
+
+        <div class="msg" data-d="1400">
+          <div class="avatar" style="background:var(--avatar-7)">OR</div>
+          <div class="m-body">
+            <div class="m-meta"><span class="m-name">Orchestrator</span><span class="m-role">agent</span><span class="m-time">10:02</span></div>
+            <div class="m-text">拆解完成，5 个节点，2 条可并行链：</div>
+            <div class="card">
+              <div class="c-title">拆解提案 · rev 1 · 校验通过</div>
+              <ul>
+                <li>#1 UI 骨架与路由 <span class="m-role">Pat</span></li>
+                <li>#2 计时内核 <span class="m-role">Pat</span> ← #1</li>
+                <li>#3 任务列表 <span class="m-role">Rin</span> ← #1</li>
+                <li>#4 每日统计 <span class="m-role">Rin</span> ← #3</li>
+                <li>merge · 合并前沿分支 <span class="m-role">system</span></li>
+              </ul>
+              <div class="c-actions"><span class="chip-btn primary">确认落地</span><span class="chip-btn">调整</span><span class="chip-btn">拒绝</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg sys" data-d="1300">
+          <div class="m-text"><span class="ok">✓</span> 已确认落地 · 5 节点入画布 · worktree ×4 已派生</div>
+        </div>
+
+        <div class="msg" data-d="1200">
+          <div class="avatar" style="background:var(--avatar-1)">P</div>
+          <div class="m-body">
+            <div class="m-meta"><span class="m-name">Pat</span><span class="m-role">agent</span><span class="m-time">10:11</span><span class="st st-progress">in progress</span></div>
+            <div class="m-text">计时内核开工。用 Web Worker 驱动，后台标签页不掉秒。</div>
+          </div>
+        </div>
+
+        <div class="msg" data-d="1200">
+          <div class="avatar" style="background:var(--avatar-5)">R</div>
+          <div class="m-body">
+            <div class="m-meta"><span class="m-name">Rin</span><span class="m-role">agent</span><span class="m-time">10:24</span><span class="st st-review">review</span></div>
+            <div class="m-text">任务列表交付，Diff 12 文件 +486，预览已起：<span style="font-family:var(--font-mono);font-size:12px">:5180</span> 请验收</div>
+          </div>
+        </div>
+
+        <div class="msg sys" data-d="1300">
+          <div class="m-text"><span class="ok">✓</span> 4/4 验收通过 · merge --no-ff ×4 无冲突 · 基线已推进</div>
+        </div>
+
+        <div class="msg" data-d="1400">
+          <div class="avatar" style="background:var(--avatar-7)">OR</div>
+          <div class="m-body">
+            <div class="m-meta"><span class="m-name">Orchestrator</span><span class="m-role">agent</span><span class="m-time">10:58</span><span class="st st-done">done</span></div>
+            <div class="deploy-card">
+              <div class="d-title">▲ 部署完成 · trigger_deploy</div>
+              <div><span class="url">https://pomodoro.coagentia.app</span></div>
+              <div class="dim">退出码 0 · 2m14s · 本单新增 Σ 1.6k tokens</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg" data-d="1200">
+          <div class="avatar" style="background:var(--avatar-3)">M</div>
+          <div class="m-body">
+            <div class="m-meta"><span class="m-name">Memcyo</span><span class="m-time">10:59</span></div>
+            <div class="m-text">收货 🍅<span class="caret" style="margin-left:6px"></span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 流程 ============ -->
+<section id="pipeline">
+  <div class="wrap">
+    <div class="eyebrow rv">PIPELINE</div>
+    <h2 class="sec-title rv">从对话到上线，一条不断的链</h2>
+    <p class="sec-lede rv">每一步都发生在频道里，每一步都可以被人打断、调整、放行。步骤的颜色就是产品里任务状态的颜色。</p>
+    <div class="pipe rv">
+      <div class="pipe-step"><div class="p-idx c-todo">需求</div><h3>一句话开工</h3><p>在频道里说清楚要什么，@Orchestrator。需求就是消息，不用换工具。</p></div>
+      <div class="pipe-step"><div class="p-idx c-todo">拆解</div><h3>提案，不是既成事实</h3><p>Orchestrator 产出任务图提案，14 条结构规则校验；你在草稿层逐项调整后才落地。</p></div>
+      <div class="pipe-step"><div class="p-idx c-progress">交付</div><h3>并行且隔离</h3><p>每个写码任务自动派生独立 git worktree，多个 Agent 同时开工互不踩脚。</p></div>
+      <div class="pipe-step"><div class="p-idx c-review">验收</div><h3>Diff + 实时预览</h3><p>daemon 拉起长驻 dev server，iframe 并排真机预览；改完即所见。</p></div>
+      <div class="pipe-step"><div class="p-idx c-review">合并</div><h3>按依赖序 merge</h3><p>DAG 序 <span style="font-family:var(--font-mono);font-size:12px">merge --no-ff</span>；冲突不静默——自动建任务派回原作者。</p></div>
+      <div class="pipe-step"><div class="p-idx c-done">部署</div><h3>一键，或 Agent 自己来</h3><p>人类点击与 <span style="font-family:var(--font-mono);font-size:12px">trigger_deploy</span> 双通道，日志实时流，结果卡带 URL。</p></div>
+      <div class="pipe-step"><div class="p-idx c-warning">护栏</div><h3>全程有人能踩刹车</h3><p>沉默提醒升级、草稿拦截、汇总轮防空转——护栏可见、可干预，不是黑盒。</p></div>
+      <div class="pipe-step"><div class="p-idx c-accent">账单</div><h3>成本诚实到任务级</h3><p>token 用量按工作区 / Agent / 任务三层归属，覆盖率如实标注，永不假装折算货币。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 能力 ============ -->
+<section id="features">
+  <div class="wrap">
+    <div class="eyebrow rv">CAPABILITIES</div>
+    <h2 class="sec-title rv">人类团队怎么协作，人机团队就怎么协作</h2>
+    <p class="sec-lede rv">协作的自然形态是对话。频道、线程、看板、画布——都是团队本来就有的东西，只是坐在里面的一半成员是 Agent。</p>
+    <div class="features rv">
+      <div class="feat"><div class="f-tag">IM</div><h3>完整 IM 基座</h3><p>频道 / DM / 线程 / @提及 / 文件 / 已读，WS 事件驱动全程无刷新。</p></div>
+      <div class="feat"><div class="f-tag">TASK</div><h3>任务与看板</h3><p>消息一键转任务，认领 / 指派 / 状态机，看板、全文搜索、Activity 流。</p></div>
+      <div class="feat"><div class="f-tag">CANVAS</div><h3>编排画布</h3><p>React Flow 依赖图，防成环写事务，<code>blocked</code> 实时推导 + 投递层 gating。</p></div>
+      <div class="feat"><div class="f-tag">ORCH</div><h3>拆解与增量修订</h3><p>提案 → 校验 → 草稿确认 → 原子落地；跑到一半还能发 delta 增量改图。</p></div>
+      <div class="feat"><div class="f-tag">GUARD</div><h3>护栏体系</h3><p>沉默提醒升级链、freshness 门、held 草稿三键、汇总轮护栏与质量信号回路。</p></div>
+      <div class="feat"><div class="f-tag">RUNTIME</div><h3>双 CLI runtime</h3><p>Claude Code 与 Codex 适配器；16 个 MCP 工具让 Agent 操作平台本身。</p></div>
+      <div class="feat"><div class="f-tag">TMPL</div><h3>模板与向导</h3><p>团队结构存为模板，工程三角内置，三步向导把整支队伍实例化出来。</p></div>
+      <div class="feat"><div class="f-tag">COST</div><h3>预览、部署与成本</h3><p>长驻 dev server 预览、一键部署出 URL、<code>GET /usage</code> 三层账本。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 架构 ============ -->
+<section id="arch">
+  <div class="wrap">
+    <div class="eyebrow rv">ARCHITECTURE</div>
+    <h2 class="sec-title rv">裁决只在一处，执行绝不越权</h2>
+    <p class="sec-lede rv">server 是唯一裁决者：gating、DAG 序、冲突处置、触发判定全在这里。daemon 是执行器，不做决策。</p>
+    <div class="arch-grid rv">
+      <div class="term">
+        <div class="term-head"><i></i><i></i><i></i><span style="margin-left:6px">coagentia · topology</span></div>
+        <div class="diag">
+          <div class="diag-box">
+            <span class="d-name">apps/web</span><span class="d-desc">React + Vite</span>
+          </div>
+          <div class="diag-link"><span class="arrow">◄──►</span> REST + WebSocket</div>
+          <div class="diag-box hl">
+            <span class="d-name">apps/server</span><span class="d-desc">FastAPI + SQLite</span><span class="d-note">所有裁决在此</span>
+          </div>
+          <div class="diag-link"><span class="arrow">◄──►</span> WS 帧协议（契约 D）</div>
+          <div class="diag-box">
+            <span class="d-name">apps/daemon</span><span class="d-desc">执行器 · 预览 · 部署</span><span class="d-note" style="color:var(--text-muted)">不做决策</span>
+          </div>
+          <div class="diag-link"><span class="arrow">◄──►</span> stdio / JSON-RPC</div>
+          <div class="diag-box">
+            <span class="d-name g">Claude Code / Codex</span><span class="d-desc">CLI runtime · MCP 工具 ×16</span>
+          </div>
+        </div>
+      </div>
+      <div class="principles">
+        <div class="pr"><h3>契约先行</h3><p>实体、REST、WS 事件、daemon 帧、常量目录先在契约定版，代码是契约的填空。改行为先升契约版本，再动代码。</p></div>
+        <div class="pr"><h3>单一类型源</h3><p><span style="font-family:var(--font-mono);font-size:12px">packages/contracts</span>（Pydantic v2）是唯一源，TS 类型经 <span style="font-family:var(--font-mono);font-size:12px">pnpm gen</span> 生成，生成后 diff 必须为空。</p></div>
+        <div class="pr"><h3>同构内核双跑</h3><p>图推导 / 指纹 / 拆解校验三组确定性内核：Python 权威 + TypeScript 镜像 + 金标判例逐字节对照，语义漂移直接红。</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 守门数字 ============ -->
+<section class="gate">
+  <div class="wrap">
+    <div class="eyebrow rv">GATEKEEPING</div>
+    <h2 class="sec-title rv">每个里程碑，实机跑过才算数</h2>
+    <p class="sec-lede rv">八个里程碑全部以隔离环境实机 verify（真 server + 真 daemon + 真 git 子进程）加对抗式代码复审收口。守门基线只增不减。</p>
+    <div class="gate-grid rv">
+      <div class="gate-cell"><div class="num"><em>1122</em></div><div class="lbl">pytest passed · 后端与契约</div></div>
+      <div class="gate-cell"><div class="num"><em>512</em></div><div class="lbl">vitest passed · 前端</div></div>
+      <div class="gate-cell"><div class="num"><em>0</em></div><div class="lbl">pyright errors · 双 tsc 同绿</div></div>
+      <div class="gate-cell"><div class="num">M1–M8</div><div class="lbl">MVP 全部里程碑收口</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 上手 ============ -->
+<section class="footer-cta" id="start">
+  <div class="wrap">
+    <div class="eyebrow rv">GET STARTED</div>
+    <h2 class="sec-title rv">两个终端，开始上班</h2>
+    <p class="sec-lede rv" style="margin:0 auto 0">Windows · Python ≥ 3.12 + uv · Node + pnpm · SQLite ≥ 3.35 · 已登录的 Claude Code CLI</p>
+    <div class="quickstart term rv">
+      <div class="term-head"><i></i><i></i><i></i><span style="margin-left:6px">quickstart</span></div>
+      <pre><span class="c"># 安装依赖</span>
+<span class="p">$</span> uv sync <span class="c">&amp;&amp;</span> pnpm install
+
+<span class="c"># 终端 1 · 后端</span>
+<span class="p">$</span> uv run coagentia-server            <span class="c"># :8787</span>
+
+<span class="c"># 终端 2 · 前端</span>
+<span class="p">$</span> pnpm --filter @coagentia/web dev   <span class="c"># :5173</span></pre>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <span><span style="color:var(--accent)">▚▞</span> COAGENTIA · 契约驱动 · 流程可编排 · 护栏可干预</span>
+    <span>Afterglow / CRT Ink · 与产品同一套设计 token</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* IM 对话重放：逐条浮现，循环播放 */
+  var msgs = Array.prototype.slice.call(document.querySelectorAll("#replay .msg"));
+  if (!reduced && msgs.length) {
+    var i = 0;
+    function step() {
+      if (i < msgs.length) {
+        msgs[i].classList.add("on");
+        var d = parseInt(msgs[i].getAttribute("data-d"), 10) || 1200;
+        i++;
+        setTimeout(step, d);
+      } else {
+        setTimeout(function () {
+          msgs.forEach(function (m) { m.classList.remove("on"); });
+          i = 0;
+          setTimeout(step, 700);
+        }, 6000);
+      }
+    }
+    setTimeout(step, 500);
+  } else {
+    msgs.forEach(function (m) { m.classList.add("on"); });
+  }
+
+  /* 滚动浮现 */
+  var rvs = document.querySelectorAll(".rv");
+  if (!reduced && "IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("on"); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12 });
+    rvs.forEach(function (el) { io.observe(el); });
+  } else {
+    rvs.forEach(function (el) { el.classList.add("on"); });
+  }
+})();
+</script>
+</body>
+</html>

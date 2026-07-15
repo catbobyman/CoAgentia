@@ -1,0 +1,11 @@
+/* 本地字体装载（复发点 5：实现期不走 CDN）。
+   IBM Plex Sans/Mono + Silkscreen 走 @fontsource（main.tsx import，Vite 打包）；
+   Departure Mono 无 npm 包，woff2 随源码同目录，此处声明 @font-face。
+   token 变量值一字不改——此文件只改「字体加载方式」，不定义 token。 */
+@font-face {
+  font-family: 'Departure Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./DepartureMono-Regular.woff2') format('woff2');
+}

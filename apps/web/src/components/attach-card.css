@@ -1,0 +1,21 @@
+/* 消息流附件卡样式(token 零发明,只用 afterglow 变量;与 .taskchip 同族的行内卡)。 */
+.attach {
+  display: flex; align-items: center; gap: 10px; height: 32px;
+  border: 1px solid var(--border); border-radius: var(--radius-s);
+  padding: 0 8px 0 10px; max-width: 560px; background: var(--surface-2);
+  margin-top: 6px; overflow: hidden;
+}
+.attach .fic { display: inline-flex; color: var(--text-secondary); flex: none; }
+.attach .fic svg.lucide { width: 16px; height: 16px; }
+.attach .fn {
+  font-size: 13px; font-weight: 500; color: var(--text); flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none;
+}
+.attach .fn:hover { color: var(--accent); text-decoration: underline; }
+.attach .sz { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); flex: none; }
+.attach .dl {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  color: var(--text-secondary); border-radius: var(--radius-s); flex: none;
+}
+.attach .dl:hover { background: var(--surface-hover); color: var(--text); }
+.attach .dl svg.lucide { width: 15px; height: 15px; }

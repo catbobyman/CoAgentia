@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/
+build/
+*.jpeg
+*.png
+.DS_Store
+scratchpad/m6_keep.log
+.claude/
+docs/

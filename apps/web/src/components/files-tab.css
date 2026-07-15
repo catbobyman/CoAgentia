@@ -1,0 +1,76 @@
+/* P4 频道文件页签样式(对照 P4-files.html;token 零发明,只用 afterglow 变量)。
+   类名带 f 前缀 + 独立面板类,避开共享 styles.css 的 .panel/.tbl 命名冲突。 */
+.filestab { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.fmain { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* 类型过滤 chip */
+.ffilter {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+}
+.fchip {
+  height: 28px; display: inline-flex; align-items: center; padding: 0 12px;
+  font-size: 13px; color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: var(--radius-s);
+  background: var(--surface-2); cursor: pointer;
+}
+.fchip:hover { background: var(--surface-hover); color: var(--text); }
+.fchip.active { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
+
+/* 文件表 */
+.ftablewrap { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px; }
+.fempty { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); padding: 24px 12px; }
+table.ftbl { border-collapse: collapse; width: 100%; }
+.ftbl th {
+  font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); font-weight: 500; text-align: left; padding: 0 12px; height: 32px;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.ftbl td { font-size: 13px; color: var(--text); padding: 0 12px; height: 36px; border-bottom: 1px solid var(--border); }
+.ftbl tr.frow { cursor: pointer; }
+.ftbl tr.frow:hover td { background: var(--surface-hover); }
+.ftbl tr.frow.sel td { background: var(--accent-subtle); }
+.ftbl .fname { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.ftbl .fname svg.lucide { width: 16px; height: 16px; color: var(--text-secondary); flex: none; }
+.ftbl .num { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.ftbl .opscell { display: flex; gap: 4px; }
+.ftbl .opscell .icobtn { width: 26px; height: 26px; }
+.ftbl .opscell .icobtn svg.lucide { width: 15px; height: 15px; }
+
+/* 预览面板 420px */
+.fpanel {
+  width: 420px; flex: none; border-left: 1px solid var(--border); background: var(--bg);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.fpanel .phd {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.fpanel .phd .fn {
+  font-size: 13px; font-weight: 500; color: var(--text); flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fpanel .phd .meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); flex: none; }
+.fpanel .pbody { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+.fpanel .pimg { display: block; max-width: 100%; border: 1px solid var(--border-strong); background: var(--surface-1); }
+.fpanel .ppdf { width: 100%; height: 360px; border: 1px solid var(--border-strong); background: var(--surface-1); }
+.fpanel .ptext {
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--text);
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-s);
+  padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 420px;
+}
+.fpanel .pnote { font-size: 13px; color: var(--text-muted); padding: 24px 8px; text-align: center; }
+.fpanel .meta-rows { margin-top: 16px; border: 1px solid var(--border); background: var(--surface-2); }
+.fpanel .mr { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+.fpanel .mr + .mr { border-top: 1px solid var(--border); }
+.fpanel .mr .lb {
+  font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); width: 96px; flex: none;
+}
+.fpanel .mr .vl { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.fpanel .mr .vl .mono { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.fpanel .pops {
+  flex: none; display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 16px; border-top: 1px solid var(--border);
+}
+.fpanel .pops a.btn { text-decoration: none; }

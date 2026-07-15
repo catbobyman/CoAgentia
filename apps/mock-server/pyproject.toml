@@ -1,0 +1,26 @@
+[project]
+name = "coagentia-mock-server"
+version = "0.1.0"
+description = "Contract-driven mock server: fixtures over REST (contract B) + WS events (contract C)"
+requires-python = ">=3.12"
+dependencies = [
+    "coagentia-contracts",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "websockets>=13",
+    "python-multipart>=0.0.9",
+    "python-ulid>=2",
+]
+
+[project.scripts]
+coagentia-mock = "coagentia_mock.app:main"
+
+[tool.uv.sources]
+coagentia-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coagentia_mock"]

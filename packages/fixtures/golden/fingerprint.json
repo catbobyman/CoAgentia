@@ -1,0 +1,121 @@
+[
+  {
+    "name": "empty_object",
+    "input": {},
+    "canonical": "{}",
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "name": "empty_snapshot",
+    "input": {
+      "edges": [],
+      "nodes": []
+    },
+    "canonical": "{\"edges\":[],\"nodes\":[]}",
+    "sha256": "57501e5c6808b3e14852a4ea21dc7873abf9409032a06f9b740c973e83f62cf7"
+  },
+  {
+    "name": "key_sorting",
+    "input": {
+      "b": 1,
+      "a": 2
+    },
+    "canonical": "{\"a\":2,\"b\":1}",
+    "sha256": "d3626ac30a87e6f7a6428233b3c68299976865fa5508e4267c5415c76af7a772"
+  },
+  {
+    "name": "codepoint_order_upper_before_lower",
+    "input": {
+      "a": 2,
+      "Z": 1
+    },
+    "canonical": "{\"Z\":1,\"a\":2}",
+    "sha256": "b19fcf144d639e7ba9a9d01385685d8aa19699bff9fa3e916f61935afabcd8e9"
+  },
+  {
+    "name": "null_pruning_recursive",
+    "input": {
+      "a": null,
+      "b": {
+        "c": null,
+        "d": 1
+      }
+    },
+    "canonical": "{\"b\":{\"d\":1}}",
+    "sha256": "2ee205f6ab09a1b15abdc7e526e9776de41cfc5e9a182287d966b3cb19474af2"
+  },
+  {
+    "name": "unicode_unescaped",
+    "input": {
+      "名": "值",
+      "emoji": "🍅"
+    },
+    "canonical": "{\"emoji\":\"🍅\",\"名\":\"值\"}",
+    "sha256": "f2a67da26560933c5a61853b341cbe5bb5d3b24cd78c3c35dbe89776b0461208"
+  },
+  {
+    "name": "array_order_preserved",
+    "input": {
+      "a": [
+        3,
+        1,
+        2
+      ],
+      "b": true,
+      "f": false
+    },
+    "canonical": "{\"a\":[3,1,2],\"b\":true,\"f\":false}",
+    "sha256": "3a1114904a575101ca341228b820c53a580238f045cf7748f6b77b224935ec0f"
+  },
+  {
+    "name": "nested_canvas_like",
+    "input": {
+      "nodes": [
+        {
+          "id": "N1",
+          "kind": "agent",
+          "task_id": "01JZKJ7GG0000000000000000T",
+          "is_summary": false,
+          "system_action": null,
+          "command": null
+        },
+        {
+          "id": "N2",
+          "kind": "system",
+          "task_id": null,
+          "is_summary": false,
+          "system_action": "check",
+          "command": "pnpm test"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N1",
+          "to": "N2"
+        }
+      ]
+    },
+    "canonical": "{\"edges\":[{\"from\":\"N1\",\"to\":\"N2\"}],\"nodes\":[{\"id\":\"N1\",\"is_summary\":false,\"kind\":\"agent\",\"task_id\":\"01JZKJ7GG0000000000000000T\"},{\"command\":\"pnpm test\",\"id\":\"N2\",\"is_summary\":false,\"kind\":\"system\",\"system_action\":\"check\"}]}",
+    "sha256": "da50b63394947c8679e22816fa29a9b1b5cf2ea9e60704f1a4fe625c336bf9c8"
+  },
+  {
+    "name": "integers_only",
+    "input": {
+      "count": 42,
+      "zero": 0,
+      "neg": -7
+    },
+    "canonical": "{\"count\":42,\"neg\":-7,\"zero\":0}",
+    "sha256": "4625188fe3e6dca8bdf9134cbfc4d880101e68293b341fcafddd98c381fc5713"
+  },
+  {
+    "name": "string_escapes",
+    "input": {
+      "quote": "say \"hi\"",
+      "backslash": "a\\b",
+      "newline": "l1\nl2"
+    },
+    "canonical": "{\"backslash\":\"a\\\\b\",\"newline\":\"l1\\nl2\",\"quote\":\"say \\\"hi\\\"\"}",
+    "sha256": "a456bf3aaa0c7997bdac507a7d3cb7e7888b15f901bd0c69f3befbb886d0b2e8"
+  }
+]

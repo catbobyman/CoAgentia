@@ -1,0 +1,53 @@
+[project]
+name = "coagentia-workspace"
+version = "0.0.0"
+description = "CoAgentia monorepo root (uv workspace)"
+requires-python = ">=3.12"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/contracts", "apps/mock-server", "apps/server", "apps/daemon"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "pyright>=1.1.380",
+    "coagentia-contracts",
+    "coagentia-mock-server",
+    "coagentia-server",
+    "coagentia-daemon",
+]
+
+[tool.uv.sources]
+coagentia-contracts = { workspace = true }
+coagentia-mock-server = { workspace = true }
+coagentia-server = { workspace = true }
+coagentia-daemon = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["packages/contracts/tests", "apps/mock-server/tests", "apps/server/tests", "apps/daemon/tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: 真 CLI 冒烟（需 claude 已登录 + COAGENTIA_SMOKE=1；契约 E §10）",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 依赖注入惯用 `= Depends(...)` / `= Header(...)` 作参数默认值（非可变默认坑，B008 误报）。
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query", "fastapi.Path"]
+
+[tool.pyright]
+include = ["packages/contracts/src", "apps/mock-server/src", "apps/server/src", "apps/daemon/src"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"

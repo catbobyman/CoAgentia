@@ -1,0 +1,38 @@
+.delivery-card { flex: none; margin: 10px 16px 0; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-s); }
+.delivery-head { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.delivery-head svg.lucide { width: 14px; height: 14px; color: var(--text-muted); }
+.delivery-head .branch { min-width: 0; flex: 1; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.delivery-status { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; border: 1px solid var(--border-strong); border-radius: var(--radius-s); padding: 2px 6px; color: var(--text-secondary); }
+.delivery-status.merged { border-color: var(--success); color: var(--success); }
+.delivery-status.conflicted { border-color: var(--danger); color: var(--danger); }
+.delivery-status.cleaned { color: var(--text-muted); }
+.delivery-status.pending { border-color: var(--warning); color: var(--warning); }
+.diff-card { min-width: 0; }
+.diff-toggle { width: 100%; height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; }
+.diff-toggle:hover { color: var(--text); background: var(--surface-hover); }
+.diff-toggle span { flex: 1; text-align: left; }
+.diff-toggle svg.lucide { width: 14px; height: 14px; }
+.diff-body { border-top: 1px solid var(--border); }
+.diff-summary { min-height: 32px; display: flex; align-items: center; gap: 10px; padding: 6px 10px; font-family: var(--font-mono); font-size: 11px; }
+.diff-summary .refs { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
+.diff-card .plus { color: var(--success); font-family: var(--font-mono); font-size: 11px; }
+.diff-card .minus { color: var(--danger); font-family: var(--font-mono); font-size: 11px; }
+.diff-file { border-top: 1px solid var(--border); }
+.diff-file-head { width: 100%; min-height: 34px; display: grid; grid-template-columns: 14px 18px 14px minmax(0, 1fr) auto auto; align-items: center; gap: 7px; padding: 5px 10px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; text-align: left; }
+.diff-file-head:hover { background: var(--surface-hover); color: var(--text); }
+.diff-file-head svg.lucide { width: 13px; height: 13px; }
+.diff-file-head .path { min-width: 0; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-status { width: 18px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.file-status.s-added { color: var(--success); }
+.file-status.s-deleted { color: var(--danger); }
+.file-status.s-renamed { color: var(--warning); }
+.diff-patch { max-height: 320px; overflow: auto; background: #0D0E0C; }
+.diff-patch pre { margin: 0; padding: 8px 0; font-family: var(--font-mono); font-size: 11px; line-height: 1.55; white-space: pre; }
+.diff-patch pre span { display: block; min-width: max-content; padding: 0 10px; color: var(--text-secondary); }
+.diff-patch pre .add { color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
+.diff-patch pre .del { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.diff-patch pre .hunk { color: var(--accent); }
+.diff-patch pre .meta { color: var(--text-muted); }
+.diff-state { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; font-size: 12px; color: var(--text-muted); }
+.diff-state.error { color: var(--danger); }
+.diff-truncated { padding: 6px 10px; font-family: var(--font-mono); font-size: 10px; color: var(--warning); background: var(--warning-bg); }

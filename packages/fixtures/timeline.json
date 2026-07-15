@@ -1,0 +1,83 @@
+[
+ {
+  "delay_ms": 900,
+  "type": "agent.activity",
+  "channel_id": null,
+  "data": {
+   "member_id": "01K0MMBR000000000000000004",
+   "detail": "Subagent started"
+  }
+ },
+ {
+  "delay_ms": 2000,
+  "type": "message.created",
+  "channel_id": "01K0CHAN000000000000000002",
+  "data": {
+   "message": {
+    "id": "01K0MESG000000000000000900",
+    "workspace_id": "01K0WKSP000000000000000001",
+    "channel_id": "01K0CHAN000000000000000002",
+    "thread_root_id": null,
+    "author_member_id": "01K0MMBR000000000000000004",
+    "kind": "user",
+    "card_kind": null,
+    "card_ref": null,
+    "body": "验收完成:G1–G12 = 18/18 全 PASS。建议 task #1 置 In Review,证据在任务线程。",
+    "created_at": "2026-07-08T05:03:00.000Z"
+   }
+  }
+ },
+ {
+  "delay_ms": 2600,
+  "type": "task.updated",
+  "channel_id": "01K0CHAN000000000000000002",
+  "data": {
+   "task": {
+    "id": "01K0TASK000000000000000001",
+    "workspace_id": "01K0WKSP000000000000000001",
+    "channel_id": "01K0CHAN000000000000000002",
+    "number": 1,
+    "root_message_id": "01K0MESG000000000000000013",
+    "title": "单文件番茄钟",
+    "status": "in_review",
+    "owner_member_id": "01K0MMBR000000000000000003",
+    "level": "l2",
+    "created_by_member_id": "01K0MMBR000000000000000001",
+    "silence_override_h": null,
+    "status_changed_at": "2026-07-08T05:03:00.000Z",
+    "created_at": "2026-07-08T04:15:00.000Z"
+   },
+   "change": {
+    "kind": "status_change",
+    "from_status": "in_progress",
+    "to_status": "in_review",
+    "actor_member_id": "01K0MMBR000000000000000004"
+   }
+  }
+ },
+ {
+  "delay_ms": 3200,
+  "type": "presence.changed",
+  "channel_id": null,
+  "data": {
+   "member_id": "01K0MMBR000000000000000003",
+   "kind": "agent",
+   "status": "idle"
+  }
+ },
+ {
+  "delay_ms": 3600,
+  "type": "token_usage.reported",
+  "channel_id": "01K0CHAN000000000000000002",
+  "data": {
+   "agent_member_id": "01K0MMBR000000000000000003",
+   "task_id": "01K0TASK000000000000000001",
+   "totals": {
+    "input_tokens": 2500,
+    "output_tokens": 700,
+    "cache_read_tokens": 470,
+    "cache_write_tokens": 110
+   }
+  }
+ }
+]
