@@ -574,7 +574,7 @@ export interface paths {
         put?: never;
         /**
          * Cleanup Orphan
-         * @description 清理磁盘孤儿树（B §4.11 扩）：无 DB 行、不广播；mock 回 removed 形状，孤儿判定活真 server。
+         * @description 清理磁盘孤儿树（B §4.11 扩）：无 DB 行、不广播；mock 回 removed 形状，判定活真 server。
          */
         post: operations["cleanup_orphan_api_computers__computer_id__worktrees_cleanup_orphan_post"];
         delete?: never;
