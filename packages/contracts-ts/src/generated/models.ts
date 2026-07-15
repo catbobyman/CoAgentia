@@ -135,6 +135,7 @@ export type IsSummary = boolean;
 export type CanvasNodeKind = 'agent' | 'system';
 export type PosX = number;
 export type PosY = number;
+export type SuggestedOwner = string | null;
 export type SystemAction = 'merge' | 'check';
 export type SystemNodeStatus = 'idle' | 'running' | 'success' | 'failed';
 export type TaskId2 = string | null;
@@ -167,6 +168,7 @@ export type Id9 = string;
 export type IsSummary1 = boolean;
 export type PosX1 = number;
 export type PosY1 = number;
+export type SuggestedOwner1 = string | null;
 export type TaskId3 = string | null;
 /**
  * canvas_nodes.upstream_policy（契约 A v1.0.12 / W9 部分失败）：被配置节点对其前驱集合的
@@ -1746,6 +1748,7 @@ export interface CanvasNodePublic {
   kind: CanvasNodeKind;
   pos_x?: PosX;
   pos_y?: PosY;
+  suggested_owner?: SuggestedOwner;
   system_action?: SystemAction | null;
   system_status?: SystemNodeStatus | null;
   task_id?: TaskId2;
@@ -1802,6 +1805,7 @@ export interface CanvasNodeRow {
   kind: CanvasNodeKind;
   pos_x?: PosX1;
   pos_y?: PosY1;
+  suggested_owner?: SuggestedOwner1;
   system_action?: SystemAction | null;
   system_status?: SystemNodeStatus | null;
   task_id?: TaskId3;

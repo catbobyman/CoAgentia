@@ -1447,6 +1447,8 @@ export interface components {
              * @default 0
              */
             pos_y: number;
+            /** Suggested Owner */
+            suggested_owner?: string | null;
             system_action?: components["schemas"]["SystemAction"] | null;
             system_status?: components["schemas"]["SystemNodeStatus"] | null;
             /** Task Id */

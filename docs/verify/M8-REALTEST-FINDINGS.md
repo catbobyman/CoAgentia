@@ -19,6 +19,7 @@
 **为何 sim 没抓到**：并行型拆解（入口节点全 unblocked）锚点不 gated 无截断；sim 场景多为并行图或经 REST 直接 claim 绕过唤醒。**串行链拆解必死锁**。
 **波及面更广**：任何人在 blocked 任务线程发言，同样楔死全频道 Agent 投递直至解锁——不限于落地时刻。
 **修复方向**（设计裁决，涉 M3b 裁决 2 + M6 #7 前缀规则的张力，建议 owner 拍板）：①落地消息序调整（「已落地」先于 blocked 锚点）只解落地窗口不解通例；②gating 收窄为「抑制唤醒但不扣投递」（premature-work 风险再评）；③前缀规则改每消息去重（契约 D deliver 帧语义变更）。
+**✅ 已修复（2026-07-15，采纳 ②′）**：gating 改「跳过不截断」（blocked 内容仍不投=防抢跑保留，但不再截断前缀→死锁根除）+ 解锁主动唤醒（下游解 blocked 时发 @suggested_owner 系统消息，补 F2 姊妹缺口）。裁决与实施详 [`B1-DELIVERY-GATING-DECISION.md`](../B1-DELIVERY-GATING-DECISION.md)（含 §6 实施记录）。守门 pytest 1176/4（+3 回归测：realtest 串行链复刻/解锁唤醒幂等/守卫）。契约 D 帧零变更；`canvas_nodes.suggested_owner` 持久列（契约 A v1.0.13 + 迁移 0013）。
 
 ### B-5 [高] Agent 没有任何契约提交通道，交付收尾链在能力面断裂（4/4 Agent 命中）
 **机制**：T7 门要求 TaskHandoff 才能置 in_review/done，但 16 个 MCP 工具**无契约提交工具**；系统注入的起草指令让 Agent「通过 POST /tasks/{task_id}/contracts 提交」（[hub.py:2444-2446](../../apps/server/src/coagentia_server/computers/hub.py:2444)）——Agent 够不着 REST。Agent 猜 `<control>` 信封发线程（无该解析面）→ set_task_status 422 只报「缺交接材料」无格式 hint → 死路。
@@ -47,7 +48,7 @@
 
 ## 4. 下一步建议（优先级序）
 
-1. **B-1 修复裁决**（owner 拍板方向）→ 修后用本库 realtest 频道串行链场景回归。
+1. ~~**B-1 修复裁决**（owner 拍板方向）→ 修后回归~~ **✅ 完成（②′，2026-07-15）**：单元+回归守门绿；**待做 = 修 B-5 后零人工辅助全链复跑**验证解锁唤醒真机贯通（本批仅单元/StubDaemon 覆盖，真 CLI 全链复跑归下一步）。
 2. **B-5 工具扩面**（owner 拍板 E v1.x 升版）→ 修后从头跑一次零人工辅助的全链。
 3. **daemon 文件日志** → 复现 B-4 codex 挂死定位。
 4. 以上收敛后按 [M8-REALTEST-PLAN.md](M8-REALTEST-PLAN.md) 铺开 T-D/T-G/T-B/T-C/T-E/T-H/T-F′ 与 6 窗口规模（当前发现不修复，多窗口场景会大面积踩 B-1/B-5）。

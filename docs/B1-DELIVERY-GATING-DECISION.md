@@ -4,7 +4,8 @@
 | --- | --- |
 | 建立 | 2026-07-15，owner 授权自主裁决；问题实证 = [M8-REALTEST-FINDINGS.md](verify/M8-REALTEST-FINDINGS.md) B-1（`437eb30`） |
 | 问题 | 串行链拆解落地后，blocked 任务锚点被投递 gating 扣住 + 「连续前缀」规则首个被扣即截断 → **全频道 Agent 投递永久楔死**（含「已落地」@唤醒）；且任何人在 blocked 任务线程发言同样触发。真机 3 Agent 全饿死实证、绕过后恢复实证 |
-| 裁决结论 | **方向 ②′：gating 改「跳过不截断」（唤醒抑制保留、blocked 内容仍不投）＋ 解锁主动唤醒消息（@suggested_owner，节点级幂等）**。零契约帧变更；同时修复「解锁无唤醒」姊妹缺口 |
+| 裁决结论 | **方向 ②′：gating 改「跳过不截断」（唤醒抑制保留、blocked 内容仍不投）＋ 解锁主动唤醒消息（@suggested_owner，节点级幂等）**。**契约 D 帧零变更**；同时修复「解锁无唤醒」姊妹缺口 |
+| 实施 | **已实施并守门（2026-07-15）**：见 §6。**§3「零迁移零契约」原判修正**——实现时发现 `suggested_owner` 未持久（只在锚点正文文本），解锁唤醒需持久源；owner 拍板「持久化」→ `canvas_nodes.suggested_owner` 列（迁移 0013 + 契约 A v1.0.13 增量列，因 `extra="forbid"`+manifest 列↔实体校验，列必入实体、随之进 `CanvasNodePublic`）。故实际 = **契约 D 帧零变更 + 契约 A +1 可空列 + 迁移 0013**（②′ 相对 ③ 的核心优势「不动 watermark/ack/deliver 帧」完整成立） |
 
 ## 1. 事实底座（裁决依据，全部本轮新核实）
 
@@ -79,3 +80,23 @@
 - worktree `delivery_waits_for_directory` 截断的同族饿死面（触发前提 = ensure 失败长期悬挂，如 project 绑死机器——真机已实测发生）：本批不动，依赖既有诊断+升级兜底；若 B-1 修后实测仍见楔死，再立案。
 - 批尾连续 gated 的水位语义（草图 #1 注意项）需在实现时写探针钉住。
 - 解锁唤醒对**并行多节点同时解锁**的合并策略（逐节点各一条 vs 合并一条）：先逐节点（简单+幂等清晰），噪音实测后再议。
+
+## 6. 实施记录（2026-07-15）
+
+**改动清单**：
+- **刀1（跳过不截断）**：`hub._filter_agent_delivery` gated→`continue`（不再 `hit_held`），worktree fail-closed 仍截断；水位只在实投时推进（批尾连续 gated 不越过未投尾巴，草图 #1 兑现）。`_deliver_message` 删除入口 gated 短路 `return`（gated 由过滤器跳过自抑制唤醒，busy 前缀冲洗照常）。`_backlog_trigger` gated→`continue` 语义对齐（两调用点均传已过滤 deliver，防御性）。
+- **刀2（持久化 + 解锁唤醒）**：`canvas_nodes.suggested_owner` 可空列（`models.py` + **迁移 0013** 反射补列 + **契约 A 实体 `CanvasNodeRow`** + manifest expected 集）；`landing._apply_create_node`（decomp+delta 共用）落地写入。新 `hub._scan_channel_unblocked_nodes`（有入边+未认领+有建议人+已解 blocked+无同款解锁消息→发 @建议人系统消息，消息前缀标记幂等）+ `_notify_node_unblocked` + `_scan_workspace_unblocked_nodes`（对账兜底）。触发面 = task 终态事件 / LANDING_COMPLETED / 重连+周期对账。
+- **发现修正**：`ContractModel` `extra="forbid"` + `test_manifest_entities` 列↔实体校验 ⇒ server-internal 列不可行，`suggested_owner` 必入实体并进 `CanvasNodePublic`（gen 追加可选字段，前端无破坏）。故「零迁移零契约」修正为「契约 D 帧零变更 + 契约 A +1 可空列 + 迁移 0013」（见头部「实施」行）。
+
+**测试**（`apps/server/tests/test_gating.py`）：
+- 既有 2 测改断言（②′）：`test_busy_prefix_flush_when_new_message_behind_held`（gated 后新消息随前缀一同冲洗）/ `test_blocked_thread_message_not_leaked_in_backlog`（gated 跳过不 leak、非 gated 越过投出、被跳过消息水位越过后不重投）。
+- 新增 3 测：`test_downstream_unblock_wakes_suggested_owner`（解锁 @建议人恰一条 + 重连幂等）/ `test_no_unblock_wake_when_claimed_or_no_suggested`（守卫：已认领 / 无建议人不发）/ `test_serial_chain_run_of_gated_anchors_does_not_deadlock`（realtest 复刻：多连续 gated 锚点后『已落地』@入口人可达）。
+- O8 三红例 + force-start 补发 wake：`test_summary` 全过（skip 语义经 `message_delivery_gated` 含 `is_summary_blocked` 同源，无回归）。
+
+**守门（全绿）**：pytest **1176/4**（+3，PS-WT 合并基线 1173）· vitest **538** · pyright **0** · ruff 净 · `pnpm typecheck` 0 · web build 绿 · **gen 确定**（`suggested_owner?` 追加 models.ts/rest.ts，`CanvasNodePublic`）。
+
+**登记**：`worktree delivery_waits_for_directory` 截断保留（同族饿死面，触发前提 = ensure 失败长期悬挂，依赖既有诊断+升级兜底，未见即不立案）；模板实例化路径未写 `suggested_owner`（模板另设 owner 或留空，不在本批；下游模板节点暂不发解锁唤醒）。
+
+**对抗复审（8 维 finder → refute-by-default 核实，8 confirmed）修复 + 登记**：
+- ✅ 修 = ① 迁移 FK 分叉（0013 加 `inline_references=True` + `String(26)` FK→members，沿 0008，从零/增量两路收敛；否则 add_column FK 在 SQLite 报 NotImplementedError）② 结构性解锁不触发唤醒（人类 patch_node 改档 partial / 删边 / 系统节点 success → CANVAS_NODE/EDGE 事件补 `_scan_channel_unblocked_nodes`，与 summary 扫描同触发面）③ 落地期无抑制门（`_scan_channel_unblocked_nodes` 加 `channel_landing_in_progress` 早退，防 delta 先删后加截断中间图的瞬时解锁过早唤醒——幂等消息不可撤）④ 逐节点空转 O(N²)（`_unblock_pending` 批预筛：一次剔除已认领/终态/已通知候选）⑤ 解锁唤醒 TOCTOU（`_notify_node_unblocked` 套任务级 async 锁 + 临界区无 await，同 _drive_system_node）⑥ 批尾水位不变量无探针（新增 `test_batch_tail_gated_not_swallowed_by_watermark`）⑦ bus 主路径无测（新增 `test_downstream_unblock_via_task_terminal_bus_path`：REST todo→closed → 即刻唤醒）。
+- 登记不修（低危）= ⑧ 解锁唤醒 @ 建议人只校 workspace 在册未校当前频道成员（建议人被移出频道后仍 @——**继承落地锚点/『已落地』同款 workspace 级行为**，修则与 landing 分叉，另批统一）；⑨ 幂等消息若在 commit→deliver 窗口内节点**再次 blocked**（上游 reopen），旧消息 gated 不投而存在性检查已置位 → 该轮唤醒可能丢（窄窗口：需上游 done→reopen→done；未越水位则解锁后仍随投递补出，越水位才永久丢，属 ⑥ 同族极窄子集，依赖对账兜底，未见即不立案）。
