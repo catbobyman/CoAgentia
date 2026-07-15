@@ -186,6 +186,7 @@ def _deploy_result_body(row: dict[str, Any]) -> str:
         parts.append(f"耗时：{dur}")
     return " ｜ ".join(parts)
 
+
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
 _RESUMABLE = {AgentStatus.STARTING.value, AgentStatus.IDLE.value, AgentStatus.BUSY.value}
 _DELIVERABLE = {AgentStatus.IDLE.value, AgentStatus.BUSY.value}
@@ -388,21 +389,15 @@ class DaemonHub:
             needs_scan = bool(task.get("writes_code")) or to_status == "done"
             channel_id = event.channel_id
             if channel_id and needs_scan:
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_worktrees(channel_id)
-                )
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_system_nodes(channel_id)
-                )
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_worktrees(channel_id))
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_system_nodes(channel_id))
             # O8 汇总协调（M8b L8）：上游到达**终态**即可能解除 partial 汇总节点 gating——done **或
             # closed** 都要扫（W9 partial 认终态，非仅 done）。结构变/落地进展另在下方触发。
             if channel_id and to_status in {
                 TaskStatus.DONE.value,
                 TaskStatus.CLOSED.value,
             }:
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_summary_nodes(channel_id)
-                )
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_summary_nodes(channel_id))
                 # B-1 ②′ 解锁主动唤醒：上游终态 → 下游节点解除 blocked 但锚点无 mention → 补发
                 # @建议人唤醒（节点级幂等，与 summary/worktree 扫描同触发面）。
                 loop.call_soon_threadsafe(
@@ -418,12 +413,12 @@ class DaemonHub:
                     )
             # 回收触发②任务终态（K3；FR-11.1）：任务转 done/closed → 即回收其活跃预览（下发
             # preview.stop；判定归 server，recycled 由 daemon 上报确认，不等 keep_days cleanup）。
-            if event.type == EventType.TASK_UPDATED and task.get("id") and change.get(
-                "to_status"
-            ) in {TaskStatus.DONE.value, TaskStatus.CLOSED.value}:
-                loop.call_soon_threadsafe(
-                    self._spawn, self._recycle_task_preview(task["id"])
-                )
+            if (
+                event.type == EventType.TASK_UPDATED
+                and task.get("id")
+                and change.get("to_status") in {TaskStatus.DONE.value, TaskStatus.CLOSED.value}
+            ):
+                loop.call_soon_threadsafe(self._spawn, self._recycle_task_preview(task["id"]))
             return
         if event.type in {
             EventType.CANVAS_NODE_ADDED,
@@ -433,15 +428,9 @@ class DaemonHub:
         }:
             channel_id = event.channel_id
             if channel_id:
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_worktrees(channel_id)
-                )
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_system_nodes(channel_id)
-                )
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_summary_nodes(channel_id)
-                )
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_worktrees(channel_id))
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_system_nodes(channel_id))
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_summary_nodes(channel_id))
                 # B-1 ②′：人类经 REST 删边/删节点（非落地路径）可解除下游 blocked → 与 summary 扫描
                 # 同触发面补发解锁唤醒（落地期由 _scan_channel_unblocked_nodes 内 in_progress 门抑
                 # 制，故 delta 步事务的 edge_removed 不会过早触发）。
@@ -464,16 +453,10 @@ class DaemonHub:
         if event.type == EventType.LANDING_COMPLETED:
             channel_id = event.channel_id
             if channel_id:
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_system_nodes(channel_id)
-                )
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_worktrees(channel_id)
-                )
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_system_nodes(channel_id))
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_worktrees(channel_id))
                 # 落地完成即结构进展 → 汇总协调续算一轮（delta 落地后新一版摘要）。
-                loop.call_soon_threadsafe(
-                    self._spawn, self._scan_channel_summary_nodes(channel_id)
-                )
+                loop.call_soon_threadsafe(self._spawn, self._scan_channel_summary_nodes(channel_id))
                 # B-1 ②′：delta 落地（删边/新结构）可能解除既有下游节点 blocked → 补发解锁唤醒。
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_unblocked_nodes(channel_id)
@@ -481,9 +464,7 @@ class DaemonHub:
             # L9 质量回路：带调整落地 → GUARD_FEEDBACK 直投 proposer（提交后，daemon 离线静默）。
             batch = event.data.get("batch") or {}
             if batch:
-                loop.call_soon_threadsafe(
-                    self._spawn, self._signal_landing_quality(batch)
-                )
+                loop.call_soon_threadsafe(self._spawn, self._signal_landing_quality(batch))
             return
         if event.type == EventType.PROPOSAL_UPDATED:
             proposal = event.data.get("proposal") or {}
@@ -554,17 +535,17 @@ class DaemonHub:
             return None
         digest = hashlib.sha256(token.encode()).hexdigest()
         with self._engine.connect() as c:
-            row = c.execute(
-                select(_COMPUTER).where(_COMPUTER.c.api_key_hash == digest)
-            ).mappings().first()
+            row = (
+                c.execute(select(_COMPUTER).where(_COMPUTER.c.api_key_hash == digest))
+                .mappings()
+                .first()
+            )
         if row is None:
             await sock.close(code=1008)
             return None
         return dict(row)
 
-    async def _recv_hello(
-        self, conn: DaemonConnection
-    ) -> tuple[str, DaemonHelloData] | None:
+    async def _recv_hello(self, conn: DaemonConnection) -> tuple[str, DaemonHelloData] | None:
         raw = await conn.sock.receive_json()
         if raw.get("kind") != FrameKind.REPORT or raw.get("type") != ReportType.HELLO:
             await conn.sock.close(code=CLOSE_PROTOCOL_MISMATCH)
@@ -607,9 +588,9 @@ class DaemonHub:
                 )
             )
             row = models.row_dict(
-                tx.conn.execute(
-                    select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id)
-                ).mappings().first()
+                tx.conn.execute(select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id))
+                .mappings()
+                .first()
             )
             pub = computer_public(row)
             tx.emit(EventType.COMPUTER_CONNECTED, None, {"computer": pub})
@@ -709,6 +690,7 @@ class DaemonHub:
 
     async def _write_last_seen(self, computer_id: str) -> None:
         """L4a：心跳 last_seen 写移出读循环——offload 到线程池（best-effort，失败仅记日志）。"""
+
         def _write() -> None:
             with self._engine.begin() as c:
                 c.execute(
@@ -768,9 +750,7 @@ class DaemonHub:
         # hello（重复）：忽略
         return None
 
-    def _report_worktree_status(
-        self, conn: DaemonConnection, data: WorktreeStatusData
-    ) -> None:
+    def _report_worktree_status(self, conn: DaemonConnection, data: WorktreeStatusData) -> None:
         """worktree.status：按 task_id 持久状态、广播；首次 active 落 durable 目录消息。"""
         if data.status == "merged" and not data.merge_commit:
             with gateway_tx(self._engine, self._bus) as tx:
@@ -860,9 +840,7 @@ class DaemonHub:
             for node_id in merge_node_ids:
                 self._system_pending.pop(node_id, None)
 
-    def _report_check_finished(
-        self, conn: DaemonConnection, data: CheckFinishedData
-    ) -> None:
+    def _report_check_finished(self, conn: DaemonConnection, data: CheckFinishedData) -> None:
         continue_channel: str | None
         with gateway_tx(self._engine, self._bus) as tx:
             handled, continue_channel = system_node_service.complete_check(
@@ -876,9 +854,7 @@ class DaemonHub:
 
     # ---------------------------------------------------------------- 预览状态上报（M7 K3）
 
-    def _report_preview_status(
-        self, conn: DaemonConnection, data: PreviewStatusData
-    ) -> None:
+    def _report_preview_status(self, conn: DaemonConnection, data: PreviewStatusData) -> None:
         """preview.status（契约 D §7）：条件 UPDATE 推进预览行 + 广播 preview.updated（+ FR-11.3
         进程状态诊断）。
 
@@ -930,9 +906,7 @@ class DaemonHub:
         """回读预览行 → 广播 preview.updated 到任务频道；diag_type 非空则附一条进程状态诊断
         （FR-11.3）。tx = 进行中 gateway_tx（提交后按序 flush 事件）。"""
         row = (
-            tx.conn.execute(select(_PREVIEW).where(_PREVIEW.c.id == preview_id))
-            .mappings()
-            .first()
+            tx.conn.execute(select(_PREVIEW).where(_PREVIEW.c.id == preview_id)).mappings().first()
         )
         if row is None:
             return
@@ -948,9 +922,7 @@ class DaemonHub:
         )
         channel_id = ctx["channel_id"] if ctx is not None else None
         owner = ctx["owner_member_id"] if ctx is not None else None
-        tx.emit(
-            EventType.PREVIEW_UPDATED, channel_id, {"preview": preview_session_public(row)}
-        )
+        tx.emit(EventType.PREVIEW_UPDATED, channel_id, {"preview": preview_session_public(row)})
         if diag_type is not None:
             self._append_preview_diagnostic(
                 tx, row, channel_id=channel_id, owner=owner, diag_type=diag_type
@@ -1045,10 +1017,7 @@ class DaemonHub:
         path = self._deploy_log_file(deployment_id)
         if lines:
             try:
-                over_cap = (
-                    path.exists()
-                    and path.stat().st_size >= BUFFER_DEPLOY_LOG_MAX_BYTES
-                )
+                over_cap = path.exists() and path.stat().st_size >= BUFFER_DEPLOY_LOG_MAX_BYTES
                 if not over_cap:
                     with open(path, "a", encoding="utf-8", newline="\n") as f:
                         for line in lines:
@@ -1141,9 +1110,7 @@ class DaemonHub:
         self._deploy_log_seq[data.deployment_id] = data.chunk_seq
         self._persist_deploy_log_seq(data.deployment_id, data.chunk_seq)  # R-10：游标落 sidecar
 
-    def _report_deploy_finished(
-        self, conn: DaemonConnection, data: DeployFinishedData
-    ) -> None:
+    def _report_deploy_finished(self, conn: DaemonConnection, data: DeployFinishedData) -> None:
         """deploy.finished（契约 D §7，需 ack）：条件 UPDATE 落终态 + deployment.updated 全量广播 +
         结果卡发 project 全部绑定频道各一条（mention 触发者）+ 部署完成诊断。
 
@@ -1166,15 +1133,11 @@ class DaemonHub:
             if res.rowcount == 0:
                 return  # 已终态/重复/未知：CAS 未命中 → 幂等 noop（不广播）
             row = dict(
-                tx.conn.execute(
-                    select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == data.deployment_id)
-                )
+                tx.conn.execute(select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == data.deployment_id))
                 .mappings()
                 .one()
             )
-            tx.emit(
-                EventType.DEPLOYMENT_UPDATED, None, {"deployment": deployment_public(row)}
-            )
+            tx.emit(EventType.DEPLOYMENT_UPDATED, None, {"deployment": deployment_public(row)})
             self._deploy_log_seq.pop(data.deployment_id, None)  # 终态后清去重游标
             self._delete_deploy_log_seq(data.deployment_id)  # R-10：同清 sidecar
             self._post_deployment_cards(tx, row, body=_deploy_result_body(row))
@@ -1183,17 +1146,13 @@ class DaemonHub:
     def _emit_deployment_updated(self, tx: Any, deployment_id: str) -> None:
         """回读部署行 → 全量广播 deployment.updated（部署为工作区级实体，channel_id=None）。"""
         row = (
-            tx.conn.execute(
-                select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == deployment_id)
-            )
+            tx.conn.execute(select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == deployment_id))
             .mappings()
             .first()
         )
         if row is None:
             return
-        tx.emit(
-            EventType.DEPLOYMENT_UPDATED, None, {"deployment": deployment_public(dict(row))}
-        )
+        tx.emit(EventType.DEPLOYMENT_UPDATED, None, {"deployment": deployment_public(dict(row))})
 
     def _post_deployment_cards(self, tx: Any, row: dict[str, Any], *, body: str) -> None:
         """结果卡（裁决 #13）：project 每个绑定频道各一条系统消息（card_kind=deployment,
@@ -1272,9 +1231,9 @@ class DaemonHub:
                 .values(detected_runtimes=[r.model_dump(mode="json") for r in d.runtimes])
             )
             row = models.row_dict(
-                tx.conn.execute(
-                    select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id)
-                ).mappings().first()
+                tx.conn.execute(select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id))
+                .mappings()
+                .first()
             )
             tx.emit(EventType.COMPUTER_UPDATED, None, {"computer": computer_public(row)})
 
@@ -1327,15 +1286,12 @@ class DaemonHub:
             # 批量预取（K7）：已存在 id 集 + thread_root_id→task_id 归属映射各一次查完，替代逐事件
             # 两查。`seen` 由已存在集起步、每插一行补记——批内重复 id 与旧「插后再查」判重逐字等价。
             ev_ids = [ev.id for ev in d.events]
-            seen: set[str] = {
-                r[0]
-                for r in tx.conn.execute(
-                    select(_USAGE.c.id).where(_USAGE.c.id.in_(ev_ids))
-                )
-            } if ev_ids else set()
-            root_ids = {
-                ev.thread_root_id for ev in d.events if ev.thread_root_id is not None
-            }
+            seen: set[str] = (
+                {r[0] for r in tx.conn.execute(select(_USAGE.c.id).where(_USAGE.c.id.in_(ev_ids)))}
+                if ev_ids
+                else set()
+            )
+            root_ids = {ev.thread_root_id for ev in d.events if ev.thread_root_id is not None}
             attribution: dict[str, str] = {}
             if root_ids:
                 for row in tx.conn.execute(
@@ -1538,16 +1494,12 @@ class DaemonHub:
                 if not prefix:
                     continue  # 首条即被扣或无积压：无可投面，解锁后由触发/对账再评
                 in_prefix = message_id in {item["id"] for item in prefix}
-                reason = (
-                    self._compute_trigger(c, msg, channel, agent_id) if in_prefix else None
-                )
+                reason = self._compute_trigger(c, msg, channel, agent_id) if in_prefix else None
             if status == AgentStatus.BUSY.value:
                 await self._deliver_backlog(conn, agent_id, channel_id)  # 直投（§8.2）
             elif reason is not None:  # idle + 触发命中 → wake + deliver
                 with self._engine.connect() as c:
-                    refs = self._wake_refs(
-                        c, reason=reason, agent_id=agent_id, messages=[msg]
-                    )
+                    refs = self._wake_refs(c, reason=reason, agent_id=agent_id, messages=[msg])
                 await self.send_instr(
                     conn,
                     agent_id,
@@ -1602,6 +1554,7 @@ class DaemonHub:
         投递任务，若在锁外先算批、锁内后发，相邻批会重叠重投较低 message_id（#5）。锁内重算使
         后到任务反映此前 ack 已推进的 read_position——已投完则返回 None 不发帧。
         """
+
         def _prepare() -> tuple[MessageDeliverData, DeliverMeta | None] | None:
             with self._engine.connect() as c:
                 deliver, watermark = self._filter_agent_delivery(
@@ -1630,9 +1583,7 @@ class DaemonHub:
             )
             return data, meta
 
-        await self.send_instr(
-            conn, agent_id, InstrType.MESSAGE_DELIVER, prepare=_prepare
-        )
+        await self.send_instr(conn, agent_id, InstrType.MESSAGE_DELIVER, prepare=_prepare)
 
     def _compute_trigger(
         self, c: Connection, msg: dict[str, Any], channel: dict[str, Any], agent_id: str
@@ -1644,14 +1595,18 @@ class DaemonHub:
         """
         if msg.get("author_member_id") == agent_id:
             return None  # 不因自己发的消息被唤醒
-        mentioned = c.execute(
-            select(_MENTION.c.member_id).where(
-                _MENTION.c.message_id == msg["id"], _MENTION.c.member_id == agent_id
-            )
-        ).first() is not None
-        if worktree_service.activation_context(
-            c, agent_member_id=agent_id, message=msg
-        ) is not None:
+        mentioned = (
+            c.execute(
+                select(_MENTION.c.member_id).where(
+                    _MENTION.c.message_id == msg["id"], _MENTION.c.member_id == agent_id
+                )
+            ).first()
+            is not None
+        )
+        if (
+            worktree_service.activation_context(c, agent_member_id=agent_id, message=msg)
+            is not None
+        ):
             return WakeReason.CANVAS_ACTIVATION
         if msg.get("kind") == MessageKind.SYSTEM.value and mentioned:
             return WakeReason.REMINDER  # reminder 锚点系统消息视同 @mention（§4.4 #8）
@@ -1680,13 +1635,14 @@ class DaemonHub:
                     break
         return WakeRefs(message_ids=[message["id"] for message in messages], node_id=node_id)
 
-    def _channel_agent_recipients(
-        self, c: Connection, channel_id: str
-    ) -> list[tuple[str, str]]:
+    def _channel_agent_recipients(self, c: Connection, channel_id: str) -> list[tuple[str, str]]:
         rows = c.execute(
             select(_AGENT.c.member_id, _AGENT.c.computer_id)
-            .select_from(_CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id)
-                         .join(_AGENT, _AGENT.c.member_id == _MEMBER.c.id))
+            .select_from(
+                _CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id).join(
+                    _AGENT, _AGENT.c.member_id == _MEMBER.c.id
+                )
+            )
             .where(
                 _CHANNEL_MEMBER.c.channel_id == channel_id,
                 _MEMBER.c.kind == MemberKind.AGENT,
@@ -1728,12 +1684,14 @@ class DaemonHub:
         无 writes_code 任务的纯聊天频道不必每条消息付 4 表 join + 逐候选画布推导。"""
         with self._engine.connect() as c:
             has_code_task = c.execute(
-                select(_TASK.c.id).where(
+                select(_TASK.c.id)
+                .where(
                     _TASK.c.channel_id == channel_id,
                     _TASK.c.writes_code.is_(True),
                     _TASK.c.project_id.is_not(None),
                     _TASK.c.status.notin_(worktree_service.TERMINAL_TASK_STATUSES),
-                ).limit(1)
+                )
+                .limit(1)
             ).first()
             if has_code_task is None:
                 return
@@ -1853,14 +1811,18 @@ class DaemonHub:
             "error": error,
         }
         with gateway_tx(self._engine, self._bus) as tx:
-            task = tx.conn.execute(
-                select(
-                    _TASK.c.owner_member_id,
-                    _TASK.c.channel_id,
-                    _TASK.c.workspace_id,
-                    _TASK.c.title,
-                ).where(_TASK.c.id == task_id)
-            ).mappings().first()
+            task = (
+                tx.conn.execute(
+                    select(
+                        _TASK.c.owner_member_id,
+                        _TASK.c.channel_id,
+                        _TASK.c.workspace_id,
+                        _TASK.c.title,
+                    ).where(_TASK.c.id == task_id)
+                )
+                .mappings()
+                .first()
+            )
             workspace_id = task["workspace_id"] if task else conn.workspace_id
             owner = task["owner_member_id"] if task else None
             channel_id = task["channel_id"] if task else None
@@ -1908,8 +1870,7 @@ class DaemonHub:
                         _DIAG.c.type == "agent.command",
                         func.json_extract(_DIAG.c.payload, "$.instruction")
                         == InstrType.WORKTREE_ENSURE.value,
-                        func.json_extract(_DIAG.c.payload, "$.result")
-                        == AckResult.FAILED.value,
+                        func.json_extract(_DIAG.c.payload, "$.result") == AckResult.FAILED.value,
                     )
                 ).scalar_one()
                 if fail_count == _WORKTREE_ENSURE_ESCALATE_AFTER:
@@ -1950,9 +1911,7 @@ class DaemonHub:
     def _converge_worktree_cleaned(self, task_id: str, computer_id: str) -> None:
         with gateway_tx(self._engine, self._bus) as tx:
             prior = (
-                tx.conn.execute(
-                    select(_WORKTREE).where(_WORKTREE.c.task_id == task_id)
-                )
+                tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id))
                 .mappings()
                 .first()
             )
@@ -2113,9 +2072,7 @@ class DaemonHub:
                 )
                 if run["blocked_at"] is not None:
                     return  # 协调阻断中——停自动唤醒，等人类恢复（§6.3）
-                inputs = summary_domain.collect_summary_inputs(
-                    tx.conn, cand["canvas_id"], node_id
-                )
+                inputs = summary_domain.collect_summary_inputs(tx.conn, cand["canvas_id"], node_id)
                 fp = summary_domain.summary_fingerprint(tx.conn, inputs)
                 advanced = summary_domain.advance_progress(tx, task_id=cand["task_id"], new_fp=fp)
                 if not advanced["counted"]:
@@ -2197,9 +2154,12 @@ class DaemonHub:
             if row is None:
                 return
             owner = row["owner_member_id"]
-            if tx.conn.execute(
-                select(_AGENT.c.member_id).where(_AGENT.c.member_id == owner)
-            ).first() is None:
+            if (
+                tx.conn.execute(
+                    select(_AGENT.c.member_id).where(_AGENT.c.member_id == owner)
+                ).first()
+                is None
+            ):
                 return
             body = worktree_service.directory_message(row["path"])
             already = tx.conn.execute(
@@ -2274,9 +2234,7 @@ class DaemonHub:
                 _TASK.c.id, _TASK.c.owner_member_id, _TASK.c.status, _TASK.c.root_message_id
             ).where(_TASK.c.id.in_(task_ids))
         ).all()
-        root_by_task = {
-            r[0]: r[3] for r in rows if r[1] is None and r[2] not in _TERMINAL_TASK
-        }
+        root_by_task = {r[0]: r[3] for r in rows if r[1] is None and r[2] not in _TERMINAL_TASK}
         if not root_by_task:
             return []
         notified = set(
@@ -2399,9 +2357,7 @@ class DaemonHub:
         with gateway_tx(self._engine, self._bus) as tx:
             ensure_task_ids = [
                 plan.task_id
-                for plan in worktree_service.ensure_plans(
-                    tx.conn, computer_id=conn.computer_id
-                )
+                for plan in worktree_service.ensure_plans(tx.conn, computer_id=conn.computer_id)
             ]
             if revalidate_worktrees:
                 revalidate_task_ids = [
@@ -2412,9 +2368,7 @@ class DaemonHub:
                 ]
             cleanup_task_ids = [
                 plan.task_id
-                for plan in worktree_service.cleanup_plans(
-                    tx.conn, computer_id=conn.computer_id
-                )
+                for plan in worktree_service.cleanup_plans(tx.conn, computer_id=conn.computer_id)
             ]
             agents = self._agents_on_computer(tx.conn, conn.computer_id)
             status_by_id = {a["member_id"]: a["status"] for a in agents}
@@ -2478,9 +2432,9 @@ class DaemonHub:
             await self._cleanup_worktree(task_id, conn.computer_id)
         for aid, channel_id, deliver, watermark, reason in deliver_plans:
             with self._engine.connect() as c:
-                channel_row = c.execute(
-                    select(_CHANNEL).where(_CHANNEL.c.id == channel_id)
-                ).mappings().one()
+                channel_row = (
+                    c.execute(select(_CHANNEL).where(_CHANNEL.c.id == channel_id)).mappings().one()
+                )
                 if reason is not None:
                     reason = self._backlog_trigger(c, deliver, dict(channel_row), aid)
                     if reason is None:
@@ -2537,9 +2491,7 @@ class DaemonHub:
                 diagnostic_type="agent.tool_call",
             )
             with contextlib.suppress(DaemonOffline):
-                await self.send_instr(
-                    conn, inj.agent_member_id, InstrType.MESSAGE_INJECT, data
-                )
+                await self.send_instr(conn, inj.agent_member_id, InstrType.MESSAGE_INJECT, data)
         # 对账 #9 预览纠偏（契约 D §4.4 v1.0.5）：reconnect 握手以 hello 预览进程表快照逐会话对账
         # （存活者 survive WS jitter，真重启 fail-close，裁决 #11 不自动重拉）；周期只收 starting
         # 超时。
@@ -2630,9 +2582,10 @@ class DaemonHub:
         """
         conn, _agent = self._require_conn_for_agent(agent_member_id)
         body = (
-            "[system → 仅你可见] 契约起草请求：请为下列任务起草契约并通过 "
-            "POST /tasks/{task_id}/contracts 提交。\n"
-            f"task_id={task_id}\nkind={kind.value}"
+            "[system → 仅你可见] 契约起草请求：请为下列任务起草契约，并用 coagentia 的 "
+            "submit_task_contract 工具提交（不是打 REST）。\n"
+            f"task_id={task_id}\nkind={kind.value}\n"
+            "必填字段见该工具描述；字段不符会以 422 携逐字段清单退回，按清单补齐重投即可。"
         )
         data = MessageInjectData(
             agent_member_id=agent_member_id,
@@ -2640,9 +2593,7 @@ class DaemonHub:
             source=InjectSource(kind=InjectKind.CONTRACT_DRAFT_REQUEST, ref=task_id),
             diagnostic_type="agent.tool_call",
         )
-        ack = self._run_sync(
-            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
-        )
+        ack = self._run_sync(self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data))
         return ack.result.value
 
     def agent_daemon_online(self, agent_member_id: str) -> bool:
@@ -2674,9 +2625,7 @@ class DaemonHub:
             source=InjectSource(kind=kind, ref=ref),
             diagnostic_type="agent.tool_call",
         )
-        ack = self._run_sync(
-            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
-        )
+        ack = self._run_sync(self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data))
         return ack.result.value
 
     def inject_guard_feedback(
@@ -2695,9 +2644,7 @@ class DaemonHub:
             source=InjectSource(kind=InjectKind.GUARD_FEEDBACK, ref=ref),
             diagnostic_type="agent.tool_call",
         )
-        ack = self._run_sync(
-            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
-        )
+        ack = self._run_sync(self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data))
         return ack.result.value
 
     def inject_onboarding_greeting(self, agent_member_id: str, *, ref: str | None = None) -> str:
@@ -2719,9 +2666,7 @@ class DaemonHub:
             source=InjectSource(kind=InjectKind.SYSTEM, ref=ref),
             diagnostic_type="agent.tool_call",
         )
-        ack = self._run_sync(
-            self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data)
-        )
+        ack = self._run_sync(self.send_instr(conn, agent_member_id, InstrType.MESSAGE_INJECT, data))
         return ack.result.value
 
     async def _held_reevaluation_combo(
@@ -2765,9 +2710,7 @@ class DaemonHub:
         reevaluate 是进行中态：不写 resolved_*、resolution 仍空。
         """
         with self._engine.connect() as c:
-            held = c.execute(
-                select(_HELD).where(_HELD.c.id == held_id)
-            ).mappings().first()
+            held = c.execute(select(_HELD).where(_HELD.c.id == held_id)).mappings().first()
         if held is None:
             raise DaemonOffline("被扣草稿不存在")  # 路由已校验存在；防御性收敛
         held = dict(held)
@@ -2854,9 +2797,7 @@ class DaemonHub:
             return
         with contextlib.suppress(DaemonOffline):
             self._run_sync(
-                self._force_start_deliver(
-                    conn, owner_member_id, channel_id, task_id=task_id
-                )
+                self._force_start_deliver(conn, owner_member_id, channel_id, task_id=task_id)
             )
 
     async def _force_start_after_commit(
@@ -2880,9 +2821,7 @@ class DaemonHub:
         try:
             if not await self._ensure_worktree(task_id, allow_blocked=True):
                 return
-            await self._force_start_deliver(
-                conn, agent_id, channel_id, task_id=task_id
-            )
+            await self._force_start_deliver(conn, agent_id, channel_id, task_id=task_id)
         except DaemonOffline:
             return
 
@@ -2917,9 +2856,7 @@ class DaemonHub:
             AgentWakeData(
                 agent_member_id=agent_id,
                 reason=WakeReason.CANVAS_ACTIVATION,
-                refs=WakeRefs(
-                    message_ids=[m["id"] for m in backlog], node_id=node_id
-                ),
+                refs=WakeRefs(message_ids=[m["id"] for m in backlog], node_id=node_id),
             ),
         )
         if backlog:
@@ -2949,9 +2886,7 @@ class DaemonHub:
             )
         )
 
-    def query_git_diff(
-        self, *, computer_id: str, query: GitDiffQuery
-    ) -> dict[str, Any]:
+    def query_git_diff(self, *, computer_id: str, query: GitDiffQuery) -> dict[str, Any]:
         conn = self._conns.get(computer_id)
         if conn is None:
             raise DaemonOffline("daemon 离线")
@@ -3025,9 +2960,7 @@ class DaemonHub:
             raise DaemonOffline("worktree cleanup 未获 ack")
         return ack.result.value
 
-    def finalize_console_cleanup(
-        self, *, task_id: str, computer_id: str
-    ) -> dict[str, Any] | None:
+    def finalize_console_cleanup(self, *, task_id: str, computer_id: str) -> dict[str, Any] | None:
         """管理台登记清理成功后条件 UPDATE + 广播（三段式③；另开 gateway_tx，不复用请求读快照，
         避免 pysqlite 读快照与并发写的非串行化冲突）。
 
@@ -3093,9 +3026,7 @@ class DaemonHub:
             return
         loop.call_soon_threadsafe(
             self._spawn,
-            self._dispatch_preview_instr(
-                computer_id, task_id, InstrType.PREVIEW_START, data
-            ),
+            self._dispatch_preview_instr(computer_id, task_id, InstrType.PREVIEW_START, data),
         )
 
     def request_preview_stop(
@@ -3137,26 +3068,18 @@ class DaemonHub:
         loop = self._loop
         if loop is None:
             return
-        loop.call_soon_threadsafe(
-            self._spawn, self._dispatch_deploy_instr(computer_id, data)
-        )
+        loop.call_soon_threadsafe(self._spawn, self._dispatch_deploy_instr(computer_id, data))
 
-    async def _dispatch_deploy_instr(
-        self, computer_id: str, data: DeployRunData
-    ) -> None:
+    async def _dispatch_deploy_instr(self, computer_id: str, data: DeployRunData) -> None:
         """deploy.run 底座下发（同部署串行锁 `deploy:{deployment_id}`）：离线/断连 best-effort 静默
         （判定归 server，daemon 只执行；queued 未 ack 由对账 #10 安全重发）。"""
         conn = self._conns.get(computer_id)
         if conn is None:
             return
         with contextlib.suppress(DaemonOffline):
-            await self.send_instr(
-                conn, f"deploy:{data.deployment_id}", InstrType.DEPLOY_RUN, data
-            )
+            await self.send_instr(conn, f"deploy:{data.deployment_id}", InstrType.DEPLOY_RUN, data)
 
-    async def _reconcile_deployments(
-        self, conn: DaemonConnection, *, on_reconnect: bool
-    ) -> None:
+    async def _reconcile_deployments(self, conn: DaemonConnection, *, on_reconnect: bool) -> None:
         """对账 #10 部署纠偏（契约 D §4.4；铁律 3 副作用可重放性分野）：**只在 reconnect 且真重启
         （boot_nonce 变化/缺失）时处置**。
 
@@ -3176,9 +3099,7 @@ class DaemonHub:
         with self._engine.connect() as probe:
             has_active = probe.execute(
                 select(_DEPLOYMENT.c.id)
-                .select_from(
-                    _DEPLOYMENT.join(_PROJECT, _PROJECT.c.id == _DEPLOYMENT.c.project_id)
-                )
+                .select_from(_DEPLOYMENT.join(_PROJECT, _PROJECT.c.id == _DEPLOYMENT.c.project_id))
                 .where(
                     _PROJECT.c.computer_id == conn.computer_id,
                     _DEPLOYMENT.c.status.in_(_DEPLOYMENT_ACTIVE),
@@ -3201,9 +3122,7 @@ class DaemonHub:
                         _PROJECT.c.repo_path,
                     )
                     .select_from(
-                        _DEPLOYMENT.join(
-                            _PROJECT, _PROJECT.c.id == _DEPLOYMENT.c.project_id
-                        )
+                        _DEPLOYMENT.join(_PROJECT, _PROJECT.c.id == _DEPLOYMENT.c.project_id)
                     )
                     .where(
                         _PROJECT.c.computer_id == conn.computer_id,
@@ -3237,9 +3156,7 @@ class DaemonHub:
                     )
             for dep_id in failed_ids:
                 frow = dict(
-                    tx.conn.execute(
-                        select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == dep_id)
-                    )
+                    tx.conn.execute(select(_DEPLOYMENT).where(_DEPLOYMENT.c.id == dep_id))
                     .mappings()
                     .one()
                 )
@@ -3331,9 +3248,7 @@ class DaemonHub:
                 PreviewStopData(preview_session_id=preview_id),
             )
 
-    async def _reconcile_previews(
-        self, conn: DaemonConnection, *, on_reconnect: bool
-    ) -> None:
+    async def _reconcile_previews(self, conn: DaemonConnection, *, on_reconnect: bool) -> None:
         """对账 #9 预览纠偏（契约 D §4.4 v1.0.5；裁决 #11）：**从 DB 事实 × hello 预览进程表推导**，
         不自动重拉。
 
@@ -3360,9 +3275,7 @@ class DaemonHub:
             if entry.status != "starting":
                 self._report_preview_status(conn, entry)
         reason = (
-            _PREVIEW_FAIL_DAEMON_RESTARTED
-            if conn.daemon_restarted
-            else _PREVIEW_FAIL_PROCESS_LOST
+            _PREVIEW_FAIL_DAEMON_RESTARTED if conn.daemon_restarted else _PREVIEW_FAIL_PROCESS_LOST
         )
         stop_targets: list[tuple[str, str]] = []  # (task_id 串行锁键, preview_session_id)
         with gateway_tx(self._engine, self._bus) as tx:
@@ -3411,9 +3324,7 @@ class DaemonHub:
                 ):
                     continue
                 orphan = tx.conn.execute(
-                    select(_PREVIEW.c.task_id).where(
-                        _PREVIEW.c.id == entry.preview_session_id
-                    )
+                    select(_PREVIEW.c.task_id).where(_PREVIEW.c.id == entry.preview_session_id)
                 ).first()
                 lock_key = orphan[0] if orphan is not None else entry.preview_session_id
                 stop_targets.append((lock_key, entry.preview_session_id))
@@ -3464,11 +3375,15 @@ class DaemonHub:
 
     def _require_conn_for_agent(self, agent_id: str) -> tuple[DaemonConnection, dict[str, Any]]:
         with self._engine.connect() as c:
-            agent = c.execute(
-                select(_AGENT, _MEMBER.c.name)
-                .select_from(_AGENT.join(_MEMBER, _AGENT.c.member_id == _MEMBER.c.id))
-                .where(_AGENT.c.member_id == agent_id)
-            ).mappings().first()
+            agent = (
+                c.execute(
+                    select(_AGENT, _MEMBER.c.name)
+                    .select_from(_AGENT.join(_MEMBER, _AGENT.c.member_id == _MEMBER.c.id))
+                    .where(_AGENT.c.member_id == agent_id)
+                )
+                .mappings()
+                .first()
+            )
         if agent is None:
             raise DaemonOffline("Agent 不存在")
         conn = self._conns.get(agent["computer_id"])
@@ -3526,15 +3441,11 @@ class DaemonHub:
             )
         )
         for member_id in mention_member_ids:
-            tx.conn.execute(
-                insert(_MENTION).values(message_id=msg_id, member_id=member_id)
-            )
+            tx.conn.execute(insert(_MENTION).values(message_id=msg_id, member_id=member_id))
         msg_row = models.row_dict(
             tx.conn.execute(select(_MSG).where(_MSG.c.id == msg_id)).mappings().first()
         )
-        tx.emit(
-            EventType.MESSAGE_CREATED, channel_id, {"message": message_public(msg_row)}
-        )
+        tx.emit(EventType.MESSAGE_CREATED, channel_id, {"message": message_public(msg_row)})
         return msg_id
 
     # ---------------------------------------------------------------- reminder 调度（§4.4 #8）
@@ -3554,11 +3465,15 @@ class DaemonHub:
         now = now_iso()
         fired = 0
         with gateway_tx(self._engine, self._bus) as tx:
-            due = tx.conn.execute(
-                select(_REMINDER).where(
-                    _REMINDER.c.status == "active", _REMINDER.c.next_fire_at <= now
+            due = (
+                tx.conn.execute(
+                    select(_REMINDER).where(
+                        _REMINDER.c.status == "active", _REMINDER.c.next_fire_at <= now
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
             for r in due:
                 reminder = dict(r)
                 if reminder["kind"] == ReminderKind.RECURRING.value:
@@ -3614,13 +3529,17 @@ class DaemonHub:
         now = now_iso()
         combos: list[tuple[str, str, str]] = []  # (agent_id, channel_id, held_id)——提交后触发
         with gateway_tx(self._engine, self._bus) as tx:
-            due = tx.conn.execute(
-                select(_HELD).where(
-                    _HELD.c.status == HeldDraftStatus.HELD.value,
-                    _HELD.c.next_reeval_at <= now,
-                    _HELD.c.escalated_at.is_(None),  # 升级后停自动（裁决 6）
+            due = (
+                tx.conn.execute(
+                    select(_HELD).where(
+                        _HELD.c.status == HeldDraftStatus.HELD.value,
+                        _HELD.c.next_reeval_at <= now,
+                        _HELD.c.escalated_at.is_(None),  # 升级后停自动（裁决 6）
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
             for h in due:
                 held = dict(h)
                 try:  # 离线先探：不翻状态、留 held 下轮重试（评审 #6）
@@ -3642,9 +3561,9 @@ class DaemonHub:
                     created_at=now,
                 )
                 held_row = models.row_dict(
-                    tx.conn.execute(
-                        select(_HELD).where(_HELD.c.id == held["id"])
-                    ).mappings().first()
+                    tx.conn.execute(select(_HELD).where(_HELD.c.id == held["id"]))
+                    .mappings()
+                    .first()
                 )
                 tx.emit(
                     EventType.HELD_DRAFT_UPDATED,
@@ -3683,12 +3602,16 @@ class DaemonHub:
             ]
             # 频道阈值行一次 IN 批取（去重 channel_id）避免逐任务 N+1 反复取同一行。
             channel_ids = {t["channel_id"] for t in tasks}
-            channels = {
-                c["id"]: dict(c)
-                for c in tx.conn.execute(
-                    select(_CHANNEL).where(_CHANNEL.c.id.in_(channel_ids))
-                ).mappings()
-            } if channel_ids else {}
+            channels = (
+                {
+                    c["id"]: dict(c)
+                    for c in tx.conn.execute(
+                        select(_CHANNEL).where(_CHANNEL.c.id.in_(channel_ids))
+                    ).mappings()
+                }
+                if channel_ids
+                else {}
+            )
             for task in tasks:
                 channel = channels.get(task["channel_id"])
                 if channel is None:
@@ -3730,36 +3653,38 @@ class DaemonHub:
         # task_events 三个时刻按 kind 分区一次条件聚合取（免同表同任务三趟 max 往返/三遍扫描）：
         #   last_event_at   = 排除 reminder_sent/escalated（防自激，B §10.5.2）
         #   last_reminder_at/last_escalated_at = 链条生效性判定（不进 last_activity）
-        ev = c.execute(
-            select(
-                func.max(
-                    case(
-                        (
-                            _TASK_EVENT.c.kind.notin_(
-                                silence_logic.SELF_EXCITE_EVENT_KINDS
-                            ),
-                            _TASK_EVENT.c.created_at,
+        ev = (
+            c.execute(
+                select(
+                    func.max(
+                        case(
+                            (
+                                _TASK_EVENT.c.kind.notin_(silence_logic.SELF_EXCITE_EVENT_KINDS),
+                                _TASK_EVENT.c.created_at,
+                            )
                         )
-                    )
-                ).label("last_event_at"),
-                func.max(
-                    case(
-                        (
-                            _TASK_EVENT.c.kind == TaskEventKind.REMINDER_SENT.value,
-                            _TASK_EVENT.c.created_at,
+                    ).label("last_event_at"),
+                    func.max(
+                        case(
+                            (
+                                _TASK_EVENT.c.kind == TaskEventKind.REMINDER_SENT.value,
+                                _TASK_EVENT.c.created_at,
+                            )
                         )
-                    )
-                ).label("last_reminder_at"),
-                func.max(
-                    case(
-                        (
-                            _TASK_EVENT.c.kind == TaskEventKind.ESCALATED.value,
-                            _TASK_EVENT.c.created_at,
+                    ).label("last_reminder_at"),
+                    func.max(
+                        case(
+                            (
+                                _TASK_EVENT.c.kind == TaskEventKind.ESCALATED.value,
+                                _TASK_EVENT.c.created_at,
+                            )
                         )
-                    )
-                ).label("last_escalated_at"),
-            ).where(_TASK_EVENT.c.task_id == task["id"])
-        ).mappings().first()
+                    ).label("last_escalated_at"),
+                ).where(_TASK_EVENT.c.task_id == task["id"])
+            )
+            .mappings()
+            .first()
+        )
         return silence_logic.SilenceInputs(
             now=now,
             threshold_h=threshold_h,
@@ -3771,9 +3696,7 @@ class DaemonHub:
             last_escalated_at=ev["last_escalated_at"] if ev else None,
         )
 
-    def _reminder_targets(
-        self, c: Connection, task: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def _reminder_targets(self, c: Connection, task: dict[str, Any]) -> list[dict[str, Any]]:
         """第一次提醒的 @ 目标（B §10.5.4）：Todo→创建者 / InProgress→owner / InReview→频道人类。
 
         返回成员行（id/name/kind）；owner 空（in_progress 未认领）→ 空列表（发消息不 @，链条照走）。
@@ -3792,14 +3715,10 @@ class DaemonHub:
         ).mappings()
         return [dict(r) for r in rows]
 
-    def _channel_human_members(
-        self, c: Connection, channel_id: str
-    ) -> list[dict[str, Any]]:
+    def _channel_human_members(self, c: Connection, channel_id: str) -> list[dict[str, Any]]:
         rows = c.execute(
             select(_MEMBER.c.id, _MEMBER.c.name, _MEMBER.c.kind)
-            .select_from(
-                _CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id)
-            )
+            .select_from(_CHANNEL_MEMBER.join(_MEMBER, _CHANNEL_MEMBER.c.member_id == _MEMBER.c.id))
             .where(
                 _CHANNEL_MEMBER.c.channel_id == channel_id,
                 _MEMBER.c.kind == MemberKind.HUMAN,
@@ -3808,18 +3727,14 @@ class DaemonHub:
         ).mappings()
         return [dict(r) for r in rows]
 
-    def _emit_silence_reminder(
-        self, tx: Any, task: dict[str, Any], threshold_h: int
-    ) -> None:
+    def _emit_silence_reminder(self, tx: Any, task: dict[str, Any], threshold_h: int) -> None:
         """第一次提醒：锚点线程系统消息（@目标）+ message_mentions（@Agent 触发唤醒）+
         task_events(reminder_sent)。mention 行是唤醒事实源（_compute_trigger 视 system+mention
         为 REMINDER），故所有目标（含人类，用于渲染）统一插行。"""
         targets = self._reminder_targets(tx.conn, task)
         mention_txt = " ".join(f"@{t['name']}" for t in targets)
         suffix = f"：{mention_txt}" if mention_txt else "。"
-        body = (
-            f"沉默提醒：任务「{task['title']}」已超过 {threshold_h} 小时无进展，请跟进{suffix}"
-        )
+        body = f"沉默提醒：任务「{task['title']}」已超过 {threshold_h} 小时无进展，请跟进{suffix}"
         ts = now_iso()
         # 锚点线程内（B §10.5.4）+ mention 行（@Agent 触发唤醒事实源，人类目标同插供渲染）。
         self._post_system_message(
@@ -3852,9 +3767,7 @@ class DaemonHub:
         humans = self._channel_human_members(tx.conn, task["channel_id"])
         human_txt = " ".join(f"@{h['name']}" for h in humans)
         suffix = f"：{human_txt}" if human_txt else "。"
-        body = (
-            f"沉默升级：任务「{task['title']}」经提醒后仍无进展，需人类成员处理{suffix}"
-        )
+        body = f"沉默升级：任务「{task['title']}」经提醒后仍无进展，需人类成员处理{suffix}"
         ts = now_iso()
         # 频道主流（B §10.5.5）：升级是人类面"喊人"，不落 mention 行——信号靠 activity 置顶。
         msg_id = self._post_system_message(
@@ -3898,8 +3811,7 @@ class DaemonHub:
         锚点系统消息经 bus MESSAGE_CREATED 驱动投递（@Agent 请求者视同 mention 唤醒），同 D5 同构。
         """
         cutoff = format_iso(
-            datetime.now(UTC)
-            - timedelta(hours=proposal_domain.AWAITING_CONFIRM_REMIND_HOURS)
+            datetime.now(UTC) - timedelta(hours=proposal_domain.AWAITING_CONFIRM_REMIND_HOURS)
         )
         with gateway_tx(self._engine, self._bus) as tx:
             return proposal_domain.awaiting_confirm_reminder_scan(tx, cutoff_iso=cutoff)
@@ -3911,9 +3823,7 @@ class DaemonHub:
         asyncio.Lock 串行（防重入双执行），DB 面由账本 record 三态兜（跨进程/竞态安全）。
         同步 SQLite 执行体在线程池跑，不阻塞事件 loop。"""
         async with self._landing_lock:
-            await asyncio.to_thread(
-                landing_domain.pending_landing_scan, self._engine, self._bus
-            )
+            await asyncio.to_thread(landing_domain.pending_landing_scan, self._engine, self._bus)
 
     async def _landing_loop(self) -> None:
         """对账 #4 周期兜底（契约 D §4.4 语义的落地面）：崩溃/错过事件触发的 running 批次与
@@ -3987,9 +3897,9 @@ class DaemonHub:
                     .values(status=ComputerStatus.OFFLINE)
                 )
                 row = models.row_dict(
-                    tx.conn.execute(
-                        select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id)
-                    ).mappings().first()
+                    tx.conn.execute(select(_COMPUTER).where(_COMPUTER.c.id == conn.computer_id))
+                    .mappings()
+                    .first()
                 )
                 tx.emit(EventType.COMPUTER_DISCONNECTED, None, {"computer": computer_public(row)})
                 # 级联每 Agent presence.changed(offline)——不改写 agents.status（保留最后已知态）。

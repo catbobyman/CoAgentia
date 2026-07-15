@@ -21,7 +21,10 @@
 **修复方向**（设计裁决，涉 M3b 裁决 2 + M6 #7 前缀规则的张力，建议 owner 拍板）：①落地消息序调整（「已落地」先于 blocked 锚点）只解落地窗口不解通例；②gating 收窄为「抑制唤醒但不扣投递」（premature-work 风险再评）；③前缀规则改每消息去重（契约 D deliver 帧语义变更）。
 **✅ 已修复（2026-07-15，采纳 ②′）**：gating 改「跳过不截断」（blocked 内容仍不投=防抢跑保留，但不再截断前缀→死锁根除）+ 解锁主动唤醒（下游解 blocked 时发 @suggested_owner 系统消息，补 F2 姊妹缺口）。裁决与实施详 [`B1-DELIVERY-GATING-DECISION.md`](../B1-DELIVERY-GATING-DECISION.md)（含 §6 实施记录）。守门 pytest 1176/4（+3 回归测：realtest 串行链复刻/解锁唤醒幂等/守卫）。契约 D 帧零变更；`canvas_nodes.suggested_owner` 持久列（契约 A v1.0.13 + 迁移 0013）。
 
-### B-5 [高] Agent 没有任何契约提交通道，交付收尾链在能力面断裂（4/4 Agent 命中）
+### B-5 [高] ✅ 已修（2026-07-15，`submit_task_contract` 工具）Agent 没有任何契约提交通道，交付收尾链在能力面断裂（4/4 Agent 命中）
+**修复（owner 拍板：单工具 + body free-form + 话术/hint 同批）**：新增 MCP 工具 `submit_task_contract(task_id, kind, body)`（代理 POST /tasks/{id}/contracts，覆盖 task_plan+task_handoff，body free-form 由 server 按 kind 二次校验，VALIDATION_FAILED 逐字段 loc/msg 透传，J8 修复循环自愈）——契约 E v1.6（工具 16→17，Python-only 不入前端）+ daemon `mcp.py` 范式复制 trigger_deploy + 三处话术（`inject_contract_draft_request` 改指工具 / 身份基线 `_IDENTITY_TEMPLATE` 补交付纪律 / role 无 impl 模板故落基线）+ `HANDOFF_INCOMPLETE` 422 details 带 hint（set_task_status T7 门 + 升格门两处）。守门 pytest 1186/4·vitest 538·pyright0·ruff净·gen确定。**零迁移零新端点零新 WS 帧零前端**。**待做 = 零人工全链复跑真机验证工具贯通**（本批单元/StubHttp 覆盖）；改了 daemon 故复跑前须重启 server+daemon。以下为原始诊断——
+
+
 **机制**：T7 门要求 TaskHandoff 才能置 in_review/done，但 16 个 MCP 工具**无契约提交工具**；系统注入的起草指令让 Agent「通过 POST /tasks/{task_id}/contracts 提交」（[hub.py:2444-2446](../../apps/server/src/coagentia_server/computers/hub.py:2444)）——Agent 够不着 REST。Agent 猜 `<control>` 信封发线程（无该解析面）→ set_task_status 422 只报「缺交接材料」无格式 hint → 死路。
 **实证**：Dev-Claude-A 三个任务 + Orch-Main 汇总任务全部命中（4/4）；Orch 独立诊断出「此现象与 Dev 在 #3/#4/#5 一致」并停止重试升级 @Owner（失败姿态极佳）。本次测试以 REST 代提交（X-Acting-Member+Bearer）辅助推进，验证 T7/T4/handoff schema 校验全部正确。
 **为何 sim 没抓到**：探针脚本以 REST 替 Agent 提交 handoff，从未经过 Agent 能力面。

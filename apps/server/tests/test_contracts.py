@@ -178,9 +178,7 @@ def test_handoff_review_verdict_roundtrips_on_submit_and_revision(
     task = _new_task(server_client, build["id"], f"verdict-{verdict}")
     owner = _member(server_client, "Memcyo")
     pat = _member(server_client, "Pat")
-    body = _handoff_body(
-        from_member=pat["id"], to_member=owner["id"], review_verdict=verdict
-    )
+    body = _handoff_body(from_member=pat["id"], to_member=owner["id"], review_verdict=verdict)
 
     first = server_client.post(
         f"/api/tasks/{task['id']}/contracts", json={"kind": "task_handoff", "body": body}
@@ -466,7 +464,9 @@ def test_t7_blocks_in_review_without_handoff(server_client: TestClient) -> None:
     err = rest.ErrorResponse.model_validate(r.json())
     assert err.error.code is rest.ErrorCode.HANDOFF_INCOMPLETE
     assert err.error.rule == "T7"
-    assert err.error.details == {"missing": ["deliverables", "evidence"]}
+    assert err.error.details["missing"] == ["deliverables", "evidence"]
+    # B5：422 携补齐 hint（指向 submit_task_contract 工具，Agent 据此自愈）
+    assert "submit_task_contract" in err.error.details["hint"]
 
 
 def test_t7_blocks_in_review_with_partial_handoff(server_client: TestClient) -> None:
@@ -491,7 +491,8 @@ def test_t7_blocks_in_review_with_partial_handoff(server_client: TestClient) -> 
     assert r.status_code == 422, r.text
     err = rest.ErrorResponse.model_validate(r.json())
     assert err.error.code is rest.ErrorCode.HANDOFF_INCOMPLETE
-    assert err.error.details == {"missing": ["evidence"]}
+    assert err.error.details["missing"] == ["evidence"]
+    assert "submit_task_contract" in err.error.details["hint"]
 
 
 def test_t7_allows_in_review_with_complete_handoff(server_client: TestClient) -> None:
@@ -636,7 +637,8 @@ def test_promotion_to_l2_while_in_review_requires_handoff(server_client: TestCli
     err = rest.ErrorResponse.model_validate(r.json())
     assert err.error.code is rest.ErrorCode.HANDOFF_INCOMPLETE
     assert err.error.rule == "T7"
-    assert err.error.details == {"missing": ["deliverables", "evidence"]}
+    assert err.error.details["missing"] == ["deliverables", "evidence"]
+    assert "submit_task_contract" in err.error.details["hint"]
     # 拒绝不改库内 level（仍 l1）
     assert client.get(f"/api/tasks/{task['id']}").json()["task"]["level"] == "l1"
 

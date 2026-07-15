@@ -36,8 +36,11 @@ _IDENTITY_TEMPLATE = (
     "  · 上传文件 → upload_file；回看历史 → get_messages / get_thread；\n"
     "  · 建/销提醒 → create_reminder / cancel_reminder；"
     "看频道/成员 → list_channels / list_members。\n"
-    "这些工具属 coagentia MCP server；若尚未加载，先用 ToolSearch 搜 \"coagentia\" 载入再调用。\n"
+    '这些工具属 coagentia MCP server；若尚未加载，先用 ToolSearch 搜 "coagentia" 载入再调用。\n'
     "散文正文不会被转成频道消息——只有显式调用 coagentia 工具才会真正发出。\n"
+    "【交付纪律】完成实现/评审后，置任务 in_review/done 之前，先用 submit_task_contract 工具"
+    "提交 TaskHandoff（kind=task_handoff，含 deliverables≥1 + evidence + verify_plan）；"
+    "跳过则 set_task_status 会以 422 HANDOFF_INCOMPLETE 退回（错误里带补齐提示）。\n"
     "护栏：send_message 返回 202 held（被扣）时停止重发、等待反馈直投，勿盲目重试。\n"
     "记忆载体是你的 Home（MEMORY.md / notes/），当前工作目录即你的 Home。"
 )
@@ -134,9 +137,7 @@ def mcp_command() -> tuple[str, list[str]]:
     return sys.executable, ["-m", "coagentia_daemon", "mcp"]
 
 
-def build_mcp_config(
-    *, agent_member_id: str, server_url: str, api_key: str
-) -> dict[str, Any]:
+def build_mcp_config(*, agent_member_id: str, server_url: str, api_key: str) -> dict[str, Any]:
     """coagentia-mcp.json 内容（§3）：注入名为 coagentia 的 stdio MCP server。"""
     cmd, base_args = mcp_command()
     return {

@@ -339,15 +339,129 @@ def test_tools_list_includes_trigger_deploy() -> None:
     assert td["inputSchema"]["required"] == ["project_id"]
 
 
+def _handoff_body() -> dict:
+    """最小合法 TaskHandoffBody（置 in_review 门要 deliverables≥1；此处即满足）。
+
+    member_id 用合法 ULID（Crockford base32，无 I/L/O/U）——过 TaskHandoffBody 的 Ulid 模式校验。
+    """
+    return {
+        "version": "coagentia.task-handoff.v1",
+        "from_member": "01AGENTMEMBER0000000000000",
+        "to_member": "01K5MEMB00000000000000000A",
+        "deliverables": [{"path": "/repo/x.py", "kind": "file"}],
+        "evidence": [{"type": "command", "ref": "pytest -q → 48 passed", "conclusion": "全绿"}],
+        "verify_plan": "复跑 pytest -q 复核",
+    }
+
+
+def test_build_request_submit_task_contract() -> None:
+    """submit_task_contract → POST /api/tasks/{id}/contracts，{kind, body} 原样透传（两 kind）。"""
+    body = _handoff_body()
+    r = mcp.build_request(
+        "submit_task_contract", {"task_id": "T1", "kind": "task_handoff", "body": body}
+    )
+    assert r.method == "POST"
+    assert r.path == "/api/tasks/T1/contracts"
+    assert r.json_body == {"kind": "task_handoff", "body": body}
+    assert r.query is None
+
+    plan_body = {
+        "version": "coagentia.task-plan.v1",
+        "goal": "做个东西",
+        "acceptance_criteria": [
+            {
+                "id": "ac1",
+                "statement": "命令退 0",
+                "verify_by": "command",
+                "verify_ref": "make test",
+            }
+        ],
+    }
+    p = mcp.build_request(
+        "submit_task_contract", {"task_id": "T2", "kind": "task_plan", "body": plan_body}
+    )
+    assert p.path == "/api/tasks/T2/contracts"
+    assert p.json_body == {"kind": "task_plan", "body": plan_body}
+
+
+def test_submit_task_contract_body_matches_contract() -> None:
+    """构造的 {kind, body} 过 ContractCreate；body 过对应 kind 模型（字段名/值域对齐端点）。"""
+    from coagentia_contracts.enums import ContractKind
+    from coagentia_contracts.rest import CONTRACT_BODY_MODELS, ContractCreate, TaskHandoffBody
+
+    req = mcp.build_request(
+        "submit_task_contract", {"task_id": "T1", "kind": "task_handoff", "body": _handoff_body()}
+    )
+    ContractCreate.model_validate(req.json_body)  # {kind, body} 形状对齐 POST 端点
+    TaskHandoffBody.model_validate(req.json_body["body"])  # body 过 kind 模型 = 首投即可通过 T7
+    assert CONTRACT_BODY_MODELS[ContractKind.TASK_HANDOFF] is TaskHandoffBody
+
+
+def test_submit_task_contract_missing_body_arg() -> None:
+    """必填 body 缺失 → 不触 HTTP，收敛为 missing_argument（同其它必填参防御）。"""
+    http = StubHttp()
+    out = mcp.call_tool("submit_task_contract", {"task_id": "T1", "kind": "task_plan"}, http)
+    assert out["isError"] is True
+    assert http.calls == []
+    assert json.loads(out["content"][0]["text"])["error"] == "missing_argument"
+
+
+def test_submit_task_contract_validation_failed_passthrough() -> None:
+    """字段不符 → 422 VALIDATION_FAILED 携逐字段 errors 原样透传（Agent 据此按清单修复自愈）。"""
+    data = {
+        "code": "VALIDATION_FAILED",
+        "details": {
+            "kind": "task_handoff",
+            "errors": [{"loc": ["verify_plan"], "msg": "Field required", "type": "missing"}],
+        },
+    }
+    http = StubHttp(status=422, data=data)
+    out = mcp.call_tool(
+        "submit_task_contract",
+        {"task_id": "T1", "kind": "task_handoff", "body": {"version": "coagentia.task-handoff.v1"}},
+        http,
+    )
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 422
+    assert payload["data"]["code"] == "VALIDATION_FAILED"
+    assert payload["data"]["details"]["errors"][0]["loc"] == ["verify_plan"]
+    assert http.calls[0].path == "/api/tasks/T1/contracts"
+    assert http.calls[0].method == "POST"
+
+
+def test_submit_task_contract_success_passthrough() -> None:
+    """201 创建 → isError=False，status/data（含 revision）原样透传。"""
+    http = StubHttp(
+        status=201, data={"id": "01K5CONTRACT0000000000000A", "kind": "task_handoff", "revision": 1}
+    )
+    out = mcp.call_tool(
+        "submit_task_contract",
+        {"task_id": "T1", "kind": "task_handoff", "body": _handoff_body()},
+        http,
+    )
+    assert out["isError"] is False
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 201
+    assert payload["data"]["revision"] == 1
+
+
+def test_tools_list_includes_submit_task_contract() -> None:
+    """tools/list 往返：submit_task_contract 出现，required=task_id/kind/body，kind 枚举恰两值。"""
+    state = mcp._RpcState(http=StubHttp())
+    listed = mcp.handle_rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, state)
+    tool = next(t for t in listed["result"]["tools"] if t["name"] == "submit_task_contract")
+    assert set(tool["inputSchema"]["required"]) == {"task_id", "kind", "body"}
+    assert set(tool["inputSchema"]["properties"]["kind"]["enum"]) == {"task_plan", "task_handoff"}
+
+
 def test_codex_reuses_same_mcp_catalog() -> None:
     """E2 Codex 零改动：config.toml 拉起同一 `mcp` 子命令 server（工具目录 runtime 无关，
     trigger_deploy 经同一 TOOLS 目录对 codex 亦生效，无需 codex 侧改动）。"""
     from coagentia_daemon.adapters import cmdline, codex_cmdline
 
     cmd, base_args = cmdline.mcp_command()
-    toml = codex_cmdline.build_config_toml(
-        agent_member_id="M1", server_url="http://x", api_key="k"
-    )
+    toml = codex_cmdline.build_config_toml(agent_member_id="M1", server_url="http://x", api_key="k")
     assert json.dumps(cmd) in toml  # 同一 daemon mcp 入口 → 同一 mcp.TOOLS 目录
     assert "mcp" in base_args
     # 目录 = 单一事实源，两 runtime 共用；trigger_deploy 无需 codex 侧登记即可用
@@ -423,17 +537,35 @@ def test_mcp_subprocess_utf8_roundtrip_without_ioencoding() -> None:
     env.pop("PYTHONIOENCODING", None)
     env.pop("PYTHONUTF8", None)
     proc = subprocess.Popen(
-        [_sys.executable, "-m", "coagentia_daemon", "mcp",
-         "--agent-member", "01K5AGENT0000000000000000A",
-         "--server-url", "http://127.0.0.1:1",  # 不连——只验 stdio 编码面
-         "--api-key", "cak_test"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        [
+            _sys.executable,
+            "-m",
+            "coagentia_daemon",
+            "mcp",
+            "--agent-member",
+            "01K5AGENT0000000000000000A",
+            "--server-url",
+            "http://127.0.0.1:1",  # 不连——只验 stdio 编码面
+            "--api-key",
+            "cak_test",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
     )
     try:
         reqs = [
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-             "params": {"protocolVersion": "2024-11-05", "capabilities": {},
-                        "clientInfo": {"name": "回归探针", "version": "0"}}},
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "回归探针", "version": "0"},
+                },
+            },
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
         ]
         payload = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in reqs)

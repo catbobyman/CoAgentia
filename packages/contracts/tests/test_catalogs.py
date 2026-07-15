@@ -5,44 +5,104 @@ from coagentia_contracts.enums import TaskStatus
 
 # 契约 B §3 全集（转录自 02-REST-API契约.md；v1.4.2 起 29 个）
 ERROR_CODES = {
-    "VALIDATION_FAILED", "TASK_IN_DM", "NOT_TOP_LEVEL_MESSAGE", "CLAIM_RACE",
-    "HANDOFF_INCOMPLETE", "TASK_TRANSITION_INVALID", "GRAPH_CYCLE", "STALE_CONFIRM",
-    "DELTA_BASE_MISMATCH", "NODE_ACTIVE", "NO_ORCHESTRATOR", "IDEMPOTENCY_MISMATCH",
-    "NAME_TAKEN", "CHANNEL_NOT_EMPTY", "CHANNEL_ARCHIVED", "COMPUTER_HAS_AGENTS",
+    "VALIDATION_FAILED",
+    "TASK_IN_DM",
+    "NOT_TOP_LEVEL_MESSAGE",
+    "CLAIM_RACE",
+    "HANDOFF_INCOMPLETE",
+    "TASK_TRANSITION_INVALID",
+    "GRAPH_CYCLE",
+    "STALE_CONFIRM",
+    "DELTA_BASE_MISMATCH",
+    "NODE_ACTIVE",
+    "NO_ORCHESTRATOR",
+    "IDEMPOTENCY_MISMATCH",
+    "NAME_TAKEN",
+    "CHANNEL_NOT_EMPTY",
+    "CHANNEL_ARCHIVED",
+    "COMPUTER_HAS_AGENTS",
     "COMPUTER_HAS_PROJECTS",
-    "WORKSPACE_EXISTS", "DEPLOY_IN_PROGRESS", "DAEMON_OFFLINE", "FILE_TOO_LARGE",
-    "HELD_DRAFT_RESOLVED", "NOTIF_IN_DM", "TEMPLATE_CANVAS_NOT_READY",
-    "SYSTEM_NODE_NOT_RETRYABLE", "TEMPLATE_BUILTIN_IMMUTABLE", "PROJECT_IN_USE",
-    "WORKTREE_NOT_TERMINAL", "WORKTREE_PREVIEW_ACTIVE", "WORKTREE_NOT_ORPHAN",
-    "PERMISSION_DENIED", "NOT_FOUND",
+    "WORKSPACE_EXISTS",
+    "DEPLOY_IN_PROGRESS",
+    "DAEMON_OFFLINE",
+    "FILE_TOO_LARGE",
+    "HELD_DRAFT_RESOLVED",
+    "NOTIF_IN_DM",
+    "TEMPLATE_CANVAS_NOT_READY",
+    "SYSTEM_NODE_NOT_RETRYABLE",
+    "TEMPLATE_BUILTIN_IMMUTABLE",
+    "PROJECT_IN_USE",
+    "WORKTREE_NOT_TERMINAL",
+    "WORKTREE_PREVIEW_ACTIVE",
+    "WORKTREE_NOT_ORPHAN",
+    "PERMISSION_DENIED",
+    "NOT_FOUND",
 }
 
 # 契约 C §6/§7/§8 全集（转录自 03-WS事件协议.md v1.0）
 WS_EVENTS = {
     # 6.1
-    "sys.hello", "sys.pong", "workspace.updated",
+    "sys.hello",
+    "sys.pong",
+    "workspace.updated",
     # 6.2
-    "presence.changed", "agent.activity", "member.created", "member.updated",
-    "member.removed", "agent.updated", "computer.connected", "computer.disconnected",
+    "presence.changed",
+    "agent.activity",
+    "member.created",
+    "member.updated",
+    "member.removed",
+    "agent.updated",
+    "computer.connected",
+    "computer.disconnected",
     "computer.updated",
     # 6.3
-    "channel.created", "channel.updated", "channel.deleted", "channel.member_added",
-    "channel.member_removed", "message.created", "read.updated",
+    "channel.created",
+    "channel.updated",
+    "channel.deleted",
+    "channel.member_added",
+    "channel.member_removed",
+    "message.created",
+    "read.updated",
     # 6.4
-    "task.created", "task.updated", "task_contract.created", "task_contract.updated",
-    "activity.created", "activity.done", "token_usage.reported",
+    "task.created",
+    "task.updated",
+    "task_contract.created",
+    "task_contract.updated",
+    "activity.created",
+    "activity.done",
+    "token_usage.reported",
     # 6.5
-    "canvas.node_added", "canvas.node_updated", "canvas.node_removed", "canvas.edge_added",
-    "canvas.edge_removed", "canvas.layout_updated", "canvas.baseline_advanced",
+    "canvas.node_added",
+    "canvas.node_updated",
+    "canvas.node_removed",
+    "canvas.edge_added",
+    "canvas.edge_removed",
+    "canvas.layout_updated",
+    "canvas.baseline_advanced",
     # 6.6
-    "held_draft.created", "held_draft.updated", "reminder.created", "reminder.updated",
+    "held_draft.created",
+    "held_draft.updated",
+    "reminder.created",
+    "reminder.updated",
     # 6.7
-    "worktree.updated", "preview.updated", "deployment.created", "deployment.updated",
+    "worktree.updated",
+    "preview.updated",
+    "deployment.created",
+    "deployment.updated",
     "deployment.log",
     # §7 M6 预留（与拆解设计 §15 一名两用）
-    "draft.presented", "draft.adjusted", "draft.confirmed", "draft.rejected",
-    "draft.superseded", "delta.proposed", "delta.adjusted", "delta.confirmed",
-    "delta.rejected", "landing.started", "landing.completed", "landing.fail_closed",
+    "draft.presented",
+    "draft.adjusted",
+    "draft.confirmed",
+    "draft.rejected",
+    "draft.superseded",
+    "delta.proposed",
+    "delta.adjusted",
+    "delta.confirmed",
+    "delta.rejected",
+    "landing.started",
+    "landing.completed",
+    "landing.fail_closed",
     "proposal.updated",
     # §8 订阅制诊断流
     "diagnostic.appended",
@@ -50,15 +110,35 @@ WS_EVENTS = {
 
 # 契约 D §5/§6/§7 全集（转录自 04-daemon-server协议.md v1.0）
 INSTR_TYPES = {
-    "agent.start", "agent.stop", "agent.restart", "agent.reset_session", "agent.reset_full",
-    "agent.wake", "agent.sleep", "message.deliver", "message.inject", "worktree.ensure",
-    "worktree.merge", "worktree.cleanup", "preview.start", "preview.stop", "deploy.run",
-    "check.run", "runtime.rescan",
+    "agent.start",
+    "agent.stop",
+    "agent.restart",
+    "agent.reset_session",
+    "agent.reset_full",
+    "agent.wake",
+    "agent.sleep",
+    "message.deliver",
+    "message.inject",
+    "worktree.ensure",
+    "worktree.merge",
+    "worktree.cleanup",
+    "preview.start",
+    "preview.stop",
+    "deploy.run",
+    "check.run",
+    "runtime.rescan",
 }
 QUERY_TYPES = {"home.tree", "home.file", "git.diff", "fs.tree", "worktree.scan"}
 REPORT_TYPES = {
-    "hello", "agent.status_changed", "agent.activity", "runtimes.detected",
-    "diagnostics.batch", "usage.batch", "deploy.log", "deploy.finished", "preview.status",
+    "hello",
+    "agent.status_changed",
+    "agent.activity",
+    "runtimes.detected",
+    "diagnostics.batch",
+    "usage.batch",
+    "deploy.log",
+    "deploy.finished",
+    "preview.status",
     "worktree.status",
     "check.finished",
 }
@@ -85,38 +165,47 @@ def test_daemon_frame_catalogs_exact() -> None:
 
 def test_envelope_example_parses() -> None:
     """契约 C §3 的信封示例（ID 替换为合法 ULID）。"""
-    env = ws.Envelope.model_validate({
-        "v": 1,
-        "seq": 8123,
-        "type": "task.updated",
-        "workspace_id": "01JZKJ7GG0000000000000000W",
-        "channel_id": "01JZKJ7GG0000000000000000C",
-        "key": "task:01JZKJ7GG0000000000000000T:2026-07-09T12:34:56.789Z",
-        "at": "2026-07-09T12:34:56.790Z",
-        "data": {},
-    })
+    env = ws.Envelope.model_validate(
+        {
+            "v": 1,
+            "seq": 8123,
+            "type": "task.updated",
+            "workspace_id": "01JZKJ7GG0000000000000000W",
+            "channel_id": "01JZKJ7GG0000000000000000C",
+            "key": "task:01JZKJ7GG0000000000000000T:2026-07-09T12:34:56.789Z",
+            "at": "2026-07-09T12:34:56.790Z",
+            "data": {},
+        }
+    )
     assert env.type is ws.EventType.TASK_UPDATED
     assert env.channel_id is not None
 
 
 def test_instr_frame_roundtrip() -> None:
-    frame = daemon.InstrFrame.model_validate({
-        "v": 1,
-        "kind": "instr",
-        "frame_id": "01JZKJ7GG0000000000000000F",
-        "type": "agent.wake",
-        "at": "2026-07-09T12:00:00.000Z",
-        "data": {
-            "agent_member_id": "01JZKJ7GG0000000000000000A",
-            "reason": "mention",
-            "refs": {"message_ids": ["01JZKJ7GG0000000000000000M"]},
-        },
-    })
+    frame = daemon.InstrFrame.model_validate(
+        {
+            "v": 1,
+            "kind": "instr",
+            "frame_id": "01JZKJ7GG0000000000000000F",
+            "type": "agent.wake",
+            "at": "2026-07-09T12:00:00.000Z",
+            "data": {
+                "agent_member_id": "01JZKJ7GG0000000000000000A",
+                "reason": "mention",
+                "refs": {"message_ids": ["01JZKJ7GG0000000000000000M"]},
+            },
+        }
+    )
     wake = daemon.AgentWakeData.model_validate(frame.data)
     assert wake.reason == "mention"
-    ack = daemon.AckFrame.model_validate({
-        "v": 1, "kind": "ack", "ref": frame.frame_id, "result": "noop",
-    })
+    ack = daemon.AckFrame.model_validate(
+        {
+            "v": 1,
+            "kind": "ack",
+            "ref": frame.frame_id,
+            "result": "noop",
+        }
+    )
     assert ack.result is daemon.AckResult.NOOP
 
 
@@ -156,7 +245,12 @@ def test_task_transitions_match_contract() -> None:
 def test_mcp_tool_catalog() -> None:
     """MCP 正目录含 M2 组，且与 DISALLOWED_TOOLS 负目录不相交（契约 E §3/§2）。"""
     assert set(constants.COAGENTIA_MCP_TOOLS) >= {
-        "list_tasks", "get_task", "claim_task", "unclaim_task", "set_task_status", "search",
+        "list_tasks",
+        "get_task",
+        "claim_task",
+        "unclaim_task",
+        "set_task_status",
+        "search",
     }
     assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)
 
@@ -169,9 +263,13 @@ def test_m3_endpoint_catalog_size() -> None:
     assert set(rest.ENDPOINTS_M2).isdisjoint(rest.ENDPOINTS_M3)
 
 
-# M1(9)+M2(6)=15 冻结至 M6；M7 起 +trigger_deploy（契约 E v1.5）——排除后核对"该里程碑零新增"。
+# M1(9)+M2(6)=15 冻结至 M6；M7 起 +trigger_deploy（契约 E v1.5）、M8-B5 起 +submit_task_contract
+# （契约 E v1.6）——排除后续里程碑工具后核对"该里程碑零新增"。
+_POST_M6_TOOLS = frozenset({"trigger_deploy", "submit_task_contract"})
+
+
 def _tools_through_m6() -> int:
-    return len(set(constants.COAGENTIA_MCP_TOOLS) - {"trigger_deploy"})
+    return len(set(constants.COAGENTIA_MCP_TOOLS) - _POST_M6_TOOLS)
 
 
 def test_m3_adds_no_mcp_tools() -> None:
@@ -263,16 +361,25 @@ def test_pswt_endpoint_catalog_size() -> None:
 
 
 def test_pswt_adds_no_mcp_tools() -> None:
-    """PS-WT 全部人类-only（Agent 403 O9 同门），不注册 MCP 工具——工具总数维持 M7 的 16。"""
-    assert len(constants.COAGENTIA_MCP_TOOLS) == 16
+    """PS-WT 全部人类-only（Agent 403 O9 同门），不注册 MCP 工具。工具总数 = M7(16) +
+    M8-B5(1 submit_task_contract) = 17；此断言作当前总数守门（新增工具须显式改此处 + 加专项）。"""
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 17
 
 
 def test_m7_adds_trigger_deploy_tool() -> None:
     """M7 工具组 +1：trigger_deploy（契约 E v1.5；R8 部署全员含 Agent 的通道兑现）——与负目录
-    DISALLOWED_TOOLS 不相交，总数 15→16。"""
+    DISALLOWED_TOOLS 不相交、目录内无重复（总数守门归 test_pswt_adds_no_mcp_tools）。"""
     assert "trigger_deploy" in constants.COAGENTIA_MCP_TOOLS
-    assert len(constants.COAGENTIA_MCP_TOOLS) == 16
-    assert len(set(constants.COAGENTIA_MCP_TOOLS)) == 16  # 无重复
+    # 无重复（相对断言，不钉绝对总数——总数随后续里程碑演进）
+    assert len(set(constants.COAGENTIA_MCP_TOOLS)) == len(constants.COAGENTIA_MCP_TOOLS)
+    assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)
+
+
+def test_b5_adds_submit_task_contract_tool() -> None:
+    """M8-B5 工具组 +1：submit_task_contract（契约 E v1.6；Agent 交付收尾契约提交通道兑现，
+    realtest 4/4 命中「够不着 REST」）——与负目录 DISALLOWED_TOOLS 不相交、目录内无重复。"""
+    assert "submit_task_contract" in constants.COAGENTIA_MCP_TOOLS
+    assert len(set(constants.COAGENTIA_MCP_TOOLS)) == len(constants.COAGENTIA_MCP_TOOLS)
     assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)
 
 

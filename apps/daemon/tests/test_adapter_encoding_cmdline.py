@@ -68,9 +68,15 @@ def test_build_argv_core_flags() -> None:
     joined = " ".join(argv)
     assert argv[0] == "claude"
     for flag in (
-        "--output-format", "stream-json", "--input-format",
-        "--include-partial-messages", "--permission-mode", "bypassPermissions",
-        "--verbose", "--mcp-config", "--append-system-prompt",
+        "--output-format",
+        "stream-json",
+        "--input-format",
+        "--include-partial-messages",
+        "--permission-mode",
+        "bypassPermissions",
+        "--verbose",
+        "--mcp-config",
+        "--append-system-prompt",
     ):
         assert flag in argv, flag
     assert "--model" in argv and "claude-opus-4-8" in argv
@@ -92,6 +98,7 @@ def test_identity_prompt_contains_required_elements() -> None:
     assert "Pat" in text and AID in text
     assert "coagentia" in text.lower()  # 工具用法
     assert "held" in text.lower()  # 护栏约定
+    assert "submit_task_contract" in text  # B5 交付纪律：置 in_review/done 前提交 handoff
 
 
 def test_build_env_isolates_config_dir() -> None:

@@ -147,8 +147,22 @@ DIAGNOSTIC_NAMESPACES: tuple[str, ...] = (
 # 错误码目录零新增仍 29；汇总设计 §6.3/§12 #4）。
 
 RULE_CODES: tuple[str, ...] = (
-    "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8",
-    "C3", "W1", "T2", "T3", "T7", "O8", "O9", "admin",
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R6",
+    "R7",
+    "R8",
+    "C3",
+    "W1",
+    "T2",
+    "T3",
+    "T7",
+    "O8",
+    "O9",
+    "admin",
 )
 
 # ---------------- schema 版本号（PRD §4.3 / 拆解设计）
@@ -196,12 +210,8 @@ BUFFER_DEPLOY_LOG_MAX_BYTES = 5 * 1024 * 1024
 # claim 联动 todo→in_progress、unclaim 联动 in_progress→todo 均落在合法边内（§9.2）。
 TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.TODO: frozenset({TaskStatus.IN_PROGRESS, TaskStatus.CLOSED}),
-    TaskStatus.IN_PROGRESS: frozenset(
-        {TaskStatus.TODO, TaskStatus.IN_REVIEW, TaskStatus.CLOSED}
-    ),
-    TaskStatus.IN_REVIEW: frozenset(
-        {TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.CLOSED}
-    ),
+    TaskStatus.IN_PROGRESS: frozenset({TaskStatus.TODO, TaskStatus.IN_REVIEW, TaskStatus.CLOSED}),
+    TaskStatus.IN_REVIEW: frozenset({TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.CLOSED}),
     TaskStatus.DONE: frozenset(),  # 终态（PRD §4.2 Done→[*]）
     TaskStatus.CLOSED: frozenset({TaskStatus.TODO}),  # reopen
 }
@@ -214,23 +224,26 @@ UNCLAIMABLE_STATUSES: frozenset[TaskStatus] = frozenset({TaskStatus.DONE, TaskSt
 # 纯代理：daemon adapters/mcp.py 零业务规则；与 DISALLOWED_TOOLS 不重叠（内置 TaskCreate 已禁）。
 COAGENTIA_MCP_TOOLS: tuple[str, ...] = (
     # M1（契约 E v1.0）
-    "send_message",     # POST /channels/{id}/messages（M2 起支持 as_task 参数，B §9.4）
-    "get_messages",     # GET  /channels/{id}/messages
-    "get_thread",       # GET  /messages/{id}/thread
-    "upload_file",      # POST /files
-    "get_file",         # GET  /files/{id}/content
+    "send_message",  # POST /channels/{id}/messages（M2 起支持 as_task 参数，B §9.4）
+    "get_messages",  # GET  /channels/{id}/messages
+    "get_thread",  # GET  /messages/{id}/thread
+    "upload_file",  # POST /files
+    "get_file",  # GET  /files/{id}/content
     "create_reminder",  # POST /reminders
     "cancel_reminder",  # DELETE /reminders/{id}
-    "list_channels",    # GET  /channels
-    "list_members",     # GET  /members
+    "list_channels",  # GET  /channels
+    "list_members",  # GET  /members
     # M2（契约 E v1.1）
-    "list_tasks",       # GET  /tasks
-    "get_task",         # GET  /tasks/{id}（TaskDetail）
-    "claim_task",       # POST /tasks/{id}/claim（CLAIM_RACE 结构化透传）
-    "unclaim_task",     # POST /tasks/{id}/unclaim（仅本人为 owner）
+    "list_tasks",  # GET  /tasks
+    "get_task",  # GET  /tasks/{id}（TaskDetail）
+    "claim_task",  # POST /tasks/{id}/claim（CLAIM_RACE 结构化透传）
+    "unclaim_task",  # POST /tasks/{id}/unclaim（仅本人为 owner）
     "set_task_status",  # POST /tasks/{id}/status（TASK_TRANSITION_INVALID 透传）
-    "search",           # GET  /search（三分组）
+    "search",  # GET  /search（三分组）
     # M7（契约 E v1.5）——零工具连胜止于 M6；R8「部署全员含 Agent」的通道兑现
-    "trigger_deploy",   # POST /projects/{id}/deployments（DEPLOY_IN_PROGRESS/VALIDATION_FAILED
-                        # /DAEMON_OFFLINE 结构化透传；请求体空，分支/commit 由 server 解析主干）
+    "trigger_deploy",  # POST /projects/{id}/deployments（DEPLOY_IN_PROGRESS/VALIDATION_FAILED
+    # /DAEMON_OFFLINE 结构化透传；请求体空，分支/commit 由 server 解析主干）
+    # M8-B5（契约 E v1.6）——Agent 交付收尾契约提交通道兑现（realtest 4/4 命中「够不着 REST」）
+    "submit_task_contract",  # POST /tasks/{id}/contracts（kind=task_plan/task_handoff；body
+    # free-form 由 server 按 kind 二次校验，VALIDATION_FAILED 逐字段透传）
 )

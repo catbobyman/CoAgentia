@@ -62,9 +62,7 @@ def _require_task(tx: Tx, task_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------- Convert to Task
 
 
-@router.post(
-    "/messages/{message_id}/task", response_model=entities.TaskPublic, status_code=201
-)
+@router.post("/messages/{message_id}/task", response_model=entities.TaskPublic, status_code=201)
 def convert_message_to_task(
     message_id: str,
     body: rest.ConvertToTask,
@@ -86,9 +84,11 @@ def convert_message_to_task(
         response.status_code = 200
         return task_public(dict(prior))
 
-    channel = tx.conn.execute(
-        select(_CHANNEL).where(_CHANNEL.c.id == msg["channel_id"])
-    ).mappings().first()
+    channel = (
+        tx.conn.execute(select(_CHANNEL).where(_CHANNEL.c.id == msg["channel_id"]))
+        .mappings()
+        .first()
+    )
     if channel is not None and channel["archived_at"] is not None:
         raise ApiError(409, rest.ErrorCode.CHANNEL_ARCHIVED, "归档频道不可转任务", rule="FR-1.3")
     if channel is not None and channel["kind"] == ChannelKind.DM:
@@ -179,8 +179,12 @@ def claim_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
         change_from, change_to = TaskStatus.TODO, TaskStatus.IN_PROGRESS
     final = tasks_service.fetch_task(tx.conn, task_id)
     tasks_service.emit_task_updated(
-        tx, final, kind=TaskEventKind.CLAIM, actor=me["id"],
-        from_status=change_from, to_status=change_to,
+        tx,
+        final,
+        kind=TaskEventKind.CLAIM,
+        actor=me["id"],
+        from_status=change_from,
+        to_status=change_to,
     )
     return task_public(final)
 
@@ -217,8 +221,12 @@ def unclaim_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -> An
         change_from, change_to = TaskStatus.IN_PROGRESS, TaskStatus.TODO
     final = tasks_service.fetch_task(tx.conn, task_id)
     tasks_service.emit_task_updated(
-        tx, final, kind=TaskEventKind.UNCLAIM, actor=me["id"],
-        from_status=change_from, to_status=change_to,
+        tx,
+        final,
+        kind=TaskEventKind.UNCLAIM,
+        actor=me["id"],
+        from_status=change_from,
+        to_status=change_to,
     )
     return task_public(final)
 
@@ -284,7 +292,11 @@ def set_task_status(
                 rest.ErrorCode.HANDOFF_INCOMPLETE,
                 f"缺少交接材料：{', '.join(missing)}",
                 rule="T7",
-                details={"missing": missing},
+                details={
+                    "missing": missing,
+                    "hint": "用 submit_task_contract 工具提交 kind=task_handoff，"
+                    f"补齐 {', '.join(missing)}（deliverables 须≥1）后再置 in_review。",
+                },
             )
     ts = tasks_service.service.now_iso()
     tx.conn.execute(
@@ -315,9 +327,7 @@ def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -
     task = _require_task(tx, task_id)
     me = acting_member(request, tx.conn)
     if me["kind"] == MemberKind.AGENT:
-        raise ApiError(
-            403, rest.ErrorCode.PERMISSION_DENIED, "仅人类可强制启动任务", rule="C3"
-        )
+        raise ApiError(403, rest.ErrorCode.PERMISSION_DENIED, "仅人类可强制启动任务", rule="C3")
     # 留痕 1：task_events(force_start)（from/to_status 留空——不改状态）。
     tasks_service.write_event(tx.conn, task_id, TaskEventKind.FORCE_START, actor=me["id"])
     force_event_seq = tx.conn.execute(
@@ -398,9 +408,7 @@ def list_tasks(
         stmt = stmt.where(_TASK.c.created_by_member_id == creator)
     # keyset：after 行即使因 status/owner 过滤离开结果集，游标仍按 (created_at,id) 锚点
     # 继续往后翻——不再静默从头重发首页（M2 挂账 3 收口）。
-    return keyset_page(
-        tx.conn, _TASK, stmt, after=after, limit=limit, serialize=task_public
-    )
+    return keyset_page(tx.conn, _TASK, stmt, after=after, limit=limit, serialize=task_public)
 
 
 @router.get("/tasks/{task_id}", response_model=rest.TaskDetail)
@@ -408,9 +416,7 @@ def get_task_detail(task_id: str, tx: Tx = Depends(get_tx)) -> Any:
     task = _require_task(tx, task_id)
     contracts = contracts_service.active_contracts(tx.conn, task_id)
     worktree = (
-        tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id))
-        .mappings()
-        .first()
+        tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id)).mappings().first()
     )
     agg = tx.conn.execute(
         select(
@@ -616,9 +622,7 @@ def ensure_preview(
         dev_command=dev_command,
     )
     tx.after_commit(
-        lambda: hub.request_preview_start(
-            computer_id=computer_id, task_id=task_id, data=start_data
-        )
+        lambda: hub.request_preview_start(computer_id=computer_id, task_id=task_id, data=start_data)
     )
     response.status_code = 201
     return preview_session_public(new_row)
@@ -705,7 +709,11 @@ def patch_task(
                     rest.ErrorCode.HANDOFF_INCOMPLETE,
                     f"升格为 L2 前须补齐交接材料（任务已在 In Review）：{', '.join(missing)}",
                     rule="T7",
-                    details={"missing": missing},
+                    details={
+                        "missing": missing,
+                        "hint": "用 submit_task_contract 工具提交 kind=task_handoff 补齐 "
+                        f"{', '.join(missing)}（deliverables 须≥1）。",
+                    },
                 )
     if changes:
         tx.conn.execute(update(_TASK).where(_TASK.c.id == task_id).values(**changes))
@@ -834,7 +842,5 @@ def request_contract_draft(
             agent_member_id=body.agent_member_id, task_id=task_id, kind=body.kind
         )
     except DaemonOffline as exc:
-        raise ApiError(
-            503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法投递起草请求"
-        ) from exc
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "daemon 离线，无法投递起草请求") from exc
     return {"status": "accepted"}

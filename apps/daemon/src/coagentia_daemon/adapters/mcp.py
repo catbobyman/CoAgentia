@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, TextIO
 from urllib.parse import urlencode
 
-from coagentia_contracts.enums import TaskStatus
+from coagentia_contracts.enums import ContractKind, TaskStatus
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "coagentia"
@@ -27,6 +27,9 @@ SERVER_VERSION = "1.0.0"
 
 # 状态值域从契约枚举派生（单一事实源）——手写字面量会在 M3 状态机演进时漂移。
 _TASK_STATUS_VALUES = [s.value for s in TaskStatus]
+# 任务契约 kind 值域（submit_task_contract）：loop_contract 属 Reminder 域、端点会 422 拒，
+# 故此处只列 POST /tasks/{id}/contracts 受理的两 kind（值从枚举派生、序确定）。
+_CONTRACT_KIND_VALUES = [ContractKind.TASK_PLAN.value, ContractKind.TASK_HANDOFF.value]
 
 
 @dataclass
@@ -244,6 +247,37 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["project_id"],
         },
     },
+    # M8-B5（契约 E v1.6）契约提交——置任务 in_review/done 的前置通道
+    {
+        "name": "submit_task_contract",
+        "description": "提交/修订任务契约（置任务 in_review/done 的前置——T7 门要求活动 "
+        "TaskHandoff 的 deliverables/evidence 非空，缺则 set_task_status 以 422 "
+        "HANDOFF_INCOMPLETE 退回）。\n"
+        "kind=task_handoff（完成实现/评审后的跨 Agent 交接）字段："
+        "version='coagentia.task-handoff.v1'、from_member（你的 member_id）、"
+        "to_member（接收方 member_id：评审人/人类/下游）、"
+        "deliverables=[{path,kind}]（置 in_review 前须≥1）、"
+        "evidence=[{type,ref,conclusion}]、verify_plan（接收方如何独立复核）、"
+        "open_risks=[]（可空）、review_verdict（可空）。\n"
+        "kind=task_plan（立项/升格计划）字段：version='coagentia.task-plan.v1'、goal、"
+        "acceptance_criteria=[{id,statement,verify_by,verify_ref}]（≥1）、"
+        "defaults_decided=[]、out_of_scope=[]。\n"
+        "字段不符 → 422 VALIDATION_FAILED 携逐字段 loc/msg，按清单补齐重投即可（同 kind "
+        "重复提交自动 supersede 成修订链，不新建重复行）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "kind": {"type": "string", "enum": _CONTRACT_KIND_VALUES},
+                "body": {
+                    "type": "object",
+                    "description": "契约内容，按 kind 对应 TaskHandoffBody / TaskPlanBody"
+                    "（server 二次 model_validate，字段见上）。",
+                },
+            },
+            "required": ["task_id", "kind", "body"],
+        },
+    },
 ]
 
 _TOOL_NAMES = frozenset(t["name"] for t in TOOLS)
@@ -301,9 +335,7 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
     if tool == "unclaim_task":
         return ToolRequest("POST", f"/api/tasks/{a['task_id']}/unclaim")
     if tool == "set_task_status":
-        return ToolRequest(
-            "POST", f"/api/tasks/{a['task_id']}/status", json_body={"to": a["to"]}
-        )
+        return ToolRequest("POST", f"/api/tasks/{a['task_id']}/status", json_body={"to": a["to"]})
     if tool == "search":
         query = {
             k: a[k]
@@ -313,6 +345,12 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
         return ToolRequest("GET", "/api/search", query=query)
     if tool == "trigger_deploy":  # 空请求体：分支/commit 由 server 解析主干 HEAD
         return ToolRequest("POST", f"/api/projects/{a['project_id']}/deployments")
+    if tool == "submit_task_contract":  # body free-form 透传，server 按 kind 二次校验
+        return ToolRequest(
+            "POST",
+            f"/api/tasks/{a['task_id']}/contracts",
+            json_body={"kind": a["kind"], "body": a["body"]},
+        )
     raise KeyError(tool)
 
 
@@ -347,6 +385,7 @@ def _text_result(obj: Any, *, is_error: bool = False) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------ 真 HTTP（urllib）
+
 
 def make_urllib_http(server_url: str, api_key: str, acting_member: str) -> HttpFn:
     import urllib.error
@@ -422,6 +461,7 @@ def _multipart_file(path: str) -> tuple[bytes, str]:
 
 
 # ------------------------------------------------------------ JSON-RPC stdio 循环
+
 
 @dataclass
 class _RpcState:
