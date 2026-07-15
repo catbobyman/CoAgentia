@@ -520,6 +520,9 @@ export type ErrorCode =
   | 'SYSTEM_NODE_NOT_RETRYABLE'
   | 'TEMPLATE_BUILTIN_IMMUTABLE'
   | 'PROJECT_IN_USE'
+  | 'WORKTREE_NOT_TERMINAL'
+  | 'WORKTREE_PREVIEW_ACTIVE'
+  | 'WORKTREE_NOT_ORPHAN'
   | 'PERMISSION_DENIED'
   | 'NOT_FOUND';
 export type Message1 = string;
@@ -549,6 +552,13 @@ export type Sha2561 = string;
 export type SizeBytes1 = number;
 export type StoredPath = string;
 export type WorkspaceId15 = string;
+export type Denied = boolean;
+export type HasGit = boolean;
+export type Name13 = string;
+export type Path2 = string;
+export type Path3 = string | null;
+export type Entries = FsTreeEntry[];
+export type Truncated1 = boolean;
 export type Base = string | null;
 export type ProjectId5 = string;
 export type RepoPath2 = string;
@@ -603,17 +613,17 @@ export type Kind1 = 'binary';
 export type Mime2 = string | null;
 export type SizeBytes2 = number;
 export type AgentMemberId15 = string;
-export type Path2 = string;
+export type Path4 = string;
 export type Content = string;
 export type Kind2 = 'text';
-export type Truncated1 = boolean;
+export type Truncated2 = boolean;
 export type Kind3 = 'dir' | 'file';
 export type Mtime = string;
-export type Name13 = string;
+export type Name14 = string;
 export type SizeBytes3 = number;
 export type AgentMemberId16 = string;
-export type Path3 = string;
-export type Entries = HomeTreeEntry[];
+export type Path5 = string;
+export type Entries1 = HomeTreeEntry[];
 /**
  * S1 直投的来源域（契约 D §5.2）。
  */
@@ -711,14 +721,14 @@ export type Version = 'coagentia.loop-contract.v1';
 export type CreatedAt20 = string;
 export type Id25 = string;
 export type MemberKind = 'human' | 'agent';
-export type Name14 = string;
+export type Name15 = string;
 export type RemovedAt = string | null;
 export type MemberRole = 'member' | 'admin' | 'owner';
 export type WorkspaceId22 = string;
 export type MemberRole1 = 'member' | 'admin' | 'owner';
 export type CreatedAt21 = string;
 export type Id26 = string;
-export type Name15 = string;
+export type Name16 = string;
 export type RemovedAt1 = string | null;
 export type MemberRole2 = 'member' | 'admin' | 'owner';
 export type WorkspaceId23 = string;
@@ -773,6 +783,11 @@ export type Title5 = string | null;
  */
 export type UpstreamPolicy2 = 'strict' | 'partial';
 export type NotificationMode2 = 'all' | 'mentions' | 'mute';
+export type ProjectId8 = string;
+export type TaskId11 = string;
+export type ProjectId9 = string;
+export type Removed = boolean;
+export type TaskId12 = string;
 export type Items1 = unknown[];
 export type NextCursor = string | null;
 export type Type3 = 'ping';
@@ -791,7 +806,7 @@ export type Port1 = number | null;
 export type RecycledAt = string | null;
 export type StartedAt2 = string;
 export type PreviewStatus = 'starting' | 'running' | 'recycled' | 'failed';
-export type TaskId11 = string;
+export type TaskId13 = string;
 export type WorkspaceId25 = string;
 export type WorktreeId = string;
 export type FailLogTail1 = string | null;
@@ -800,26 +815,26 @@ export type LastActiveAt1 = string | null;
 export type Port2 = number | null;
 export type RecycledAt1 = string | null;
 export type StartedAt3 = string;
-export type TaskId12 = string;
+export type TaskId14 = string;
 export type WorkspaceId26 = string;
 export type WorktreeId1 = string;
 export type DevCommand = string;
 export type PreviewSessionId1 = string;
-export type TaskId13 = string;
+export type TaskId15 = string;
 export type WorktreePath = string;
 export type PreviewSessionId2 = string;
-export type ProjectId8 = string;
+export type ProjectId10 = string;
 export type ComputerId4 = string;
 export type DeployCommand = string | null;
 export type DevCommand1 = string | null;
-export type Name16 = string;
+export type Name17 = string;
 export type PreviewIdleMin = number | null;
 export type RepoPath3 = string;
 export type WorktreeKeepDays = number | null;
 export type ComputerId5 = string | null;
 export type DeployCommand1 = string | null;
 export type DevCommand2 = string | null;
-export type Name17 = string | null;
+export type Name18 = string | null;
 export type PreviewIdleMin1 = number | null;
 export type RepoPath4 = string | null;
 export type WorktreeKeepDays1 = number | null;
@@ -829,7 +844,7 @@ export type CreatedAt23 = string;
 export type DeployCommand2 = string | null;
 export type DevCommand3 = string | null;
 export type Id30 = string;
-export type Name18 = string;
+export type Name19 = string;
 export type PreviewIdleMin2 = number;
 export type RepoPath5 = string;
 export type WorkspaceId27 = string;
@@ -839,7 +854,7 @@ export type CreatedAt24 = string;
 export type DeployCommand3 = string | null;
 export type DevCommand4 = string | null;
 export type Id31 = string;
-export type Name19 = string;
+export type Name20 = string;
 export type PreviewIdleMin3 = number;
 export type RepoPath6 = string;
 export type WorkspaceId28 = string;
@@ -905,7 +920,7 @@ export type Kind7 = 'query';
 /**
  * 查询帧目录（契约 D §6；只读代理，超时 → DAEMON_OFFLINE）。
  */
-export type QueryType = 'home.tree' | 'home.file' | 'git.diff';
+export type QueryType = 'home.tree' | 'home.file' | 'git.diff' | 'fs.tree' | 'worktree.scan';
 export type V3 = number;
 export type LastReadMessageId1 = string;
 export type ChannelId28 = string;
@@ -987,7 +1002,7 @@ export type LastFingerprint = string | null;
 export type ReplanUsed = number;
 export type RoundCount = number;
 export type StallCount = number;
-export type TaskId14 = string;
+export type TaskId16 = string;
 export type UpdatedAt4 = string;
 export type WorkspaceId33 = string;
 export type BlockedAt1 = string | null;
@@ -997,7 +1012,7 @@ export type LastFingerprint1 = string | null;
 export type ReplanUsed1 = number;
 export type RoundCount1 = number;
 export type StallCount1 = number;
-export type TaskId15 = string;
+export type TaskId17 = string;
 export type UpdatedAt5 = string;
 export type WorkspaceId34 = string;
 export type ConnId = string;
@@ -1015,7 +1030,7 @@ export type Id36 = string;
 export type ReminderId1 = string | null;
 export type Revision2 = number;
 export type SupersededAt = string | null;
-export type TaskId16 = string | null;
+export type TaskId18 = string | null;
 export type Version2 = string;
 export type WorkspaceId36 = string;
 export type CreatedAt32 = string;
@@ -1024,7 +1039,7 @@ export type Id37 = string;
 export type ReminderId2 = string | null;
 export type Revision3 = number;
 export type SupersededAt1 = string | null;
-export type TaskId17 = string | null;
+export type TaskId19 = string | null;
 export type Version3 = string;
 export type WorkspaceId37 = string;
 export type Contracts = TaskContractPublic[];
@@ -1039,21 +1054,21 @@ export type CreatedAt33 = string;
 export type Id38 = string;
 export type MergeCommit = string | null;
 export type MergedAt = string | null;
-export type Path4 = string;
-export type ProjectId9 = string;
+export type Path6 = string;
+export type ProjectId11 = string;
 export type WorktreeStatus = 'active' | 'merged' | 'conflicted' | 'cleaned';
-export type TaskId18 = string;
+export type TaskId20 = string;
 export type WorkspaceId38 = string;
 export type ActorMemberId4 = string | null;
 export type CreatedAt34 = string;
 export type OwnerMemberId1 = string | null;
 export type Seq5 = number;
-export type TaskId19 = string;
+export type TaskId21 = string;
 export type ActorMemberId5 = string | null;
 export type CreatedAt35 = string;
 export type OwnerMemberId2 = string | null;
 export type Seq6 = number;
-export type TaskId20 = string;
+export type TaskId22 = string;
 export type Deliverables = Deliverable[];
 export type Evidence1 = Evidence[];
 export type FromMember = string;
@@ -1075,7 +1090,7 @@ export type Id39 = string;
 export type TaskLevel2 = 'l1' | 'l2';
 export type Number1 = number;
 export type OwnerMemberId3 = string | null;
-export type ProjectId10 = string | null;
+export type ProjectId12 = string | null;
 export type RootMessageId1 = string;
 export type SilenceOverrideH2 = number | null;
 export type TaskStatus2 = 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
@@ -1088,7 +1103,7 @@ export type FromKey = string;
 export type ToKey = string;
 export type Edges1 = TemplateEdge[];
 export type Key3 = string;
-export type ProjectId11 = string | null;
+export type ProjectId13 = string | null;
 export type Role = string;
 export type Title8 = string;
 export type WritesCode3 = boolean;
@@ -1099,26 +1114,26 @@ export type Roles = TemplateRole[];
 export type ChannelId31 = string;
 export type Description9 = string;
 export type IncludeNodeIds = string[] | null;
-export type Name20 = string;
+export type Name21 = string;
 export type RolePlaceholders = {
   [k: string]: string;
 } | null;
 export type ChannelId32 = string;
 export type Description10 = string | null;
-export type Name21 = string | null;
+export type Name22 = string | null;
 export type Builtin2 = boolean;
 export type CreatedAt37 = string;
 export type CreatedByMemberId6 = string;
 export type Description11 = string;
 export type Id40 = string;
-export type Name22 = string;
+export type Name23 = string;
 export type WorkspaceId40 = string;
 export type Builtin3 = boolean;
 export type CreatedAt38 = string;
 export type CreatedByMemberId7 = string;
 export type Description12 = string;
 export type Id41 = string;
-export type Name23 = string;
+export type Name24 = string;
 export type WorkspaceId41 = string;
 export type CacheReadTokens2 = number;
 export type CacheWriteTokens2 = number;
@@ -1143,7 +1158,7 @@ export type InputTokens4 = number;
 export type OutputTokens4 = number;
 export type ReportedAt1 = string;
 export type SourceSession2 = string | null;
-export type TaskId21 = string | null;
+export type TaskId23 = string | null;
 export type WorkspaceId42 = string;
 export type AgentMemberId24 = string;
 export type CacheReadTokens5 = number;
@@ -1154,10 +1169,10 @@ export type InputTokens5 = number;
 export type OutputTokens5 = number;
 export type ReportedAt2 = string;
 export type SourceSession3 = string | null;
-export type TaskId22 = string | null;
+export type TaskId24 = string | null;
 export type WorkspaceId43 = string;
 export type AgentMemberId25 = string;
-export type TaskId23 = string | null;
+export type TaskId25 = string | null;
 export type Events4 = TokenUsageEventIn[];
 export type Label = string;
 export type Ref4 = string;
@@ -1167,10 +1182,10 @@ export type Breakdown = UsageBreakdownItem[] | null;
  */
 export type UsageLevel = 'task' | 'agent' | 'canvas';
 export type Ref5 = string;
-export type Name24 = string;
+export type Name25 = string;
 export type Slug = string;
 export type AttachmentMaxMb = number | null;
-export type Name25 = string | null;
+export type Name26 = string | null;
 export type NotifDesktop = boolean | null;
 export type NotifSound = boolean | null;
 export type OnboardingGreeting = boolean | null;
@@ -1182,7 +1197,7 @@ export type UiTheme = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb1 = number;
 export type CreatedAt39 = string;
 export type Id45 = string;
-export type Name26 = string;
+export type Name27 = string;
 export type NotifDesktop1 = boolean;
 export type NotifSound1 = boolean;
 export type OnboardingGreeting1 = boolean;
@@ -1191,38 +1206,71 @@ export type UiTheme1 = 'dark' | 'light' | 'system';
 export type AttachmentMaxMb2 = number;
 export type CreatedAt40 = string;
 export type Id46 = string;
-export type Name27 = string;
+export type Name28 = string;
 export type NotifDesktop2 = boolean;
 export type NotifSound2 = boolean;
 export type OnboardingGreeting2 = boolean;
 export type Slug3 = string;
 export type UiTheme2 = 'dark' | 'light' | 'system';
-export type TaskId24 = string;
-export type Branch4 = string;
-export type ProjectId12 = string;
-export type RepoPath7 = string;
-export type TaskId25 = string;
-export type Branch5 = string;
-export type Message2 = string;
-export type ProjectId13 = string;
-export type RepoPath8 = string;
+export type ProjectId14 = string | null;
 export type TaskId26 = string;
-export type Branch6 = string;
+export type Branch4 = string | null;
+export type ChannelId36 = string | null;
 export type CleanedAt1 = string | null;
-export type CreatedAt41 = string;
-export type Id47 = string;
+export type ComputerId8 = string;
+export type CreatedAt41 = string | null;
+export type Derived = 'ok' | 'missing' | 'orphan';
+export type Id47 = string | null;
+export type Ahead = number | null;
+export type Behind = number | null;
+export type Dirty = boolean;
+export type HeadCommit = string | null;
 export type MergeCommit1 = string | null;
 export type MergedAt1 = string | null;
-export type Path5 = string;
-export type ProjectId14 = string;
-export type TaskId27 = string;
-export type WorkspaceId44 = string;
-export type Branch7 = string;
-export type ConflictFiles = string[] | null;
-export type MergeCommit2 = string | null;
-export type Path6 = string;
-export type Status4 = 'active' | 'merged' | 'conflicted' | 'cleaned';
+export type Path7 = string;
+export type ProjectId15 = string;
+export type ProjectName = string;
+export type TaskId27 = string | null;
+export type TaskTitle = string | null;
+export type Items3 = WorktreeConsoleItem[];
+export type ComputerId9 = string;
+export type Status4 = 'ok' | 'offline' | 'timeout';
+export type Scans = WorktreeScanStatus[];
+export type Branch5 = string;
+export type ProjectId16 = string;
+export type RepoPath7 = string;
 export type TaskId28 = string;
+export type Branch6 = string;
+export type Message2 = string;
+export type ProjectId17 = string;
+export type RepoPath8 = string;
+export type TaskId29 = string;
+export type Branch7 = string;
+export type CleanedAt2 = string | null;
+export type CreatedAt42 = string;
+export type Id48 = string;
+export type MergeCommit2 = string | null;
+export type MergedAt2 = string | null;
+export type Path8 = string;
+export type ProjectId18 = string;
+export type TaskId30 = string;
+export type WorkspaceId44 = string;
+export type Ahead1 = number | null;
+export type Behind1 = number | null;
+export type Branch8 = string | null;
+export type Dirty1 = boolean;
+export type Error = string | null;
+export type HeadCommit1 = string | null;
+export type Path9 = string;
+export type ProjectId19 = string;
+export type TaskId31 = string;
+export type Entries2 = WorktreeScanEntry[];
+export type Branch9 = string;
+export type ConflictFiles = string[] | null;
+export type MergeCommit3 = string | null;
+export type Path10 = string;
+export type Status5 = 'active' | 'merged' | 'conflicted' | 'cleaned';
+export type TaskId32 = string;
 
 export interface CoAgentiaContracts {
   AcceptanceCriterion?: AcceptanceCriterion;
@@ -1320,6 +1368,9 @@ export interface CoAgentiaContracts {
   FilePublic?: FilePublic;
   FileRow?: FileRow;
   FrameError?: FrameError;
+  FsTreeEntry?: FsTreeEntry;
+  FsTreeQuery?: FsTreeQuery;
+  FsTreeReply?: FsTreeReply;
   GitDiffQuery?: GitDiffQuery;
   HeldDraftAsTask?: HeldDraftAsTask;
   HeldDraftData?: HeldDraftData;
@@ -1367,6 +1418,8 @@ export interface CoAgentiaContracts {
   NodePatch?: NodePatch;
   NodePosition?: NodePosition;
   NotificationSettingPut?: NotificationSettingPut;
+  OrphanCleanup?: OrphanCleanup;
+  OrphanCleanupResult?: OrphanCleanupResult;
   Page?: Page;
   PingMsg?: PingMsg;
   PresenceChangedData?: PresenceChangedData;
@@ -1457,10 +1510,17 @@ export interface CoAgentiaContracts {
   WorkspaceRow?: WorkspaceRow;
   WorkspaceUpdatedData?: WorkspaceUpdatedData;
   WorktreeCleanupData?: WorktreeCleanupData;
+  WorktreeConsoleItem?: WorktreeConsoleItem;
+  WorktreeConsoleReply?: WorktreeConsoleReply;
   WorktreeEnsureData?: WorktreeEnsureData;
+  WorktreeLive?: WorktreeLive;
   WorktreeMergeData?: WorktreeMergeData;
   WorktreePublic?: WorktreePublic;
   WorktreeRow?: WorktreeRow;
+  WorktreeScanEntry?: WorktreeScanEntry;
+  WorktreeScanQuery?: WorktreeScanQuery;
+  WorktreeScanReply?: WorktreeScanReply;
+  WorktreeScanStatus?: WorktreeScanStatus;
   WorktreeStatusData?: WorktreeStatusData;
   WorktreeUpdatedData?: WorktreeUpdatedData;
 }
@@ -2261,6 +2321,22 @@ export interface FileRow {
   stored_path: StoredPath;
   workspace_id: WorkspaceId15;
 }
+export interface FsTreeEntry {
+  denied?: Denied;
+  has_git: HasGit;
+  name: Name13;
+  path: Path2;
+}
+/**
+ * path=None → 根视图（win32 盘符列表 / posix 单条 "/"）；否则列该目录**仅子目录**。
+ */
+export interface FsTreeQuery {
+  path?: Path3;
+}
+export interface FsTreeReply {
+  entries: Entries;
+  truncated?: Truncated1;
+}
 export interface GitDiffQuery {
   base?: Base;
   project_id: ProjectId5;
@@ -2369,25 +2445,25 @@ export interface HomeFileBinaryReply {
 }
 export interface HomeFileQuery {
   agent_member_id: AgentMemberId15;
-  path: Path2;
+  path: Path4;
 }
 export interface HomeFileTextReply {
   content: Content;
   kind?: Kind2;
-  truncated?: Truncated1;
+  truncated?: Truncated2;
 }
 export interface HomeTreeEntry {
   kind: Kind3;
   mtime: Mtime;
-  name: Name13;
+  name: Name14;
   size_bytes: SizeBytes3;
 }
 export interface HomeTreeQuery {
   agent_member_id: AgentMemberId16;
-  path: Path3;
+  path: Path5;
 }
 export interface HomeTreeReply {
-  entries: Entries;
+  entries: Entries1;
 }
 export interface InjectSource {
   kind: InjectKind;
@@ -2520,7 +2596,7 @@ export interface MemberPublic {
   created_at: CreatedAt20;
   id: Id25;
   kind: MemberKind;
-  name: Name14;
+  name: Name15;
   removed_at?: RemovedAt;
   role?: MemberRole;
   workspace_id: WorkspaceId22;
@@ -2532,7 +2608,7 @@ export interface MemberRow {
   created_at: CreatedAt21;
   id: Id26;
   kind: MemberKind;
-  name: Name15;
+  name: Name16;
   removed_at?: RemovedAt1;
   role?: MemberRole2;
   workspace_id: WorkspaceId23;
@@ -2657,6 +2733,21 @@ export interface NotificationSettingPut {
   mode: NotificationMode2;
 }
 /**
+ * POST /computers/{id}/worktrees/cleanup-orphan：ids-only 定位（永不传裸路径）。
+ */
+export interface OrphanCleanup {
+  project_id: ProjectId8;
+  task_id: TaskId11;
+}
+/**
+ * 孤儿清理响应：无 DB 行可写、不产生 worktree.updated，前端以本响应刷新。
+ */
+export interface OrphanCleanupResult {
+  project_id: ProjectId9;
+  removed: Removed;
+  task_id: TaskId12;
+}
+/**
  * 游标分页：?after=（正序）/ ?before=（倒序回翻）。
  */
 export interface Page {
@@ -2691,7 +2782,7 @@ export interface PreviewSessionPublic {
   recycled_at?: RecycledAt;
   started_at: StartedAt2;
   status: PreviewStatus;
-  task_id: TaskId11;
+  task_id: TaskId13;
   workspace_id: WorkspaceId25;
   worktree_id: WorktreeId;
 }
@@ -2703,14 +2794,14 @@ export interface PreviewSessionRow {
   recycled_at?: RecycledAt1;
   started_at: StartedAt3;
   status: PreviewStatus;
-  task_id: TaskId12;
+  task_id: TaskId14;
   workspace_id: WorkspaceId26;
   worktree_id: WorktreeId1;
 }
 export interface PreviewStartData {
   dev_command: DevCommand;
   preview_session_id: PreviewSessionId1;
-  task_id: TaskId13;
+  task_id: TaskId15;
   worktree_path: WorktreePath;
 }
 export interface PreviewStopData {
@@ -2720,13 +2811,13 @@ export interface PreviewUpdatedData {
   preview: PreviewSessionPublic;
 }
 export interface ProjectBind {
-  project_id: ProjectId8;
+  project_id: ProjectId10;
 }
 export interface ProjectCreate {
   computer_id: ComputerId4;
   deploy_command?: DeployCommand;
   dev_command?: DevCommand1;
-  name: Name16;
+  name: Name17;
   preview_idle_min?: PreviewIdleMin;
   repo_path: RepoPath3;
   worktree_keep_days?: WorktreeKeepDays;
@@ -2735,7 +2826,7 @@ export interface ProjectPatch {
   computer_id?: ComputerId5;
   deploy_command?: DeployCommand1;
   dev_command?: DevCommand2;
-  name?: Name17;
+  name?: Name18;
   preview_idle_min?: PreviewIdleMin1;
   repo_path?: RepoPath4;
   worktree_keep_days?: WorktreeKeepDays1;
@@ -2750,7 +2841,7 @@ export interface ProjectPublic {
   deploy_command?: DeployCommand2;
   dev_command?: DevCommand3;
   id: Id30;
-  name: Name18;
+  name: Name19;
   preview_idle_min?: PreviewIdleMin2;
   repo_path: RepoPath5;
   workspace_id: WorkspaceId27;
@@ -2762,7 +2853,7 @@ export interface ProjectRow {
   deploy_command?: DeployCommand3;
   dev_command?: DevCommand4;
   id: Id31;
-  name: Name19;
+  name: Name20;
   preview_idle_min?: PreviewIdleMin3;
   repo_path: RepoPath6;
   workspace_id: WorkspaceId28;
@@ -2968,7 +3059,7 @@ export interface SummaryRunPublic {
   replan_used?: ReplanUsed;
   round_count?: RoundCount;
   stall_count?: StallCount;
-  task_id: TaskId14;
+  task_id: TaskId16;
   updated_at: UpdatedAt4;
   workspace_id: WorkspaceId33;
 }
@@ -2987,7 +3078,7 @@ export interface SummaryRunRow {
   replan_used?: ReplanUsed1;
   round_count?: RoundCount1;
   stall_count?: StallCount1;
-  task_id: TaskId15;
+  task_id: TaskId17;
   updated_at: UpdatedAt5;
   workspace_id: WorkspaceId34;
 }
@@ -3017,7 +3108,7 @@ export interface TaskContractPublic {
   reminder_id?: ReminderId1;
   revision?: Revision2;
   superseded_at?: SupersededAt;
-  task_id?: TaskId16;
+  task_id?: TaskId18;
   version: Version2;
   workspace_id: WorkspaceId36;
 }
@@ -3033,7 +3124,7 @@ export interface TaskContractRow {
   reminder_id?: ReminderId2;
   revision?: Revision3;
   superseded_at?: SupersededAt1;
-  task_id?: TaskId17;
+  task_id?: TaskId19;
   version: Version3;
   workspace_id: WorkspaceId37;
 }
@@ -3066,10 +3157,10 @@ export interface WorktreePublic {
   id: Id38;
   merge_commit?: MergeCommit;
   merged_at?: MergedAt;
-  path: Path4;
-  project_id: ProjectId9;
+  path: Path6;
+  project_id: ProjectId11;
   status: WorktreeStatus;
-  task_id: TaskId18;
+  task_id: TaskId20;
   workspace_id: WorkspaceId38;
 }
 export interface TaskEventPublic {
@@ -3079,7 +3170,7 @@ export interface TaskEventPublic {
   kind: TaskEventKind;
   owner_member_id?: OwnerMemberId1;
   seq: Seq5;
-  task_id: TaskId19;
+  task_id: TaskId21;
   to_status?: TaskStatus1 | null;
 }
 /**
@@ -3092,7 +3183,7 @@ export interface TaskEventRow {
   kind: TaskEventKind;
   owner_member_id?: OwnerMemberId2;
   seq: Seq6;
-  task_id: TaskId20;
+  task_id: TaskId22;
   to_status?: TaskStatus1 | null;
 }
 /**
@@ -3130,7 +3221,7 @@ export interface TaskRow {
   level?: TaskLevel2;
   number: Number1;
   owner_member_id?: OwnerMemberId3;
-  project_id?: ProjectId10;
+  project_id?: ProjectId12;
   root_message_id: RootMessageId1;
   silence_override_h?: SilenceOverrideH2;
   status?: TaskStatus2;
@@ -3179,7 +3270,7 @@ export interface TemplateEdge {
 export interface TemplateNode {
   key: Key3;
   plan_skeleton?: TaskPlanBody | null;
-  project_id?: ProjectId11;
+  project_id?: ProjectId13;
   role: Role;
   title: Title8;
   writes_code?: WritesCode3;
@@ -3202,7 +3293,7 @@ export interface TemplateCreate {
   channel_id: ChannelId31;
   description?: Description9;
   include_node_ids?: IncludeNodeIds;
-  name: Name20;
+  name: Name21;
   role_placeholders?: RolePlaceholders;
 }
 /**
@@ -3225,7 +3316,7 @@ export interface RoleMapping {
  */
 export interface TemplatePatch {
   description?: Description10;
-  name?: Name21;
+  name?: Name22;
 }
 export interface TemplatePublic {
   body: TemplateBody;
@@ -3234,7 +3325,7 @@ export interface TemplatePublic {
   created_by_member_id: CreatedByMemberId6;
   description?: Description11;
   id: Id40;
-  name: Name22;
+  name: Name23;
   workspace_id: WorkspaceId40;
 }
 /**
@@ -3247,7 +3338,7 @@ export interface TemplateRow {
   created_by_member_id: CreatedByMemberId7;
   description?: Description12;
   id: Id41;
-  name: Name23;
+  name: Name24;
   workspace_id: WorkspaceId41;
 }
 export interface TokenTotals {
@@ -3282,7 +3373,7 @@ export interface TokenUsageEventPublic {
   output_tokens?: OutputTokens4;
   reported_at: ReportedAt1;
   source_session?: SourceSession2;
-  task_id?: TaskId21;
+  task_id?: TaskId23;
   workspace_id: WorkspaceId42;
 }
 /**
@@ -3298,12 +3389,12 @@ export interface TokenUsageEventRow {
   output_tokens?: OutputTokens5;
   reported_at: ReportedAt2;
   source_session?: SourceSession3;
-  task_id?: TaskId22;
+  task_id?: TaskId24;
   workspace_id: WorkspaceId43;
 }
 export interface TokenUsageReportedData {
   agent_member_id: AgentMemberId25;
-  task_id?: TaskId23;
+  task_id?: TaskId25;
   totals: TokenTotals;
 }
 export interface UsageBatchData {
@@ -3331,12 +3422,12 @@ export interface UsageReport {
   usage: UsageBucket;
 }
 export interface WorkspaceCreate {
-  name: Name24;
+  name: Name25;
   slug: Slug;
 }
 export interface WorkspacePatch {
   attachment_max_mb?: AttachmentMaxMb;
-  name?: Name25;
+  name?: Name26;
   notif_desktop?: NotifDesktop;
   notif_sound?: NotifSound;
   onboarding_greeting?: OnboardingGreeting;
@@ -3348,7 +3439,7 @@ export interface WorkspacePublic {
   attachment_max_mb?: AttachmentMaxMb1;
   created_at: CreatedAt39;
   id: Id45;
-  name: Name26;
+  name: Name27;
   notif_desktop?: NotifDesktop1;
   notif_sound?: NotifSound1;
   onboarding_greeting?: OnboardingGreeting1;
@@ -3363,7 +3454,7 @@ export interface WorkspaceRow {
   attachment_max_mb?: AttachmentMaxMb2;
   created_at: CreatedAt40;
   id: Id46;
-  name: Name27;
+  name: Name28;
   notif_desktop?: NotifDesktop2;
   notif_sound?: NotifSound2;
   onboarding_greeting?: OnboardingGreeting2;
@@ -3378,41 +3469,104 @@ export interface WorkspaceUpdatedData {
   workspace: WorkspacePublic;
 }
 export interface WorktreeCleanupData {
-  task_id: TaskId24;
-}
-export interface WorktreeEnsureData {
-  branch: Branch4;
-  project_id: ProjectId12;
-  repo_path: RepoPath7;
-  task_id: TaskId25;
-}
-export interface WorktreeMergeData {
-  branch: Branch5;
-  message: Message2;
-  project_id: ProjectId13;
-  repo_path: RepoPath8;
+  project_id?: ProjectId14;
   task_id: TaskId26;
 }
-export interface WorktreeRow {
-  branch: Branch6;
+/**
+ * 管理台一行：DB 登记行 ∪ 磁盘孤儿行（合账 key = project_id+task_id）。
+ *
+ * derived：ok = DB∩磁盘或终态无树的正常态；missing = active 登记但磁盘无（丢失）；
+ * orphan = 磁盘有树但无非-cleaned 登记（id/status/时间戳皆 None，task_id 由目录名解析）。
+ */
+export interface WorktreeConsoleItem {
+  branch?: Branch4;
+  channel_id?: ChannelId36;
   cleaned_at?: CleanedAt1;
-  created_at: CreatedAt41;
-  id: Id47;
+  computer_id: ComputerId8;
+  created_at?: CreatedAt41;
+  derived: Derived;
+  id?: Id47;
+  live?: WorktreeLive | null;
   merge_commit?: MergeCommit1;
   merged_at?: MergedAt1;
-  path: Path5;
-  project_id: ProjectId14;
+  path: Path7;
+  project_id: ProjectId15;
+  project_name: ProjectName;
+  status?: WorktreeStatus | null;
+  task_id?: TaskId27;
+  task_title?: TaskTitle;
+}
+/**
+ * live=1 时 daemon 扫描附加的实时字段（该机离线/扫描失败 → 整个 live=None）。
+ */
+export interface WorktreeLive {
+  ahead?: Ahead;
+  behind?: Behind;
+  dirty?: Dirty;
+  head_commit?: HeadCommit;
+}
+export interface WorktreeConsoleReply {
+  items: Items3;
+  scans?: Scans;
+}
+export interface WorktreeScanStatus {
+  computer_id: ComputerId9;
+  status: Status4;
+}
+export interface WorktreeEnsureData {
+  branch: Branch5;
+  project_id: ProjectId16;
+  repo_path: RepoPath7;
+  task_id: TaskId28;
+}
+export interface WorktreeMergeData {
+  branch: Branch6;
+  message: Message2;
+  project_id: ProjectId17;
+  repo_path: RepoPath8;
+  task_id: TaskId29;
+}
+export interface WorktreeRow {
+  branch: Branch7;
+  cleaned_at?: CleanedAt2;
+  created_at: CreatedAt42;
+  id: Id48;
+  merge_commit?: MergeCommit2;
+  merged_at?: MergedAt2;
+  path: Path8;
+  project_id: ProjectId18;
   status: WorktreeStatus;
-  task_id: TaskId27;
+  task_id: TaskId30;
   workspace_id: WorkspaceId44;
 }
+/**
+ * worktrees_dir/{project_id}/{task_id} 一棵树的实时事实（daemon 只报 ULID 命名的两级目录）。
+ */
+export interface WorktreeScanEntry {
+  ahead?: Ahead1;
+  behind?: Behind1;
+  branch?: Branch8;
+  dirty?: Dirty1;
+  error?: Error;
+  head_commit?: HeadCommit1;
+  path: Path9;
+  project_id: ProjectId19;
+  task_id: TaskId31;
+}
+/**
+ * 无参：daemon 只扫自己的 worktrees_dir（永不接受任意路径）。
+ */
+export interface WorktreeScanQuery {}
+export interface WorktreeScanReply {
+  entries: Entries2;
+}
 export interface WorktreeStatusData {
-  branch: Branch7;
+  branch: Branch9;
   conflict_files?: ConflictFiles;
-  merge_commit?: MergeCommit2;
-  path: Path6;
-  status: Status4;
-  task_id: TaskId28;
+  merge_commit?: MergeCommit3;
+  path: Path10;
+  status: Status5;
+  task_id: TaskId32;
 }
 export interface WorktreeUpdatedData {
   worktree: WorktreePublic;

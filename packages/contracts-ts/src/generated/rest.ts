@@ -543,6 +543,46 @@ export interface paths {
         patch: operations["rename_computer_api_computers__computer_id__patch"];
         trace?: never;
     };
+    "/api/computers/{computer_id}/fs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse Fs
+         * @description computer 级只读目录浏览（选择仓库路径）：mock 回固定两层形状；真盘符枚举活真 daemon。
+         */
+        get: operations["browse_fs_api_computers__computer_id__fs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/computers/{computer_id}/worktrees/cleanup-orphan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cleanup Orphan
+         * @description 清理磁盘孤儿树（B §4.11 扩）：无 DB 行、不广播；mock 回 removed 形状，孤儿判定活真 server。
+         */
+        post: operations["cleanup_orphan_api_computers__computer_id__worktrees_cleanup_orphan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/deployments/{deployment_id}": {
         parameters: {
             query?: never;
@@ -1162,6 +1202,46 @@ export interface paths {
         head?: never;
         /** Patch Workspace */
         patch: operations["patch_workspace_api_workspace_patch"];
+        trace?: never;
+    };
+    "/api/worktrees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Worktrees
+         * @description 工作树管理台读面（B §4.11 扩）：mock 回骨架 + 孤儿行形状；合账/live 字段活真 server。
+         */
+        get: operations["list_worktrees_api_worktrees_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worktrees/{worktree_id}/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cleanup Worktree
+         * @description 清理登记的终态树（B §4.11 扩）：mock 回 cleaned 形状 + 广播；CAS/预览门/护栏活真 server。
+         */
+        post: operations["cleanup_worktree_api_worktrees__worktree_id__cleanup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -1796,6 +1876,30 @@ export interface components {
             /** Workspace Id */
             workspace_id: string;
         };
+        /** FsTreeEntry */
+        FsTreeEntry: {
+            /**
+             * Denied
+             * @default false
+             */
+            denied: boolean;
+            /** Has Git */
+            has_git: boolean;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /** FsTreeReply */
+        FsTreeReply: {
+            /** Entries */
+            entries: components["schemas"]["FsTreeEntry"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2060,6 +2164,28 @@ export interface components {
          */
         NotificationSettingPut: {
             mode: components["schemas"]["NotificationMode"];
+        };
+        /**
+         * OrphanCleanup
+         * @description POST /computers/{id}/worktrees/cleanup-orphan：ids-only 定位（永不传裸路径）。
+         */
+        OrphanCleanup: {
+            /** Project Id */
+            project_id: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
+         * OrphanCleanupResult
+         * @description 孤儿清理响应：无 DB 行可写、不产生 worktree.updated，前端以本响应刷新。
+         */
+        OrphanCleanupResult: {
+            /** Project Id */
+            project_id: string;
+            /** Removed */
+            removed: boolean;
+            /** Task Id */
+            task_id: string;
         };
         /** Page[ActivityItemPublic] */
         Page_ActivityItemPublic_: {
@@ -2954,6 +3080,75 @@ export interface components {
             /** @default dark */
             ui_theme: components["schemas"]["UiTheme"];
         };
+        /**
+         * WorktreeConsoleItem
+         * @description 管理台一行：DB 登记行 ∪ 磁盘孤儿行（合账 key = project_id+task_id）。
+         *
+         *     derived：ok = DB∩磁盘或终态无树的正常态；missing = active 登记但磁盘无（丢失）；
+         *     orphan = 磁盘有树但无非-cleaned 登记（id/status/时间戳皆 None，task_id 由目录名解析）。
+         */
+        WorktreeConsoleItem: {
+            /** Branch */
+            branch?: string | null;
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Cleaned At */
+            cleaned_at?: string | null;
+            /** Computer Id */
+            computer_id: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Derived
+             * @enum {string}
+             */
+            derived: "ok" | "missing" | "orphan";
+            /** Id */
+            id?: string | null;
+            live?: components["schemas"]["WorktreeLive"] | null;
+            /** Merge Commit */
+            merge_commit?: string | null;
+            /** Merged At */
+            merged_at?: string | null;
+            /** Path */
+            path: string;
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            status?: components["schemas"]["WorktreeStatus"] | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Task Title */
+            task_title?: string | null;
+        };
+        /** WorktreeConsoleReply */
+        WorktreeConsoleReply: {
+            /** Items */
+            items: components["schemas"]["WorktreeConsoleItem"][];
+            /**
+             * Scans
+             * @default []
+             */
+            scans: components["schemas"]["WorktreeScanStatus"][];
+        };
+        /**
+         * WorktreeLive
+         * @description live=1 时 daemon 扫描附加的实时字段（该机离线/扫描失败 → 整个 live=None）。
+         */
+        WorktreeLive: {
+            /** Ahead */
+            ahead?: number | null;
+            /** Behind */
+            behind?: number | null;
+            /**
+             * Dirty
+             * @default false
+             */
+            dirty: boolean;
+            /** Head Commit */
+            head_commit?: string | null;
+        };
         /** WorktreePublic */
         WorktreePublic: {
             /** Branch */
@@ -2977,6 +3172,16 @@ export interface components {
             task_id: string;
             /** Workspace Id */
             workspace_id: string;
+        };
+        /** WorktreeScanStatus */
+        WorktreeScanStatus: {
+            /** Computer Id */
+            computer_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "offline" | "timeout";
         };
         /**
          * WorktreeStatus
@@ -4203,6 +4408,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComputerPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_fs_api_computers__computer_id__fs_get: {
+        parameters: {
+            query?: {
+                path?: string | null;
+            };
+            header?: never;
+            path: {
+                computer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FsTreeReply"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cleanup_orphan_api_computers__computer_id__worktrees_cleanup_orphan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                computer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrphanCleanup"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrphanCleanupResult"];
                 };
             };
             /** @description Validation Error */
@@ -5558,6 +5831,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspacePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_worktrees_api_worktrees_get: {
+        parameters: {
+            query?: {
+                live?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorktreeConsoleReply"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cleanup_worktree_api_worktrees__worktree_id__cleanup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worktree_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorktreePublic"];
                 };
             };
             /** @description Validation Error */

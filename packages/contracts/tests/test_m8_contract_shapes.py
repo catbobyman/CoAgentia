@@ -78,7 +78,7 @@ def test_node_patch_upstream_policy_optional() -> None:
 
 def test_rule_codes_carry_o8_o9() -> None:
     """rule 字段值域含 O8（M8 replan 超额）+ O9（M6b Agent 结构变更，v1.0.12 回填）；
-    错误码目录不因 rule 扩容——rule 是 403 的正交维度，非 ErrorCode（仍 29）。"""
+    错误码目录随里程碑扩容（PS-WT +3 工作树清理码 → 32），rule 仍是 403 的正交维度。"""
     assert "O8" in constants.RULE_CODES and "O9" in constants.RULE_CODES
     assert len(constants.RULE_CODES) == len(set(constants.RULE_CODES))  # 无重复
-    assert len({c.value for c in rest.ErrorCode}) == 29  # 错误码目录不变
+    assert len({c.value for c in rest.ErrorCode}) == 32  # PS-WT 后错误码目录 = 32
