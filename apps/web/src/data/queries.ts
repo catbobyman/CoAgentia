@@ -1,6 +1,8 @@
 // TanStack Query 包 REST 拉取(api.ts 演化的消费面)。
 // 服务端数据的唯一事实源 = 这里的 query 缓存;WS 事件通过 data/wsBridge 做 setQueryData patch。
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient,
+} from '@tanstack/react-query';
 
 import type {
   AgentCreate,
@@ -18,6 +20,7 @@ import type {
   MemberRole,
   MessagePublic,
   NotificationMode,
+  OrphanCleanup,
   PresenceEntry,
   PreviewSessionPublic,
   ProjectCreate,
@@ -400,6 +403,57 @@ export const useUnbindProject = () =>
     ({ channelId, projectId }) => api.unbindProject(channelId, projectId),
     'Project 已解除绑定',
   );
+
+// ---- PS-WT ① 目录选择器（GET /computers/{cid}/fs?path=）。key=(cid,path)，回退秒开靠缓存命中；
+// staleTime 让同一层多次导航不重发（目录结构低频变，5min 内复用）。retry:false——daemon 离线 503 立即
+// 上浮内联提示（不干等重试）。path 缺省 = 根视图（盘符列表）。enabled 由调用方（弹窗打开时）控制。
+export const useBrowseFs = (
+  computerId: string | undefined,
+  path: string | undefined,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: qk.fsTree(computerId ?? '_', path),
+    queryFn: () => api.browseFs(computerId!, path),
+    enabled: !!computerId && enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+// ---- PS-WT ② 工作树管理台（GET /worktrees?live=0|1）。live=0 秒出骨架、live=1 附实时对账；
+// placeholderData 保上一态数据（0→1 切换不闪空、重新扫描期间旧列表可见）。不轮询：worktree.updated
+// WS 事件经 wsBridge 前缀失效兜底刷新。
+export const useWorktreesConsole = (live: 0 | 1) =>
+  useQuery({
+    queryKey: qk.worktreesConsole(live),
+    queryFn: () => api.worktreesConsole(live),
+    placeholderData: keepPreviousData,
+  });
+
+// 清理登记树 / 孤儿树（admin 门）。成功后前缀失效管理台两态（live=0/1）收敛；worktree.updated 亦会
+// 反流（登记树清理），孤儿清理无 DB 行故仅靠本失效刷新。错误据 code 组 toast（not_terminal /
+// preview_active / not_orphan / daemon 离线），交调用方兜底文案（disabled 是 UI 责任、API 兜底）。
+function useWorktreesInvalidate() {
+  const qc = useQueryClient();
+  return () => void qc.invalidateQueries({ queryKey: ['worktreesConsole'] });
+}
+
+export const useCleanupWorktree = () => {
+  const invalidate = useWorktreesInvalidate();
+  return useMutation({
+    mutationFn: (worktreeId: string) => api.cleanupWorktree(worktreeId),
+    onSuccess: invalidate,
+  });
+};
+
+export const useCleanupOrphan = () => {
+  const invalidate = useWorktreesInvalidate();
+  return useMutation({
+    mutationFn: ({ computerId, body }: { computerId: string; body: OrphanCleanup }) =>
+      api.cleanupOrphan(computerId, body),
+    onSuccess: invalidate,
+  });
+};
 
 // ---- M6b 拆解提案（B §4.10）。提案卡渲染源，按 proposal_id GET；proposal.updated/draft.* WS
 // 事件通过 wsBridge 按 proposal.id patch 本缓存（REST 是事实源，WS 载 ProposalPublic 整体替换）。

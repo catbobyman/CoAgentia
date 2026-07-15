@@ -66,6 +66,8 @@ class QueryType(StrEnum):
     HOME_TREE = "home.tree"
     HOME_FILE = "home.file"
     GIT_DIFF = "git.diff"  # M6
+    FS_TREE = "fs.tree"  # PS-WT：computer 级目录浏览（选择仓库路径）
+    WORKTREE_SCAN = "worktree.scan"  # PS-WT：worktrees_dir 实时扫描（管理台对账）
 
 
 class ReportType(StrEnum):
@@ -217,6 +219,10 @@ class WorktreeMergeData(ContractModel):
 
 class WorktreeCleanupData(ContractModel):
     task_id: Ulid
+    # PS-WT：孤儿清理时 DB 无任务/无 worktree 行，daemon 无法从 task_id 反查 project 段路径，
+    # 故随 instr 携 project_id 供 paths.worktree_dir(project_id, task_id) 自拼（仍硬限定
+    # worktrees_dir 内，见 daemon 护栏）。M6 常规清理不传，向后兼容（缺省 None 走既有反查）。
+    project_id: Ulid | None = None
 
 
 class CheckRunData(ContractModel):
@@ -312,6 +318,53 @@ class DiffPayload(ContractModel):
     total_additions: int
     total_deletions: int
     files_truncated: bool
+
+
+# ---- PS-WT：computer 级只读目录浏览（fs.tree）与 worktrees_dir 扫描（worktree.scan）
+#
+# 两者都是 §6 只读查询代理的同族扩展（超时 → DAEMON_OFFLINE）。REST `/computers/{id}/fs` 与
+# `/worktrees?live=1` 直接复用本处 reply 形状（同 DiffPayload 复用先例）。护栏（永不读文件内容、
+# 单层截断、worktrees_dir 边界、ULID 命名过滤）在 daemon 侧执法，此处只登记形状。
+
+
+class FsTreeQuery(ContractModel):
+    """path=None → 根视图（win32 盘符列表 / posix 单条 "/"）；否则列该目录**仅子目录**。"""
+
+    path: str | None = None
+
+
+class FsTreeEntry(ContractModel):
+    name: str  # 显示名（盘符视图 = "C:\\" 等）
+    path: str  # 绝对路径（回传下一层查询）
+    has_git: bool  # 存在 .git（目录或 worktree 的 .git 文件）→ 前端高亮"git 仓库"
+    denied: bool = False  # 无权限进入 → 行置灰不可进入
+
+
+class FsTreeReply(ContractModel):
+    entries: list[FsTreeEntry]  # 仅目录、不列文件；按名排序
+    truncated: bool = False  # 超单层上限（500）截断
+
+
+class WorktreeScanQuery(ContractModel):
+    """无参：daemon 只扫自己的 worktrees_dir（永不接受任意路径）。"""
+
+
+class WorktreeScanEntry(ContractModel):
+    """worktrees_dir/{project_id}/{task_id} 一棵树的实时事实（daemon 只报 ULID 命名的两级目录）。"""
+
+    project_id: str  # 目录层级解析（daemon 保证 ULID 形；非 ULID 目录不上报，永不纳管）
+    task_id: str
+    path: str
+    branch: str | None = None  # git 解析失败 → None，见 error
+    head_commit: str | None = None
+    dirty: bool = False  # 工作区有未提交改动
+    ahead: int | None = None  # 相对主仓库当前 HEAD 分支
+    behind: int | None = None
+    error: str | None = None  # 单树 git 失败逐条降级，不炸整扫
+
+
+class WorktreeScanReply(ContractModel):
+    entries: list[WorktreeScanEntry]
 
 
 # ------------------------------------------------------------ 上报 data（契约 D §7）

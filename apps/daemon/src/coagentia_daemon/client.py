@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import string
+import sys
 import time
 from collections import deque
 from collections.abc import Callable
@@ -28,6 +31,9 @@ from coagentia_contracts.daemon import (
     DeployLogReportData,
     DiagnosticEventIn,
     FrameKind,
+    FsTreeEntry,
+    FsTreeQuery,
+    FsTreeReply,
     GitDiffQuery,
     HomeFileBinaryReply,
     HomeFileQuery,
@@ -42,6 +48,7 @@ from coagentia_contracts.daemon import (
     ReportType,
     RuntimesDetectedData,
     TokenUsageEventIn,
+    WorktreeScanQuery,
     WorktreeStatusData,
 )
 from coagentia_contracts.entities import DetectedRuntime
@@ -65,6 +72,7 @@ BACKOFF_CAP = 30.0
 _DIAG_BATCH = 50  # 契约 D §7：diagnostics ≤50 条/批
 _USAGE_BATCH = 500
 _HOME_FILE_MAX = 1024 * 1024  # 契约 D §6：home.file 文本上限 1MB
+_FS_TREE_MAX = 500  # 契约 D §6 / PS-WT §4：fs.tree 单层目录上限，超出截断
 _ACTIVITY_PRETHROTTLE = 0.25  # 契约 D §7：daemon 可 ≥250ms 预节流省带宽
 _FRAME_DEDUP_WINDOW = 2048
 # CHECK_RUN 仍走同步 handler + buffer.find_check 重放（终态缓冲重传），须留在重放白名单。
@@ -390,6 +398,12 @@ class DaemonClient:
                 reply = (
                     await self.git.diff(GitDiffQuery.model_validate(data))
                 ).model_dump(mode="json")
+            elif qtype == QueryType.FS_TREE:
+                reply = self._fs_tree(data)
+            elif qtype == QueryType.WORKTREE_SCAN:
+                reply = (
+                    await self.git.scan(WorktreeScanQuery.model_validate(data))
+                ).model_dump(mode="json")
             else:
                 reply = {"error": "unsupported"}
         except Exception as exc:  # noqa: BLE001
@@ -434,6 +448,15 @@ class DaemonClient:
         return HomeFileTextReply(
             content=text[:_HOME_FILE_MAX], truncated=truncated
         ).model_dump(mode="json")
+
+    def _fs_tree(self, data: dict[str, Any]) -> dict[str, Any]:
+        """PS-WT fs.tree：computer 级只读目录浏览（选仓库路径）。path=None → 根视图
+        （win32 逐盘符 / posix 单条 "/"）；否则列该目录**仅子目录**（跳过文件）。永不读文件内容。"""
+        q = FsTreeQuery.model_validate(data)
+        if q.path is None:
+            return FsTreeReply(entries=_fs_root_entries()).model_dump(mode="json")
+        entries, truncated = _fs_dir_entries(Path(q.path))
+        return FsTreeReply(entries=entries, truncated=truncated).model_dump(mode="json")
 
     def _safe_join(self, agent_member_id: str, path: str) -> Path | None:
         """path 规范化后必须在该 Agent home 之内（防 ../ 逃逸，契约 D §6）。"""
@@ -641,3 +664,59 @@ class DaemonClient:
 def _iso_from_mtime(mtime: float) -> str:
     dt = datetime.fromtimestamp(mtime, UTC)
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def _fs_root_entries() -> list[FsTreeEntry]:
+    """fs.tree 根视图：win32 逐盘探测（Python 3.11 无 os.listdrives），posix 单条 "/"。"""
+    if sys.platform == "win32":
+        entries: list[FsTreeEntry] = []
+        for letter in string.ascii_uppercase:
+            root = f"{letter}:\\"
+            try:
+                present = Path(root).exists()
+            except OSError:
+                present = False
+            if present:
+                entries.append(FsTreeEntry(name=root, path=root, has_git=False, denied=False))
+        return entries
+    return [FsTreeEntry(name="/", path="/", has_git=False, denied=False)]
+
+
+def _fs_dir_entries(target: Path) -> tuple[list[FsTreeEntry], bool]:
+    """列 target 下**仅子目录**（跳过文件），按名排序；逐条 try/except 探测 has_git/denied，
+    一个坏目录不炸整层；超 _FS_TREE_MAX 截断。永不读文件内容；符号链接/junction 只列不跟。"""
+    try:
+        scanner = os.scandir(target)
+    except OSError:
+        # 整层打不开（权限/IO/不存在）→ 空层；父层已可就该目录标 denied。
+        return [], False
+    rows: list[FsTreeEntry] = []
+    with scanner:
+        for entry in scanner:
+            row = _fs_scan_entry(entry)
+            if row is not None:
+                rows.append(row)
+    rows.sort(key=lambda e: e.name)
+    if len(rows) > _FS_TREE_MAX:
+        return rows[:_FS_TREE_MAX], True
+    return rows, False
+
+
+def _fs_scan_entry(entry: os.DirEntry[str]) -> FsTreeEntry | None:
+    """单条目：文件 → None（不列）；目录 → FsTreeEntry；探测异常 → denied 降级但仍出现。"""
+    try:
+        # DirEntry.is_dir 用父层列举信息（通常无需 stat 子目录本身）；follow_symlinks 默认真：
+        # 指向目录的 junction/符号链接列为目录（单层查询天然无递归，只列不跟）。
+        is_dir = entry.is_dir()
+    except OSError:
+        # 类型判定失败（reparse/IO/权限）→ 保守列出并标 denied，绝不吞掉该条。
+        return FsTreeEntry(name=entry.name, path=entry.path, has_git=False, denied=True)
+    if not is_dir:
+        return None
+    denied = False
+    try:
+        has_git = (Path(entry.path) / ".git").exists()  # worktree 的 .git 是文件也算
+    except OSError:
+        has_git = False
+        denied = True
+    return FsTreeEntry(name=entry.name, path=entry.path, has_git=has_git, denied=denied)

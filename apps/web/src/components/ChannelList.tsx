@@ -8,6 +8,7 @@ import type { ChannelPublic, MemberPublic, NotificationMode, PresenceEntry } fro
 
 import { Avatar } from './Avatar';
 import { NewChannelModal } from './NewChannelModal';
+import { ProjectSidebarSection } from './ProjectSidebarSection';
 import { badgeStyle } from '../lib/notify';
 
 export interface ChannelListProps {
@@ -23,6 +24,8 @@ export interface ChannelListProps {
   onPlayTimeline?: () => void;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  // PS-WT ①：仅 admin 渲染侧栏「项目」区（GET /projects 是 admin 面）。
+  canManageProjects?: boolean;
 }
 
 export function ChannelList(props: ChannelListProps) {
@@ -41,6 +44,13 @@ export function ChannelList(props: ChannelListProps) {
 
   return (
     <aside className={`chlist${props.mobileOpen ? ' mobile-open' : ''}`}>
+      {/* PS-WT ① 侧栏「项目」区（置于 CHANNELS 之上；仅 admin 渲染）。 */}
+      <ProjectSidebarSection
+        channels={channels}
+        activeChannelId={activeChannelId}
+        onSelectChannel={selectChannel}
+        canManage={props.canManageProjects ?? false}
+      />
       <div className="grp">Channels</div>
       {roomChannels.map((ch) => {
         const n = unreadCount(ch);

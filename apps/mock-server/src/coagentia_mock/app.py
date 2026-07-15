@@ -989,6 +989,88 @@ async def get_usage(level: UsageLevel = UsageLevel.TASK, ref: str | None = None,
     return report
 
 
+# ---------------------------------------------------- PS-WT 目录浏览/工作树管理台（纯形状）
+#
+# 登记：mock 只验形状不做业务（纪律 4）——真盘符枚举/worktrees_dir 扫描/合账矩阵/CAS 清理/
+# 护栏（worktrees_dir 边界、ULID 命名过滤）全活真 server/daemon。此处仅喂 OpenAPI→rest.ts。
+
+
+def _mock_worktree(worktree_id: str | None = None, *, status: str = "cleaned") -> dict[str, Any]:
+    return {
+        "id": worktree_id or new_id(), "workspace_id": store.workspace["id"],
+        "project_id": new_id(), "task_id": new_id(),
+        "branch": "coagentia/task-mock", "path": r"C:\coagentia\worktrees\p\t",
+        "status": status, "merge_commit": "0" * 40 if status == "merged" else None,
+        "created_at": now_ts(), "merged_at": now_ts() if status == "merged" else None,
+        "cleaned_at": now_ts() if status == "cleaned" else None,
+    }
+
+
+@app.get("/api/computers/{computer_id}/fs", response_model=daemon.FsTreeReply)
+async def browse_fs(computer_id: str, path: str | None = None) -> Any:
+    """computer 级只读目录浏览（选择仓库路径）：mock 回固定两层形状；真盘符枚举活真 daemon。"""
+    if path is None:
+        return {"entries": [
+            {"name": "C:\\", "path": "C:\\", "has_git": False, "denied": False},
+            {"name": "D:\\", "path": "D:\\", "has_git": False, "denied": False},
+        ], "truncated": False}
+    return {"entries": [
+        {"name": "coagentia", "path": path.rstrip("\\/") + "\\coagentia",
+         "has_git": True, "denied": False},
+        {"name": "node_modules", "path": path.rstrip("\\/") + "\\node_modules",
+         "has_git": False, "denied": False},
+        {"name": "System Volume Information", "path": path.rstrip("\\/") + "\\svi",
+         "has_git": False, "denied": True},
+    ], "truncated": False}
+
+
+@app.get("/api/worktrees", response_model=rest.WorktreeConsoleReply)
+async def list_worktrees(live: int = 0) -> Any:
+    """工作树管理台读面（B §4.11 扩）：mock 回骨架 + 孤儿行形状；合账/live 字段活真 server。"""
+    computer_id = store.computers[0]["id"]
+    project_id = new_id()
+    items: list[dict[str, Any]] = [
+        {"id": new_id(), "project_id": project_id, "project_name": "CoAgentia mock",
+         "computer_id": computer_id, "task_id": new_id(), "task_title": "重构画布",
+         "channel_id": store.tasks[0]["channel_id"] if store.tasks else None,
+         "branch": "coagentia/task-a", "path": r"C:\wt\p\a", "status": "active",
+         "derived": "ok", "merge_commit": None, "created_at": now_ts(),
+         "merged_at": None, "cleaned_at": None,
+         "live": ({"dirty": True, "ahead": 0, "behind": 3, "head_commit": "abc1234"}
+                  if live else None)},
+        {"id": new_id(), "project_id": project_id, "project_name": "CoAgentia mock",
+         "computer_id": computer_id, "task_id": new_id(), "task_title": "修复登录",
+         "channel_id": None, "branch": "coagentia/task-b", "path": r"C:\wt\p\b",
+         "status": "merged", "derived": "ok", "merge_commit": "0" * 40,
+         "created_at": now_ts(), "merged_at": now_ts(), "cleaned_at": None, "live": None},
+    ]
+    if live:
+        items.append(
+            {"id": None, "project_id": project_id, "project_name": "CoAgentia mock",
+             "computer_id": computer_id, "task_id": new_id(), "task_title": None,
+             "channel_id": None, "branch": None, "path": r"C:\wt\p\orphan",
+             "status": None, "derived": "orphan", "merge_commit": None,
+             "created_at": None, "merged_at": None, "cleaned_at": None,
+             "live": {"dirty": False, "ahead": None, "behind": None, "head_commit": None}})
+    scans = ([{"computer_id": computer_id, "status": "ok"}] if live else [])
+    return {"items": items, "scans": scans}
+
+
+@app.post("/api/worktrees/{worktree_id}/cleanup", response_model=entities.WorktreePublic)
+async def cleanup_worktree(worktree_id: str) -> Any:
+    """清理登记的终态树（B §4.11 扩）：mock 回 cleaned 形状 + 广播；CAS/预览门/护栏活真 server。"""
+    worktree = _mock_worktree(worktree_id, status="cleaned")
+    await hub.broadcast(EventType.WORKTREE_UPDATED, None, {"worktree": worktree})
+    return worktree
+
+
+@app.post("/api/computers/{computer_id}/worktrees/cleanup-orphan",
+          response_model=rest.OrphanCleanupResult)
+async def cleanup_orphan(computer_id: str, body: rest.OrphanCleanup) -> Any:
+    """清理磁盘孤儿树（B §4.11 扩）：无 DB 行、不广播；mock 回 removed 形状，判定活真 server。"""
+    return {"project_id": body.project_id, "task_id": body.task_id, "removed": True}
+
+
 # ---------------------------------------------------------------- WS 与 mock 控制面
 
 

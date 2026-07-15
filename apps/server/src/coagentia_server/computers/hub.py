@@ -49,6 +49,7 @@ from coagentia_contracts.daemon import (
     DeployRunData,
     DiagnosticsBatchData,
     FrameKind,
+    FsTreeQuery,
     GitDiffQuery,
     HomeFileQuery,
     HomeTreeQuery,
@@ -68,6 +69,7 @@ from coagentia_contracts.daemon import (
     WakeRefs,
     WorktreeCleanupData,
     WorktreeEnsureData,
+    WorktreeScanQuery,
     WorktreeStatusData,
 )
 from coagentia_contracts.enums import (
@@ -87,6 +89,7 @@ from coagentia_contracts.enums import (
     TaskEventKind,
     TaskStatus,
     WakeReason,
+    WorktreeStatus,
 )
 from coagentia_contracts.ws import EventType
 from sqlalchemy import case, func, insert, select, update
@@ -2772,6 +2775,115 @@ class DaemonHub:
             # daemon 回帧（在线）只是 git 查询失败（坏 base ref 等）→ 4xx，非 503（#5）。
             raise GitQueryError(error)
         return reply
+
+    # -------------------------------------------------------- PS-WT 只读代理 + 清理（B §4.11 扩）
+
+    def query_fs_tree(self, *, computer_id: str, query: FsTreeQuery) -> dict[str, Any]:
+        """computer 级目录浏览只读代理（PS-WT；契约 D §6 FS_TREE）。仿 query_git_diff：无连接/
+        超时 → DaemonOffline（REST 收敛 503）。单条目权限/IO 异常在 daemon 侧逐条 denied/跳过，
+        不似 git.diff 存在「在线但查询失败」的 4xx 语义，故此处不引 GitQueryError。"""
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            raise DaemonOffline("daemon 离线")
+        return self._run_sync(self.send_query(conn, QueryType.FS_TREE, query))
+
+    def scan_worktrees(
+        self, computer_ids: Iterable[str]
+    ) -> dict[str, tuple[str, list[dict[str, Any]] | None]]:
+        """管理台 live=1 多机并发扫描 worktrees_dir（PS-WT；契约 D §6 WORKTREE_SCAN）。
+
+        逐机独立降级，一台掉线/超时不拖垮全部（各自 gather 结果）：无活跃连接 → ('offline', None)；
+        查询超时或连接失效 → ('timeout', None)；成功 → ('ok', entries)。并发发帧故总耗时≈单机
+        查询超时，不随机器数线性放大。"""
+        return self._run_sync(self._scan_worktrees_multi(list(computer_ids)))
+
+    async def _scan_worktrees_multi(
+        self, computer_ids: list[str]
+    ) -> dict[str, tuple[str, list[dict[str, Any]] | None]]:
+        async def _one(cid: str) -> tuple[str, tuple[str, list[dict[str, Any]] | None]]:
+            conn = self._conns.get(cid)
+            if conn is None:
+                return cid, ("offline", None)
+            try:
+                reply = await self.send_query(conn, QueryType.WORKTREE_SCAN, WorktreeScanQuery())
+            except DaemonOffline:
+                return cid, ("timeout", None)
+            entries = reply.get("entries") if isinstance(reply, dict) else None
+            return cid, ("ok", entries if isinstance(entries, list) else [])
+
+        results = await asyncio.gather(*(_one(cid) for cid in computer_ids))
+        return dict(results)
+
+    def dispatch_worktree_cleanup(
+        self, *, computer_id: str, task_id: str, project_id: str | None = None
+    ) -> str:
+        """管理台清理端点同步下发 WORKTREE_CLEANUP 并等 daemon ack（三段式中段：调用方此刻**不得
+        持写事务**，仅读门校验后下发；CR-M8 同族「跨进程同步等待不得跨持锁事务」）。
+
+        无连接/超时 → DaemonOffline（REST 收敛 503，DB 未动无幽灵态）。返回 ack.result：
+        'done'/'noop'（目录已不存在=幂等成功，登记态照常推进）/'failed'（win32 文件锁等，调用方
+        据此不推进登记）。project_id 供孤儿清理（DB 无登记行 → daemon 自拼 worktrees_dir 内路径）；
+        常规登记清理传 None 走 daemon 既有 task_id 反查（契约 D WorktreeCleanupData 语义）。"""
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            raise DaemonOffline("daemon 离线")
+        ack = self._run_sync(
+            self.send_instr(
+                conn,
+                f"worktree:{task_id}",
+                InstrType.WORKTREE_CLEANUP,
+                WorktreeCleanupData(task_id=task_id, project_id=project_id),
+            )
+        )
+        if ack is None:
+            raise DaemonOffline("worktree cleanup 未获 ack")
+        return ack.result.value
+
+    def finalize_console_cleanup(
+        self, *, task_id: str, computer_id: str
+    ) -> dict[str, Any] | None:
+        """管理台登记清理成功后条件 UPDATE + 广播（三段式③；另开 gateway_tx，不复用请求读快照，
+        避免 pysqlite 读快照与并发写的非串行化冲突）。
+
+        幂等收敛（对齐 _converge_worktree_cleaned）：worktree.status 是异步上报（L4a），daemon 报
+        cleaned 与本 CAS 谁先到不定序——行已 cleaned（上报先到或并发已清）→ 不重复广播直接返回
+        当前行；行 merged/conflicted → CAS（WHERE status IN merged/conflicted）收敛 cleaned +
+        emit worktree.updated；行不存在 → None（调用方 404）。"""
+        with gateway_tx(self._engine, self._bus) as tx:
+            row = (
+                tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id))
+                .mappings()
+                .first()
+            )
+            if row is None:
+                return None
+            if row["status"] == WorktreeStatus.CLEANED.value:
+                return dict(row)  # 幂等：已清（上报/并发），不重复广播
+            ts = now_iso()
+            tx.conn.execute(
+                update(_WORKTREE)
+                .where(
+                    _WORKTREE.c.task_id == task_id,
+                    _WORKTREE.c.status.in_(
+                        [WorktreeStatus.MERGED.value, WorktreeStatus.CONFLICTED.value]
+                    ),
+                )
+                .values(status=WorktreeStatus.CLEANED, cleaned_at=row["cleaned_at"] or ts)
+            )
+            new_row = dict(
+                tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id))
+                .mappings()
+                .one()
+            )
+            channel_id = tx.conn.execute(
+                select(_TASK.c.channel_id).where(_TASK.c.id == task_id)
+            ).scalar()
+            tx.emit(
+                EventType.WORKTREE_UPDATED,
+                channel_id,
+                {"worktree": worktree_public(new_row)},
+            )
+            return new_row
 
     # ---------------------------------------------------------------- 预览下发桥（M7 K3；B §13.1）
 

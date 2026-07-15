@@ -45,4 +45,15 @@ describe('wsBridge worktree.updated', () => {
     applyEnvelope(qc, envelope(WORKTREE));
     expect(qc.getQueryData(qk.taskDetail(TASK.id))).toBeUndefined();
   });
+
+  it('PS-WT ②：前缀失效工作树管理台两态（live=0/1）', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(qk.worktreesConsole(0), { items: [], scans: [] });
+    qc.setQueryData(qk.worktreesConsole(1), { items: [], scans: [] });
+
+    applyEnvelope(qc, envelope(WORKTREE));
+
+    expect(qc.getQueryState(qk.worktreesConsole(0))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(qk.worktreesConsole(1))?.isInvalidated).toBe(true);
+  });
 });
