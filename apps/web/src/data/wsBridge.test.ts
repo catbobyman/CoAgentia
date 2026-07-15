@@ -3,9 +3,9 @@
 // 否则 readPositionsMap 按 channel_id 折叠时 agent 覆盖 owner → 未读计数错。
 // 运行:pnpm -F @coagentia/web test
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { ChannelsSnapshot, Envelope, MemberPublic } from '@coagentia/contracts-ts';
+import type { ChannelsSnapshot, Envelope, MemberPublic, MessagePublic } from '@coagentia/contracts-ts';
 
 import { qk } from '../lib/queryKeys';
 import { readPositionsMap } from './queries';
@@ -74,5 +74,39 @@ describe('wsBridge read.updated owner-only 守卫(#6/#7)', () => {
     expect(() => applyEnvelope(qc, readUpdated(OWNER.id, 'msg_09'))).not.toThrow();
     const snap = qc.getQueryData<ChannelsSnapshot>(qk.channels());
     expect(readPositionsMap(snap)['ch_build']!.last_read_message_id).toBe('msg_05');
+  });
+});
+
+// M8b B-M8-2：线程实时收敛——携 thread_root_id 的 message.created 失效对应 qk.thread（O8 汇总摘要/
+// 阻断系统消息落线程，横幅/卡片靠此刷新）；顶级消息（无 thread_root_id）不失效任何线程。
+function messageCreated(msg: Partial<MessagePublic> & { id: string; channel_id: string }): Envelope {
+  return {
+    type: 'message.created',
+    channel_id: msg.channel_id,
+    workspace_id: 'ws_1',
+    seq: 2,
+    key: `k_${msg.id}`,
+    at: '2026-07-14T00:00:00Z',
+    data: { message: { kind: 'system', body: '', created_at: '2026-07-14T00:00:00Z', ...msg } },
+  } as Envelope;
+}
+
+describe('wsBridge message.created 线程失效', () => {
+  it('携 thread_root_id → 失效 qk.thread(root)', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    applyEnvelope(qc, messageCreated({ id: 'm_sum', channel_id: 'ch_1', thread_root_id: 'root_9' }));
+    expect(spy).toHaveBeenCalledWith({ queryKey: qk.thread('root_9') });
+  });
+
+  it('顶级消息（无 thread_root_id）→ 不失效任何线程', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    applyEnvelope(qc, messageCreated({ id: 'm_top', channel_id: 'ch_1' }));
+    const threadCalls = spy.mock.calls.filter(
+      ([arg]) => Array.isArray((arg as { queryKey?: unknown[] })?.queryKey)
+        && (arg as { queryKey: unknown[] }).queryKey[0] === 'thread',
+    );
+    expect(threadCalls).toHaveLength(0);
   });
 });

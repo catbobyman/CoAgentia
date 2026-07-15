@@ -1,7 +1,7 @@
 // P5 任务线程面板(420px):任务牌头 §2.2 + 契约折叠卡 §4.6 + 线程回复流(复用 MessageFlow)+ 状态操作条。
 // 由类型化深链 ?thread= 驱动(在 ChannelChatScreen 内消费,非顶层路由)。
 // M2 接真:opsbar 的 claim/unclaim/状态流转打真端点;契约/usage 用 useTaskDetail 真数据(成功靠 WS task.updated 回灌,无乐观更新)。
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowUp, ChevronDown, CircleAlert, GitBranch, ListTree, Sparkles, X } from 'lucide-react';
 
 import type {
@@ -20,6 +20,7 @@ import { TASK_TRANSITIONS, UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts'
 
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
 import { fmtTime } from '../lib/time';
+import { deriveO8Banner } from '../lib/summary';
 import { useProjects, useTaskDetail, useThread } from '../data/queries';
 import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
@@ -27,11 +28,14 @@ import { useUiStore } from '../lib/store';
 import { Avatar } from '../components/Avatar';
 import { DecomposeGuideModals, useDecompose } from '../components/DecomposeGuide';
 import { MessageFlow } from '../components/MessageFlow';
+import { SummaryBanner } from '../components/SummaryBanner';
+import { ForceStartModal } from '../components/ForceStartModal';
 import { Composer } from '../components/Composer';
 import { HeldDraftList } from './HeldDraftCard';
 import { DiffCard } from '../components/DiffCard';
 import { PreviewButton } from '../components/PreviewPanel';
 import '../components/diff-card.css';
+import '../components/summary.css';
 
 // 契约 kind → 中文短名(§4.6);loop_contract 归 Reminder 上岗流程,不在任务线程契约卡出现。
 const CONTRACT_KIND_LABEL: Record<ContractKind, string> = {
@@ -212,10 +216,17 @@ export function ThreadPanel({
   const toast = useToast();
   const [stOpen, setStOpen] = useState(false);
   const [draftOpen, setDraftOpen] = useState(false);
+  // O8 协调阻断恢复弹层（B-M8-2 ①）：force-start 汇总任务同事务 recover（归零轮/stall，清 blocked_at）。
+  const [recoverOpen, setRecoverOpen] = useState(false);
   // T7(HANDOFF_INCOMPLETE)就地提示:缺失字段列表,非通用 toast(交互 §5.4)。
   const [handoffMissing, setHandoffMissing] = useState<string[] | undefined>(undefined);
 
   const items = threadQ.data ?? [];
+  // O8 汇总任务线程横幅（B-M8-2 ①）：从线程系统消息体派生协调态（零新端点）。非汇总线程 → null。
+  const o8Banner = useMemo(
+    () => deriveO8Banner(items, (id) => memberById[id]?.kind === 'human'),
+    [items, memberById],
+  );
   // 任务线程：root 内容由任务牌头呈现，回复流去掉 root；普通消息线程（F5-④ 泛化）：无任务牌，
   // root 直接进流在最上（回复不进主流，PRD §4.1）。
   const replies = task ? items.filter((m) => m.id !== rootMessageId) : items;
@@ -367,6 +378,14 @@ export function ThreadPanel({
           </div>
         )}
       </header>
+
+      {/* O8 汇总协调横幅（B-M8-2 ①）：仅汇总任务线程（含 O8 系统消息）显示；阻断态挂 force-start 恢复。 */}
+      {task && o8Banner && (
+        <SummaryBanner
+          banner={o8Banner}
+          onRecover={o8Banner.kind === 'blocked' ? () => setRecoverOpen(true) : undefined}
+        />
+      )}
 
       {task && (task.writes_code || detail?.worktree) && (
         <section className="delivery-card" aria-label="交付工作树">
@@ -528,6 +547,9 @@ export function ThreadPanel({
       ) : (
         <Composer channelName="thread" variant="panel" hideAsTask onSend={(body) => onSend(body)} />
       )}
+
+      {/* O8 阻断恢复：force-start 汇总任务 → 同事务 recover（裁决 #8）。复用 override 二次确认弹层。 */}
+      {recoverOpen && task && <ForceStartModal task={task} onClose={() => setRecoverOpen(false)} />}
 
       {/* M6b 拆解引导链（T2 路径的 409/503 引导；创建完成 toast 引导重新点击「拆解」）。 */}
       <DecomposeGuideModals

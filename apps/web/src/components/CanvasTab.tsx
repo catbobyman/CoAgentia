@@ -20,7 +20,7 @@ import {
 import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react';
 import {
   Check, ChevronDown, CircleAlert, Eye, GitMerge, LayoutTemplate, ListTree, Lock, Play, Plus, RefreshCw,
-  Rocket, Save, Terminal, Trash2, Workflow,
+  Rocket, Save, Terminal, Trash2, Workflow, X,
 } from 'lucide-react';
 
 import type {
@@ -37,6 +37,7 @@ import type {
   TaskPlanBody,
   TaskPublic,
   TaskStatus,
+  UpstreamPolicy,
   VerifyBy,
 } from '@coagentia/contracts-ts';
 
@@ -77,6 +78,9 @@ export type TaskNodeData = {
   activity?: string;
   blocked: boolean;
   selected: boolean;
+  // O8（B-M8-2 ②）：汇总节点标识 + W9 放行档；partial 档给 badge 标注（strict 默认不标注）。
+  isSummary?: boolean;
+  upstreamPolicy?: UpstreamPolicy;
 };
 export type SystemNodeData = {
   kind: 'system';
@@ -85,6 +89,7 @@ export type SystemNodeData = {
   title: string;
   blocked: boolean;
   selected: boolean;
+  upstreamPolicy?: UpstreamPolicy;
 };
 
 // ---- 纯展示卡(不含 Handle,便于脱离 ReactFlow context 单测渲染)
@@ -98,6 +103,12 @@ export function TaskNodeCard({ data: d }: { data: TaskNodeData }) {
       <div className="hd">
         <span className="no">#{d.number}</span>
         <span className="ti">{d.title}</span>
+        {d.isSummary && (
+          <span className="node-badge summary" data-testid="node-summary-badge" title="汇总节点">汇总</span>
+        )}
+        {d.upstreamPolicy === 'partial' && (
+          <span className="node-badge partial" data-testid="node-partial-badge" title="W9 partial 放行：上游全部到达终态即放行">partial</span>
+        )}
       </div>
       <div className="mt">
         {d.ownerName && <Avatar name={d.ownerName} presence={d.ownerPresence} size="nav" />}
@@ -136,6 +147,9 @@ export function SystemNodeCard({ data: d, onRetry, onShowOutput, busy = false }:
           <span className="sttl">{d.title}</span>
           <span className="sst">{d.status}</span>
         </div>
+        {d.upstreamPolicy === 'partial' && (
+          <span className="node-badge partial" data-testid="node-partial-badge" title="W9 partial 放行：上游全部到达终态即放行">partial</span>
+        )}
       </div>
       {(d.status === 'failed' || canShowOutput) && (
         <div className="sactions nodrag nowheel" onClick={(e) => e.stopPropagation()}>
@@ -238,6 +252,7 @@ export function buildCanvasModel(
         title: systemTitle(n),
         blocked: isBlocked,
         selected: isSel,
+        upstreamPolicy: n.upstream_policy,
       };
       return { id: n.id, type: 'system', position, data };
     }
@@ -254,6 +269,8 @@ export function buildCanvasModel(
       activity: presence?.status === 'busy' ? presence.busy_detail ?? undefined : undefined,
       blocked: isBlocked,
       selected: isSel,
+      isSummary: n.is_summary,
+      upstreamPolicy: n.upstream_policy,
     };
     return { id: n.id, type: 'task', position, data };
   });
@@ -636,6 +653,16 @@ function CanvasInner({ channelId, tasks, members, presence, messages = [], searc
             onClose={() => setActiveDelta(channelId, null)}
           />
         )}
+        {/* O8 节点检视器（B-M8-2 ③）：选中节点且无草稿/delta overlay 时浮出，展示/改 W9 放行档。 */}
+        {selNode && canvasId && !activeDraftId && !activeDeltaId && (
+          <NodeInspector
+            node={selNode}
+            title={nodeLabel(selNode, taskById)}
+            canvasId={canvasId}
+            onClose={() => setSearch({ node: undefined })}
+            onError={onCanvasError}
+          />
+        )}
       </div>
 
       {newOpen && canvasId && (
@@ -916,6 +943,73 @@ export function SystemNodeModal({ canvasId, nodes = [], tasks = [], onClose, onE
           <button type="button" className="btn btn-primary" disabled={!valid || busy} onClick={() => void submit()}>创建系统节点</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// O8 节点详情检视器（B-M8-2 ③）：选中节点时浮出——展示身份 + W9 放行档（upstream_policy），人类可
+// 一键改档（strict↔partial，patch_node 通道；O9 门在 server 挡 Agent，人类 UI 不受限 C5）。改档不参与
+// 基线快照，靠 canvas.node_updated WS 反流刷新（无乐观更新）。partial = 上游全部到达终态即放行（含
+// closed/failed），汇总节点落地默认 partial（防单点卡死全 DAG，W9）。
+export function NodeInspector({ node, title, canvasId, onClose, onError }: {
+  node: CanvasNodePublic;
+  title: string;
+  canvasId: string;
+  onClose: () => void;
+  onError: (e: unknown) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const policy: UpstreamPolicy = node.upstream_policy ?? 'strict';
+  const setPolicy = (next: UpstreamPolicy) => {
+    if (busy || next === policy) return;
+    setBusy(true);
+    // 成功刷新靠 canvas.node_updated 反流（无乐观更新）；403 rule=O9 等由 onError 组 toast。
+    void api
+      .patchCanvasNode(canvasId, node.id, { upstream_policy: next })
+      .catch(onError)
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="node-inspector" role="dialog" aria-label="节点详情" data-testid="node-inspector">
+      <div className="ni-head">
+        <span className="ni-title">{title}</span>
+        {node.is_summary && <span className="node-badge summary">汇总</span>}
+        <button type="button" className="ni-close" aria-label="关闭节点详情" onClick={onClose}>
+          <X />
+        </button>
+      </div>
+      <div className="ni-field">
+        <span className="ni-lb">上游放行档 (W9)</span>
+        <div className="ni-seg" role="radiogroup" aria-label="上游放行档">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={policy === 'strict'}
+            data-testid="policy-strict"
+            className={policy === 'strict' ? 'active' : ''}
+            disabled={busy}
+            onClick={() => setPolicy('strict')}
+          >
+            strict
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={policy === 'partial'}
+            data-testid="policy-partial"
+            className={policy === 'partial' ? 'active' : ''}
+            disabled={busy}
+            onClick={() => setPolicy('partial')}
+          >
+            partial
+          </button>
+        </div>
+      </div>
+      <p className="ni-hint">
+        {policy === 'partial'
+          ? '上游全部到达终态即放行（含 closed/failed）——防单点卡死；未 Done 的上游进未覆盖清单。'
+          : '上游必须全部 Done/success 才放行（默认）。'}
+      </p>
     </div>
   );
 }

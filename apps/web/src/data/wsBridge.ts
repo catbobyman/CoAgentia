@@ -71,6 +71,12 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       // 消息可能携带文件绑定而 channelFiles 无专属事件——失效让文件页签/消息流附件卡
       // 在停留会话中收敛(M2 二轮 review:Agent 交付文件不实时)。仅激活观察者才 refetch。
       void qc.invalidateQueries({ queryKey: qk.channelFiles(message.channel_id) });
+      // 线程回复实时收敛（qk.thread 是独立 GET 缓存，非 qk.messages 派生）：携 thread_root_id 的新消息
+      // 失效对应线程查询——打开的线程面板即时收到回复（O8 汇总摘要/阻断系统消息落线程，横幅/摘要卡
+      // 靠此实时刷新；未打开的线程零额外请求）。
+      if (message.thread_root_id) {
+        void qc.invalidateQueries({ queryKey: qk.thread(message.thread_root_id) });
+      }
       break;
     }
 

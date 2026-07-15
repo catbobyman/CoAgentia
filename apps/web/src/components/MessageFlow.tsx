@@ -8,13 +8,16 @@ import type { MemberPublic, MessagePublic, PresenceEntry, TaskPublic } from '@co
 
 import { PRESENCE_VAR } from '../lib/uiMaps';
 import { stripControl } from '../lib/decomposition';
+import { isSummaryMessage } from '../lib/summary';
 import { renderBody } from '../lib/render';
 import { fmtDate, fmtTime } from '../lib/time';
 import { Avatar } from './Avatar';
 import { AttachCard } from './AttachCard';
 import { DeploymentCard } from './DeploymentCard';
 import { ProposalCard } from './ProposalCard';
+import { SummaryCard } from './SummaryCard';
 import { TaskChip } from './TaskChip';
+import './summary.css';
 
 export interface MessageFlowProps {
   messages: MessagePublic[];
@@ -142,6 +145,8 @@ export function MessageFlow(props: MessageFlowProps) {
         // JSON 泄漏进人类会话;剥空则给占位说明。提案卡单独渲染(isProposal)。
         const isProposal = m.card_kind === 'proposal' && !!m.card_ref;
         const isDeployment = m.card_kind === 'deployment' && !!m.card_ref;
+        // O8 汇总输入摘要（B-M8-2 ④）：无 card_kind 的系统消息，按体首行头识别 → 结构化卡片替代纯文本。
+        const isSummary = m.kind === 'system' && !m.card_kind && isSummaryMessage(m.body);
         const hasControl = m.body.includes('<control>');
         const stripped = hasControl ? stripControl(m.body) : m.body;
         const bodyText = hasControl && stripped === ''
@@ -155,10 +160,14 @@ export function MessageFlow(props: MessageFlowProps) {
             )}
             {m.kind === 'system' ? (
               <div className="system-entry">
-                <div className="sysmsg">
-                  <span className="sys">系统</span>
-                  <span dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
-                </div>
+                {isSummary ? (
+                  <SummaryCard body={m.body} />
+                ) : (
+                  <div className="sysmsg">
+                    <span className="sys">系统</span>
+                    <span dangerouslySetInnerHTML={{ __html: renderBody(m.body, memberNames, meName) }} />
+                  </div>
+                )}
                 {/* M7b 部署结果卡（card_kind=deployment，结果卡走系统消息）：card_ref = deployment_id。 */}
                 {isDeployment && <DeploymentCard deploymentId={m.card_ref!} />}
                 {task && m.card_kind === 'merge_conflict' ? (
