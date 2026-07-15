@@ -4,7 +4,7 @@
 // F4：设置图标 → 工作区设置弹窗；主题图标 → 翻转 ui_theme（本地即时切 + PATCH 落库，失败回滚）。
 import { useState } from 'react';
 import {
-  Activity, ListTodo, Menu, Monitor, Search, Settings, SunMoon, Users,
+  Activity, GitBranch, ListTodo, Menu, Monitor, Search, Settings, SunMoon, Users,
 } from 'lucide-react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 
@@ -96,6 +96,11 @@ export function Rail({ meName, onToggleChannels }: {
         active={pathname.startsWith('/computers')}
         onClick={() => void navigate({ to: '/computers' })}
       ><Monitor /></RailItem>
+      <RailItem
+        label="工作树"
+        active={pathname.startsWith('/worktrees')}
+        onClick={() => void navigate({ to: '/worktrees' })}
+      ><GitBranch /></RailItem>
       <div className="sp" />
       <RailItem label="工作区设置" onClick={() => setSettingsOpen(true)}><Settings /></RailItem>
       <RailItem label="主题切换" onClick={toggleTheme}><SunMoon /></RailItem>

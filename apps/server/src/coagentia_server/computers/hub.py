@@ -49,6 +49,7 @@ from coagentia_contracts.daemon import (
     DeployRunData,
     DiagnosticsBatchData,
     FrameKind,
+    FsTreeQuery,
     GitDiffQuery,
     HomeFileQuery,
     HomeTreeQuery,
@@ -68,6 +69,7 @@ from coagentia_contracts.daemon import (
     WakeRefs,
     WorktreeCleanupData,
     WorktreeEnsureData,
+    WorktreeScanQuery,
     WorktreeStatusData,
 )
 from coagentia_contracts.enums import (
@@ -87,6 +89,7 @@ from coagentia_contracts.enums import (
     TaskEventKind,
     TaskStatus,
     WakeReason,
+    WorktreeStatus,
 )
 from coagentia_contracts.ws import EventType
 from sqlalchemy import case, func, insert, select, update
@@ -133,6 +136,7 @@ _DIAG = models.tbl(models.DiagnosticEvent)
 _USAGE = models.tbl(models.TokenUsageEvent)
 _TASK = models.tbl(models.Task)
 _TASK_EVENT = models.tbl(models.TaskEvent)
+_CANVAS = models.tbl(models.Canvas)
 _CANVAS_NODE = models.tbl(models.CanvasNode)
 _REMINDER = models.tbl(models.Reminder)
 _HELD = models.tbl(models.HeldDraft)
@@ -185,6 +189,12 @@ def _deploy_result_body(row: dict[str, Any]) -> str:
 # 最后已知态里"应存活"的期望集合（对账 #2 自动 resume 的触发条件，契约 D §4.4）。
 _RESUMABLE = {AgentStatus.STARTING.value, AgentStatus.IDLE.value, AgentStatus.BUSY.value}
 _DELIVERABLE = {AgentStatus.IDLE.value, AgentStatus.BUSY.value}
+
+# B-1 ②′ 解锁主动唤醒：系统消息 body 固定前缀 = 节点/线程级幂等标记（kind=SYSTEM 且线程内至多一
+# 任务 → 至多一条，作者恒 None 人类不可伪造，前缀 like 判存在即『是否已通知过』，无需新表/新列）。
+_UNBLOCK_PREFIX = "上游已全部完成"
+# 任务终态集（解锁唤醒对已终态任务无意义——与 W9 terminal 判据一致，done/closed）。
+_TERMINAL_TASK = {TaskStatus.DONE.value, TaskStatus.CLOSED.value}
 
 _ACTIVITY_THROTTLE_SEC = 0.5  # 契约 D §7：server ≥500ms 节流转发 agent.activity
 _LAST_SEEN_THROTTLE_SEC = 60  # 契约 D §2：last_seen_at 写库节流
@@ -309,6 +319,7 @@ class DaemonHub:
         self._worktree_locks: dict[str, asyncio.Lock] = {}
         self._system_node_locks: dict[str, asyncio.Lock] = {}
         self._summary_node_locks: dict[str, asyncio.Lock] = {}  # L8：汇总协调轮串行
+        self._unblock_task_locks: dict[str, asyncio.Lock] = {}  # B-1 ②′：解锁唤醒按任务串行
         self._system_pending: dict[str, tuple[tuple[str, str], str]] = {}
         # L4a：_system_pending 现被 loop 侧协程（_drive_system_node）与 writer 线程侧上报处理
         # （worktree/check 完成后 pop）并发访问 → threading.Lock 守全部读改写（GIL 只保单 op 原子，
@@ -392,6 +403,11 @@ class DaemonHub:
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_summary_nodes(channel_id)
                 )
+                # B-1 ②′ 解锁主动唤醒：上游终态 → 下游节点解除 blocked 但锚点无 mention → 补发
+                # @建议人唤醒（节点级幂等，与 summary/worktree 扫描同触发面）。
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_unblocked_nodes(channel_id)
+                )
             if event.type == EventType.TASK_UPDATED and task.get("writes_code"):
                 if task.get("id") and change.get("kind") in {
                     TaskEventKind.CLAIM.value,
@@ -426,6 +442,12 @@ class DaemonHub:
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_summary_nodes(channel_id)
                 )
+                # B-1 ②′：人类经 REST 删边/删节点（非落地路径）可解除下游 blocked → 与 summary 扫描
+                # 同触发面补发解锁唤醒（落地期由 _scan_channel_unblocked_nodes 内 in_progress 门抑
+                # 制，故 delta 步事务的 edge_removed 不会过早触发）。
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_unblocked_nodes(channel_id)
+                )
             return
         # J9 落地执行器低延迟触发：confirm 建批（landing.started）与直落转态（proposal.updated
         # status=landing）即刻领批执行；周期 _landing_loop 兜崩溃恢复（对账 #4）。
@@ -451,6 +473,10 @@ class DaemonHub:
                 # 落地完成即结构进展 → 汇总协调续算一轮（delta 落地后新一版摘要）。
                 loop.call_soon_threadsafe(
                     self._spawn, self._scan_channel_summary_nodes(channel_id)
+                )
+                # B-1 ②′：delta 落地（删边/新结构）可能解除既有下游节点 blocked → 补发解锁唤醒。
+                loop.call_soon_threadsafe(
+                    self._spawn, self._scan_channel_unblocked_nodes(channel_id)
                 )
             # L9 质量回路：带调整落地 → GUARD_FEEDBACK 直投 proposer（提交后，daemon 离线静默）。
             batch = event.data.get("batch") or {}
@@ -1489,11 +1515,10 @@ class DaemonHub:
                 return
             msg = dict(msg)
             channel = dict(channel)
-            # 投递 gating（裁决 2）：本消息属 blocked 任务线程 → 压制唤醒与投递（含 busy 直投），
-            # 消息留积压，解除阻塞后随后续触发/对账投递。gating 与 msg 绑定（与收件 Agent 无关），
-            # 故一算即对全体收件人生效，直接短路。
-            if canvas_service.message_delivery_gated(c, msg):
-                return
+            # 投递 gating（裁决 2 / B-1 ②′）：本消息若属 blocked 线程 → 不因它起唤醒、不投它本身,
+            # 但**不短路**（旧版在此 return，会连带扣住同批前缀里非 gated 消息的 busy 冲洗）。gated
+            # 由下方 _filter_agent_delivery 跳过（不入前缀 → in_prefix=False → 无唤醒理由），
+            # 前缀里非 gated 消息照常向 busy Agent 冲洗——避免一条 gated 新消息误伤整批投递。
             recipients = self._channel_agent_recipients(c, channel_id)
         for agent_id, computer_id in recipients:
             conn = self._conns.get(computer_id)
@@ -1540,23 +1565,30 @@ class DaemonHub:
     def _filter_agent_delivery(
         self, c: Connection, raw: list[dict[str, Any]], agent_id: str
     ) -> tuple[list[dict[str, Any]], str | None]:
-        """gating（blocked 线程）叠加 worktree path fail-closed；只投**连续前缀**，被扣消息与其后
-        消息都不得推进水位。必须只投连续前缀：daemon 按频道最大 message_id 去重，若越过 held 先投
-        later，解锁后的早消息会被 noop 永久漏投——故遇首个 gated/held 即停（#7 权衡：延迟不丢）。"""
+        """投递过滤（B-1 ②′：gating 改「跳过不截断」，worktree path fail-closed 仍「截断」）。
+
+        - **gating（blocked 线程）→ 跳过不投、不截断前缀**：blocked 内容仍不投（M3b 防抢跑保留），
+          后续非 gated 消息照常投递、水位推进到实投最大 id——根除「首个 blocked 锚点截断整条前缀
+          （含『已落地』@唤醒）→ 全频道 Agent 饿死」的死锁（M8 realtest B-1）。被跳过消息水位越过
+          后不再推送，由 F5（Agent get_thread 拉取）+ 解锁主动唤醒（发全新 @建议人消息）双面兜底。
+        - **worktree path 未就绪（delivery_waits_for_directory）→ 截断**：被扣消息是 activation 载
+          体、无替代唤醒面，仍须只投连续前缀（daemon 按频道最大 id 去重，越过它先投 later 会让解
+          锁后早消息 noop 漏投），遇首个即停（#7 权衡：延迟不丢）。
+        - **批尾连续 gated → 水位止于最后实投消息**（watermark 只在 append 推进）：不越过未投尾巴，
+          防「尾巴解锁后被水位吞」（由后续投递重评或解锁唤醒兜底）。"""
         deliver: list[dict[str, Any]] = []
         watermark: str | None = None
-        hit_held = False
+        truncated = False
         for message in raw:
-            if hit_held:
+            if truncated:
                 continue
-            held = canvas_service.message_delivery_gated(
-                c, message
-            ) or worktree_service.delivery_waits_for_directory(
+            if canvas_service.message_delivery_gated(c, message):
+                continue  # gated → 跳过不投、不截断（水位由后续实投消息推进）
+            if worktree_service.delivery_waits_for_directory(
                 c, agent_member_id=agent_id, message=message
-            )
-            if held:
-                hit_held = True
-                continue
+            ):
+                truncated = True
+                continue  # worktree path 未就绪 → 截断其后全部（无替代唤醒面，#7 延迟不丢）
             deliver.append(message)
             watermark = message["id"]
         return deliver, watermark
@@ -2191,6 +2223,159 @@ class DaemonHub:
                 body=body,
             )
 
+    async def _scan_channel_unblocked_nodes(self, channel_id: str) -> None:
+        """B-1 ②′ 解锁主动唤醒扫描：上游到达终态后，下游 agent 节点解除 blocked，却无唤醒载体——
+        锚点无 mention 行、其旧消息已在投递水位下不重投（②′ 跳过语义）——故为**每个有入边、已解除
+        blocked、尚未认领、有建议人、未通知过**的节点在其任务线程发一条 @建议人系统消息（system+
+        mention = REMINDER 触发，走正常投递唤醒）。
+
+        入边判据把入口节点排除（它们在落地『已落地』消息已 @ 激活）；owner 非空判据把已认领节点排除
+        （其目录消息+唤醒由 worktree 激活路径 _notify_active_task_owner 接管）；节点级幂等由批预筛 +
+        _notify_node_unblocked 内的消息存在性判定 + 任务级锁三重保证（重复 task 终态 / 重连对账重扫
+        不重发、并发扫描不双发）。"""
+        with self._engine.connect() as c:
+            # 落地期抑制（与 _scan_channel_system_nodes 同源，防返工锚点）：running 批的截断中间图
+            # （delta 先删后加的 remove 步已提交、add 步未跑）会让下游节点**瞬时**解除 blocked，此时
+            # 补发唤醒是过早（防抢跑窗口，且幂等消息一旦发出不可撤）。批 :done 的 LANDING_COMPLETED
+            # 再扫（其时 landing 已非 in_progress）。
+            if system_node_service.channel_landing_in_progress(c, channel_id):
+                return
+            canvas = c.execute(
+                select(_CANVAS.c.id).where(_CANVAS.c.channel_id == channel_id)
+            ).first()
+            if canvas is None:
+                return
+            canvas_id = canvas[0]
+            nodes = canvas_service.fetch_nodes(c, canvas_id)
+            if not nodes:
+                return
+            blocked = canvas_service.blocked_node_ids(c, canvas_id)
+            has_upstream = {to for _frm, to in canvas_service.edge_pairs(c, canvas_id)}
+            suggested_by_task = {
+                n["task_id"]: n["suggested_owner"]
+                for n in nodes
+                if n["task_id"] is not None  # agent 节点（CheckConstraint：agent ⇔ task_id 非空）
+                and n["suggested_owner"] is not None
+                and n["id"] in has_upstream  # 有上游 → 排除入口节点（『已落地』已 @ 激活）
+                and n["id"] not in blocked  # 已解除 blocked
+            }
+            if not suggested_by_task:
+                return
+            # 批预筛（perf）：用已开读连接一次剔除已认领/终态/线程已有解锁消息的候选，避免逐节点开
+            # 写事务空转——串行链每次 task 终态会重扫全部已通知节点，否则 O(N²) 连接/查询。
+            pending = self._unblock_pending(c, list(suggested_by_task))
+        for task_id in pending:
+            await self._notify_node_unblocked(task_id, suggested_by_task[task_id])
+
+    def _unblock_pending(self, c: Connection, task_ids: list[str]) -> list[str]:
+        """批预筛：候选任务中剔除已认领/终态/线程已有解锁消息者，返回待发 task_id（保留输入序）。"""
+        rows = c.execute(
+            select(
+                _TASK.c.id, _TASK.c.owner_member_id, _TASK.c.status, _TASK.c.root_message_id
+            ).where(_TASK.c.id.in_(task_ids))
+        ).all()
+        root_by_task = {
+            r[0]: r[3] for r in rows if r[1] is None and r[2] not in _TERMINAL_TASK
+        }
+        if not root_by_task:
+            return []
+        notified = set(
+            c.execute(
+                select(_MSG.c.thread_root_id).where(
+                    _MSG.c.thread_root_id.in_(list(root_by_task.values())),
+                    _MSG.c.kind == MessageKind.SYSTEM.value,
+                    _MSG.c.body.like(f"{_UNBLOCK_PREFIX}%"),
+                )
+            ).scalars()
+        )
+        return [t for t in task_ids if t in root_by_task and root_by_task[t] not in notified]
+
+    async def _scan_workspace_unblocked_nodes(self, workspace_id: str) -> None:
+        """B-1 ②′ 崩溃兜底（对账层）：重连握手 + 周期对账逐带画布频道补扫解锁唤醒——覆盖「task 终态
+        事件已提交、但其触发的解锁扫描因崩溃/错过未跑完」的窗口。消息存在性幂等 → 重扫不重发。"""
+        with self._engine.connect() as c:
+            channel_ids = list(
+                c.execute(
+                    select(_CANVAS.c.channel_id).where(_CANVAS.c.workspace_id == workspace_id)
+                ).scalars()
+            )
+        for channel_id in channel_ids:
+            await self._scan_channel_unblocked_nodes(channel_id)
+
+    def _unblock_lock(self, task_id: str) -> asyncio.Lock:
+        lock = self._unblock_task_locks.get(task_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._unblock_task_locks[task_id] = lock
+        return lock
+
+    async def _notify_node_unblocked(self, task_id: str, suggested_owner: str) -> None:
+        """解锁唤醒：任务线程发一条 @建议人系统消息（线程/节点级幂等恰一条）。仅当任务未认领（owner
+        空）、未终态、建议人仍在册 Agent、线程内尚无同款解锁消息（body 前缀 _UNBLOCK_PREFIX）才发。
+
+        幂等三重保证（read-then-insert 无唯一约束 → 遵 CAS 纪律做结构化保护）：① 任务级 async 锁串行
+        并发扫描（同 _drive_system_node/_drive_summary_node）；② 锁内消息存在性复核；③ 复核→insert
+        临界区**无 await**（不得插入，否则破坏原子性）。与契约 D §4.4『force-start 后 server 补发
+        wake』的恢复哲学同构（gating 推进即补发唤醒）。"""
+        async with self._unblock_lock(task_id):
+            self._notify_node_unblocked_tx(task_id, suggested_owner)
+
+    def _notify_node_unblocked_tx(self, task_id: str, suggested_owner: str) -> None:
+        """锁内同步临界区（不得含 await——保证消息存在性复核到 insert 之间原子）。"""
+        with gateway_tx(self._engine, self._bus) as tx:
+            row = (
+                tx.conn.execute(
+                    select(
+                        _TASK.c.workspace_id,
+                        _TASK.c.channel_id,
+                        _TASK.c.root_message_id,
+                        _TASK.c.owner_member_id,
+                        _TASK.c.status,
+                        _TASK.c.number,
+                        _TASK.c.title,
+                    ).where(_TASK.c.id == task_id)
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                return
+            if row["owner_member_id"] is not None:
+                return  # 已认领 → 唤醒/目录由 worktree 激活路径接管
+            if row["status"] in _TERMINAL_TASK:
+                return  # 已终态 → 唤醒无意义
+            name = tx.conn.execute(
+                select(_MEMBER.c.name).where(
+                    _MEMBER.c.id == suggested_owner,
+                    _MEMBER.c.removed_at.is_(None),
+                    _MEMBER.c.kind == MemberKind.AGENT.value,
+                )
+            ).scalar()
+            if name is None:
+                return  # 建议人已软删 / 非 Agent → 不 @（无有效唤醒目标）
+            # 节点/线程级幂等：本任务线程已有解锁系统消息（body 前缀标记）→ 不重发。
+            already = tx.conn.execute(
+                select(_MSG.c.id).where(
+                    _MSG.c.thread_root_id == row["root_message_id"],
+                    _MSG.c.kind == MessageKind.SYSTEM.value,
+                    _MSG.c.body.like(f"{_UNBLOCK_PREFIX}%"),
+                )
+            ).first()
+            if already is not None:
+                return
+            body = (
+                f"{_UNBLOCK_PREFIX}，任务 #{row['number']}「{row['title']}」现在可以开工。\n"
+                f"建议认领：@{name}（建议非锁定，claim 后生效）。"
+            )
+            self._post_system_message(
+                tx,
+                workspace_id=row["workspace_id"],
+                channel_id=row["channel_id"],
+                thread_root_id=row["root_message_id"],
+                mention_member_ids=(suggested_owner,),
+                body=body,
+            )
+
     # ---------------------------------------------------------------- 对账器（契约 D §4.4）
 
     async def reconcile(
@@ -2341,6 +2526,8 @@ class DaemonHub:
             )
         # 系统节点无独立 outbox：idle/running + agent.command 运行身份由同一对账恢复。
         await self._scan_workspace_system_nodes(conn.workspace_id)
+        # B-1 ②′ 解锁唤醒崩溃兜底：重连 + 周期对账补扫（task 终态事件已过但扫描未跑完的窗口）。
+        await self._scan_workspace_unblocked_nodes(conn.workspace_id)
         # #6 修复循环续传（契约 D §4.4）：repairing 提案完整错误清单 S1 直投重发（全量非增量）。
         for inj in repair_injects:
             data = MessageInjectData(
@@ -2365,9 +2552,11 @@ class DaemonHub:
         self, c: Connection, backlog: list[dict[str, Any]], channel: dict[str, Any], agent_id: str
     ) -> WakeReason | None:
         for m in backlog:
-            # 投递 gating（裁决 2）：积压里属 blocked 任务线程的消息不构成唤醒触发。
+            # 投递 gating（裁决 2 / B-1 ②′）：blocked 线程消息不构成唤醒触发 → **跳过**（与
+            # _filter_agent_delivery 同语义）；worktree path 未就绪仍**截断**。两调用点均传已过滤
+            # deliver（无 gated），此为语义对齐防御——防未来传 raw 复现前缀死锁。
             if canvas_service.message_delivery_gated(c, m):
-                break
+                continue
             if worktree_service.delivery_waits_for_directory(
                 c, agent_member_id=agent_id, message=m
             ):
@@ -2772,6 +2961,115 @@ class DaemonHub:
             # daemon 回帧（在线）只是 git 查询失败（坏 base ref 等）→ 4xx，非 503（#5）。
             raise GitQueryError(error)
         return reply
+
+    # -------------------------------------------------------- PS-WT 只读代理 + 清理（B §4.11 扩）
+
+    def query_fs_tree(self, *, computer_id: str, query: FsTreeQuery) -> dict[str, Any]:
+        """computer 级目录浏览只读代理（PS-WT；契约 D §6 FS_TREE）。仿 query_git_diff：无连接/
+        超时 → DaemonOffline（REST 收敛 503）。单条目权限/IO 异常在 daemon 侧逐条 denied/跳过，
+        不似 git.diff 存在「在线但查询失败」的 4xx 语义，故此处不引 GitQueryError。"""
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            raise DaemonOffline("daemon 离线")
+        return self._run_sync(self.send_query(conn, QueryType.FS_TREE, query))
+
+    def scan_worktrees(
+        self, computer_ids: Iterable[str]
+    ) -> dict[str, tuple[str, list[dict[str, Any]] | None]]:
+        """管理台 live=1 多机并发扫描 worktrees_dir（PS-WT；契约 D §6 WORKTREE_SCAN）。
+
+        逐机独立降级，一台掉线/超时不拖垮全部（各自 gather 结果）：无活跃连接 → ('offline', None)；
+        查询超时或连接失效 → ('timeout', None)；成功 → ('ok', entries)。并发发帧故总耗时≈单机
+        查询超时，不随机器数线性放大。"""
+        return self._run_sync(self._scan_worktrees_multi(list(computer_ids)))
+
+    async def _scan_worktrees_multi(
+        self, computer_ids: list[str]
+    ) -> dict[str, tuple[str, list[dict[str, Any]] | None]]:
+        async def _one(cid: str) -> tuple[str, tuple[str, list[dict[str, Any]] | None]]:
+            conn = self._conns.get(cid)
+            if conn is None:
+                return cid, ("offline", None)
+            try:
+                reply = await self.send_query(conn, QueryType.WORKTREE_SCAN, WorktreeScanQuery())
+            except DaemonOffline:
+                return cid, ("timeout", None)
+            entries = reply.get("entries") if isinstance(reply, dict) else None
+            return cid, ("ok", entries if isinstance(entries, list) else [])
+
+        results = await asyncio.gather(*(_one(cid) for cid in computer_ids))
+        return dict(results)
+
+    def dispatch_worktree_cleanup(
+        self, *, computer_id: str, task_id: str, project_id: str | None = None
+    ) -> str:
+        """管理台清理端点同步下发 WORKTREE_CLEANUP 并等 daemon ack（三段式中段：调用方此刻**不得
+        持写事务**，仅读门校验后下发；CR-M8 同族「跨进程同步等待不得跨持锁事务」）。
+
+        无连接/超时 → DaemonOffline（REST 收敛 503，DB 未动无幽灵态）。返回 ack.result：
+        'done'/'noop'（目录已不存在=幂等成功，登记态照常推进）/'failed'（win32 文件锁等，调用方
+        据此不推进登记）。project_id 供孤儿清理（DB 无登记行 → daemon 自拼 worktrees_dir 内路径）；
+        常规登记清理传 None 走 daemon 既有 task_id 反查（契约 D WorktreeCleanupData 语义）。"""
+        conn = self._conns.get(computer_id)
+        if conn is None:
+            raise DaemonOffline("daemon 离线")
+        ack = self._run_sync(
+            self.send_instr(
+                conn,
+                f"worktree:{task_id}",
+                InstrType.WORKTREE_CLEANUP,
+                WorktreeCleanupData(task_id=task_id, project_id=project_id),
+            )
+        )
+        if ack is None:
+            raise DaemonOffline("worktree cleanup 未获 ack")
+        return ack.result.value
+
+    def finalize_console_cleanup(
+        self, *, task_id: str, computer_id: str
+    ) -> dict[str, Any] | None:
+        """管理台登记清理成功后条件 UPDATE + 广播（三段式③；另开 gateway_tx，不复用请求读快照，
+        避免 pysqlite 读快照与并发写的非串行化冲突）。
+
+        幂等收敛（对齐 _converge_worktree_cleaned）：worktree.status 是异步上报（L4a），daemon 报
+        cleaned 与本 CAS 谁先到不定序——行已 cleaned（上报先到或并发已清）→ 不重复广播直接返回
+        当前行；行 merged/conflicted → CAS（WHERE status IN merged/conflicted）收敛 cleaned +
+        emit worktree.updated；行不存在 → None（调用方 404）。"""
+        with gateway_tx(self._engine, self._bus) as tx:
+            row = (
+                tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id))
+                .mappings()
+                .first()
+            )
+            if row is None:
+                return None
+            if row["status"] == WorktreeStatus.CLEANED.value:
+                return dict(row)  # 幂等：已清（上报/并发），不重复广播
+            ts = now_iso()
+            tx.conn.execute(
+                update(_WORKTREE)
+                .where(
+                    _WORKTREE.c.task_id == task_id,
+                    _WORKTREE.c.status.in_(
+                        [WorktreeStatus.MERGED.value, WorktreeStatus.CONFLICTED.value]
+                    ),
+                )
+                .values(status=WorktreeStatus.CLEANED, cleaned_at=row["cleaned_at"] or ts)
+            )
+            new_row = dict(
+                tx.conn.execute(select(_WORKTREE).where(_WORKTREE.c.task_id == task_id))
+                .mappings()
+                .one()
+            )
+            channel_id = tx.conn.execute(
+                select(_TASK.c.channel_id).where(_TASK.c.id == task_id)
+            ).scalar()
+            tx.emit(
+                EventType.WORKTREE_UPDATED,
+                channel_id,
+                {"worktree": worktree_public(new_row)},
+            )
+            return new_row
 
     # ---------------------------------------------------------------- 预览下发桥（M7 K3；B §13.1）
 

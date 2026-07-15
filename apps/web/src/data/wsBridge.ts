@@ -103,6 +103,9 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       }
       // 分支状态/HEAD 变化会改变 Diff；已有观察者立即失效，未打开时不额外请求。
       void qc.invalidateQueries({ queryKey: qk.taskDiff(worktree.task_id) });
+      // PS-WT ② 工作树管理台：前缀失效 live=0/1 两态（进屏靠此 WS 兜底刷新，不轮询）。未打开管理台
+      // 无观察者、不额外请求（REST 是事实源，铁律 1）。
+      void qc.invalidateQueries({ queryKey: ['worktreesConsole'] });
       break;
     }
 

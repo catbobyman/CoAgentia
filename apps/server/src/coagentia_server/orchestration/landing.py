@@ -475,6 +475,9 @@ def _apply_create_node(
         system_action=None,
         command=None,
         system_status=None,
+        # B-1 ②′：建议认领人持久化（V11 已校验为在册成员 id 或 None）——供下游节点解除 blocked 时
+        # 的解锁主动唤醒 @建议人（锚点无 mention、旧消息在水位下不重投，须发全新 @消息）。
+        suggested_owner=suggested if isinstance(suggested, str) else None,
         pos_x=x,
         pos_y=y,
         created_at=ts,

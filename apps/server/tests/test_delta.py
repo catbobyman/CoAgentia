@@ -1302,7 +1302,9 @@ def test_o8_replan_budget_second_delta_403(migrated_engine: Engine) -> None:
         with pytest.raises(ApiError) as exc:
             decision.apply(tx)
     assert exc.value.status == 403 and exc.value.body.rule == "O8"
-    assert len({c.value for c in rest.ErrorCode}) == 29  # 错误码目录不因 O8 扩容
+    # 错误码目录不因 O8 扩容；总数 32 = M8 基线 29 + PS-WT 冻结契约新增 3
+    # （WORKTREE_NOT_TERMINAL/WORKTREE_PREVIEW_ACTIVE/WORKTREE_NOT_ORPHAN）。
+    assert len({c.value for c in rest.ErrorCode}) == 32
 
 
 def test_o8_replan_budget_first_delta_consumes(migrated_engine: Engine) -> None:

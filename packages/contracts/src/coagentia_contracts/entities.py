@@ -468,6 +468,11 @@ class CanvasNodeRow(ContractModel):
     # **不参与基线快照**（契约 A §6，与 pos 同——放行策略非结构身份，改档不动 baseline/base）；
     # W9 satisfied 由 derive_blocked 按 live 行读取（纪律 8 graph 组，M8b L7）。
     upstream_policy: UpstreamPolicy = UpstreamPolicy.STRICT
+    # v1.0.13（B-1 ②′）：建议认领人 member_id（O4 建议不锁定——不设 task.owner）。落地时从提案节点
+    # 写入，供**解锁主动唤醒**在下游节点解除 blocked 时 @建议人（锚点无 mention 行、旧消息在投递水位
+    # 下不重投，故解锁须发全新 @消息，需此持久源）。**不参与基线快照**（契约 A §6，同 pos/upstream_
+    # policy——建议非结构身份）。可空：无建议人即解锁时不 @。
+    suggested_owner: Ulid | None = None
     pos_x: float = 0  # 不参与基线快照（契约 A §6）
     pos_y: float = 0
     created_at: TimestampZ

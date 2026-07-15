@@ -79,7 +79,7 @@ TABLES: dict[str, tuple[type[BaseModel], set[str]]] = {
     }),
     "canvas_nodes": (entities.CanvasNodeRow, {
         "id", "canvas_id", "kind", "task_id", "is_summary", "system_action", "command",
-        "system_status", "upstream_policy", "pos_x", "pos_y", "created_at",
+        "system_status", "upstream_policy", "suggested_owner", "pos_x", "pos_y", "created_at",
     }),
     "canvas_edges": (entities.CanvasEdgeRow, {"id", "canvas_id", "from_node_id", "to_node_id"}),
     # ---- 4.5 护栏与提醒

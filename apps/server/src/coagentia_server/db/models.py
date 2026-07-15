@@ -622,6 +622,13 @@ class CanvasNode(Base):
     upstream_policy: Mapped[str] = mapped_column(
         _enum(UpstreamPolicy), server_default=text("'strict'")
     )
+    # B-1 ②′（v1.0.13）：建议认领人 member_id（O4 建议不锁定——不设 task.owner）。落地时从提案节点
+    # 写入，供**解锁主动唤醒**在下游节点解除 blocked 时 @建议人（锚点无 mention、旧消息在投递水位下
+    # 不重投，解锁须发全新 @消息，需此持久源）。**不参与基线快照/fingerprint**（放行建议非结构身份，
+    # 同 upstream_policy/pos）。0013 增量补列（第四例既有表加列，沿 0008/0009/0012）。
+    suggested_owner: Mapped[str | None] = mapped_column(
+        _ULID, ForeignKey("members.id"), nullable=True
+    )
     pos_x: Mapped[float] = mapped_column(Float, server_default=text("0"))  # 不参与基线快照
     pos_y: Mapped[float] = mapped_column(Float, server_default=text("0"))
     created_at: Mapped[str] = mapped_column(Text)
