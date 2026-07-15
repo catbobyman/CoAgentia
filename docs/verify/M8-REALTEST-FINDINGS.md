@@ -5,7 +5,16 @@
 | 日期 | 2026-07-14~15（真机会话，Owner 授权自主推进） |
 | 环境 | 真 uvicorn server(8787) + 真 web(5173) + 真 daemon + 真 claude(2.1.208)/codex(0.144.0) CLI；默认库迁移 0011→0012（备份 `coagentia.pre-m8-migrate.*.db` / `coagentia.pre-surgery.db`） |
 | 定位 | 首次以**真 CLI**（非 daemon-sim FakeAdapter）跑完「需求→拆解→落地→交付→合并→O8 汇总」全链。历届 M6/M7/M8 verify 全用 FakeAdapter；本次填补真机空白，方案 = [M8-REALTEST-PLAN.md](M8-REALTEST-PLAN.md) T-A′ 变体 |
-| 一句话结论 | **全链在真 CLI 下端到端贯通**（两处需人工辅助绕过）：交付链闭环到主干 3 个 DAG 序 merge commit + O8 总报告。发现 2 个上线前必修 blocker（投递前缀死锁 B-1、Agent 无契约提交通道 B-5）+ 1 个 codex 适配器挂死（B-4），全部为 sim 掩盖的真机专属缺陷。 |
+| 一句话结论 | **全链在真 CLI 下端到端贯通**（两处需人工辅助绕过）：交付链闭环到主干 3 个 DAG 序 merge commit + O8 总报告。发现 3 个 sim 掩盖的真机专属 blocker——投递前缀死锁 B-1、Agent 无契约提交通道 B-5、codex 适配器挂死 B-4——**均已修并生产/真机验证（2026-07-15）**；另记 B-6[低,话术调优]交付收尾冷启动。详见 §0′（B-1+B-5 复跑）与各 finding。 |
+
+## 0′. B-1 + B-5 修复后零(近)人工全链复跑（2026-07-15，`eb47f45` 后，新码 server+daemon）
+
+**结论：B-1 + B-5 两修复生产验证齐全，全链闭合。** 需求「番茄钟数据导出 CSV」→ Orch 拆解 **2 节点串行 repair0**（后端 CSV 接口 N1 → 前端按钮 N2，dep 边）→ Owner API 确认落地 →
+- **B-1 ✅ 生产验证**：① `canvas_nodes.suggested_owner` 列在真库落值（两 dev 节点 = Dev-Claude-A，0013 迁移生效）；② N1(entry,无入边) 得「已落地」@mention → Dev **自主 claim+worktree+写码**；③ N2(downstream,有入边) 落地时**不 @**（延后）；④ **#8→done 瞬间**，#9 线程即现 **「上游已全部完成…建议认领：@Dev-Claude-A」**（task-done 触发面 → 读持久 suggested_owner → 发 `上游已全部完成` 前缀系统消息 system+mention→REMINDER）→ Dev **自主 claim #9**。**串行链无楔死**（B-1 死锁已根治）。
+- **B-5 ✅ 生产验证（经 agent 端到端）**：Dev 用 `submit_task_contract` 提交 TaskHandoff——**#8 首投 `ok:false`(422 VALIDATION_FAILED)→ 按结构化错误自行修字段 → 重投 `ok:true`**（J8 式自愈循环经工具跑通）→ `set_task_status`→in_review **T7 门放行**（handoff 齐备）；#9 **首投即过**（同 session 学会）；连 Orch 汇总 #10 也用工具提交 handoff。三份 handoff 全由 agent 经工具提交，**零 REST 代劳**。
+- **收尾链**：#8/#9→done → **merge 系统节点自动触发**主干 DAG 序 merge（`dc27ca7` #8 → `f956fcd` #9）→ **O8 汇总输入摘要（1/1 上游 Done）**→ Orch **总交付报告** → #10 in_review→done。终态：#8/#9/#10 全 done、canvas 全 done、主干干净。
+
+**⚠️ 新观察 B-6[低，话术调优] Agent 交付收尾「冷启动」需一次示范**：Dev 首个任务(#8)写完码 + 发频道汇报后**径直 idle**（心智=「汇报完成→等待指示/自动推进」），**未自主走 handoff→in_review**；身份文案 `_IDENTITY_TEMPLATE` 的「交付纪律」一行不够显著，压不过「汇报后等待」惯性。**一次 nudge**（「请走正式收尾流程：提交 TaskHandoff 并置 in_review」，未点具体工具名）后，Dev 即自行发现并用 `submit_task_contract`，且**后续 #9 完全自主**闭环。判断：非能力缺口（B-5 工具可达且经 agent 能用已证），是**话术强度/冷启动**问题——建议把交付收尾流程写成更 prescriptive 的步骤清单（或 role 模板补「完成后必做三步」），使首个任务即自主收尾。本轮全链除三处合法人类触点（发需求/确认落地/评审批准 done）外，仅此一次 nudge = 「近零人工」。
 
 ## 0. 全链实证清单（本次真机全部走通的环节）
 
@@ -30,9 +39,12 @@
 **为何 sim 没抓到**：探针脚本以 REST 替 Agent 提交 handoff，从未经过 Agent 能力面。
 **修复方向**：新增 MCP 工具 `submit_task_contract`（代理 POST /tasks/{id}/contracts）——契约 E 升版（工具 16→17）+ role_templates 补交付收尾话术 + `HANDOFF_INCOMPLETE` 422 建议携格式 hint（对齐 J8 修复循环的 hint 哲学）。工具扩面是 owner 既往亲自拍板项（M7 trigger_deploy 先例），落笔前请 owner 过目。
 
-### B-4 [中] codex 适配器真机 turn 挂死（2/2 复现）
-**现象**：codex Agent 被唤醒后 turn 启动（status busy、能完成首个工具调用如 claim_task 200），随后**楔死**：无诊断、无文件改动、无消息，8+ 分钟（CPU 有消耗）。两次复现（一次消息响应、一次 N2 认领后）。claude 适配器同场景全程正常（对照）。
-**待查**（需 daemon 可读日志）：codex app-server JSON-RPC 事件流在首个工具调用后是否停帧；与 CR-M8-2 家族（MCP stdio）或 E2 相位聚合的关系。**障碍**：daemon 日志不写 stdout，运行时不可观测——建议先加 daemon 文件日志再复现。
+### B-4 [中] ✅ 已修（2026-07-15，`3abac15` 日志 + `1c68220` 修复）codex 适配器真机 turn 挂死（2/2 复现）
+**现象**：codex Agent turn 启动（busy、能完成首个工具调用如 claim_task 200）随后**楔死**：无诊断、无文件改动、无消息、8+ 分钟。claude 对照正常。
+**根因（新 daemon DEBUG 日志一次复现即锁定）**：codex app-server 单条 JSON-RPC 帧超过 **asyncio StreamReader 默认 64KB 行上限**时，`readline()` 抛 `LimitOverrunError('Separator is found, but chunk is longer than limit')` → 读循环死 → 待决 future 全 fail → agent 挂死无诊断。触发帧 = thread/resume 重放累积会话历史的响应（实测 98K token 上下文）、turn 内大工具输出/大 reasoning——**首个小帧正常、随后大帧哑火**，精确吻合「claim 200 后楔死」。claude stream-json 大工具结果同族风险（帧偏小侥幸未触发）。
+**为何 sim 没抓到**：FakeAdapter 无真子进程/无 readline 缓冲面；且 daemon 此前对 daemon.log 近乎零写入，挂死时 server 侧诊断为空、无现场——**故先补 daemon 文件日志（可观测性前置）再复现**（本 finding 原「待查」即此路径）。
+**修复**：① 补 daemon 进程级文件日志（`logconfig.py` + codex/claude 帧收发/stderr/生命周期 + client._log 迁移，env `COAGENTIA_DAEMON_LOG_LEVEL` 控级，帧原文 DEBUG）；② `_default_codex_spawn`/`_default_spawn` 给 `create_subprocess_exec` 传 `limit=32MB`（两 runtime 共用 `STREAM_LINE_LIMIT`）。
+**真机验证（新码 daemon，DEBUG）**：之前必挂的 thread/resume 大帧响应现成功收下→握手 ready→idle；完整多工具 turn（list_members 200→send_message 201→final_answer→turn/completed 9.5s）端到端跑通、**0 LimitOverrunError**。守门 daemon pytest 214/4·ruff净·pyright(src)0。根因日志存档 `~/.coagentia/daemon/daemon.log.b4-rootcause`。
 
 ## 2. 次级发现与观察项
 
