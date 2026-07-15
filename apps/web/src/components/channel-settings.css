@@ -18,6 +18,8 @@
 .chsettings .cs-lb .d { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
 .chsettings .cs-ctl { flex: none; display: flex; align-items: center; gap: 8px; }
 .chsettings .cs-ctl.grow { flex: 1; min-width: 0; }
+.chsettings .cs-ctl.has-err { flex-direction: column; align-items: flex-end; gap: 4px; }
+.chsettings .cs-err { font-family: var(--font-mono); font-size: 11px; color: var(--danger); }
 .chsettings .cs-ctl.grow .inp { width: 100%; }
 
 /* 段选（公开/私有 · 通知级别） */

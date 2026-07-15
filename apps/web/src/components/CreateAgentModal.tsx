@@ -1,6 +1,8 @@
 // P13 创建 Agent 弹窗（B §11.3 POST /agents；M6b 增角色模板段为 NO_ORCHESTRATOR 引导链服务）。
-// 字段：名字 / runtime（claude_code|codex 分段）/ model / 所在机器（MVP 单机预选唯一 computer，
-// 同 ProjectSettingsSection 体例）/ description 文本域。
+// 字段：名字 / 所在机器（MVP 单机预选唯一 computer，同 ProjectSettingsSection 体例）/
+// runtime（该机 detected_runtimes 置灰未安装项，FR-2.3）/ model（候选池 = 该机该 runtime 探测
+// models + 自由输入，datalist；与 AgentDetail ProfileTab 同源）/ description 文本域。
+// 机器在 runtime/model 之上：后二者候选依赖「机器 + runtime」二元组。
 // **角色模板段（可选）**：MVP 唯一项 = Orchestrator（数据源 = contracts 生成的三常量，纪律 7 单源）；
 // 选中即把 description 预填为模板话术（用户可改），提交携 role_template_key；不选 = 现行为零变化
 // （请求体不含 role_template_key）。preselectRoleKey 供引导链打开时预选（交互 §6.8）。
@@ -55,7 +57,20 @@ export function CreateAgentModal({
   const [description, setDescription] = useState(preset?.prefill ?? '');
   const [error, setError] = useState<string | undefined>();
 
-  const valid = name.trim() !== '' && model.trim() !== '' && computerId !== '';
+  // 所选机器的 runtime 探测（FR-2.3）：驱动 runtime 置灰与 model 候选池，消费与 AgentDetail
+  // ProfileTab 同源（computer.detected_runtimes）。无探测数据（机器离线/未探测）→ 不阻塞创建。
+  const selectedComputer = computers.find((c) => c.id === computerId);
+  const detected = selectedComputer?.detected_runtimes ?? [];
+  const hasDetection = detected.length > 0;
+  const detectedByRuntime = new Map(detected.map((rt) => [rt.runtime, rt] as const));
+  const runtimeInstalled = (rt: Runtime): boolean =>
+    hasDetection ? (detectedByRuntime.get(rt)?.installed ?? false) : true;
+  const modelPool = detectedByRuntime.get(runtime)?.models ?? [];
+  // 所选 runtime 在该机未安装 → 阻断提交（启动必失败，不让盲选）。
+  const runtimeUnavailable = hasDetection && !runtimeInstalled(runtime);
+
+  const valid =
+    name.trim() !== '' && model.trim() !== '' && computerId !== '' && !runtimeUnavailable;
 
   // 选中模板 → 预填 description（覆盖为模板话术，用户可继续编辑）；切回「不使用」保留已填文本
   // （不清空——用户可能已在模板底稿上加工）。
@@ -111,32 +126,6 @@ export function CreateAgentModal({
         </div>
 
         <div className="field">
-          <span className="lb">Runtime</span>
-          <div className="ca-seg" role="radiogroup" aria-label="Runtime">
-            {(['claude_code', 'codex'] as const).map((rt) => (
-              <button
-                key={rt} type="button" role="radio" aria-checked={runtime === rt}
-                className={runtime === rt ? 'active' : ''}
-                onClick={() => setRuntime(rt)}
-              >
-                {RUNTIME_WORD[rt]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="field">
-          <label className="lb" htmlFor="ca-model">模型</label>
-          <div className="inp">
-            <input
-              id="ca-model" className="val mono" value={model}
-              placeholder="模型标识（传给 runtime，如 sonnet）"
-              onChange={(e) => setModel(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="field">
           <label className="lb" htmlFor="ca-computer">所在机器</label>
           <select
             id="ca-computer" className="ca-select" aria-label="所在机器"
@@ -145,6 +134,45 @@ export function CreateAgentModal({
             {computers.length === 0 && <option value="">暂无机器（先去 P7 添加）</option>}
             {computers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+        </div>
+
+        <div className="field">
+          <span className="lb">Runtime</span>
+          <div className="ca-seg" role="radiogroup" aria-label="Runtime">
+            {(['claude_code', 'codex'] as const).map((rt) => {
+              const installed = runtimeInstalled(rt);
+              return (
+                <button
+                  key={rt} type="button" role="radio" aria-checked={runtime === rt}
+                  className={runtime === rt ? 'active' : ''}
+                  disabled={!installed}
+                  title={installed ? undefined : '该机器未探测到此 runtime'}
+                  onClick={() => setRuntime(rt)}
+                >
+                  {RUNTIME_WORD[rt]}{!installed && <span className="ca-seg-off">（未安装）</span>}
+                </button>
+              );
+            })}
+          </div>
+          {runtimeUnavailable && (
+            <div className="ca-note ca-warn" role="alert">
+              所选机器未安装 {RUNTIME_WORD[runtime]}，请换 runtime 或机器。
+            </div>
+          )}
+        </div>
+
+        <div className="field">
+          <label className="lb" htmlFor="ca-model">模型</label>
+          <div className="inp">
+            <input
+              id="ca-model" className="val mono" value={model} list="ca-model-list"
+              placeholder={modelPool.length ? '选择或输入模型标识' : '模型标识（传给 runtime，如 sonnet）'}
+              onChange={(e) => setModel(e.target.value)}
+            />
+            <datalist id="ca-model-list">
+              {modelPool.map((m) => <option key={m} value={m} />)}
+            </datalist>
+          </div>
         </div>
 
         {/* 角色模板段（可选，M6b）：选中即预填 description，提交携 role_template_key。 */}

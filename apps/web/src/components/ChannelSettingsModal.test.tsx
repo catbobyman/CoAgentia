@@ -140,13 +140,30 @@ describe('ChannelSettingsModal 五组', () => {
     );
   });
 
-  it('节点上限越界（>50）→ 不提交该字段', async () => {
+  it('节点上限越界（>50）→ 行内报错 + 禁用保存 + 不发 PATCH（不静默丢弃）', async () => {
     vi.mocked(api.patchChannel).mockResolvedValue(channelOf());
-    const { onClose } = renderModal();
+    renderModal();
     fireEvent.change(screen.getByLabelText('单次提案节点上限'), { target: { value: '99' } });
-    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
-    // 越界字段不进 patch；无其它改动 → 直接关闭不发 PATCH
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    // 即时行内错误可见，保存禁用——防越界值被静默丢弃后误判已保存。
+    expect(screen.getByLabelText('单次提案节点上限')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('不超过 50')).toBeInTheDocument();
+    const saveBtn = screen.getByRole('button', { name: /保存/ });
+    expect(saveBtn).toBeDisabled();
+    fireEvent.click(saveBtn);
     expect(api.patchChannel).not.toHaveBeenCalled();
+  });
+
+  it('节点上限回落合法值 → 保存恢复可用并提交', async () => {
+    vi.mocked(api.patchChannel).mockResolvedValue(channelOf());
+    renderModal();
+    const input = screen.getByLabelText('单次提案节点上限');
+    fireEvent.change(input, { target: { value: '99' } });
+    expect(screen.getByRole('button', { name: /保存/ })).toBeDisabled();
+    fireEvent.change(input, { target: { value: '20' } });
+    expect(screen.getByRole('button', { name: /保存/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() =>
+      expect(api.patchChannel).toHaveBeenCalledWith('ch1', { decomp_node_limit: 20 }),
+    );
   });
 });

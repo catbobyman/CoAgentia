@@ -106,3 +106,66 @@ describe('CreateAgentModal 角色模板段', () => {
     expect(screen.getByRole('dialog', { name: '创建 Agent' })).toBeInTheDocument();
   });
 });
+
+// #1/#2 修复：消费所选机器的 detected_runtimes（FR-2.3）驱动 model 候选池 + runtime 置灰。
+describe('CreateAgentModal runtime/model 探测消费', () => {
+  const computerWith = (rts: ComputerPublic['detected_runtimes']): ComputerPublic => ({
+    ...COMPUTER, detected_runtimes: rts,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.createAgent).mockResolvedValue(AGENT);
+  });
+
+  it('该机探测到 models → 模型输入提供候选（datalist），且仍可自由输入', async () => {
+    vi.mocked(api.computers).mockResolvedValue([computerWith([
+      { runtime: 'claude_code', installed: true, models: ['opus', 'sonnet', 'haiku'] },
+      { runtime: 'codex', installed: false, models: [] },
+    ])]);
+    renderModal();
+    // 探测消费依赖 computers 查询到位——锚定 computer option 渲染后再断言（label 是静态的，过早）。
+    await screen.findByRole('option', { name: '本机' });
+    expect(screen.getByLabelText('模型')).toHaveAttribute('list', 'ca-model-list');
+    const list = document.getElementById('ca-model-list');
+    const values = Array.from(list?.querySelectorAll('option') ?? []).map((o) => o.getAttribute('value'));
+    expect(values).toEqual(['opus', 'sonnet', 'haiku']);
+  });
+
+  it('该机未安装 codex → runtime 置灰不可选（claude_code 正常）', async () => {
+    vi.mocked(api.computers).mockResolvedValue([computerWith([
+      { runtime: 'claude_code', installed: true, models: ['sonnet'] },
+      { runtime: 'codex', installed: false, models: [] },
+    ])]);
+    renderModal();
+    await screen.findByRole('option', { name: '本机' });
+    expect(screen.getByRole('radio', { name: /Codex/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Claude Code/ })).toBeEnabled();
+  });
+
+  it('默认 runtime 在该机未安装 → 警示 + 阻断创建；切到已安装 runtime 恢复', async () => {
+    vi.mocked(api.computers).mockResolvedValue([computerWith([
+      { runtime: 'claude_code', installed: false, models: [] },
+      { runtime: 'codex', installed: true, models: ['gpt-5-codex'] },
+    ])]);
+    renderModal();
+    await screen.findByRole('option', { name: '本机' });
+    fireEvent.change(screen.getByLabelText('名字'), { target: { value: 'Rin' } });
+    fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'gpt-5-codex' } });
+    expect(screen.getByText(/未安装 Claude Code/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '创建 Agent' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex/ }));
+    expect(screen.getByRole('button', { name: '创建 Agent' })).toBeEnabled();
+  });
+
+  it('无探测数据（机器未探测）→ 不阻塞，两 runtime 均可选、自由输入模型', async () => {
+    vi.mocked(api.computers).mockResolvedValue([COMPUTER]); // 无 detected_runtimes
+    renderModal();
+    await screen.findByLabelText('所在机器');
+    expect(screen.getByRole('radio', { name: 'Claude Code' })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: 'Codex' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('名字'), { target: { value: 'Rin' } });
+    fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'sonnet' } });
+    expect(screen.getByRole('button', { name: '创建 Agent' })).toBeEnabled();
+  });
+});

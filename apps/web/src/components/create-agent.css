@@ -9,6 +9,9 @@
   border-radius: var(--radius-s); color: var(--text-secondary);
 }
 .ca-seg button.active { border-color: var(--accent); background: var(--accent-bg); color: var(--on-accent); }
+.ca-seg button:disabled { opacity: .45; cursor: not-allowed; }
+.ca-seg-off { margin-left: 4px; font-size: 11px; color: var(--text-muted); }
+.ca-warn { color: var(--danger); }
 
 .ca-select {
   width: 100%; height: 32px; padding: 0 8px;

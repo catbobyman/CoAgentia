@@ -26,6 +26,17 @@ function parseNum(s: string): number | undefined {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
+// 越界/非法输入的即时错误（空串=继承工作区默认，合法）。防「静默丢弃」误以为已保存。
+function numError(s: string, min = 0, max?: number): string | undefined {
+  const t = s.trim();
+  if (t === '') return undefined;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return '请输入数字';
+  if (n < min) return `不小于 ${min}`;
+  if (max !== undefined && n > max) return `不超过 ${max}`;
+  return undefined;
+}
+
 const NOTIFY_OPTS: { mode: NotificationMode; label: string; hint: string }[] = [
   { mode: 'all', label: '全部', hint: '所有新消息都点亮/推送' },
   { mode: 'mentions', label: '仅 @', hint: '仅被 @ 时点亮/推送' },
@@ -61,6 +72,17 @@ export function ChannelSettingsModal({ channel, meId, currentMode, canManageProj
   const [orchEsc, setOrchEsc] = useState(!!channel.orch_escalation);
   // 通知 mode（即点即存的本地态）
   const [mode, setMode] = useState<NotificationMode>(currentMode);
+
+  // 数值字段即时校验：任一非法则阻断「保存」，避免越界值被 buildPatch 静默丢弃后误判已保存。
+  const errTodo = numError(todoH);
+  const errInprog = numError(inprogH);
+  const errReview = numError(reviewH);
+  const errReeval = numError(reevalMin);
+  const errEscalateN = numError(escalateN);
+  const errNodeLimit = numError(nodeLimit, 1, 50);
+  const hasInvalid = !!(
+    errTodo || errInprog || errReview || errReeval || errEscalateN || (!isDm && errNodeLimit)
+  );
 
   const addNum = (
     patch: ChannelPatch,
@@ -192,14 +214,16 @@ export function ChannelSettingsModal({ channel, meId, currentMode, canManageProj
                   <div className="t">单次提案节点上限</div>
                   <div className="d">O6 · 超过则拆解拒绝并提示收窄范围（1–50）</div>
                 </div>
-                <div className="cs-ctl">
+                <div className={`cs-ctl${errNodeLimit ? ' has-err' : ''}`}>
                   <span className="cs-numinp">
                     <input
                       inputMode="numeric" value={nodeLimit} aria-label="单次提案节点上限"
-                      placeholder="默认 12" onChange={(e) => setNodeLimit(e.target.value)}
+                      placeholder="默认 12" aria-invalid={errNodeLimit ? true : undefined}
+                      onChange={(e) => setNodeLimit(e.target.value)}
                     />
                     <span className="unit">节点</span>
                   </span>
+                  {errNodeLimit && <div className="cs-err" role="alert">{errNodeLimit}</div>}
                 </div>
               </div>
               <div className="cs-row">
@@ -227,9 +251,9 @@ export function ChannelSettingsModal({ channel, meId, currentMode, canManageProj
         <div className="cs-sec">
           <div className="cs-label"><Timer />提醒阈值</div>
           <div className="cs-card">
-            <NumRow label="Todo 沉默" hint="超时未认领后提醒" value={todoH} unit="h" onChange={setTodoH} />
-            <NumRow label="In Progress 沉默" hint="进行中无进展后提醒" value={inprogH} unit="h" onChange={setInprogH} />
-            <NumRow label="In Review 沉默" hint="待评审停滞后提醒" value={reviewH} unit="h" onChange={setReviewH} />
+            <NumRow label="Todo 沉默" hint="超时未认领后提醒" value={todoH} unit="h" error={errTodo} onChange={setTodoH} />
+            <NumRow label="In Progress 沉默" hint="进行中无进展后提醒" value={inprogH} unit="h" error={errInprog} onChange={setInprogH} />
+            <NumRow label="In Review 沉默" hint="待评审停滞后提醒" value={reviewH} unit="h" error={errReview} onChange={setReviewH} />
             <div className="cs-row">
               <div className="cs-lb"><div className="t">升级链</div><div className="d">二次提醒无响应则升级 @人类</div></div>
               <div className="cs-ctl">
@@ -250,41 +274,44 @@ export function ChannelSettingsModal({ channel, meId, currentMode, canManageProj
         <div className="cs-sec">
           <div className="cs-label"><Shield />护栏阈值</div>
           <div className="cs-card">
-            <NumRow label="重评估等待" hint="G4 · HeldDraft 自动重评估等待时长" value={reevalMin} unit="min" onChange={setReevalMin} />
-            <NumRow label="升级次数" hint="G5 · 连续被扣达此次数升级 @人类" value={escalateN} unit="次" onChange={setEscalateN} />
+            <NumRow label="重评估等待" hint="G4 · HeldDraft 自动重评估等待时长" value={reevalMin} unit="min" error={errReeval} onChange={setReevalMin} />
+            <NumRow label="升级次数" hint="G5 · 连续被扣达此次数升级 @人类" value={escalateN} unit="次" error={errEscalateN} onChange={setEscalateN} />
           </div>
         </div>
 
         <div className="ops">
           <button className="btn btn-ghost" onClick={onClose}>关闭</button>
-          <button className="btn btn-primary" disabled={patchM.isPending} onClick={save}><Save />保存</button>
+          <button className="btn btn-primary" disabled={patchM.isPending || hasInvalid} onClick={save}><Save />保存</button>
         </div>
       </div>
     </div>
   );
 }
 
-function NumRow({ label, hint, value, unit, onChange }: {
+function NumRow({ label, hint, value, unit, error, onChange }: {
   label: string;
   hint: string;
   value: string;
   unit: string;
+  error?: string;
   onChange: (v: string) => void;
 }) {
   return (
     <div className="cs-row">
       <div className="cs-lb"><div className="t">{label}</div><div className="d">{hint}</div></div>
-      <div className="cs-ctl">
+      <div className={`cs-ctl${error ? ' has-err' : ''}`}>
         <span className="cs-numinp">
           <input
             inputMode="numeric"
             value={value}
             aria-label={label}
             placeholder="默认"
+            aria-invalid={error ? true : undefined}
             onChange={(e) => onChange(e.target.value)}
           />
           <span className="unit">{unit}</span>
         </span>
+        {error && <div className="cs-err" role="alert">{error}</div>}
       </div>
     </div>
   );
