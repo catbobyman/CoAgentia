@@ -1,58 +1,60 @@
-# M8 上线前实机测试 — 第一阶段实测发现（真 CLI 多 Agent）
+# M8 上线前实机测试 — 第一阶段发现与全链实证（真 CLI 多 Agent）
 
 | 项 | 内容 |
 | --- | --- |
-| 日期 | 2026-07-14（真机会话，Owner 授权自主推进） |
-| 环境 | 真 uvicorn server(8787) + 真 web(5173) + 真 daemon + 真 claude(2.1.208)/codex(0.144.0) CLI；默认库迁移 0011→0012（备份 `coagentia.pre-m8-migrate.*.db`） |
-| 定位 | 首次以**真 CLI**（非 daemon-sim FakeAdapter）跑 Orchestrator 拆解 + 交付链。历届 M6/M7/M8 verify 全用 FakeAdapter，本次填补真机空白。方案见 [M8-REALTEST-PLAN.md](M8-REALTEST-PLAN.md) T-A′ |
-| 一句话结论 | **拆解→落地→@建议人唤醒全链在真 CLI 下设计正确且跑通；交付执行卡在一个真机 blocker：实现者 agent 的 daemon-side present 卡在 STARTING 未达 IDLE，导致 server 投递层短路、实现者永不接收唤醒。此 bug 被历届 FakeAdapter（直接报 idle）完全掩盖。** |
+| 日期 | 2026-07-14~15（真机会话，Owner 授权自主推进） |
+| 环境 | 真 uvicorn server(8787) + 真 web(5173) + 真 daemon + 真 claude(2.1.208)/codex(0.144.0) CLI；默认库迁移 0011→0012（备份 `coagentia.pre-m8-migrate.*.db` / `coagentia.pre-surgery.db`） |
+| 定位 | 首次以**真 CLI**（非 daemon-sim FakeAdapter）跑完「需求→拆解→落地→交付→合并→O8 汇总」全链。历届 M6/M7/M8 verify 全用 FakeAdapter；本次填补真机空白，方案 = [M8-REALTEST-PLAN.md](M8-REALTEST-PLAN.md) T-A′ 变体 |
+| 一句话结论 | **全链在真 CLI 下端到端贯通**（两处需人工辅助绕过）：交付链闭环到主干 3 个 DAG 序 merge commit + O8 总报告。发现 2 个上线前必修 blocker（投递前缀死锁 B-1、Agent 无契约提交通道 B-5）+ 1 个 codex 适配器挂死（B-4），全部为 sim 掩盖的真机专属缺陷。 |
 
-## 1. 验证成功（真 CLI 首次）
+## 0. 全链实证清单（本次真机全部走通的环节）
 
-| 环节 | 结果 | 证据 |
-| --- | --- | --- |
-| 环境搭建 | ✅ | daemon 探测本机真实模型：claude `[opus-4-8/sonnet-4-5/haiku-4-5]`、codex 7 个（gpt-5.6-sol 等）——**再次印证 #1 修复价值**（probe 有全表，旧弹窗却让人手填） |
-| Orchestrator 拆解 | ✅ | Orch-Main(真 claude opus) 被 @消息唤醒，产出 3 节点 decompose 提案 |
-| **智能识别重复需求** | ✅ | 先后发中文+英文两版同需求，Orch 自判「同一需求，按最新英文为准」，不重复建案 |
-| 规模判断 + 依赖分析 | ✅ | 判定 decompose（3 节点）、①→②→③ 严格串行链、跨两角色分工，`suggested_owner` 结构化填 N1/N2→Dev-Codex-A、N3→Dev-Claude-A |
-| **修复循环（J8 真机首验）** | ✅ | 首次提交被校验打回（7 个 AC 缺 `verify_ref` 必填）→ 自动补齐 → rev.2 重发通过（repair_count=1）→ awaiting_confirm |
-| 草稿确认层 UI | ✅ | 浏览器真机打开草稿层 overlay，3 节点 + N1→N2→N3 边 + owner combobox + 确认条，点击「确认落地」 |
-| 落地（202 异步增量） | ✅ | proposal→landed，canvas 建 **5 节点 4 边**：3 实现任务 + merge 系统节点(idle) + **O8 汇总节点**(owner=Orch-Main，自动追加) |
-| 「已落地」@建议人唤醒 | ✅ | 系统消息「#3 数据层…已激活，建议认领：**@Dev-Codex-A**」正确 @了 N1 的 suggested_owner（激活节点=无上游） |
+需求消息 → @Orch 唤醒 → **拆解**（3 节点/依赖分析/suggested_owner 结构化/**J8 修复循环**补 7 个 verify_ref rev.2 通过）→ awaiting_confirm → **浏览器草稿层确认落地** → 5 节点 4 边（+merge/O8 汇总自动追加）→「已落地」@建议人 →（B-1 死锁，绕过后）→ @mention 唤醒 → **claim_task 认领** → **worktree 自动派生**（真 git worktree add）→ **真实写码**（`recordFocusSession`/`getDailyStats`/统计页，3 commit）→ handoff 提交（B-5，REST 辅助）→ **T7/T4 门正确执法** → done → **gating 解锁下游** → 三节点滚动交付 → **merge 系统节点自动触发**：主干 `8cd0026→c19c37b→7beaa03` 严格 DAG 序 `--no-ff`、带 task/node 追溯 → **O8 汇总节点唤醒 Orch** → **总交付报告**（逐节点 commit→merge 追溯、AC 核对含诚实 ⏳ 待验标注）→ 遇 B-5 停止重试并精确升级 @Owner。终态：4 任务全 done、worktree 全终态、主干干净。
 
-## 2. 交付 blocker（真机专属，FakeAdapter 掩盖）
+## 1. 上线前必修 Blocker
 
-### B-1 [高·上线前必修] 实现者 agent boot 卡在 STARTING，投递层永久短路
-**现象链（逐步实测）**：
-1. 落地后实现者 read_position 停在落地时刻（`01KXHZQQ…`），此后**所有消息（含「已落地」@唤醒 + 我多次 @消息）零投递**——read_position 从不推进，agent 不起 turn。对照：Orchestrator（Orch-Main）read_position 正常推进、@消息正常起 turn。
-2. 定位到投递层 [hub.py:1502-1503](../../apps/server/src/coagentia_server/computers/hub.py:1502)：`status = conn.present.get(agent_id); if status not in _DELIVERABLE: continue`——present 不在 `{IDLE,BUSY}` 则彻底不投不唤醒。
-3. 根因：`_RESUMABLE={STARTING,IDLE,BUSY}` 但 `_DELIVERABLE={IDLE,BUSY}`（[hub.py:186-187](../../apps/server/src/coagentia_server/computers/hub.py:186)）。**实现者 boot 卡在 STARTING**（在 present 里但不可投递），未完成到 IDLE 的握手。
-4. `agents.status`（DB）由 `_report_status_changed` 无条件写（[hub.py:1215](../../apps/server/src/coagentia_server/computers/hub.py:1215)），而 lifecycle restart 也会写 DB → **DB 显示 idle 是假象**，与 daemon 真实 present（STARTING）不一致，误导排查。
-5. 排除项：不是我手动 set N1 in_progress 造成（撤销 unclaim 回 todo + restart 后仍不 deliverable）；不是 codex 特有（claude 实现者 Dev-Claude-A 同样卡）；不是时序（干净 restart + 30s 等待 + @消息仍零响应）。
+### B-1 [高] 投递前缀死锁：blocked 任务锚点楔死整个频道的 Agent 投递
+**机制**（代码+实证双确认）：落地按节点序发锚点消息，串行链下 N2/N3 锚点属 blocked 任务 → `message_delivery_gated`=True（[canvas/service.py:243](../../apps/server/src/coagentia_server/canvas/service.py:243)）→ 投递「连续前缀」规则（[hub.py:1543-1545](../../apps/server/src/coagentia_server/computers/hub.py:1543)，#7 延迟不丢：首个 gated 即停）在第一条 gated 锚点截断 → **其后所有消息（含「已落地」@建议人唤醒）对全体 Agent 永不投递**。自锁闭环：N2 解锁需 N1 done ← N1 开工需唤醒 ← 唤醒需投递 ← 投递被 N2 锚点截断。
+**实证**：三 Agent read_position 全部停在落地时刻；codex 积压 9 条逐条判定——首条（N2 锚点）gated=True 截断，其后 6 条（含「已落地」）gated=False 但永远出不去。**绕过**（read_position 拨过 3 条 gated 锚点）后投递立即恢复、全链继续；N1 done 后 N2 解锁、恢复路径正常。
+**为何 sim 没抓到**：并行型拆解（入口节点全 unblocked）锚点不 gated 无截断；sim 场景多为并行图或经 REST 直接 claim 绕过唤醒。**串行链拆解必死锁**。
+**波及面更广**：任何人在 blocked 任务线程发言，同样楔死全频道 Agent 投递直至解锁——不限于落地时刻。
+**修复方向**（设计裁决，涉 M3b 裁决 2 + M6 #7 前缀规则的张力，建议 owner 拍板）：①落地消息序调整（「已落地」先于 blocked 锚点）只解落地窗口不解通例；②gating 收窄为「抑制唤醒但不扣投递」（premature-work 风险再评）；③前缀规则改每消息去重（契约 D deliver 帧语义变更）。
 
-**为何 Orchestrator 正常而实现者卡**：待 daemon 侧诊断——两者同 daemon 同 computer，差异在 boot 握手是否走到 IDLE。可疑面：实现者 boot 时的工作目录/激活上下文注入、codex app-server 握手、或经多轮 onboarding-held+restart 后的 daemon 会话状态。**当前 daemon 日志不写 stdout（background output 空），运行时 present 不可观测，是继续定位的最大障碍——建议先给 daemon 加可读日志。**
+### B-5 [高] Agent 没有任何契约提交通道，交付收尾链在能力面断裂（4/4 Agent 命中）
+**机制**：T7 门要求 TaskHandoff 才能置 in_review/done，但 16 个 MCP 工具**无契约提交工具**；系统注入的起草指令让 Agent「通过 POST /tasks/{task_id}/contracts 提交」（[hub.py:2444-2446](../../apps/server/src/coagentia_server/computers/hub.py:2444)）——Agent 够不着 REST。Agent 猜 `<control>` 信封发线程（无该解析面）→ set_task_status 422 只报「缺交接材料」无格式 hint → 死路。
+**实证**：Dev-Claude-A 三个任务 + Orch-Main 汇总任务全部命中（4/4）；Orch 独立诊断出「此现象与 Dev 在 #3/#4/#5 一致」并停止重试升级 @Owner（失败姿态极佳）。本次测试以 REST 代提交（X-Acting-Member+Bearer）辅助推进，验证 T7/T4/handoff schema 校验全部正确。
+**为何 sim 没抓到**：探针脚本以 REST 替 Agent 提交 handoff，从未经过 Agent 能力面。
+**修复方向**：新增 MCP 工具 `submit_task_contract`（代理 POST /tasks/{id}/contracts）——契约 E 升版（工具 16→17）+ role_templates 补交付收尾话术 + `HANDOFF_INCOMPLETE` 422 建议携格式 hint（对齐 J8 修复循环的 hint 哲学）。工具扩面是 owner 既往亲自拍板项（M7 trigger_deploy 先例），落笔前请 owner 过目。
 
-**影响**：真 CLI 下**交付链完全无法启动**——实现者收不到任务唤醒，worktree 不派生、代码不写。这是"从对话到上线"承诺在真机上的断点。
+### B-4 [中] codex 适配器真机 turn 挂死（2/2 复现）
+**现象**：codex Agent 被唤醒后 turn 启动（status busy、能完成首个工具调用如 claim_task 200），随后**楔死**：无诊断、无文件改动、无消息，8+ 分钟（CPU 有消耗）。两次复现（一次消息响应、一次 N2 认领后）。claude 适配器同场景全程正常（对照）。
+**待查**（需 daemon 可读日志）：codex app-server JSON-RPC 事件流在首个工具调用后是否停帧；与 CR-M8-2 家族（MCP stdio）或 E2 相位聚合的关系。**障碍**：daemon 日志不写 stdout，运行时不可观测——建议先加 daemon 文件日志再复现。
 
-### B-2 [中] agent status 结束后卡 busy / boot 卡 starting，DB 与 present 双源不一致
-`_report_status_changed` 是 DB status 唯一写入方，但 lifecycle 操作也写 DB，导致 DB `agents.status` 与 daemon `conn.present` 可能不一致。排查时 DB 查到 idle 但实际 present 是 starting/被 pop，严重误导。**建议**：只读 present 判定可投递性时，提供一个诊断端点暴露 `conn.present`，或让 DB status 严格镜像 present。
+## 2. 次级发现与观察项
 
-### B-3 [低] onboarding 问候 × freshness 门交互
-agent 上线在 #all 打招呼，但频道有历史未读 → 问候草稿被 freshness 门 held 扣留未发出。设计内行为，但对首次上线是噪音；关 `onboarding_greeting` 可规避。
+- **B-2 [中] DB status 与 daemon present 双源不一致**：`agents.status` 唯一写入方是 daemon 上报，但排查中 DB=idle 与实际投递可达性多次不符（挂死 turn 期间 busy 悬挂、restart 后语义混淆），曾误导根因判断走弯路。建议：暴露 `conn.present` 诊断端点；本次「busy 卡住」多数实为 B-4/B-5 的挂死 turn，非独立缺陷。
+- **B-3 [低] onboarding 问候 × freshness 门**：上线问候被历史未读 held 扣住（设计内），首上线体验噪音；已关开关规避。
+- **[观察·正面] 下游 worktree 基线含上游产出**：N2 分支基于 N1 的 commit（`2644f94→9a68f3a`），下游天然可见上游交付——DAG 序语义在 worktree 派生层的正确体现。
+- **[观察] project.computer_id 绑旧机器时 worktree ensure 静默 no-op**（`conn is None: return False` 无诊断无升级）：机器换代/重建 computer 后所有旧 project 交付链静默断。建议至少落一条诊断。已用 PATCH 重绑修复。
+- **[观察] 中断 turn 的 drafting 提案悬挂**：中文那次被我 restart 打断的提案停在 drafting（另有一个历史悬挂），无超时回收面（24h 提醒是纯推导不改状态）。清理项。
+- **[正面清单]** 本次真机验证全部正确的护栏：T7（HANDOFF_INCOMPLETE）/T4（非法流转 422 携 allowed）/handoff schema 逐字段 422/claim 防重 409 CLAIM_RACE/O4 建议不锁定（codex 建议、claude 认领合法）/J8 修复循环 hint 自愈/O8 报告诚实标注 ⏳/Agent 失败姿态（停止重试+升级人类）。
 
-## 3. 澄清：suggested_owner「待认领」是设计，非 bug
+## 3. 澄清（排查中证伪的假设，勿重复怀疑）
 
-排查中一度误判「拆解分工没落 owner」为缺陷。实为**裁决 O4「建议不锁定」**（[landing.py:392-393](../../apps/server/src/coagentia_server/orchestration/landing.py:392) 原文）：`suggested_owner` 落地语义 = 任务 owner 恒 None、建议人选进「已落地」消息 @唤醒话术、**claim 是唯一认领通道**（防重）。Orch 已在 `suggested_owner` 结构化字段正确填人，「已落地」消息也正确 @了建议人——设计完整，只是被 B-1 卡在"建议人收不到唤醒"。
+- ~~「拆解没落 owner」~~：设计裁决 O4「建议不锁定」，`suggested_owner` 已结构化填写、「已落地」正确 @建议人。
+- ~~「实现者 present 卡 STARTING」~~：presence 正常（投递恢复后 read_position 即推进）；真根因是 B-1 前缀截断。
+- ~~「中文 MCP 编码挂起（CR-M8-2 复发）」~~：中英文对照两次拆解全走通，Orch 中文报文完好；B-4 的 codex 挂死与载荷语言无关。
 
-## 4. 下一步建议
+## 4. 下一步建议（优先级序）
 
-1. **B-1 优先**（上线前 blocker）：先给 daemon 加可读日志（写文件或 stdout flush），复现实现者 boot，观测其 present 停在 STARTING 的哪一步；对比 Orchestrator boot 到 IDLE 的路径差异。修复方向 = 让实现者 boot 握手正常走到 IDLE。
-2. **B-2**：加 present 诊断可见性 + DB/present 一致性。
-3. 待 B-1 通后，从头走**纯自动流程**（不手动 assign/set，靠「已落地」@唤醒 → agent 自主 claim）复验交付全链，再按 [M8-REALTEST-PLAN.md](M8-REALTEST-PLAN.md) 铺开 T-D/T-G/T-B/T-C/T-E/T-H/T-F′ 与 6 窗口规模。
+1. **B-1 修复裁决**（owner 拍板方向）→ 修后用本库 realtest 频道串行链场景回归。
+2. **B-5 工具扩面**（owner 拍板 E v1.x 升版）→ 修后从头跑一次零人工辅助的全链。
+3. **daemon 文件日志** → 复现 B-4 codex 挂死定位。
+4. 以上收敛后按 [M8-REALTEST-PLAN.md](M8-REALTEST-PLAN.md) 铺开 T-D/T-G/T-B/T-C/T-E/T-H/T-F′ 与 6 窗口规模（当前发现不修复，多窗口场景会大面积踩 B-1/B-5）。
 
 ## 5. 复现锚点
 
-- 库：`~/.coagentia/server/coagentia.db`（0012，含 realtest 频道 + Orch-Main/Dev-Claude-A/Dev-Codex-A + pomodoro-demo project）
-- computer=RealTest-PC api-key=`cak_01kxhxqa0hvzbkr0f4d8hgpyfa`；realtest channel=`01KXHXW27P1P1D5G94H1V5HA04`
-- proposal 落地=`01KXHYWQ7FEHNP5C2P2ZRB6VV0`（landed）；N1 task=`01KXHZQQ6B0QYSJPEAWZGMZZRC`（已 unclaim 回 todo/owner=None）
-- 投递层根因锚点：`hub.py` `_deliver_message`(1478) / `_compute_trigger`(1605) / `_report_status_changed`(1208) / `_RESUMABLE`·`_DELIVERABLE`(186-187)
+- 库：`~/.coagentia/server/coagentia.db`（0012；realtest 频道全链终态可考古）；备份 ×2。
+- computer=RealTest-PC key=`cak_01kxhxqa0hvzbkr0f4d8hgpyfa`；channel=`01KXHXW27P1P1D5G94H1V5HA04`；proposal=`01KXHYWQ7FEHNP5C2P2ZRB6VV0`；任务 #3/#4/#5/#6 全 done。
+- 主干证据：scratch-pomodoro `git log`：`7beaa03/c19c37b/8cd0026`（DAG 序 merge）← `446b2e5/2644f94/9a68f3a`（实码）。
+- 代码锚点：hub.py `_deliver_message`(1478)/`_filter_agent_delivery`(1540)/`_compute_trigger`(1605)/`inject_contract_draft_request`(2434)；canvas/service.py `message_delivery_gated`(243)；worktrees/service.py `ensure_plans`(83)/`delivery_waits_for_directory`(576)。
