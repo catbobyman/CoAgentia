@@ -75,6 +75,12 @@ class ProcLike(Protocol):
 
 SpawnFn = Callable[[list[str], str, dict[str, str]], Awaitable[ProcLike]]
 
+# asyncio StreamReader 逐行缓冲上限（B-4 根因）：默认 64KB 太小——子进程单条 stream-json /
+# JSON-RPC 帧可远超（codex thread/resume 重放会话历史、大工具输出/大 reasoning，claude 大工具
+# 结果同理）；超限时 readline() 抛 LimitOverrunError 杀读循环 → agent「挂死无诊断」（首个小帧
+# 正常、随后大帧哑火）。放宽到 32MB 覆盖现实帧尺寸；两 runtime 共用（codex.py import 本常量）。
+STREAM_LINE_LIMIT = 32 * 1024 * 1024
+
 
 async def _default_spawn(argv: list[str], cwd: str, env: dict[str, str]) -> ProcLike:
     return await asyncio.create_subprocess_exec(  # type: ignore[return-value]
@@ -84,6 +90,7 @@ async def _default_spawn(argv: list[str], cwd: str, env: dict[str, str]) -> Proc
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        limit=STREAM_LINE_LIMIT,
     )
 
 

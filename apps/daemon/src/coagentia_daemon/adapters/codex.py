@@ -31,7 +31,12 @@ from coagentia_contracts.enums import AgentStatus
 from coagentia_daemon import __version__
 from coagentia_daemon.adapter import AdapterSink
 from coagentia_daemon.adapters import cmdline, codex_cmdline
-from coagentia_daemon.adapters.claude_code import ProcLike, SpawnFn, _safe_wait
+from coagentia_daemon.adapters.claude_code import (
+    STREAM_LINE_LIMIT,
+    ProcLike,
+    SpawnFn,
+    _safe_wait,
+)
 from coagentia_daemon.adapters.frames import (
     _P_BROWSING,
     _P_COMMAND,
@@ -809,4 +814,5 @@ async def _default_codex_spawn(argv: list[str], cwd: str, env: dict[str, str]) -
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        limit=STREAM_LINE_LIMIT,  # B-4 根因：默认 64KB 太小，大帧杀读循环致挂死
     )

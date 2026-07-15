@@ -63,6 +63,35 @@ def token_usage(inp: int = 111, out: int = 22, cached: int = 7) -> dict[str, Any
 # ========================================================= FrameRouter（纯逻辑）
 
 
+async def test_spawn_uses_large_stream_limit(monkeypatch: Any) -> None:
+    """B-4 根因回归：spawn 必须给 create_subprocess_exec 传远大于默认 64KB 的 limit。
+
+    codex thread/resume 重放会话历史、大工具输出/大 reasoning 的单条 JSON-RPC 帧可超 64KB；
+    默认上限下 readline() 抛 LimitOverrunError 杀读循环 → agent「挂死无诊断」（首个小帧正常、
+    随后大帧哑火）。claude stream-json 大工具结果同理。两 runtime 共用 STREAM_LINE_LIMIT。
+    """
+    import asyncio as _asyncio
+
+    from coagentia_daemon.adapters import claude_code as cc_mod
+    from coagentia_daemon.adapters import codex as codex_mod
+
+    captured: dict[str, Any] = {}
+
+    async def fake_exec(*_argv: Any, **kw: Any) -> object:
+        captured.clear()
+        captured.update(kw)
+        return object()  # 不真起进程——仅校验传参
+
+    monkeypatch.setattr(_asyncio, "create_subprocess_exec", fake_exec)
+
+    await codex_mod._default_codex_spawn(["x"], ".", {})
+    assert captured["limit"] == cc_mod.STREAM_LINE_LIMIT
+    assert captured["limit"] >= 8 * 1024 * 1024  # 远大于 64KB asyncio 默认
+
+    await cc_mod._default_spawn(["x"], ".", {})
+    assert captured["limit"] == cc_mod.STREAM_LINE_LIMIT
+
+
 async def test_router_logs_item_and_turn_lifecycle(caplog: Any) -> None:
     """B-4 可观测性：router 处理 item/started 与 turn/completed 发 INFO 日志（挂死排查现场）。
 
