@@ -1,4 +1,4 @@
-"""PS-WT 实机 verify —— 目录浏览 + 工作树管理台全链：真 uvicorn + 真 daemon(真 git.py) + 真 git worktree。
+"""PS-WT 实机 verify —— 目录浏览 + 工作树管理台全链：真 uvicorn + 真 daemon + 真 git worktree。
 
 覆盖 PS-WT 新用户可见面（端到端真机，非 mock/桩）：
 - fs 代理：真盘符枚举(V1) / 子目录 has_git(V2) / Agent 403(V3) / daemon 离线 503(V4)。
@@ -22,9 +22,7 @@ import socket
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
-from urllib.parse import quote
 
 import httpx
 import m6a_harness as H
@@ -116,7 +114,7 @@ async def run(ids: dict, keep: bool, db_url: str, repo: Path, comp2_id: str) -> 
             }, expect=201)
             proj_id = pr.json()["id"]
 
-            # ---- 建 4 个真任务（真 as_task）：A 活跃有盘/脏, C 活跃无盘=丢失, M merged 待清, P merged+预览 ----
+            # ---- 建 4 真任务：A 活跃有盘/脏 · C 活跃无盘=丢失 · M merged · P 预览 ----
             async def _mktask(title: str) -> str:
                 r = await rest.post(f"/channels/{cid}/messages",
                                     {"body": title, "as_task": {"title": title}}, expect=201)
@@ -176,7 +174,7 @@ async def run(ids: dict, keep: bool, db_url: str, repo: Path, comp2_id: str) -> 
                   f"repo={repo.name} has_git={names.get(repo.name, {}).get('has_git')}")
 
             r = await rest.get(f"/computers/{H.COMP_ID}/fs", agent=agent0)
-            check("V3 fs Agent 主体 → 403（O9 同门）", r.status_code == 403, f"status={r.status_code}")
+            check("V3 fs Agent 主体 → 403（O9 同门）", r.status_code == 403, f"s={r.status_code}")
 
             r = await rest.get(f"/computers/{comp2_id}/fs")
             check("V4 fs daemon 离线 → 503 DAEMON_OFFLINE", r.status_code == 503,
