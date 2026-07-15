@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -33,6 +34,10 @@ from coagentia_daemon.adapters import cmdline, encoding
 from coagentia_daemon.adapters.frames import FrameRouter
 from coagentia_daemon.paths import DataPaths
 from coagentia_daemon.util import new_ulid, now_iso
+
+# daemon 文件日志（B-4 可观测性，对照 codex）：claude stream-json 帧收发/生命周期落 daemon.log。
+log = logging.getLogger(__name__)
+_FRAME_PREVIEW = 600  # 帧原文 DEBUG 预览截断
 
 # 崩溃拉起退避（§5：1s → 5s → 15s；5 分钟窗 ≥3 次 → 放弃 error）
 CRASH_BACKOFF: tuple[float, ...] = (1.0, 5.0, 15.0)
@@ -151,17 +156,16 @@ class ClaudeCodeProcess:
         self._materialize_skills(config_dir, boot.skills)
         resume_id = self._resume_session_id() if resume else None
         self._resume_args = ["--resume", resume_id] if resume_id else []
-        argv = cmdline.build_argv(
-            boot, mcp_config_path=mcp_path, resume_session_id=resume_id
-        )
+        argv = cmdline.build_argv(boot, mcp_config_path=mcp_path, resume_session_id=resume_id)
         env = cmdline.build_env(str(home))
         self.router.reset_run()  # 复位本次 spawn 的运行态（confirmed/turn/phase）
         self._proc = await self._spawn(argv, str(home), env)
         self.pid = getattr(self._proc, "pid", None)
+        log.info(
+            "claude[%s] spawned pid=%s resume=%s", self.agent_member_id, self.pid, bool(resume_id)
+        )
         self._sink.on_diagnostic(
-            self._diag(
-                "agent.process_started", {"pid": self.pid, "resume": bool(resume_id)}
-            )
+            self._diag("agent.process_started", {"pid": self.pid, "resume": bool(resume_id)})
         )
         self._reader_task = asyncio.create_task(self._read_loop())
         # stderr 必须持续排空：--verbose 会灌满 stderr 管道 → 否则子进程写阻塞死锁。
@@ -192,9 +196,15 @@ class ClaudeCodeProcess:
                 await self._on_line(line)
         except asyncio.CancelledError:
             raise  # stop() 主动取消 → 不触发退出回调
-        except Exception:  # noqa: BLE001 — 读循环内任何异常都不外抛，视作进程终结
-            pass
+        except Exception as exc:  # noqa: BLE001 — 读循环内任何异常都不外抛，视作进程终结
+            log.warning("claude[%s] read loop error: %r", self.agent_member_id, exc)
         returncode = await _safe_wait(proc)
+        log.info(
+            "claude[%s] read loop ended (stdout EOF), returncode=%s; stderr_tail=%s",
+            self.agent_member_id,
+            returncode,
+            list(self.stderr_tail)[-5:],
+        )
         if self._on_exit is not None:
             await self._on_exit(self.agent_member_id, returncode)
 
@@ -212,6 +222,7 @@ class ClaudeCodeProcess:
                 text = line.decode("utf-8", "replace").rstrip()
                 if text:
                     self.stderr_tail.append(text)
+                    log.info("claude[%s] stderr: %s", self.agent_member_id, text)
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             return
 
@@ -220,9 +231,12 @@ class ClaudeCodeProcess:
         text = text.strip()
         if not text:
             return
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("claude[%s] recv: %s", self.agent_member_id, text[:_FRAME_PREVIEW])
         try:
             frame = _json_loads(text)
         except ValueError:
+            log.warning("claude[%s] recv non-json: %s", self.agent_member_id, text[:200])
             self.router.unknown_counts["<non-json>"] = (
                 self.router.unknown_counts.get("<non-json>", 0) + 1
             )
@@ -248,6 +262,7 @@ class ClaudeCodeProcess:
         proc = self._proc
         if proc is None or proc.stdin is None:
             raise RuntimeError("process not running")
+        log.info("claude[%s] feed turn input (len=%d)", self.agent_member_id, len(text))
         self.router.begin_turn()  # 抑制随后的 init→idle 误报（init 帧在首输入后到）
         data = (encoding.user_frame_line(text) + "\n").encode("utf-8")  # 载体封装（claude 特化）
         proc.stdin.write(data)
@@ -411,9 +426,7 @@ class RuntimeManager:
         key = _RESUME_KEY.get(boot.runtime, "session_id")
         return bool(self.paths.read_session(boot.agent_member_id).get(key))
 
-    def _new_process(
-        self, aid: str, runtime: Runtime
-    ) -> ClaudeCodeProcess | CodexProcess:
+    def _new_process(self, aid: str, runtime: Runtime) -> ClaudeCodeProcess | CodexProcess:
         """按 runtime 分派进程类（E2 §1；codex 惰性 import 避免模块级循环依赖）。"""
         if runtime == Runtime.CODEX:
             from coagentia_daemon.adapters.codex import CodexProcess
@@ -514,9 +527,7 @@ class RuntimeManager:
         entry.process.set_turn_context(channel_id, thread_root_id)
         await self._emit(entry, AgentStatus.BUSY)
         # 渲染运行时无关正文（纪律 8）；载体封装归各 Process（claude / codex 各自特化）。
-        await entry.process.feed(
-            encoding.render_deliver(messages, thread_root_id=thread_root_id)
-        )
+        await entry.process.feed(encoding.render_deliver(messages, thread_root_id=thread_root_id))
         return True
 
     async def inject(

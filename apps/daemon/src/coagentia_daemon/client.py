@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import string
 import sys
@@ -66,6 +67,8 @@ from coagentia_daemon.preview import PreviewRunner
 from coagentia_daemon.probe import CommandRunner, probe_runtimes
 from coagentia_daemon.transport import Transport, TransportClosed, websockets_connect
 from coagentia_daemon.util import new_ulid, now_iso
+
+log = logging.getLogger(__name__)  # → daemon.log（logconfig 装配的 coagentia_daemon 命名空间）
 
 BACKOFF_START = 1.0
 BACKOFF_CAP = 30.0
@@ -228,6 +231,11 @@ class DaemonClient:
         self._apply_hello_ack(ack, hello_frame_id)
         self._was_connected = True
         self.connected.set()
+        log.info(
+            "connected: hello_ack ok, heartbeat=%ss, boot_nonce=%s",
+            self.heartbeat_sec,
+            self.boot_nonce,
+        )
         self._flush_event.set()  # 重连即重传离线期缓冲（契约 D §4.1 第 5 步）
 
         reader = asyncio.create_task(self._reader(transport))
@@ -301,6 +309,7 @@ class DaemonClient:
     async def handle_instr(self, frame: dict[str, Any]) -> None:
         frame_id = frame["frame_id"]
         itype = InstrType(frame["type"])
+        log.info("instr recv: %s frame=%s", itype.value, frame_id)  # 关联 codex/claude 生命周期
         if itype in _BACKGROUND_INSTRS:
             # worktree 帧后台化：立即返回让 reader 继续处理 PONG 等帧；ack 仍在 op 完成后由后台任务
             # 发出（保序：handler 先报 worktree.status 再返回 → 任务末尾发 ack），server 零改动。
@@ -395,15 +404,15 @@ class DaemonClient:
             elif qtype == QueryType.HOME_FILE:
                 reply = self._home_file(data)
             elif qtype == QueryType.GIT_DIFF:
-                reply = (
-                    await self.git.diff(GitDiffQuery.model_validate(data))
-                ).model_dump(mode="json")
+                reply = (await self.git.diff(GitDiffQuery.model_validate(data))).model_dump(
+                    mode="json"
+                )
             elif qtype == QueryType.FS_TREE:
                 reply = self._fs_tree(data)
             elif qtype == QueryType.WORKTREE_SCAN:
-                reply = (
-                    await self.git.scan(WorktreeScanQuery.model_validate(data))
-                ).model_dump(mode="json")
+                reply = (await self.git.scan(WorktreeScanQuery.model_validate(data))).model_dump(
+                    mode="json"
+                )
             else:
                 reply = {"error": "unsupported"}
         except Exception as exc:  # noqa: BLE001
@@ -445,9 +454,9 @@ class DaemonClient:
         except UnicodeDecodeError:
             return HomeFileBinaryReply(size_bytes=len(raw)).model_dump(mode="json")
         truncated = len(text) > _HOME_FILE_MAX
-        return HomeFileTextReply(
-            content=text[:_HOME_FILE_MAX], truncated=truncated
-        ).model_dump(mode="json")
+        return HomeFileTextReply(content=text[:_HOME_FILE_MAX], truncated=truncated).model_dump(
+            mode="json"
+        )
 
     def _fs_tree(self, data: dict[str, Any]) -> dict[str, Any]:
         """PS-WT fs.tree：computer 级只读目录浏览（选仓库路径）。path=None → 根视图
@@ -654,11 +663,9 @@ class DaemonClient:
             await transport.close()
 
     def _log(self, message: str) -> None:
-        line = f"{now_iso()} {message}\n"
-        with contextlib.suppress(OSError):
-            self.paths.daemon_dir.mkdir(parents=True, exist_ok=True)
-            with open(self.paths.log_path, "a", encoding="utf-8") as f:
-                f.write(line)
+        # 经 logging → daemon.log（logconfig 装配的 RotatingFileHandler）。未装配时（如单测直建
+        # DaemonClient）无 handler → 静默丢弃，不再像旧实现每行 open 真库文件（避免测试落盘）。
+        log.warning(message)
 
 
 def _iso_from_mtime(mtime: float) -> str:

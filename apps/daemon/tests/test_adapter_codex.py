@@ -63,6 +63,26 @@ def token_usage(inp: int = 111, out: int = 22, cached: int = 7) -> dict[str, Any
 # ========================================================= FrameRouter（纯逻辑）
 
 
+async def test_router_logs_item_and_turn_lifecycle(caplog: Any) -> None:
+    """B-4 可观测性：router 处理 item/started 与 turn/completed 发 INFO 日志（挂死排查现场）。
+
+    挂死症状 = 首个 tool call（item/completed）后哑火——item 序列日志即定位「卡在哪一 item」。
+    """
+    import logging
+
+    logging.getLogger("coagentia_daemon").propagate = True  # 让 caplog 捕获（不依赖 logconfig）
+    sink = RecordingSink()
+    r = _router(sink)
+    with caplog.at_level(logging.INFO, logger="coagentia_daemon.adapters.codex"):
+        await r.process(item_started("mcpToolCall", "i1", tool="claim_task", server="coagentia"))
+        await r.process(item_done("mcpToolCall", "i1", tool="claim_task", status="ok"))
+        await r.process(turn_done())
+    msgs = " ".join(rec.getMessage() for rec in caplog.records)
+    assert "item/started type=mcpToolCall" in msgs
+    assert "item/completed type=mcpToolCall" in msgs
+    assert "turn/completed status=completed" in msgs
+
+
 async def test_thread_started_sets_conversation_and_confirmed() -> None:
     sink = RecordingSink()
     captured: list[str] = []
@@ -241,8 +261,13 @@ def _has_line(proc: Any, needle: str) -> bool:
 
 
 def _deliver_msg(mid: str, body: str) -> dict[str, Any]:
-    return {"id": mid, "channel_id": CH, "author_member_id": "01K5AUTH00000000000000000A",
-            "created_at": _now(), "body": body}
+    return {
+        "id": mid,
+        "channel_id": CH,
+        "author_member_id": "01K5AUTH00000000000000000A",
+        "created_at": _now(),
+        "body": body,
+    }
 
 
 async def _reach_thread_request(proc: Any, *, resume: bool = False) -> None:
@@ -394,6 +419,7 @@ async def test_reset_session_args_empty(tmp_path: Path) -> None:
 async def test_handshake_failure_kills_process(tmp_path: Path, monkeypatch) -> None:
     """握手失败（thread 无 id）→ 杀进程触发退出（熔断降级由管理器接管）。"""
     from coagentia_daemon.adapters import claude_code
+
     monkeypatch.setattr(claude_code, "CRASH_BACKOFF", (0.0, 0.0, 0.0))
     mgr, sink, spawn, paths = _make_manager(tmp_path)
     await mgr.start(_boot(tmp_path / "home"))

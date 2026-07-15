@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -47,6 +48,20 @@ from coagentia_daemon.util import new_ulid, now_iso
 
 _HANDSHAKE_TIMEOUT = 60.0  # initialize / thread.* 应答上限（慢启不误杀，坏进程走熔断）
 _STOP_GRACE_SEC = 5.0  # 杀树后等待退出上限
+
+# daemon 文件日志（B-4 可观测性）：codex app-server JSON-RPC 帧收发/握手/生命周期落 daemon.log。
+# 帧原文在 DEBUG（挂死排查设 COAGENTIA_DAEMON_LOG_LEVEL=DEBUG）；生命周期里程碑在 INFO。
+log = logging.getLogger(__name__)
+_FRAME_PREVIEW = 600  # 帧原文 DEBUG 预览截断（避免超长 turn 输入/输出灌爆日志）
+
+
+def _frame_summary(frame: dict[str, Any]) -> str:
+    """收帧的紧凑摘要（method/id/类别）——即使 DEBUG 关，INFO 也能看清帧序。"""
+    if "method" in frame:
+        kind = "srvreq" if frame.get("id") is not None else "notif"
+        return f"{kind} {frame.get('method')} id={frame.get('id')}"
+    return f"resp id={frame.get('id')} {'error' if 'error' in frame else 'ok'}"
+
 
 # ThreadItem.type → activity 相位（E2 §5；文案值域 = claude frames 单源）。
 _ITEM_PHASE: dict[str, str] = {
@@ -213,6 +228,7 @@ class CodexFrameRouter:
         self.reset_phase()
         self.confirmed = True
         status = turn.get("status")
+        log.info("codex[%s] turn/completed status=%s", self.agent_member_id, status)
         if status == "failed":
             await self._status(AgentStatus.ERROR, error_detail=_error_detail(turn.get("error")))
         else:
@@ -221,7 +237,17 @@ class CodexFrameRouter:
 
     async def _on_error(self, params: dict[str, Any]) -> None:
         if params.get("willRetry"):
+            log.info(
+                "codex[%s] error willRetry (transient): %s",
+                self.agent_member_id,
+                _error_detail(params.get("error")),
+            )
             return  # 瞬态：codex 内部重试，turn 未终结
+        log.warning(
+            "codex[%s] error (turn failed): %s",
+            self.agent_member_id,
+            _error_detail(params.get("error")),
+        )
         await self._status(AgentStatus.ERROR, error_detail=_error_detail(params.get("error")))
         self.reset_phase()
         await self._release_turn()
@@ -236,6 +262,8 @@ class CodexFrameRouter:
         item = params.get("item")
         if not isinstance(item, dict):
             return
+        # 挂死排查：turn 内的 item 序列是核心线索（末个 started 无 completed = 卡在该 item）。
+        log.info("codex[%s] item/started type=%s", self.agent_member_id, item.get("type"))
         phase = self._phase_for_item(item)
         if phase is not None:
             await self._switch_phase(phase)
@@ -245,6 +273,7 @@ class CodexFrameRouter:
         if not isinstance(item, dict):
             return
         itype = item.get("type")
+        log.info("codex[%s] item/completed type=%s", self.agent_member_id, itype)
         if itype == "commandExecution":
             exit_code = item.get("exitCode")
             is_error = bool(item.get("status") == "failed") or (
@@ -315,6 +344,7 @@ class CodexFrameRouter:
         seen = self.unknown_counts.get(key, 0)
         self.unknown_counts[key] = seen + 1
         if seen == 0:  # 每种未知类型首现一条低频诊断，后续静默累加
+            log.info("codex[%s] unknown frame type=%s", self.agent_member_id, key)
             self._diag("agent.unknown_frame", {"type": key, "count": 1})
 
     async def _status(self, status: AgentStatus, error_detail: str | None = None) -> None:
@@ -461,6 +491,7 @@ class CodexProcess:
         env = codex_cmdline.build_env(str(home))
         self._proc = await self._spawn(argv, str(home), env)
         self.pid = getattr(self._proc, "pid", None)
+        log.info("codex[%s] spawned pid=%s resume=%s", self.agent_member_id, self.pid, bool(resume))
         self._sink.on_diagnostic(
             self._diag("agent.process_started", {"pid": self.pid, "resume": bool(resume)})
         )
@@ -480,7 +511,9 @@ class CodexProcess:
         self._turn_in_flight = False
 
     async def _handshake(self, boot: AgentBoot, resume: bool) -> None:
+        aid = self.agent_member_id
         try:
+            log.info("codex[%s] handshake: initialize", aid)
             await self._request(
                 "initialize",
                 {"clientInfo": {"name": "coagentia", "version": __version__}},
@@ -489,20 +522,25 @@ class CodexProcess:
             cid = self._resume_conversation_id() if resume else None
             opts = self._thread_opts(boot)
             if cid:
+                log.info("codex[%s] handshake: thread/resume threadId=%s", aid, cid)
                 resp = await self._request("thread/resume", {"threadId": cid, **opts})
             else:
+                log.info("codex[%s] handshake: thread/start", aid)
                 resp = await self._request("thread/start", opts)
             thread = resp.get("thread") if isinstance(resp, dict) else None
             tid = thread.get("id") if isinstance(thread, dict) else None
             if tid:
+                log.info("codex[%s] handshake ready: thread=%s", aid, tid)
                 self.router.set_conversation(tid)
                 self._thread_id = tid
                 await self._maybe_submit_next_turn()  # 排空握手前排队的投递
             else:
+                log.warning("codex[%s] handshake: no thread id in response → abort", aid)
                 await self._abort_process()  # 无 thread → 视作握手失败，走熔断
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 — 握手任何失败 → 杀进程触发 on_exit + 熔断降级
+        except Exception as exc:  # noqa: BLE001 — 握手任何失败 → 杀进程触发 on_exit + 熔断降级
+            log.warning("codex[%s] handshake failed: %r → abort", aid, exc)
             await self._abort_process()
 
     def _thread_opts(self, boot: AgentBoot) -> dict[str, Any]:
@@ -537,10 +575,17 @@ class CodexProcess:
                 await self._on_line(line)
         except asyncio.CancelledError:
             raise  # stop() 主动取消 → 不触发退出回调
-        except Exception:  # noqa: BLE001 — 读循环内异常视作进程终结
-            pass
+        except Exception as exc:  # noqa: BLE001 — 读循环内异常视作进程终结
+            log.warning("codex[%s] read loop error: %r", self.agent_member_id, exc)
         self._fail_pending()
         returncode = await _safe_wait(proc)
+        # 挂死排查关键：stdout EOF = codex 自己退了；若 turn 期间无端 EOF，末尾 stderr 是线索。
+        log.info(
+            "codex[%s] read loop ended (stdout EOF), returncode=%s; stderr_tail=%s",
+            self.agent_member_id,
+            returncode,
+            list(self.stderr_tail)[-5:],
+        )
         if self._on_exit is not None:
             await self._on_exit(self.agent_member_id, returncode)
 
@@ -557,6 +602,8 @@ class CodexProcess:
                 text = line.decode("utf-8", "replace").rstrip()
                 if text:
                     self.stderr_tail.append(text)
+                    # codex app-server 的 stderr 是挂死排查金矿（node 报错/栈/超时都在此）。
+                    log.info("codex[%s] stderr: %s", self.agent_member_id, text)
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             return
 
@@ -565,9 +612,12 @@ class CodexProcess:
         text = text.strip()
         if not text:
             return
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("codex[%s] recv: %s", self.agent_member_id, text[:_FRAME_PREVIEW])
         try:
             frame = json.loads(text)
         except ValueError:
+            log.warning("codex[%s] recv non-json: %s", self.agent_member_id, text[:200])
             self.router._count_unknown("<non-json>")
             return
         if not isinstance(frame, dict):
@@ -599,9 +649,19 @@ class CodexProcess:
         method = str(frame.get("method"))
         result = _APPROVAL_RESULTS.get(method)
         if result is not None:
+            log.info(
+                "codex[%s] serverRequest %s id=%s → auto-approve", self.agent_member_id, method, rid
+            )
             await self._write_message({"id": rid, "result": result})
             return
         # 未知 ServerRequest：无法伪造合法 approval 载荷 → 保守回 error（好过挂死）。
+        # 挂死疑点：codex 若在等一个我们回了 error 的 serverRequest，此处即线索。
+        log.warning(
+            "codex[%s] serverRequest %s id=%s → reject (unsupported)",
+            self.agent_member_id,
+            method,
+            rid,
+        )
         await self._write_message(
             {"id": rid, "error": {"code": -32601, "message": "unsupported server request"}}
         )
@@ -636,7 +696,10 @@ class CodexProcess:
         proc = self._proc
         if proc is None or proc.stdin is None:
             raise RuntimeError("process not running")
-        data = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+        payload = json.dumps(obj, ensure_ascii=False)
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("codex[%s] send: %s", self.agent_member_id, payload[:_FRAME_PREVIEW])
+        data = (payload + "\n").encode("utf-8")
         proc.stdin.write(data)
         drain = getattr(proc.stdin, "drain", None)
         if drain is not None:
@@ -661,6 +724,12 @@ class CodexProcess:
         # turn/start 是 fire-and-forget 请求：响应可能延至 turn 结束，ack=发出即 ack（E2 §4）。
         rid = self._next_id
         self._next_id += 1
+        log.info(
+            "codex[%s] turn/start submitted (input_len=%d, queue_left=%d)",
+            self.agent_member_id,
+            len(text),
+            len(self._turn_queue),
+        )
         await self._write_message(
             {
                 "id": rid,
@@ -703,11 +772,7 @@ class CodexProcess:
     async def _terminate_tree(self, proc: ProcLike) -> None:
         if proc.returncode is not None:
             return
-        if (
-            codex_cmdline.is_win32()
-            and isinstance(proc, asyncio.subprocess.Process)
-            and proc.pid
-        ):
+        if codex_cmdline.is_win32() and isinstance(proc, asyncio.subprocess.Process) and proc.pid:
             await self._run_taskkill(proc.pid)  # terminate 杀不掉底层 node（E2 §1.2）
         else:
             with contextlib.suppress(Exception):

@@ -70,6 +70,18 @@ def main(argv: list[str] | None = None) -> int:
     if not args.server_url or not args.api_key:
         raise SystemExit("--server-url 与 --api-key 必填")
     _install_win32_loop_policy()
+    # daemon 主进程文件日志装配（B-4 可观测性；mcp 子进程路径已在上面 return，不装配）。
+    from coagentia_daemon.logconfig import setup_file_logging
+
+    paths = DataPaths(args.data_root)
+    paths.ensure_dirs()
+    log = setup_file_logging(paths)
+    log.info(
+        "daemon starting: version=%s server_url=%s data_root=%s",
+        __version__,
+        args.server_url,
+        args.data_root or "(default)",
+    )
     client = build_client(args.server_url, args.api_key, data_root=args.data_root)
 
     async def run_client() -> None:
