@@ -1,0 +1,56 @@
+{
+  "passed": 10,
+  "total": 10,
+  "results": [
+    {
+      "probe": "P0 daemon-sim 真 websockets 连上真 server",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "S1 POST /channels 新建频道进快照",
+      "ok": true,
+      "detail": "侧栏『新建频道』真实端点"
+    },
+    {
+      "probe": "S2 POST /agents 建 Agent 进成员表",
+      "ok": true,
+      "detail": "Members 页『创建 Agent』真实端点"
+    },
+    {
+      "probe": "L11-0 seed 工作区默认关（裁决 #9）",
+      "ok": true,
+      "detail": "onboarding_greeting=False"
+    },
+    {
+      "probe": "L11-1 默认关→上线零问候",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "L11-2 开→daemon 收到入职问候一条",
+      "ok": true,
+      "detail": "body 摘要：[system → 仅你可见] 欢迎加入这个工作区！请到 #all …"
+    },
+    {
+      "probe": "L11-3 幂等标记落一条",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "L11-4 重启不重复问候（标记 airtight）",
+      "ok": true,
+      "detail": "inject 1→1"
+    },
+    {
+      "probe": "L1-1 带上游 merge 节点：节点+入边同事务原子落地（非空成功）",
+      "ok": true,
+      "detail": "edge=True status=idle"
+    },
+    {
+      "probe": "L1-2 悬空上游 → 422（全量收集，不留悬挂节点）",
+      "ok": true,
+      "detail": "status=422"
+    }
+  ]
+}
