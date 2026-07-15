@@ -989,14 +989,13 @@ async def get_usage(level: UsageLevel = UsageLevel.TASK, ref: str | None = None,
     return report
 
 
-# ---------------------------------------------------------------- PS-WT 目录浏览/工作树管理台（纯形状）
+# ---------------------------------------------------- PS-WT 目录浏览/工作树管理台（纯形状）
 #
 # 登记：mock 只验形状不做业务（纪律 4）——真盘符枚举/worktrees_dir 扫描/合账矩阵/CAS 清理/
 # 护栏（worktrees_dir 边界、ULID 命名过滤）全活真 server/daemon。此处仅喂 OpenAPI→rest.ts。
 
 
 def _mock_worktree(worktree_id: str | None = None, *, status: str = "cleaned") -> dict[str, Any]:
-    terminal = status in ("merged", "cleaned", "conflicted")
     return {
         "id": worktree_id or new_id(), "workspace_id": store.workspace["id"],
         "project_id": new_id(), "task_id": new_id(),
@@ -1068,7 +1067,7 @@ async def cleanup_worktree(worktree_id: str) -> Any:
 @app.post("/api/computers/{computer_id}/worktrees/cleanup-orphan",
           response_model=rest.OrphanCleanupResult)
 async def cleanup_orphan(computer_id: str, body: rest.OrphanCleanup) -> Any:
-    """清理磁盘孤儿树（B §4.11 扩）：无 DB 行、不广播；mock 回 removed 形状，孤儿判定活真 server。"""
+    """清理磁盘孤儿树（B §4.11 扩）：无 DB 行、不广播；mock 回 removed 形状，判定活真 server。"""
     return {"project_id": body.project_id, "task_id": body.task_id, "removed": True}
 
 

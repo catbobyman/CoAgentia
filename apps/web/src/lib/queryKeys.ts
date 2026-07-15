@@ -42,4 +42,11 @@ export const qk = {
   deploymentLog: (deploymentId: string) => ['deploymentLog', deploymentId] as const,
   // 成本汇总（GET /usage?level=&ref=）：按 level+ref 存；画布页签汇总条与成本面共用。
   usage: (level: string, ref: string) => ['usage', level, ref] as const,
+  // ---- PS-WT ① 目录选择器（GET /computers/{cid}/fs?path=）：按 (cid, path) 存，回退秒开靠此缓存命中；
+  // path 缺省（根视图/盘符）归一为 null 作稳定 key。
+  fsTree: (computerId: string, path: string | undefined) =>
+    ['fsTree', computerId, path ?? null] as const,
+  // ---- PS-WT ② 工作树管理台（GET /worktrees?live=0|1）：按 live 存（骨架/实时对账两态各一缓存）；
+  // wsBridge 的 worktree.updated 用前缀 ['worktreesConsole'] 失效两态（不轮询，靠 WS 失效兜底）。
+  worktreesConsole: (live: 0 | 1) => ['worktreesConsole', live] as const,
 };

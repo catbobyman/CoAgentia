@@ -136,6 +136,7 @@ export function RootLayout() {
           presenceOf={(id) => presence[id]}
           dmPeer={dmPeer}
           onSelectChannel={(ch) => setActiveChannel(ch.id)}
+          canManageProjects={me.role === 'owner' || me.role === 'admin'}
           onPlayTimeline={IS_MOCK ? () => void api.playTimeline() : undefined}
           mobileOpen={channelDrawerOpen}
           onMobileClose={() => setChannelDrawerOpen(false)}

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import shutil
 import stat
 import sys
@@ -25,6 +26,9 @@ from coagentia_contracts.daemon import (
     WorktreeCleanupData,
     WorktreeEnsureData,
     WorktreeMergeData,
+    WorktreeScanEntry,
+    WorktreeScanQuery,
+    WorktreeScanReply,
     WorktreeStatusData,
 )
 
@@ -33,6 +37,10 @@ from coagentia_daemon.paths import DataPaths
 GIT_TIMEOUT_SEC = 60.0
 DIFF_MAX_FILES = 200
 DIFF_MAX_PATCH_BYTES = 64 * 1024
+# PS-WT worktree.scan：只纳管 ULID 命名的两级目录（26 位 Crockford base32，同契约 A ids.Ulid）。
+_ULID_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+# PS-WT 孤儿清理护栏：删分支硬限定 coagentia/ 命名空间（绝不误删主干/他人分支）。
+_COAGENTIA_BRANCH_PREFIX = "coagentia/"
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,7 +290,17 @@ class GitWorktreeManager:
     async def cleanup(self, data: WorktreeCleanupData) -> WorktreeOperation:
         known = self._known.get(data.task_id)
         repo = self._known_repos.get(data.task_id)
-        if known is not None:
+        if data.project_id is not None:
+            # PS-WT 孤儿清理：DB 无 task 行、无法从缓存/登记反查，按 (project_id, task_id) 自拼
+            # 固定两级路径（下方 _assert_managed_target 双保险仍强制其落在 worktrees_dir 内）。
+            target = self.paths.worktree_path(data.project_id, data.task_id)
+            branch = known.branch if known is not None else f"coagentia/task-{data.task_id}"
+            if repo is None and (target / ".git").exists():
+                try:
+                    repo, branch = await self._recover_from_worktree(target)
+                except (GitCommandError, WorktreeSafetyError):
+                    repo = None
+        elif known is not None:
             target = Path(known.path)
             branch = known.branch
         else:
@@ -330,6 +348,10 @@ class GitWorktreeManager:
         if _lexists(target):
             raise WorktreeSafetyError(f"worktree 物理目录仍存在：{target}")
 
+        if data.project_id is not None:
+            # PS-WT 孤儿清理收尾：删除无 task 引用的死分支（M6 常规清理不删分支、行为不变）。
+            await self._cleanup_orphan_branch(repo, branch)
+
         status = _status(
             data.task_id,
             "cleaned",
@@ -340,6 +362,101 @@ class GitWorktreeManager:
         changed = registered or existed or known is None or known.status != "cleaned"
         self._remember(data.task_id, repo, status)
         return WorktreeOperation(changed, status)
+
+    async def _cleanup_orphan_branch(self, repo: Path | None, branch: str | None) -> None:
+        """PS-WT 孤儿清理收尾：删无 task 引用的死分支。**硬护栏：仅删 coagentia/ 命名空间**，
+        其余分支一律不碰（绝不误删主干/他人分支）；主仓不可用则跳过（尽力，不炸清理）。"""
+        if repo is None or not repo.is_dir():
+            return
+        if branch is None or not branch.startswith(_COAGENTIA_BRANCH_PREFIX):
+            return
+        await self._git(repo, "branch", "-D", "--", branch, check=False)
+
+    async def scan(self, data: WorktreeScanQuery) -> WorktreeScanReply:
+        """PS-WT worktree.scan：扫 worktrees_dir 两级 {project_id}/{task_id}，**只报双级 ULID
+        命名的目录**（非 ULID 一律跳过，别的目录不纳管）。逐树尽力采集 branch/head/dirty/
+        ahead/behind；单树 git 失败逐条降级填 error，绝不炸整扫（契约 D §6）。"""
+        root = self.paths.worktrees_dir
+        entries: list[WorktreeScanEntry] = []
+        if not root.is_dir():
+            return WorktreeScanReply(entries=entries)
+        for project_dir in sorted(_safe_iterdir(root), key=lambda p: p.name):
+            if not _is_ulid_dir(project_dir):
+                continue
+            for task_dir in sorted(_safe_iterdir(project_dir), key=lambda p: p.name):
+                if not _is_ulid_dir(task_dir):
+                    continue
+                entries.append(await self._scan_tree(project_dir.name, task_dir.name, task_dir))
+        return WorktreeScanReply(entries=entries)
+
+    async def _scan_tree(self, project_id: str, task_id: str, path: Path) -> WorktreeScanEntry:
+        branch: str | None = None
+        head_commit: str | None = None
+        dirty = False
+        errors: list[str] = []
+
+        res = await self._scan_git(path, "rev-parse", "--abbrev-ref", "HEAD")
+        if res is not None and res.returncode == 0:
+            name = res.stdout.strip()
+            branch = None if name in ("", "HEAD") else name  # detached → "HEAD" → None
+        else:
+            errors.append(_scan_err("rev-parse --abbrev-ref HEAD", res))
+
+        res = await self._scan_git(path, "rev-parse", "HEAD")
+        if res is not None and res.returncode == 0:
+            head_commit = res.stdout.strip() or None
+        else:
+            errors.append(_scan_err("rev-parse HEAD", res))
+
+        res = await self._scan_git(path, "status", "--porcelain")
+        if res is not None and res.returncode == 0:
+            dirty = bool(res.stdout.strip())
+        else:
+            errors.append(_scan_err("status --porcelain", res))
+
+        ahead, behind = await self._scan_ahead_behind(path)
+
+        return WorktreeScanEntry(
+            project_id=project_id,
+            task_id=task_id,
+            path=str(path),
+            branch=branch,
+            head_commit=head_commit,
+            dirty=dirty,
+            ahead=ahead,
+            behind=behind,
+            error="; ".join(errors) if errors else None,
+        )
+
+    async def _scan_ahead_behind(self, path: Path) -> tuple[int | None, int | None]:
+        """相对主仓库当前 HEAD 的 ahead/behind（尽力）；基线无法干净解析即 None，不报 error。"""
+        listing = await self._scan_git(path, "worktree", "list", "--porcelain")
+        if listing is None or listing.returncode != 0:
+            return None, None
+        main_head = _main_worktree_head(listing.stdout)
+        if main_head is None:
+            return None, None
+        counts = await self._scan_git(
+            path, "rev-list", "--left-right", "--count", f"{main_head}...HEAD"
+        )
+        if counts is None or counts.returncode != 0:
+            return None, None
+        parts = counts.stdout.split()
+        if len(parts) != 2:
+            return None, None
+        try:
+            behind, ahead = int(parts[0]), int(parts[1])  # 左=主仓独有(落后) 右=本树独有(领先)
+        except ValueError:
+            return None, None
+        return ahead, behind
+
+    async def _scan_git(self, path: Path, *args: str) -> GitResult | None:
+        """scan 专用只读执行：check=False（返回码留给调用方判读）+ 吞子进程级异常返回 None，
+        使单树 git 失败逐条降级而非炸整扫。"""
+        try:
+            return await self._git(path, *args, check=False)
+        except (OSError, TimeoutError, GitCommandError):
+            return None
 
     async def merge(self, data: WorktreeMergeData) -> WorktreeOperation:
         repo = await self._validate_repo(data.repo_path)
@@ -856,6 +973,46 @@ def _split_diff_sections(raw: str) -> list[str]:
     if current is not None:
         sections.append("".join(current))
     return sections
+
+
+def _safe_iterdir(path: Path) -> list[Path]:
+    """列目录，权限/IO 失败即空列表（worktree.scan 逐级降级不炸整扫）。"""
+    try:
+        return list(path.iterdir())
+    except OSError:
+        return []
+
+
+def _is_ulid_dir(path: Path) -> bool:
+    """worktrees_dir 两级过滤：名字是 26 位 Crockford ULID 且是真目录才纳管。"""
+    if not _ULID_RE.match(path.name):
+        return False
+    try:
+        return path.is_dir()
+    except OSError:
+        return False
+
+
+def _main_worktree_head(porcelain: str) -> str | None:
+    """git worktree list --porcelain 首个 worktree 块 = 主工作区；取其 HEAD sha 作 ahead/behind
+    基线（主仓库当前 HEAD）。首块无 HEAD 行（罕见）→ None，调用方置 ahead/behind None。"""
+    started = False
+    for line in porcelain.splitlines():
+        if line.startswith("worktree "):
+            if started:
+                break  # 已越过首块仍未见 HEAD
+            started = True
+        elif started and line.startswith("HEAD "):
+            return line[len("HEAD ") :].strip() or None
+    return None
+
+
+def _scan_err(label: str, res: GitResult | None) -> str:
+    """把单条 git 失败折成简短错误串（stderr 优先），供 WorktreeScanEntry.error 逐条降级。"""
+    if res is None:
+        return f"{label}: git 无法执行"
+    detail = res.stderr.strip() or res.stdout.strip() or f"退出码 {res.returncode}"
+    return f"{label}: {detail}"
 
 
 def _lexists(path: Path) -> bool:

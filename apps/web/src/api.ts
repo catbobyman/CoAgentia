@@ -22,6 +22,7 @@ import type {
   DiagnosticEventPublic,
   DiffPayload,
   EdgeCreate,
+  FsTreeReply,
   HeldDraftPublic,
   HeldDraftReleaseResponse,
   HeldDraftResponse,
@@ -35,6 +36,8 @@ import type {
   NodeCreate,
   NodePatch,
   NotificationMode,
+  OrphanCleanup,
+  OrphanCleanupResult,
   PresenceSnapshot,
   PreviewSessionPublic,
   ProjectCreate,
@@ -58,6 +61,8 @@ import type {
   WorkspaceCreate,
   WorkspacePatch,
   WorkspacePublic,
+  WorktreeConsoleReply,
+  WorktreePublic,
 } from '@coagentia/contracts-ts';
 
 // 默认同源：生产由 coagentia-server 托管 dist，Vite 开发态由 proxy 转发到真实 Server。
@@ -436,6 +441,34 @@ export const api = {
   unbindProject: (channelId: string, projectId: string) =>
     writeJson<void>(`/api/channels/${channelId}/projects/${projectId}`, 'DELETE'),
   taskDiff: (taskId: string) => get<DiffPayload>(`/api/tasks/${taskId}/diff`),
+
+  // ---- PS-WT ① 目录选择器（契约 D FS_TREE 代理，B §5.1）。GET /computers/{cid}/fs?path=；path 缺省 =
+  // 根视图（win32 盘符列表 / posix 单条 "/"）。admin 门；daemon 离线/超时 → 503 DAEMON_OFFLINE
+  // （结构化 ApiError 上浮，选择器内联提示，手输兜底）。纯只读列目录、永不读文件。
+  browseFs: (computerId: string, path?: string) =>
+    get<FsTreeReply>(
+      `/api/computers/${computerId}/fs${path != null ? `?path=${encodeURIComponent(path)}` : ''}`,
+    ),
+
+  // ---- PS-WT ② 工作树管理台（契约 B §5.2）。GET /worktrees?live=0|1：live=0 秒出 DB 骨架（scans 空），
+  // live=1 附实时对账（每机并发 WORKTREE_SCAN，离线/超时标记 scans 且该机行 live=None）。合账在 server
+  // 侧穷举（derived ok/missing/orphan），前端拿到即渲染。成员门（读面），Agent → 403（O9 同门）。
+  worktreesConsole: (live: 0 | 1) =>
+    get<WorktreeConsoleReply>(`/api/worktrees?live=${live}`),
+  // 清理登记树（admin 门，B §5.3）：仅 merged/conflicted 可清（active 永拒 409 WORKTREE_NOT_TERMINAL）；
+  // 预览活跃 → 409 WORKTREE_PREVIEW_ACTIVE；并发第二发 → 409（CAS）；daemon 离线 → 503。成功回最新
+  // WorktreePublic（cleaned），server 另发 worktree.updated 广播（wsBridge 失效管理台）。无请求体。
+  cleanupWorktree: (worktreeId: string) =>
+    writeJson<WorktreePublic>(`/api/worktrees/${worktreeId}/cleanup`, 'POST'),
+  // 清理磁盘孤儿树（admin 门，B §5.3）：body { project_id, task_id }（ids-only，永不传裸路径）；有非
+  // cleaned DB 行 → 409 WORKTREE_NOT_ORPHAN（防把登记树当孤儿删）；daemon 离线 → 503。无 DB 行可写、
+  // 不产生 worktree.updated，前端以本响应刷新（调用方失效管理台）。
+  cleanupOrphan: (computerId: string, body: OrphanCleanup) =>
+    writeJson<OrphanCleanupResult>(
+      `/api/computers/${computerId}/worktrees/cleanup-orphan`,
+      'POST',
+      body,
+    ),
 
   // ---- M7(B-M7-1)预览生命周期（B §13.1）。三端点均无请求体，回 PreviewSessionPublic。
   // POST = ensure + touch 幂等：无活跃会话（status ∈ starting/running）→ 建行（starting）并下发
