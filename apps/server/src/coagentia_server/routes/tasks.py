@@ -260,48 +260,99 @@ def assign_task(
 # ---------------------------------------------------------------- status（状态机）
 
 
+def _notify_creator_in_review(tx: Tx, task: dict[str, Any], *, actor_id: str) -> None:
+    """置 in_review 即通知创建者验收（DEDAG 挂账 ⑥，铺开 R2 实测教训机制化）。
+
+    交付唤醒不再依赖交付话术遵从：任务线程落一条 durable 系统消息 + @创建者 mention 行，
+    经 bus MESSAGE_CREATED 驱动投递引擎——创建者是 Agent 则 system+mention 视同唤醒触发
+    （契约 D §8.2，hub._compute_trigger），是人类则走既有 mention 可见面（沉默提醒同款）。
+    自己交付自己创建的任务不通知；创建者已移除则静默跳过。SYSTEM 消息不计入沉默链
+    last_activity（B §10.5.2），不与 D5 提醒自激；同态幂等短路在调用点之前，重交付
+    （in_review→in_progress→in_review）每次成功转换各通知一次。
+    """
+    creator = task.get("created_by_member_id")
+    if creator is None or creator == actor_id:
+        return
+    row = tx.conn.execute(
+        select(_MEMBER.c.name).where(_MEMBER.c.id == creator, _MEMBER.c.removed_at.is_(None))
+    ).first()
+    if row is None:
+        return
+    messages_service.post_system_message(
+        tx,
+        workspace_id=task["workspace_id"],
+        channel_id=task["channel_id"],
+        body=f"📬 任务 #{task['number']} 已交付进入待验收：@{row[0]} 请验收",
+        thread_root_id=task["root_message_id"],
+        mention_member_ids=(creator,),
+    )
+
+
 @router.post("/tasks/{task_id}/status", response_model=entities.TaskPublic)
 def set_task_status(
     task_id: str, body: rest.TaskStatusChange, request: Request, tx: Tx = Depends(get_tx)
 ) -> Any:
     task = _require_task(tx, task_id)
     me = acting_member(request, tx.conn)
-    cur = TaskStatus(task["status"])
     to = body.to
-    if to == cur:  # 同态幂等：不写事件、不广播（裁决 2）
-        return task_public(task)
-    if to not in tasks_service.TASK_TRANSITIONS[cur]:  # 非法边
+    # CAS 状态写（纪律：状态机边写必条件 UPDATE；⑥ 收口时把可见副作用挂上本写点故一并
+    # 条件化）：WHERE status=起态，竞败 rowcount=0 → 锁内重读最新态重走同一套校验——
+    # 线性化语义（与串行到达等价），并发同转换收敛为幂等 200，双事件/双通知窗口关闭。
+    for _attempt in range(3):
+        cur = TaskStatus(task["status"])
+        if to == cur:  # 同态幂等（含竞败后对方已达目标态）：不写事件、不广播（裁决 2）
+            return task_public(task)
+        if to not in tasks_service.TASK_TRANSITIONS[cur]:  # 非法边
+            raise ApiError(
+                422,
+                rest.ErrorCode.TASK_TRANSITION_INVALID,
+                f"任务不能从 {cur.value} 流转到 {to.value}",
+                rule="T4",
+                details={
+                    "from": cur.value,
+                    "to": to.value,
+                    "allowed": sorted(s.value for s in tasks_service.TASK_TRANSITIONS[cur]),
+                },
+            )
+        # T7 流转门（裁决 5）：l2 任务置 in_review 前，活动 TaskHandoff 的 deliverables/
+        # evidence 必须非空；无活动 handoff 视同两者皆缺。l1 任务（M2 存量全 l1）不进本分支。
+        if TaskLevel(task["level"]) == TaskLevel.L2 and to == TaskStatus.IN_REVIEW:
+            missing = contracts_service.active_handoff_missing(tx.conn, task_id)
+            if missing:
+                raise ApiError(
+                    422,
+                    rest.ErrorCode.HANDOFF_INCOMPLETE,
+                    f"缺少交接材料：{', '.join(missing)}",
+                    rule="T7",
+                    details={
+                        "missing": missing,
+                        "hint": "用 submit_task_contract 工具提交 kind=task_handoff，"
+                        f"补齐 {', '.join(missing)}（deliverables 须≥1）后再置 in_review。",
+                    },
+                )
+        ts = tasks_service.service.now_iso()
+        res = tx.conn.execute(
+            update(_TASK)
+            .where(_TASK.c.id == task_id, _TASK.c.status == cur.value)
+            .values(status=to, status_changed_at=ts)
+        )
+        if res.rowcount:
+            break
+        task = _require_task(tx, task_id)  # 竞败：锁内重读复核（M6 纪律）
+    else:
+        # 实际不可达（竞败后已持写锁，次轮必中或 422/幂等返回）；保守回最新态非法边。
+        latest = TaskStatus(_require_task(tx, task_id)["status"])
         raise ApiError(
             422,
             rest.ErrorCode.TASK_TRANSITION_INVALID,
-            f"任务不能从 {cur.value} 流转到 {to.value}",
+            f"任务状态并发变更，当前为 {latest.value}",
             rule="T4",
             details={
-                "from": cur.value,
+                "from": latest.value,
                 "to": to.value,
-                "allowed": sorted(s.value for s in tasks_service.TASK_TRANSITIONS[cur]),
+                "allowed": sorted(s.value for s in tasks_service.TASK_TRANSITIONS[latest]),
             },
         )
-    # T7 流转门（裁决 5）：l2 任务置 in_review 前，活动 TaskHandoff 的 deliverables/evidence
-    # 必须非空；无活动 handoff 视同两者皆缺。l1 任务（M2 存量全 l1）不进本分支，零回归。
-    if TaskLevel(task["level"]) == TaskLevel.L2 and to == TaskStatus.IN_REVIEW:
-        missing = contracts_service.active_handoff_missing(tx.conn, task_id)
-        if missing:
-            raise ApiError(
-                422,
-                rest.ErrorCode.HANDOFF_INCOMPLETE,
-                f"缺少交接材料：{', '.join(missing)}",
-                rule="T7",
-                details={
-                    "missing": missing,
-                    "hint": "用 submit_task_contract 工具提交 kind=task_handoff，"
-                    f"补齐 {', '.join(missing)}（deliverables 须≥1）后再置 in_review。",
-                },
-            )
-    ts = tasks_service.service.now_iso()
-    tx.conn.execute(
-        update(_TASK).where(_TASK.c.id == task_id).values(status=to, status_changed_at=ts)
-    )
     tasks_service.write_event(
         tx.conn, task_id, TaskEventKind.STATUS_CHANGE, actor=me["id"], from_status=cur, to_status=to
     )
@@ -309,6 +360,8 @@ def set_task_status(
     tasks_service.emit_task_updated(
         tx, final, kind=TaskEventKind.STATUS_CHANGE, actor=me["id"], from_status=cur, to_status=to
     )
+    if to == TaskStatus.IN_REVIEW:
+        _notify_creator_in_review(tx, final, actor_id=me["id"])
     return task_public(final)
 
 

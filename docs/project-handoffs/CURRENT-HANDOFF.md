@@ -94,7 +94,7 @@ M8 之外的挂账（M9+ 需另立项，未开工）：
 | **DEDAG ③** | UsageLevel.CANVAS 枚举值与 `GET /usage?level=canvas` 参数名保留（契约 B 维度名未修订），语义 = 频道级任务集聚合（usage.py 注释已澄清；实现本按 tasks.channel_id 零行为变更） | 观察项（契约 B 措辞择机升版） |
 | **DEDAG ④** | ForceStartModal 新挂载（ThreadPanel 任务牌头，owner=Agent 且 todo/in_progress）+ 话术「催动」化——原画布 blocked 徽标三挂载点随域退役。**R1/R2 实测补充（2026-07-19）**：铺开中未出现需催动场景（stall 走群聊 @ nudge 即解），催动按钮实际用感仍待自然场景 | 观察项（继续观察） |
 | **DEDAG ⑤** | 目录系统消息重复 ×2（同任务「[系统工作目录]」注入消息连发两条，~10s 间隔；R1 #11 与 R2 #12 均现）——经查 2026-07-15 M8 实测日志已存在同款，**既有潜伏面非 DEDAG 回归**；疑双触发面各发一条：`_report_worktree_status`（首次 active 落目录消息）与 `_notify_active_task_owner`（assign/claim 后补发）幂等门未互斥 | 观察项（择机核对两路径幂等门） |
-| **DEDAG ⑥** | 交付唤醒机制侧候选：任务置 in_review 时引擎自动唤醒/通知创建者（不依赖话术遵从——R2 实测话术缺失即停滞 76 分钟；话术面已修但属软约束）。行为面新增，需过 hub 唤醒语义评审 | **owner 拍板**（候选增强，非缺陷） |
+| ~~DEDAG ⑥~~ | **已收口（2026-07-19，owner 拍板做）**：`set_task_status` 落 in_review 即 `_notify_creator_in_review`——任务线程 durable 系统消息 + @创建者 mention 行，经 bus MESSAGE_CREATED 驱动投递引擎（system+mention 对 Agent 视同唤醒 = hub `_compute_trigger` WakeReason.REMINDER 既有分支；人类走 mention 可见面，沉默提醒同款范式）。跳过：创建者空/等于流转者/已移除；同态幂等短路不重复；重交付每次转换各通知一次；SYSTEM 消息不计入沉默链 last_activity 不自激（B §10.5.2）。**零契约变更**（无新端点/帧/表/事件）。+5 测试（test_task_review_notify.py：人类/Agent 创建者双路、自交付跳过、移除跳过、重交付/幂等）。既有测试零波及（全套 Owner 自创自转走跳过分支）。话术软约束（R3 修）+ 本机制硬兜底双层收口交付唤醒缺口。**对抗复审 CONFIRMED-CLEAN，两建议全采纳**：①消息骨架收敛复用 `messages_service.post_system_message`；②**status 端点 CAS 条件化顺手收口**——既有无条件 UPDATE 属 read-then-act 家族（并发双 POST 双事件，⑥ 挂通知后放大为双唤醒）→ WHERE status=起态 + 竞败锁内重读重走校验（线性化，同转换竞败收敛幂等 200；零契约变更，错误面仍 422 既有形状）。复审观察项 2 条不修：归档频道任务流转仍落消息（沉默提醒/force-start 同族既有面）；交付者被自己触发的通知计入未读、紧接线程发言可能被 G1 扣 202（自愈：G4 reeval/读后重发，且机制本意即交付说明非必需） | **完成** |
 | **M8c CR F1** | 入职问候 TOCTOU：`_maybe_onboarding_greet` 读 diagnostic 标记→插标记非原子（diagnostic_events 无 (agent_member_id,type) 唯一约束）→ 并发双 START（owner 双击「上线」）双问候+双标记。效应良性（重复问候一条，无数据损坏），单用户罕触发 | 观察项（修 = 迁移加偏唯一索引 + savepoint 捕 IntegrityError；良性故不为单用户双击上迁移，多用户化前收） |
 | **M8c CR F2** | L11「默认关」于**既有数据**未兑现：`models.py` server_default 1→0 只影响新建库；既有 dev 工作区行（旧 seed=true）保留 greeting-on → 上线自动问候。新装默认关已兑现 | 观察项/文档（既有工作区留原值，设置→工作区设置→欢迎语 可关；不强迁数据免与 owner「测问候」目标冲突） |
 | ~~前端死壳与断链批~~ | **已收口（2026-07-14，`d2d4a20`）**：F1–F13 全实现（含 F9，owner 拍板甲+F9），问题清单 = [M8-DEADSHELL-AUDIT.md](../M8-DEADSHELL-AUDIT.md) 逐条勾销、计划 = [DEADSHELL-FIX-PLAN.md](../DEADSHELL-FIX-PLAN.md)。纯前端零契约零迁移；web vitest 403→**444**（+41）、pyright+tsc 0 错、build 绿、后端零改动；/code-review 对抗式复审 8 确认全修（线程回复 thread_root_id 等）；真机浏览器实证 F1–F5 全过（`scratchpad/deadshell_verify.py`）。**唯一非死壳残项**：「新建频道」「创建 Agent」按钮归 M8 B-M8-3 | **完成**（本提交仅含 apps/web 代码，与 M8 立项文档改动分离） |
@@ -119,7 +119,7 @@ M8 之外的挂账（M9+ 需另立项，未开工）：
 ## 7. 守门命令（全绿才算收口）
 
 ```
-uv run pytest -q                    # 当前 972 passed / 4 skipped（DEDAG 基线 971 显式重置后 +1 = R3 话术锚测试；只增不减）
+uv run pytest -q                    # 当前 977 passed / 4 skipped（DEDAG 基线 971 + R3 话术锚 1 + ⑥ 通知机制 5；只增不减）
 pnpm -F @coagentia/web test         # 当前 vitest 266 / 47 文件（DEDAG 基线显式重置；此后只增不减）
 pnpm typecheck                      # 含 pyright（0 错，新债即红）+ 双 tsc
 uv run ruff check .
