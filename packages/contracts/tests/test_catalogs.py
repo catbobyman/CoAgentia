@@ -71,14 +71,7 @@ WS_EVENTS = {
     "activity.created",
     "activity.done",
     "token_usage.reported",
-    # 6.5
-    "canvas.node_added",
-    "canvas.node_updated",
-    "canvas.node_removed",
-    "canvas.edge_added",
-    "canvas.edge_removed",
-    "canvas.layout_updated",
-    "canvas.baseline_advanced",
+    # 6.5 画布事件组随 DEDAG v1.6 退役（§7 draft/delta/landing/proposal 预留组同批移除）
     # 6.6
     "held_draft.created",
     "held_draft.updated",
@@ -90,20 +83,6 @@ WS_EVENTS = {
     "deployment.created",
     "deployment.updated",
     "deployment.log",
-    # §7 M6 预留（与拆解设计 §15 一名两用）
-    "draft.presented",
-    "draft.adjusted",
-    "draft.confirmed",
-    "draft.rejected",
-    "draft.superseded",
-    "delta.proposed",
-    "delta.adjusted",
-    "delta.confirmed",
-    "delta.rejected",
-    "landing.started",
-    "landing.completed",
-    "landing.fail_closed",
-    "proposal.updated",
     # §8 订阅制诊断流
     "diagnostic.appended",
 }
@@ -256,16 +235,19 @@ def test_mcp_tool_catalog() -> None:
 
 
 def test_m3_endpoint_catalog_size() -> None:
-    """M3 端点清单：11 条；系统节点 retry 归 M6 执行面。"""
-    assert len(rest.ENDPOINTS_M3) == 11
-    assert len(set(rest.ENDPOINTS_M3)) == 11
+    """M3 端点清单：4 条（契约与 force-start；画布组 7 端点随 DEDAG v1.6 退役）。"""
+    assert len(rest.ENDPOINTS_M3) == 4
+    assert len(set(rest.ENDPOINTS_M3)) == 4
     assert set(rest.ENDPOINTS_M1).isdisjoint(rest.ENDPOINTS_M3)
     assert set(rest.ENDPOINTS_M2).isdisjoint(rest.ENDPOINTS_M3)
 
 
 # M1(9)+M2(6)=15 冻结至 M6；M7 起 +trigger_deploy（契约 E v1.5）、M8-B5 起 +submit_task_contract
-# （契约 E v1.6）——排除后续里程碑工具后核对"该里程碑零新增"。
-_POST_M6_TOOLS = frozenset({"trigger_deploy", "submit_task_contract"})
+# （契约 E v1.6）、DEDAG 起 +create_task/+trigger_merge（契约 E v1.7）——排除后续里程碑工具后
+# 核对"该里程碑零新增"。
+_POST_M6_TOOLS = frozenset(
+    {"trigger_deploy", "submit_task_contract", "create_task", "trigger_merge"}
+)
 
 
 def _tools_through_m6() -> int:
@@ -294,9 +276,9 @@ def test_m4_adds_no_mcp_tools() -> None:
 
 
 def test_m5_endpoint_catalog_size() -> None:
-    """M5 端点清单：5 条（§4.12 模板三 + §4.5 通知设置二），与 M1/M2/M3/M4 不相交。"""
-    assert len(rest.ENDPOINTS_M5) == 5
-    assert len(set(rest.ENDPOINTS_M5)) == 5
+    """M5 端点清单：2 条（§4.5 通知设置二；模板三随 DEDAG v1.6 退役），与 M1/M2/M3/M4 不相交。"""
+    assert len(rest.ENDPOINTS_M5) == 2
+    assert len(set(rest.ENDPOINTS_M5)) == 2
     for prior in (rest.ENDPOINTS_M1, rest.ENDPOINTS_M2, rest.ENDPOINTS_M3, rest.ENDPOINTS_M4):
         assert set(prior).isdisjoint(rest.ENDPOINTS_M5)
 
@@ -308,9 +290,9 @@ def test_m5_adds_no_mcp_tools() -> None:
 
 
 def test_m6_endpoint_catalog_size() -> None:
-    """M6 端点清单：编排 4 + Project 7 + retry 1 + 模板治理 2。"""
-    assert len(rest.ENDPOINTS_M6) == 14
-    assert len(set(rest.ENDPOINTS_M6)) == 14
+    """M6 端点清单：Project 7（编排 4 + retry 1 + 模板治理 2 随 DEDAG v1.6 退役）。"""
+    assert len(rest.ENDPOINTS_M6) == 7
+    assert len(set(rest.ENDPOINTS_M6)) == 7
     prior = (
         rest.ENDPOINTS_M1,
         rest.ENDPOINTS_M2,
@@ -360,10 +342,29 @@ def test_pswt_endpoint_catalog_size() -> None:
         assert set(endpoints).isdisjoint(rest.ENDPOINTS_PSWT)
 
 
+def test_dedag_endpoint_catalog_size() -> None:
+    """DEDAG 端点清单：任务级 merge 1 条（B v1.6 §14），与 M1–M7/PSWT 全不相交。"""
+    assert len(rest.ENDPOINTS_DEDAG) == 1
+    assert rest.ENDPOINTS_DEDAG == (("POST", "/tasks/{task_id}/merge"),)
+    prior = (
+        rest.ENDPOINTS_M1,
+        rest.ENDPOINTS_M2,
+        rest.ENDPOINTS_M3,
+        rest.ENDPOINTS_M4,
+        rest.ENDPOINTS_M5,
+        rest.ENDPOINTS_M6,
+        rest.ENDPOINTS_M7,
+        rest.ENDPOINTS_PSWT,
+    )
+    for endpoints in prior:
+        assert set(endpoints).isdisjoint(rest.ENDPOINTS_DEDAG)
+
+
 def test_pswt_adds_no_mcp_tools() -> None:
-    """PS-WT 全部人类-only（Agent 403 O9 同门），不注册 MCP 工具。工具总数 = M7(16) +
-    M8-B5(1 submit_task_contract) = 17；此断言作当前总数守门（新增工具须显式改此处 + 加专项）。"""
-    assert len(constants.COAGENTIA_MCP_TOOLS) == 17
+    """PS-WT 全部人类-only，不注册 MCP 工具。工具总数 = M7(16) + M8-B5(1 submit_task_contract)
+    + DEDAG(2 create_task/trigger_merge) = 19；此断言作当前总数守门（新增工具须显式改此处 +
+    加专项）。"""
+    assert len(constants.COAGENTIA_MCP_TOOLS) == 19
 
 
 def test_m7_adds_trigger_deploy_tool() -> None:
@@ -381,6 +382,17 @@ def test_b5_adds_submit_task_contract_tool() -> None:
     assert "submit_task_contract" in constants.COAGENTIA_MCP_TOOLS
     assert len(set(constants.COAGENTIA_MCP_TOOLS)) == len(constants.COAGENTIA_MCP_TOOLS)
     assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)
+
+
+def test_dedag_adds_delegation_tools() -> None:
+    """DEDAG 工具组 +2：create_task/trigger_merge（契约 E v1.7；委派模式派活与指挥合并通道）
+    ——与负目录 DISALLOWED_TOOLS 不相交、目录内无重复；trigger_merge ↔ ENDPOINTS_DEDAG
+    唯一端点 1:1（每工具↔一 REST 端点，契约 E §3）。"""
+    assert "create_task" in constants.COAGENTIA_MCP_TOOLS
+    assert "trigger_merge" in constants.COAGENTIA_MCP_TOOLS
+    assert len(set(constants.COAGENTIA_MCP_TOOLS)) == len(constants.COAGENTIA_MCP_TOOLS)
+    assert set(constants.COAGENTIA_MCP_TOOLS).isdisjoint(constants.DISALLOWED_TOOLS)
+    assert rest.ENDPOINTS_DEDAG == (("POST", "/tasks/{task_id}/merge"),)
 
 
 def test_codex_disallowed_tools_placeholder() -> None:

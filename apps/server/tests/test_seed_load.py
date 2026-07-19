@@ -18,7 +18,6 @@ _EXPECTED = {
     models.MessageMention: 3,
     models.ReadPosition: 6,
     models.TokenUsageEvent: 2,
-    models.Canvas: 4,
 }
 
 
@@ -33,6 +32,9 @@ def test_seed_load_row_counts(migrated_engine: Engine) -> None:
     for model, expected in _EXPECTED.items():
         assert _count(migrated_engine, model) == expected, model.__tablename__
         assert counts[model.__tablename__] == expected
+    # DEDAG：seed 不再灌种画布——_PLAN 无 canvases 项（返回值无键）且冻结表保持空。
+    assert "canvases" not in counts
+    assert _count(migrated_engine, models.Canvas) == 0
 
 
 def test_seed_empty_tables_stay_empty(migrated_engine: Engine) -> None:

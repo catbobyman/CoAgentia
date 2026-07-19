@@ -181,11 +181,11 @@ SCHEMA_DECOMPOSITION_ERRORS_V1 = "coagentia.decomposition-errors.v1"
 # constants.ts 消费（创建 Agent 弹窗角色模板段预填 + NO_ORCHESTRATOR 引导链）。值随 J11 阶段 4
 # 定稿话术时在此单点改。
 ORCHESTRATOR_ROLE_TEMPLATE_KEY = "orchestrator"
-ORCHESTRATOR_ROLE_TEMPLATE_NAME = "Orchestrator（任务拆解协调者）"
+ORCHESTRATOR_ROLE_TEMPLATE_NAME = "Orchestrator（对话式委派协调者）"
 ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL = (
-    "本频道的任务拆解协调者：@它并给一句话需求，它会把需求拆成可校验、可确认、可恢复的任务 DAG "
-    "提案（判断归模型、控制归引擎）。提案经系统确定性校验、需人类在草稿画布上确认后落地；被校验"
-    "退回时自动按错误清单修复重提。"
+    "本频道的对话式委派协调者：@它并给一句话需求，它会理解澄清后用 create_task 逐个派活"
+    "（正文 @建议负责人即唤醒，认领仍走 claim 防重）、盯交付进展、经 trigger_merge 指挥"
+    "合并入主干，并阶段性汇总进展与风险（判断归模型、控制归引擎——DEDAG 委派模式）。"
 )
 
 # ---------------- T7 流转门必填字段（PRD §4.3「T7 校验非空」；server 校验 + 前端提示同源）
@@ -246,4 +246,9 @@ COAGENTIA_MCP_TOOLS: tuple[str, ...] = (
     # M8-B5（契约 E v1.6）——Agent 交付收尾契约提交通道兑现（realtest 4/4 命中「够不着 REST」）
     "submit_task_contract",  # POST /tasks/{id}/contracts（kind=task_plan/task_handoff；body
     # free-form 由 server 按 kind 二次校验，VALIDATION_FAILED 逐字段透传）
+    # DEDAG（契约 E v1.7）——委派模式两工具：Orchestrator 派活 + 指挥合并
+    "create_task",  # POST /channels/{id}/messages（as_task 复合；建议 owner 走正文 @名字，
+    # writes_code=true 须携频道绑定 project_id 否则 422）
+    "trigger_merge",  # POST /tasks/{id}/merge（B v1.6.1 §14；202 accepted/merged 幂等、
+    # 409 DEPLOY_IN_PROGRESS、503 结构化透传；冲突自动建任务派回）
 )

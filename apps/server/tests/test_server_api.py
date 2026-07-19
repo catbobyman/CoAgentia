@@ -18,7 +18,6 @@ from coagentia_server.db import models
 from coagentia_server.events import PendingEvent
 from coagentia_server.files import FileStore
 from coagentia_server.files.gc import run_gc
-from coagentia_server.routes.workspace import EMPTY_CANVAS_HASH
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Engine
@@ -59,7 +58,7 @@ def _agent_headers(engine: Engine, member_id: str) -> dict[str, str]:
 # ---------------------------------------------------------------- bootstrap 冷启动
 
 
-def test_bootstrap_creates_workspace_owner_channel_canvas(
+def test_bootstrap_creates_workspace_owner_channel(
     empty_server_client: TestClient, migrated_engine: Engine
 ) -> None:
     c = empty_server_client
@@ -75,10 +74,10 @@ def test_bootstrap_creates_workspace_owner_channel_canvas(
     channels = c.get("/api/channels").json()["items"]
     assert [ch["name"] for ch in channels] == ["all"]
 
-    # #all 有一张空画布，baseline_hash = 空快照指纹（契约 A §6，非 NULL）。
+    # DEDAG：bootstrap 不再建画布行（画布域退役，冻结表保持空）。
     with migrated_engine.connect() as conn:
-        h = conn.execute(select(models.Canvas.__table__.c.baseline_hash)).scalar_one()
-    assert h == EMPTY_CANVAS_HASH
+        n = conn.execute(select(models.Canvas.__table__.c.id)).all()
+    assert n == []
 
 
 def test_bootstrap_twice_conflicts(empty_server_client: TestClient) -> None:

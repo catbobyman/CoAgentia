@@ -27,7 +27,6 @@ from coagentia_server.contracts import service as contracts_service
 from coagentia_server.db import models
 from coagentia_server.deps import Tx, acting_member, get_tx
 from coagentia_server.messages import service as messages_service
-from coagentia_server.orchestration import summary as summary_service
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
     message_public,
@@ -36,6 +35,7 @@ from coagentia_server.routes.serialize import (
     task_public,
     worktree_public,
 )
+from coagentia_server.tasks import merge as merge_domain
 from coagentia_server.tasks import service as tasks_service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -312,17 +312,44 @@ def set_task_status(
     return task_public(final)
 
 
-# ---------------------------------------------------------------- force-start（裁决 3）
+# ------------------------------------------------- 任务级 merge（DEDAG）/ force-start（裁决 3）
+
+
+@router.post("/tasks/{task_id}/merge", status_code=202)
+def merge_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
+    """任务级合并（DEDAG，契约 B v1.6 §14）：done 的 writes_code 任务合入主干。
+
+    人类按钮与 Agent trigger_merge 工具同端点同权（合并是交付动作非画布结构，无 403 面）。
+    同 Project 串行（409 沿 deploy 先例）；已 merged → 幂等 202 status=merged 不再下发；
+    conflicted worktree 重触发 = 冲突解决后的 retry。下发经 tx.after_commit（铁律 4）。"""
+    acting_member(request, tx.conn)  # 身份合法性校验（人类/Agent 同权）
+    plan = merge_domain.prepare_merge(tx, task_id=task_id)
+    if plan.already_merged:
+        return {"task_id": task_id, "status": "merged"}
+    hub = request.app.state.daemon_hub
+    if hub.merge_running_for_project(plan.project_id):
+        raise ApiError(
+            409,
+            rest.ErrorCode.DEPLOY_IN_PROGRESS,
+            "该 Project 已有进行中的合并（同 Project 串行）",
+            rule="W5",
+        )
+    if not hub.preview_daemon_online(plan.computer_id):
+        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "Project 宿主 daemon 离线")
+    merge_domain.note_merge_started(tx, plan)
+    tx.after_commit(lambda: hub.request_task_merge(plan))
+    return {"task_id": task_id, "status": "accepted"}
 
 
 @router.post("/tasks/{task_id}/force-start", response_model=entities.TaskPublic)
 def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -> Any:
-    """人类强制启动任务（裁决 3）：override 本次投递 gating（解除该任务 owner agent 本次投递压制）。
+    """人类强制启动任务（裁决 3；DEDAG 后语义收敛为「踢一脚」）：主动唤醒 owner agent 开工。
 
-    效果 = 解除本次投递 gating + 双留痕；**不改 status、不删边**（gating 只作用投递层）。
+    效果 = 双留痕 + 直投一次唤醒；**不改 status、不删边**。画布 gating 已随 DEDAG 退役，
+    本端点保留为人类对拖延/沉默任务的显式催动通道（与群聊 @ 互补，带 task_events 留痕）。
     Agent 不得 force-start（403 C3）。留痕 = task_events(force_start) 行 + 任务线程锚点系统消息。
-    提交后经 daemon_hub.force_start_wake 桥「本次放行」：owner 是 agent 且 daemon 在线则直投一次
-    wake+deliver（绕过 blocked 门）；owner 人类/空 或 daemon 离线则仅留痕（best-effort）。
+    提交后经 daemon_hub.force_start_wake 桥：owner 是 agent 且 daemon 在线则直投一次
+    wake+deliver；owner 人类/空 或 daemon 离线则仅留痕（best-effort）。
     """
     task = _require_task(tx, task_id)
     me = acting_member(request, tx.conn)
@@ -352,7 +379,7 @@ def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -
             kind=MessageKind.SYSTEM,
             card_kind=None,
             card_ref=None,
-            body=f"{me['name']} 强制启动了此任务（override 依赖 gating，已留痕）",
+            body=f"{me['name']} 强制启动了此任务（已直投唤醒负责人，已留痕）",
             created_at=tasks_service.service.now_iso(),
         )
     )
@@ -364,15 +391,6 @@ def force_start_task(task_id: str, request: Request, tx: Tx = Depends(get_tx)) -
         task["channel_id"],
         {"message": message_public(msg_row, [])},
     )
-    # O8 恢复（M8b L8，汇总设计 §6.3/裁决 #8）：force-start 汇总任务 → 归零 round/stall、清
-    # blocked_at（replan_used 不重置）。同事务清，提交后自动唤醒即解抑制。恢复走既有 task.updated
-    # （change=None）刷新前端 O8 横幅。summary.recover 对非汇总任务无行 → False，零副作用。
-    if summary_service.recover(tx, task_id=task_id):
-        tx.emit(
-            tasks_service.EventType.TASK_UPDATED,
-            task["channel_id"],
-            {"task": task_public(task), "change": None},
-        )
     # hub 桥「本次放行」（best-effort；owner 人类/空 或 daemon 离线 → 仅留痕，不报错）。
     # 不改状态：直接回既有 task 行（本请求未 UPDATE tasks）。
     request.app.state.daemon_hub.force_start_wake(

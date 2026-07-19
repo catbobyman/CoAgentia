@@ -12,7 +12,7 @@ from coagentia_mock.state import Store, new_id, now_ts
 def build_key(etype: str, data: dict[str, Any]) -> str:
     """幂等键 <实体>:<id>:<单调标记>（契约 C §3）。"""
     for field in ("message", "task", "channel", "member", "computer", "workspace",
-                  "draft", "reminder", "deployment", "proposal", "item", "agent"):
+                  "draft", "reminder", "deployment", "item", "agent"):
         if field in data and isinstance(data[field], dict) and "id" in data[field]:
             entity = data[field]
             marker = entity.get("updated_at") or entity.get("status_changed_at") \

@@ -237,23 +237,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/canvas-nodes/{node_id}/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retry Canvas Node */
-        post: operations["retry_canvas_node_api_canvas_nodes__node_id__retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/channels": {
         parameters: {
             query?: never;
@@ -301,45 +284,6 @@ export interface paths {
         put?: never;
         /** Archive Channel */
         post: operations["archive_channel_api_channels__channel_id__archive_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/channels/{channel_id}/canvas": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Canvas
-         * @description M3b 画布读形状（形状源非逻辑源，纪律 4）：mock 只回画布头 + 空节点/边。
-         *
-         *     环校验/gating/baseline 推进只活真 server（E4/E5）。每频道恰一画布，缺行 → 404。
-         */
-        get: operations["get_canvas_api_channels__channel_id__canvas_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/channels/{channel_id}/decompose": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Decompose */
-        post: operations["decompose_api_channels__channel_id__decompose_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -691,6 +635,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/held-drafts/{held_draft_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard Held Draft
+         * @description 丢弃草稿：mock 回 discarded 形状；guard_feedback 直投活真 server。
+         */
+        post: operations["discard_held_draft_api_held_drafts__held_draft_id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/held-drafts/{held_draft_id}/reevaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reevaluate Held Draft
+         * @description 触发重评估（G4）：mock 回 reevaluating 形状；hub 同步桥/死锁规避活真 server。
+         */
+        post: operations["reevaluate_held_draft_api_held_drafts__held_draft_id__reevaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/held-drafts/{held_draft_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Held Draft
+         * @description 放行原样发送（G3）：mock 回落消息 + released 形状；跳过 freshness 复查语义活真 server。
+         */
+        post: operations["release_held_draft_api_held_drafts__held_draft_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/members": {
         parameters: {
             query?: never;
@@ -833,57 +837,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/proposals/{proposal_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Proposal */
-        get: operations["get_proposal_api_proposals__proposal_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/proposals/{proposal_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Confirm Proposal */
-        post: operations["confirm_proposal_api_proposals__proposal_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/proposals/{proposal_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reject Proposal */
-        post: operations["reject_proposal_api_proposals__proposal_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/reminders": {
         parameters: {
             query?: never;
@@ -1017,7 +970,33 @@ export interface paths {
          */
         get: operations["get_task_contracts_api_tasks__task_id__contracts_get"];
         put?: never;
-        post?: never;
+        /**
+         * Submit Task Contract
+         * @description M3 契约提交（形状源非逻辑源，纪律 4）：mock 回契约行形状；kind↔schema 二次
+         *     model_validate/修订链只活真 server（E2）。
+         */
+        post: operations["submit_task_contract_api_tasks__task_id__contracts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/contracts/request-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Contract Draft
+         * @description 让 @Agent 起草契约（B §4.3；P-3）：mock 回受理形状；S1 定向直投与 503
+         *     DAEMON_OFFLINE 判定只活真 server。
+         */
+        post: operations["request_contract_draft_api_tasks__task_id__contracts_request_draft_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1035,6 +1014,46 @@ export interface paths {
         get: operations["get_task_diff_api_tasks__task_id__diff_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/force-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force Start Task
+         * @description 人类强制启动（裁决 3）：mock 回任务现状形状；投递放行/双留痕/Agent 403 C3 活真 server。
+         */
+        post: operations["force_start_task_api_tasks__task_id__force_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Task
+         * @description 任务级合并（B v1.6 §14）：mock 恒回 accepted 受理形状；真合并/幂等判定活真 server。
+         */
+        post: operations["merge_task_api_tasks__task_id__merge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1097,68 +1116,6 @@ export interface paths {
         put?: never;
         /** Unclaim Task */
         post: operations["unclaim_task_api_tasks__task_id__unclaim_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Templates
-         * @description 工作区级列表（builtin 置前，body 全量携带——向导预览用）；用户模板 mock 恒空。
-         */
-        get: operations["list_templates_api_templates_get"];
-        put?: never;
-        /**
-         * Create Template
-         * @description 存为模板（B §4.12）：mock 回形状占位（不读画布、不校验 409，纪律 4）。
-         */
-        post: operations["create_template_api_templates_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/templates/{template_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Template */
-        delete: operations["delete_template_api_templates__template_id__delete"];
-        options?: never;
-        head?: never;
-        /** Patch Template */
-        patch: operations["patch_template_api_templates__template_id__patch"];
-        trace?: never;
-    };
-    "/api/templates/{template_id}/instantiate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Instantiate Template
-         * @description 实例化（B §4.12/§11.2）：mock 回落地批 + 空任务形状（单事务/幂等/briefing 活真 server）。
-         */
-        post: operations["instantiate_template_api_templates__template_id__instantiate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1248,19 +1205,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * AcceptanceCriterion
-         * @description TaskPlan 验收标准单条（可证伪表述、禁形容词——PRD §4.3；文案规范不在此校验）。
-         */
-        AcceptanceCriterion: {
-            /** Id */
-            id: string;
-            /** Statement */
-            statement: string;
-            verify_by: components["schemas"]["VerifyBy"];
-            /** Verify Ref */
-            verify_ref: string;
-        };
         /**
          * ActivityFilter
          * @description GET /activity?filter=（B §9.7.3）。
@@ -1370,10 +1314,24 @@ export interface components {
          * @enum {string}
          */
         AgentStatus: "starting" | "idle" | "busy" | "error" | "offline";
-        /** AsTask */
+        /**
+         * AsTask
+         * @description 消息转任务意图（B §9.4；DEDAG v1.6 扩展）。
+         *
+         *     project_id/writes_code：Agent `create_task` 工具与人类消息转任务同道——writes_code=True
+         *     必须携本频道绑定的 project_id（服务端 422 执法）；建议 owner 走正文 @名字（mention 即唤醒，
+         *     认领仍走 claim 防重，O4 语义不变）。
+         */
         AsTask: {
+            /** Project Id */
+            project_id?: string | null;
             /** Title */
             title?: string | null;
+            /**
+             * Writes Code
+             * @default false
+             */
+            writes_code: boolean;
         };
         /**
          * AssignRequest
@@ -1387,92 +1345,6 @@ export interface components {
         Body_upload_file_api_files_post: {
             /** File */
             file: string;
-        };
-        /**
-         * CanvasDetail
-         * @description GET /channels/{id}/canvas（B §4.9）：画布头 + 节点/边（空画布二者皆空）。
-         */
-        CanvasDetail: {
-            canvas: components["schemas"]["CanvasPublic"];
-            /**
-             * Edges
-             * @default []
-             */
-            edges: components["schemas"]["CanvasEdgePublic"][];
-            /**
-             * Nodes
-             * @default []
-             */
-            nodes: components["schemas"]["CanvasNodePublic"][];
-        };
-        /** CanvasEdgePublic */
-        CanvasEdgePublic: {
-            /** Canvas Id */
-            canvas_id: string;
-            /** From Node Id */
-            from_node_id: string;
-            /** Id */
-            id: string;
-            /** To Node Id */
-            to_node_id: string;
-        };
-        /**
-         * CanvasNodeKind
-         * @enum {string}
-         */
-        CanvasNodeKind: "agent" | "system";
-        /** CanvasNodePublic */
-        CanvasNodePublic: {
-            /** Canvas Id */
-            canvas_id: string;
-            /** Command */
-            command?: string | null;
-            /** Created At */
-            created_at: string;
-            /** Id */
-            id: string;
-            /**
-             * Is Summary
-             * @default false
-             */
-            is_summary: boolean;
-            kind: components["schemas"]["CanvasNodeKind"];
-            /**
-             * Pos X
-             * @default 0
-             */
-            pos_x: number;
-            /**
-             * Pos Y
-             * @default 0
-             */
-            pos_y: number;
-            /** Suggested Owner */
-            suggested_owner?: string | null;
-            system_action?: components["schemas"]["SystemAction"] | null;
-            system_status?: components["schemas"]["SystemNodeStatus"] | null;
-            /** Task Id */
-            task_id?: string | null;
-            /** @default strict */
-            upstream_policy: components["schemas"]["UpstreamPolicy"];
-        };
-        /** CanvasPublic */
-        CanvasPublic: {
-            /** Baseline Hash */
-            baseline_hash: string;
-            /**
-             * Baseline Version
-             * @default 0
-             */
-            baseline_version: number;
-            /** Channel Id */
-            channel_id: string;
-            /** Id */
-            id: string;
-            /** Updated At */
-            updated_at: string;
-            /** Workspace Id */
-            workspace_id: string;
         };
         /**
          * CardKind
@@ -1697,6 +1569,29 @@ export interface components {
          */
         ComputerStatus: "connected" | "offline";
         /**
+         * ContractCreate
+         * @description POST /tasks/{id}/contracts（提交与修订）。
+         *
+         *     `body` 故意留 JsonValue：按 `kind` 对应哪个 body 模型二次 `model_validate` 是 server
+         *     侧职责（kind≠schema 或字段校验失败 → 422 VALIDATION_FAILED），此包不做 kind↔模型分派。
+         */
+        ContractCreate: {
+            body: components["schemas"]["JsonValue"];
+            kind: components["schemas"]["ContractKind"];
+        };
+        /**
+         * ContractDraftRequest
+         * @description POST /tasks/{id}/contracts/request-draft（"让 @Agent 起草"）。
+         *
+         *     效果 = S1 定向直投唤醒（`InjectKind.CONTRACT_DRAFT_REQUEST`，契约 D）；daemon 离线 → 503
+         *     DAEMON_OFFLINE（P-3，best-effort 非积压）。
+         */
+        ContractDraftRequest: {
+            /** Agent Member Id */
+            agent_member_id: string;
+            kind: components["schemas"]["ContractKind"];
+        };
+        /**
          * ContractKind
          * @enum {string}
          */
@@ -1716,13 +1611,6 @@ export interface components {
          * @enum {string}
          */
         DecompMode: "draft" | "direct";
-        /** DecomposeRequest */
-        DecomposeRequest: {
-            /** Task Id */
-            task_id?: string | null;
-            /** Text */
-            text?: string | null;
-        };
         /**
          * DeploymentLogPage
          * @description GET /deployments/{id}/log?after=<行号>（B §13.3）：server 直读落盘日志文件（不依赖 daemon
@@ -1969,6 +1857,21 @@ export interface components {
             unread_message_ids: string[];
         };
         /**
+         * HeldDraftReleaseResponse
+         * @description POST /held-drafts/{id}/release 响应（B §4.14）：以原载荷落消息 + held 行置 released 终态。
+         */
+        HeldDraftReleaseResponse: {
+            held_draft: components["schemas"]["HeldDraftPublic"];
+            message: components["schemas"]["MessagePublic"];
+        };
+        /**
+         * HeldDraftResponse
+         * @description POST /held-drafts/{id}/discard | /reevaluate 响应（B §4.14）：仅回 held 行最新态。
+         */
+        HeldDraftResponse: {
+            held_draft: components["schemas"]["HeldDraftPublic"];
+        };
+        /**
          * HeldDraftStatus
          * @enum {string}
          */
@@ -1978,51 +1881,7 @@ export interface components {
          * @enum {string}
          */
         HeldResolution: "released" | "discarded" | "reevaluated";
-        /**
-         * InstantiateResult
-         * @description 实例化响应（B §4.12）：单事务落地批 + 逐节点落地任务（零新增 WS 事件，广播走既有事件）。
-         */
-        InstantiateResult: {
-            batch: components["schemas"]["LandingBatchPublic"];
-            /**
-             * Tasks
-             * @default []
-             */
-            tasks: components["schemas"]["TaskPublic"][];
-        };
         JsonValue: unknown;
-        /**
-         * LandingBatchKind
-         * @enum {string}
-         */
-        LandingBatchKind: "decomp" | "tmpl" | "delta";
-        /** LandingBatchPublic */
-        LandingBatchPublic: {
-            /** Channel Id */
-            channel_id: string;
-            /** Confirmed By */
-            confirmed_by: string;
-            /** Content Hash */
-            content_hash: string;
-            /** Created At */
-            created_at: string;
-            /** Done At */
-            done_at?: string | null;
-            /** Id */
-            id: string;
-            kind: components["schemas"]["LandingBatchKind"];
-            /** Source Ref */
-            source_ref: string;
-            /** @default running */
-            status: components["schemas"]["LandingBatchStatus"];
-            /** Workspace Id */
-            workspace_id: string;
-        };
-        /**
-         * LandingBatchStatus
-         * @enum {string}
-         */
-        LandingBatchStatus: "running" | "done" | "fail_closed";
         /**
          * LifecycleAction
          * @description `POST /agents/{id}/lifecycle`（契约 B §4.3；三档重置枚举只定义这一次）。
@@ -2354,89 +2213,6 @@ export interface components {
              */
             worktree_keep_days: number;
         };
-        /** ProposalConfirm */
-        ProposalConfirm: {
-            /**
-             * Adjustments
-             * @default []
-             */
-            adjustments: components["schemas"]["JsonValue"][];
-            expected: components["schemas"]["ProposalConfirmExpected"];
-            /**
-             * Removed Ops
-             * @default []
-             */
-            removed_ops: number[];
-        };
-        /** ProposalConfirmExpected */
-        ProposalConfirmExpected: {
-            /** Baseline Hash */
-            baseline_hash: string;
-            /** Baseline Version */
-            baseline_version: number;
-            /** Proposal Hash */
-            proposal_hash: string;
-        };
-        /** ProposalConfirmResult */
-        ProposalConfirmResult: {
-            batch: components["schemas"]["LandingBatchPublic"];
-            proposal: components["schemas"]["ProposalPublic"];
-        };
-        /**
-         * ProposalKind
-         * @enum {string}
-         */
-        ProposalKind: "full" | "delta";
-        /** ProposalPublic */
-        ProposalPublic: {
-            /** Adjustments */
-            adjustments?: components["schemas"]["JsonValue"][];
-            /** Base Hash */
-            base_hash?: string | null;
-            body: components["schemas"]["JsonValue"];
-            /** Channel Id */
-            channel_id: string;
-            /** Created At */
-            created_at: string;
-            /** Id */
-            id: string;
-            /** @default full */
-            kind: components["schemas"]["ProposalKind"];
-            /** Landed Hash */
-            landed_hash?: string | null;
-            /** Proposal Hash */
-            proposal_hash: string;
-            /** Proposed By Member Id */
-            proposed_by_member_id: string;
-            /**
-             * Repair Count
-             * @default 0
-             */
-            repair_count: number;
-            /**
-             * Revision
-             * @default 1
-             */
-            revision: number;
-            /** Source Task Id */
-            source_task_id: string;
-            /** @default drafting */
-            status: components["schemas"]["ProposalStatus"];
-            /** Updated At */
-            updated_at: string;
-            /** Workspace Id */
-            workspace_id: string;
-        };
-        /** ProposalReject */
-        ProposalReject: {
-            /** Reason */
-            reason?: string | null;
-        };
-        /**
-         * ProposalStatus
-         * @enum {string}
-         */
-        ProposalStatus: "drafting" | "validating" | "repairing" | "awaiting_confirm" | "landing" | "landed" | "superseded" | "rejected" | "failed";
         /** ReadPositionPublic */
         ReadPositionPublic: {
             /** Channel Id */
@@ -2574,16 +2350,6 @@ export interface components {
             /** Skills */
             skills: string[];
         };
-        /**
-         * SystemAction
-         * @enum {string}
-         */
-        SystemAction: "merge" | "check";
-        /**
-         * SystemNodeStatus
-         * @enum {string}
-         */
-        SystemNodeStatus: "idle" | "running" | "success" | "failed";
         /** TaskContractPublic */
         TaskContractPublic: {
             body: components["schemas"]["JsonValue"];
@@ -2630,6 +2396,18 @@ export interface components {
          */
         TaskLevel: "l1" | "l2";
         /**
+         * TaskMergeAccepted
+         * @description POST /tasks/{task_id}/merge 202 响应（DEDAG B v1.6 §14）。
+         *
+         *     status：accepted=已受理异步执行；merged=幂等命中（worktree 已 merged，不再下发）。
+         */
+        TaskMergeAccepted: {
+            /** Status */
+            status: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
          * TaskPatch
          * @description 元数据补丁（B §4.7）——PATCH /tasks/{id}；不写 task_events，广播 task.updated。
          *
@@ -2642,32 +2420,6 @@ export interface components {
             silence_override_h?: number | null;
             /** Title */
             title?: string | null;
-        };
-        /**
-         * TaskPlanBody
-         * @description L2 任务计划契约（进入画布/正式立项时必填——PRD §4.3 v1）。
-         */
-        TaskPlanBody: {
-            /** Acceptance Criteria */
-            acceptance_criteria: components["schemas"]["AcceptanceCriterion"][];
-            /**
-             * Defaults Decided
-             * @default []
-             */
-            defaults_decided: string[];
-            /** Goal */
-            goal: string;
-            /**
-             * Out Of Scope
-             * @default []
-             */
-            out_of_scope: string[];
-            /**
-             * Version
-             * @default coagentia.task-plan.v1
-             * @constant
-             */
-            version: "coagentia.task-plan.v1";
         };
         /** TaskPublic */
         TaskPublic: {
@@ -2768,148 +2520,6 @@ export interface components {
             total: number;
         };
         /**
-         * TemplateBody
-         * @description templates.body（A v1.0.9 §4.10）：DAG 结构 + 角色占位表 + 简报话术（C7）。
-         *
-         *     保存序列化（B §11.1）：从画布快照仅取 task 节点、pos 不入；占位按节点 owner 去重、无 owner
-         *     归"待认领"；plan_skeleton 取该任务当前 TaskPlan 契约 body（无则 null）；writes_code/project_id
-         *     从任务行原样带走。校验：model_validate + edges 无环（复用 kernel/graph）+ nodes.role/edges 引用
-         *     一致性（server 侧执法）。
-         */
-        TemplateBody: {
-            /**
-             * Briefing
-             * @default
-             */
-            briefing: string;
-            /** Edges */
-            edges?: components["schemas"]["TemplateEdge"][];
-            /** Nodes */
-            nodes?: components["schemas"]["TemplateNode"][];
-            /** Roles */
-            roles?: components["schemas"]["TemplateRole"][];
-        };
-        /**
-         * TemplateCreate
-         * @description POST /templates 存为模板（B §4.12/§11.1）。
-         *
-         *     服务端读 `channel_id` 频道画布快照序列化 `TemplateBody`（A §4.10 提取规则）；
-         *     `role_placeholders`（{member_id: 占位名}）覆盖默认 owner 去重占位名；`include_node_ids` 缺省
-         *     = 全部 task 节点；画布无正式节点 / 存在草稿层 → 409 TEMPLATE_CANVAS_NOT_READY。
-         */
-        TemplateCreate: {
-            /** Channel Id */
-            channel_id: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Include Node Ids */
-            include_node_ids?: string[] | null;
-            /** Name */
-            name: string;
-            /** Role Placeholders */
-            role_placeholders?: {
-                [key: string]: string;
-            } | null;
-        };
-        /**
-         * TemplateEdge
-         * @description TemplateBody.edges 元素：node key 引用（`from`/`to` 是 Python 关键字，沿 TaskHandoffBody
-         *     from_member 先例改名 from_key/to_key）；保存与实例化均校验无环（复用 kernel/graph）。
-         */
-        TemplateEdge: {
-            /** From Key */
-            from_key: string;
-            /** To Key */
-            to_key: string;
-        };
-        /**
-         * TemplateInstantiate
-         * @description POST /templates/{id}/instantiate（B §4.12/§11.2）。
-         *
-         *     `role_mapping` 须覆盖 body.roles 全部占位（缺失 → 422 VALIDATION_FAILED，details.missing 列
-         *     占位名）；值 null = 该角色节点落地为无 owner（"待认领"）。单事务落地批（`tmpl:<batch_id>:
-         *     <node_key>` 幂等，接受 Idempotency-Key）。v1.3 收窄：无内联 create——向导"新建"走既有创建
-         *     Agent 弹窗再回填映射（§7 #8）。
-         */
-        TemplateInstantiate: {
-            /** Channel Id */
-            channel_id: string;
-            /** Role Mapping */
-            role_mapping: {
-                [key: string]: string | null;
-            };
-        };
-        /**
-         * TemplateNode
-         * @description TemplateBody.nodes 元素（A v1.0.9 §4.10）：模板内一个 task 节点。
-         */
-        TemplateNode: {
-            /** Key */
-            key: string;
-            plan_skeleton?: components["schemas"]["TaskPlanBody"] | null;
-            /** Project Id */
-            project_id?: string | null;
-            /** Role */
-            role: string;
-            /** Title */
-            title: string;
-            /**
-             * Writes Code
-             * @default false
-             */
-            writes_code: boolean;
-        };
-        /**
-         * TemplatePatch
-         * @description PATCH /templates/{id}：仅模板元数据可改（B §4.12）。
-         */
-        TemplatePatch: {
-            /** Description */
-            description?: string | null;
-            /** Name */
-            name?: string | null;
-        };
-        /** TemplatePublic */
-        TemplatePublic: {
-            body: components["schemas"]["TemplateBody"];
-            /**
-             * Builtin
-             * @default false
-             */
-            builtin: boolean;
-            /** Created At */
-            created_at: string;
-            /** Created By Member Id */
-            created_by_member_id: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Workspace Id */
-            workspace_id: string;
-        };
-        /**
-         * TemplateRole
-         * @description TemplateBody.roles 元素（P13 保存模板弹窗提取表）：角色占位。
-         */
-        TemplateRole: {
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Placeholder */
-            placeholder: string;
-        };
-        /**
          * TokenSummary
          * @description deployments.token_summary 新账快照（契约 B §13.4）：上次 success 部署以来 merged 任务集
          *     聚合。task_ids 按 id 稳定排序、最多 50 项（details 有界先例 §12.12 #4）。
@@ -2925,16 +2535,6 @@ export interface components {
          * @enum {string}
          */
         UiTheme: "dark" | "light" | "system";
-        /**
-         * UpstreamPolicy
-         * @description canvas_nodes.upstream_policy（契约 A v1.0.12 / W9 部分失败）：被配置节点对其前驱集合的
-         *     satisfied 双档判定。strict = 每个前驱须 Done（agent）/success（system）——现状语义原样；
-         *     partial = 每个前驱**到达终态**即放行（agent∈{done,closed} / system∈{success,failed 不可
-         *     retry}）。仍要求全部前驱到达终态（非「任一完成」），只是不限 Done——防单点卡死全 DAG。
-         *     汇总节点落地默认 partial（裁决 #5），普通节点默认 strict；人类经 patch_node 改档（O9 面）。
-         * @enum {string}
-         */
-        UpstreamPolicy: "strict" | "partial";
         /**
          * UsageBreakdownItem
          * @description UsageReport.breakdown 逐子项（rollup=true 附）：agent 逐任务 / canvas 逐节点任务。
@@ -3012,12 +2612,6 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /**
-         * VerifyBy
-         * @description TaskPlan.acceptance_criteria[].verify_by（PRD §4.3 v1）。
-         * @enum {string}
-         */
-        VerifyBy: "command" | "inspect" | "manual";
         /** WorkspaceCreate */
         WorkspaceCreate: {
             /** Name */
@@ -3695,37 +3289,6 @@ export interface operations {
             };
         };
     };
-    retry_canvas_node_api_canvas_nodes__node_id__retry_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                node_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CanvasNodePublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_channels_api_channels_get: {
         parameters: {
             query?: never;
@@ -3861,72 +3424,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_canvas_api_channels__channel_id__canvas_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                channel_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CanvasDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decompose_api_channels__channel_id__decompose_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                channel_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DecomposeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalPublic"];
                 };
             };
             /** @description Validation Error */
@@ -4686,6 +4183,99 @@ export interface operations {
             };
         };
     };
+    discard_held_draft_api_held_drafts__held_draft_id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                held_draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reevaluate_held_draft_api_held_drafts__held_draft_id__reevaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                held_draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_held_draft_api_held_drafts__held_draft_id__release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                held_draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldDraftReleaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_members_api_members_get: {
         parameters: {
             query?: {
@@ -4975,107 +4565,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeploymentPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_proposal_api_proposals__proposal_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirm_proposal_api_proposals__proposal_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProposalConfirm"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalConfirmResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reject_proposal_api_proposals__proposal_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProposalReject"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalPublic"];
                 };
             };
             /** @description Validation Error */
@@ -5385,6 +4874,76 @@ export interface operations {
             };
         };
     };
+    submit_task_contract_api_tasks__task_id__contracts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContractCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskContractPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_contract_draft_api_tasks__task_id__contracts_request_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContractDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_task_diff_api_tasks__task_id__diff_get: {
         parameters: {
             query?: never;
@@ -5403,6 +4962,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiffPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    force_start_task_api_tasks__task_id__force_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_task_api_tasks__task_id__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskMergeAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -5562,158 +5183,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_templates_api_templates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TemplatePublic"][];
-                };
-            };
-        };
-    };
-    create_template_api_templates_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TemplatePublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_template_api_templates__template_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                template_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_template_api_templates__template_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                template_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplatePatch"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TemplatePublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    instantiate_template_api_templates__template_id__instantiate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                template_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateInstantiate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InstantiateResult"];
                 };
             };
             /** @description Validation Error */

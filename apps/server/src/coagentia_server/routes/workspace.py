@@ -6,7 +6,6 @@ from typing import Any
 
 from coagentia_contracts import entities, rest
 from coagentia_contracts.enums import ChannelKind, MemberKind, MemberRole
-from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends
 from sqlalchemy import insert, select, update
@@ -23,10 +22,6 @@ _WS = models.tbl(models.Workspace)
 _MEMBER = models.tbl(models.Member)
 _CHANNEL = models.tbl(models.Channel)
 _CHANNEL_MEMBER = models.tbl(models.ChannelMember)
-_CANVAS = models.tbl(models.Canvas)
-
-# 空画布快照指纹（契约 A §6：baseline_hash 非 NULL；空 = {"edges":[],"nodes":[]}）。
-EMPTY_CANVAS_HASH = fingerprint({"edges": [], "nodes": []})
 
 
 @router.post("/workspace", response_model=entities.WorkspacePublic, status_code=201)
@@ -76,18 +71,7 @@ def create_workspace(body: rest.WorkspaceCreate, tx: Tx = Depends(get_tx)) -> An
         insert(_CHANNEL_MEMBER).values(channel_id=all_id, member_id=owner_id, joined_at=ts)
     )
 
-    # #all 空画布（baseline_version=0、空快照指纹）。
-    tx.conn.execute(
-        insert(_CANVAS).values(
-            id=new_ulid(),
-            workspace_id=ws_id,
-            channel_id=all_id,
-            baseline_version=0,
-            baseline_hash=EMPTY_CANVAS_HASH,
-            updated_at=ts,
-        )
-    )
-
+    # DEDAG：画布退役，bootstrap 不再为 #all 建 canvases 行（表冻结仅存量）。
     ws = models.row_dict(tx.conn.execute(select(_WS).where(_WS.c.id == ws_id)).mappings().first())
     return workspace_public(ws)
 

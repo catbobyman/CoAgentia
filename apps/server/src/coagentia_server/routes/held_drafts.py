@@ -127,8 +127,7 @@ def release_held_draft(held_draft_id: str, request: Request, tx: Tx = Depends(ge
         body_text=held["draft_body"],
         thread_root_id=held["thread_root_id"],
         file_ids=list(held["file_ids"] or []),
-        as_task_title=(as_task or {}).get("title"),
-        create_as_task=as_task is not None,
+        as_task=rest.AsTask.model_validate(as_task) if as_task is not None else None,
     )
 
     now = service.now_iso()

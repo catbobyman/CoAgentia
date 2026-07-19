@@ -278,6 +278,9 @@ def test_post_404_when_no_worktree(ctx: tuple[TestClient, Env, Any]) -> None:
         d = StubDaemon(ws)
         d.hello([])
         d.recv_hello_ack()
+        # DEDAG 纯任务驱动派生：无树的 writes_code 任务在握手即触发 ensure（原画布门已退役），
+        # 消费掉该帧；stub 不上报 status → worktree 行仍不存在，404 前提保持。
+        drain_revalidation(d)
         d.sync()
         resp = client.post(f"/api/tasks/{task_id}/preview")
     assert resp.status_code == 404
@@ -660,11 +663,12 @@ def test_recycle_cleanup_preempt_before_worktree_cleanup(
             env, task_id=task_id, worktree_id=worktree_id, status="running"
         )
         # 事后置任务终态（连接时非终态 → hello reconcile 不 cleanup/不 fail-close）。
+        # DEDAG：done+active = 待 merge 输入不清理，改用 closed（明确弃单才清树）。
         with env.engine.begin() as c:
             c.execute(
                 update(_TASK)
                 .where(_TASK.c.id == task_id)
-                .values(status="done", status_changed_at="2020-01-01T00:00:00.000Z")
+                .values(status="closed", status_changed_at="2020-01-01T00:00:00.000Z")
             )
         fut = asyncio.run_coroutine_threadsafe(
             hub._cleanup_worktree(task_id, env.comp_id), hub._loop

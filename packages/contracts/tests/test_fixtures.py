@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 from coagentia_contracts import entities, ws
-from coagentia_contracts.kernel import fingerprint
 
 FIXTURES = Path(__file__).parents[2] / "fixtures"
 
@@ -27,9 +26,9 @@ def test_seed_validates_against_contracts(seed: dict) -> None:
         ("agents", entities.AgentRow), ("channels", entities.ChannelRow),
         ("channel_members", entities.ChannelMemberRow), ("messages", entities.MessageRow),
         ("message_mentions", entities.MessageMentionRow), ("tasks", entities.TaskRow),
-        ("canvases", entities.CanvasRow), ("read_positions", entities.ReadPositionRow),
+        ("read_positions", entities.ReadPositionRow),
         ("token_usage_events", entities.TokenUsageEventRow),
-    ]
+    ]  # canvases 键随 DEDAG 退役自 seed 移除（冻结表仅存 DDL，fixtures 不再灌种）
     for key, model in plans:
         for row in seed[key]:
             model.model_validate(row)
@@ -97,15 +96,10 @@ def test_dm_invariants(seed: dict) -> None:
         assert ch["dm_key"] == ":".join(crew)
 
 
-def test_canvas_baseline_is_real_fingerprint(seed: dict) -> None:
-    """空画布基线 = 空快照的真指纹(契约 A §6.1),不是占位串。"""
-    expected = fingerprint({"edges": [], "nodes": []})
-    for cv in seed["canvases"]:
-        assert cv["baseline_hash"] == expected
-        assert cv["baseline_version"] == 0
-    # 每个 kind=channel 频道恰一画布(C1;DM 不承载任务故无画布)
-    channel_ids = {c["id"] for c in seed["channels"] if c["kind"] == "channel"}
-    assert {cv["channel_id"] for cv in seed["canvases"]} == channel_ids
+def test_seed_has_no_retired_domain_keys(seed: dict) -> None:
+    """DEDAG：seed 不再灌种退役域（画布/提案/模板/落地批）——冻结表仅存 DDL。"""
+    assert {"canvases", "canvas_nodes", "canvas_edges", "proposals", "templates",
+            "landing_batches"}.isdisjoint(seed.keys())
 
 
 def test_p1_screen_shapes(seed: dict) -> None:

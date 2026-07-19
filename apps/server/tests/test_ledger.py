@@ -1,9 +1,8 @@
-"""ledger 幂等三件套（契约 A §4.7 重放与 fail-closed 三条恢复规则）。
+"""ledger 幂等两件套（契约 A §4.7 hit 与 fail-closed 恢复规则；重放随 DEDAG 退役）。
 
 1. 同键同指纹 → hit：第二次 record 不新增行、返回原结果；
 2. 同键异指纹 → fail-closed：batch status='fail_closed'、diagnostic_events 有 landing.fail_closed、
-   频道有 fail_closed 卡片消息；
-3. 无 :done → 重放：前段已落 / 尾段缺失的批次，重放后尾段补齐、前段不重复执行（计数处理器验证）。
+   频道有 fail_closed 卡片消息。
 
 用 seed 灌入的 workspace + #all 频道满足外键（ledger.batch_id / messages.channel_id / diag）。
 """
@@ -16,7 +15,7 @@ from coagentia_contracts.enums import CardKind, LandingBatchKind, LandingBatchSt
 from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_server.db import models
 from coagentia_server.db.seed import seed_database
-from coagentia_server.ledger import replay, service
+from coagentia_server.ledger import service
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 
@@ -115,68 +114,3 @@ def test_same_op_diff_hash_triggers_fail_closed(seeded: Engine) -> None:
             select(func.count()).select_from(_LEDGER).where(_LEDGER.c.op_id == op_id)
         ).scalar_one()
     assert n == 1
-
-
-# ---------------------------------------------------------------- 3. 无 :done → 重放
-
-
-def test_replay_completes_tail_and_skips_front(seeded: Engine) -> None:
-    processed: list[str] = []
-
-    def counting_handler(_conn, entry: LedgerEntryRow) -> None:
-        processed.append(entry.op_id)
-
-    registry = replay.HandlerRegistry()
-    registry.register("create_node", counting_handler)
-
-    with seeded.begin() as conn:
-        bid = _make_batch(conn)
-        ops = [
-            replay.ReplayOp(f"decomp:{bid}:node:n1", "create_node", {"temp_id": "n1"}),
-            replay.ReplayOp(f"decomp:{bid}:node:n2", "create_node", {"temp_id": "n2"}),
-            replay.ReplayOp(f"decomp:{bid}:node:n3", "create_node", {"temp_id": "n3"}),
-        ]
-        # 前段已落：n1 已在账本（同 payload ⇒ 同指纹 ⇒ 重放时命中 hit）；尾段 n2/n3 缺失。
-        front = ops[0]
-        service.record(conn, front.op_id, front.kind, front.payload, batch_id=bid)
-
-        result = replay.replay_batch(conn, bid, ops, registry=registry)
-
-    assert result["status"] == "done"
-    assert result["skipped"] == [ops[0].op_id]          # 前段命中跳过
-    assert result["applied"] == [ops[1].op_id, ops[2].op_id]  # 尾段补齐
-    assert processed == [ops[1].op_id, ops[2].op_id]     # 前段处理器未再执行
-
-    with seeded.connect() as conn:
-        # 三个 node op + :done 标记 = 4 行
-        rows = conn.execute(
-            select(_LEDGER.c.op_id).where(_LEDGER.c.batch_id == bid).order_by(_LEDGER.c.seq)
-        ).scalars().all()
-        assert f"decomp:{bid}:done" in rows
-        assert len([r for r in rows if r.endswith(":node:n1") or r.endswith(":node:n2")
-                    or r.endswith(":node:n3")]) == 3
-
-        # done_at 已写（批次 :done 事实源）
-        done_at = conn.execute(
-            select(_BATCH.c.done_at).where(_BATCH.c.id == bid)
-        ).scalar_one()
-        assert done_at is not None
-        status = conn.execute(
-            select(_BATCH.c.status).where(_BATCH.c.id == bid)
-        ).scalar_one()
-        assert status == LandingBatchStatus.DONE.value
-
-
-def test_replay_is_idempotent_on_done_batch(seeded: Engine) -> None:
-    registry = replay.HandlerRegistry()
-    registry.register("create_node", lambda _c, _e: None)
-
-    with seeded.begin() as conn:
-        bid = _make_batch(conn)
-        ops = [replay.ReplayOp(f"decomp:{bid}:node:n1", "create_node", {"temp_id": "n1"})]
-        first = replay.replay_batch(conn, bid, ops, registry=registry)
-        # 已 :done 后重入 → already_done（无重复补齐）
-        second = replay.replay_batch(conn, bid, ops, registry=registry)
-
-    assert first["status"] == "done"
-    assert second["status"] == "already_done"

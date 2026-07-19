@@ -100,26 +100,8 @@ def _fetch_batch(conn: Connection, batch_id: str) -> LandingBatchRow | None:
     return LandingBatchRow(**row) if row is not None else None
 
 
-def batch_node_task_ids(conn: Connection, batch_id: str) -> list[str]:
-    """回收该落地批 `create_node` 账本行携带的 task_id（按落地顺序）。
-
-    模板实例化幂等重放重建 InstantiateResult 用（reserve-before 语义下 REST op_id 只记 batch_id，
-    task_ids 从已落库的逐节点账本行派生——见 routes/templates._reconstruct_from_ledger）。
-
-    按 `seq`（自增 PK = 落库顺序）排序 → 与首次 201 的 body.nodes 落地顺序一致；勿按
-    (created_at, op_id)：同毫秒时 op_id=tmpl:<batch>:<node_key> 的字典序会打乱顺序（n10<n2、
-    语义键乱序），令同键重放与首次响应的 tasks 顺序相异，违「同键同响应」。
-    """
-    rows = (
-        conn.execute(
-            select(_LEDGER.c.payload)
-            .where(_LEDGER.c.batch_id == batch_id, _LEDGER.c.kind == "create_node")
-            .order_by(_LEDGER.c.seq)
-        )
-        .scalars()
-        .all()
-    )
-    return [p["task_id"] for p in rows if isinstance(p, dict) and "task_id" in p]
+# DEDAG：batch_node_task_ids（模板实例化重放重建响应用）随模板域退役删除；
+# 账本 record/lookup 三态与 fail-closed 处置链是通用幂等基建，保留。
 
 
 # ---------------------------------------------------------------- 账本 record（三态）

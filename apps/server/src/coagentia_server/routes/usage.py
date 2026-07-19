@@ -7,7 +7,8 @@
   total = 该 agent owner 的所有任务数（tasks.owner_member_id=ref，含零上报任务→诚实覆盖率
   W7）；reporting = 其中有 ≥1 条 usage 事件的任务数。
 - level=canvas：ref=channel_id；任务集 = tasks.channel_id=ref；usage = 这些任务的事件和
-  （WHERE task_id IN 任务集）；total = 任务数，reporting = 有 usage 的任务数。
+  （WHERE task_id IN 任务集）；total = 任务数，reporting = 有 usage 的任务数。（DEDAG：画布
+  退役，维度名 canvas 沿契约 B 保留，语义 = 频道级任务集聚合，不读任何画布表。）
 
 rollup=True → 附 breakdown 逐任务明细（ref=task_id，label=title，usage=该任务事件和；零上报任务
 usage 全 0 仍列入）。永不折算货币（W7，无货币字段）。
@@ -158,7 +159,8 @@ def get_usage(
             breakdown=breakdown,
         )
 
-    # level == UsageLevel.CANVAS：ref=channel_id，任务集 = 该频道画布的 task 节点对应任务。
+    # level == UsageLevel.CANVAS：ref=channel_id，任务集 = 该频道全部任务（DEDAG：画布退役，
+    # 维度名保留、语义即频道级聚合）。
     task_rows = conn.execute(
         select(_TASK.c.id, _TASK.c.title)
         .where(_TASK.c.channel_id == ref)

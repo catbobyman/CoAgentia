@@ -302,31 +302,7 @@ def test_activity_page_shape(dual: DualClient) -> None:
     )
 
 
-# ---------------------------------------------------------------- 画布读形状（M3b 双跑）
-
-
-def test_canvas_detail_shape(dual: DualClient) -> None:
-    """GET /channels/{id}/canvas（B §4.9）：build 频道有画布 → CanvasDetail；DM 无画布 → 404。
-
-    mock 是形状源（结构留空），真 server 空画布同样 nodes/edges 皆空——两实现读形状零偏差。
-    """
-    _, client = dual
-    build = _build_channel(client)
-    detail = rest.CanvasDetail.model_validate(
-        client.get(f"/api/channels/{build['id']}/canvas").json()
-    )
-    assert detail.canvas.channel_id == build["id"]
-    assert detail.nodes == [] and detail.edges == []
-    dm = _dm(client)
-    r = client.get(f"/api/channels/{dm['id']}/canvas")
-    assert r.status_code == 404
-    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
-
-
-# ---- 真 server「目录 vs 实 serve」一致性（M2 C4 先例）：M6 补齐 retry 后画布组全 serve
-
-_CANVAS_M3 = [(m, p) for m, p in rest.ENDPOINTS_M3 if "canvas" in p]
-_RETRY = ("POST", "/canvas-nodes/{node_id}/retry")
+# ---- 真 server「目录 vs 实 serve」一致性（M2 C4 先例）
 
 
 def _served(client: TestClient) -> set[tuple[str, str]]:
@@ -342,14 +318,6 @@ def _norm(path: str) -> str:
     import re
 
     return re.sub(r"\{[^}]+\}", "{}", path)
-
-
-def test_canvas_endpoints_all_served(server_client: TestClient) -> None:
-    """M6 J5 补齐 retry；目录（ENDPOINTS_M3 画布组）↔ create_app() 实 serve 全量对账。"""
-    served = _served(server_client)
-    missing = [(m, p) for m, p in _CANVAS_M3 if (m, _norm(p)) not in served]
-    assert not missing, f"画布组未 serve: {missing}"
-    assert (_RETRY[0], _norm(_RETRY[1])) in served
 
 
 # ---- M4 护栏三键：目录（ENDPOINTS_M4）↔ 真 server 实 serve 对账（M2/M3 先例）
@@ -371,32 +339,16 @@ def test_held_drafts_list_shape(dual: DualClient) -> None:
     assert page.items == [] and page.next_cursor is None
 
 
-def test_canvas_node_added_broadcast(server_client: TestClient) -> None:
-    """真 server：建 agent 节点 → message.created → task.created → canvas.node_added 到达且
-    payload 逐帧过契约模型（信封 + seq 单调，复用 _envelope_of/_drain_until）。"""
-    build = _build_channel(server_client)
-    canvas_id = server_client.get(f"/api/channels/{build['id']}/canvas").json()["canvas"]["id"]
-    with server_client.websocket_connect("/api/ws") as sock:
-        hello = _envelope_of(sock.receive_json())
-        r = server_client.post(
-            f"/api/canvases/{canvas_id}/nodes", json={"title": "画布节点", "kind": "agent"}
-        )
-        assert r.status_code == 201
-        added = _drain_until(sock, ws.EventType.CANVAS_NODE_ADDED, hello.seq)
-        assert added.data["node"]["id"] == r.json()["node"]["id"]
-        assert added.channel_id == build["id"]
-
-
 # ---------------------------------------------------------------- M5 契约登记（H0）
 #
-# H0 只登记契约面：mock serve 全部 M5 五端点（形状源喂 OpenAPI→rest.ts），ChannelsSnapshot 扩
-# notification_settings 第三字段。真 server serve 与逐端点行为双跑（通知 mode 门 / 模板序列化 /
-# 实例化事务）归实现模块（H3/H5/H6）各自测试文件——H0 不在此断言真 server serve（块 a 期间尚未
-# 实现，同 M3a 画布"登记不 serve"先例）。
+# H0 只登记契约面：mock serve 全部 M5 端点（形状源喂 OpenAPI→rest.ts），ChannelsSnapshot 扩
+# notification_settings 第三字段。真 server serve 与逐端点行为双跑（通知 mode 门）归实现模块
+# （H3）自有测试文件——H0 不在此断言真 server serve。
 
 
 def test_mock_covers_m5_endpoints() -> None:
-    """mock 形状源 serve 全部 M5 五端点（§4.12 模板三 + §4.5 通知设置二）——喂 OpenAPI→rest.ts。"""
+    """mock 形状源 serve 全部 M5 端点（§4.5 通知设置二；模板三随 DEDAG 退役）——喂
+    OpenAPI→rest.ts。"""
     from coagentia_mock.app import app as mock_app
 
     served = _served(TestClient(mock_app))
@@ -416,7 +368,7 @@ def test_channels_snapshot_notification_settings_field(dual: DualClient) -> None
 
 
 def test_mock_covers_m6_endpoints() -> None:
-    """mock 形状源 serve M6 编排/交付、retry 与模板治理的 14 个目录端点。"""
+    """mock 形状源 serve M6 目录端点（Project 7；编排/retry/模板治理随 DEDAG 退役）。"""
     from coagentia_mock.app import app as mock_app
 
     served = _served(TestClient(mock_app))
@@ -440,18 +392,8 @@ def test_mock_covers_m7_endpoints() -> None:
     assert not missing, f"mock 未 serve M7 端点: {missing}"
 
 
-def test_proposal_j8_endpoints_served(server_client: TestClient) -> None:
-    """编排端点四件套被真 server serve（J8 decompose/GET + J9 confirm/reject；
-    与 mock 的 ENDPOINTS_M6 全量覆盖双跑一致——纪律 3）。"""
-    served = _served(server_client)
-    assert ("POST", _norm("/channels/{channel_id}/decompose")) in served
-    assert ("GET", _norm("/proposals/{proposal_id}")) in served
-    assert ("POST", _norm("/proposals/{proposal_id}/confirm")) in served
-    assert ("POST", _norm("/proposals/{proposal_id}/reject")) in served
-
-
-def test_mock_project_diff_proposal_shapes() -> None:
-    """J0 只验 OpenAPI 形状；Project 校验、git diff 与提案状态机均不在 mock 实现。"""
+def test_mock_project_diff_shapes() -> None:
+    """J0 只验 OpenAPI 形状；Project 校验与 git diff 均不在 mock 实现。"""
     from coagentia_mock.app import app as mock_app
 
     client = TestClient(mock_app)
@@ -467,33 +409,6 @@ def test_mock_project_diff_proposal_shapes() -> None:
         client.get(f"/api/tasks/{task['id']}/diff").json()
     )
     assert diff.files and diff.files[0].path == "README.md"
-
-    decompose = client.post(
-        f"/api/channels/{task['channel_id']}/decompose", json={"task_id": task["id"]}
-    )
-    assert decompose.status_code == 202
-    proposal = entities.ProposalPublic.model_validate(decompose.json())
-    assert proposal.channel_id == task["channel_id"]
-
-    fetched = entities.ProposalPublic.model_validate(
-        client.get(f"/api/proposals/{proposal.id}").json()
-    )
-    confirm = client.post(
-        f"/api/proposals/{proposal.id}/confirm",
-        json={
-            "expected": {
-                "proposal_hash": fetched.proposal_hash,
-                "baseline_version": 1,
-                "baseline_hash": "0" * 64,
-            },
-            "adjustments": [],
-            "removed_ops": [],
-        },
-    )
-    assert confirm.status_code == 202
-    rest.ProposalConfirmResult.model_validate(confirm.json())
-    rejected = client.post(f"/api/proposals/{proposal.id}/reject", json={})
-    assert entities.ProposalPublic.model_validate(rejected.json()).status.value == "rejected"
 
 
 _PROJECTS_J2 = [
@@ -565,74 +480,6 @@ def test_project_crud_and_binding_shapes(dual: DualClient, tmp_path: Path) -> No
         f"/api/channels/{build['id']}/projects/{created.id}"
     ).status_code == 204
     assert client.delete(f"/api/projects/{created.id}").status_code == 204
-
-
-# -------------------------------------------------------- M5b 模板（H5 存/列 + H6 实例化双跑）
-#
-# GET /templates 双跑（mock 形状源 + 真 server lifespan upsert builtin）读形状零偏差；POST 存为模板
-# 全业务（画布快照序列化 / 占位去重 / 409 约束）是真 server 独有逻辑（纪律 4），不在此双跑——见
-# test_templates.py。instantiate（H6）此处只双跑响应形状（InstantiateResult 零偏差）；单事务编排 /
-# 幂等 / briefing / blocked 是真 server 独有逻辑，见 test_templates.py。
-
-_TEMPLATES_H6 = [
-    ("GET", "/templates"),
-    ("POST", "/templates"),
-    ("POST", "/templates/{template_id}/instantiate"),
-]
-
-
-def test_templates_list_shape(dual: DualClient) -> None:
-    """GET /templates（B §11.1）：builtin 工程三角置前、body 全量携带——mock 形状源与真 server
-    （lifespan upsert builtin）读形状零偏差。"""
-    _, client = dual
-    items = TypeAdapter(list[entities.TemplatePublic]).validate_python(
-        client.get("/api/templates").json()
-    )
-    assert items, "至少含 builtin 工程三角"
-    assert items[0].builtin is True
-    assert items[0].name == "工程三角"
-    assert items[0].body.nodes, "body 全量携带（向导预览 DAG 缩略图用）"
-
-
-def test_templates_h6_endpoints_served(server_client: TestClient) -> None:
-    """H5+H6 真 server serve GET/POST /templates + POST instantiate（目录 ↔ 实 serve 对账，
-    M2/M3/M4 先例）。"""
-    served = _served(server_client)
-    missing = [(m, p) for m, p in _TEMPLATES_H6 if (m, _norm(p)) not in served]
-    assert not missing, f"H6 模板端点未 serve: {missing}"
-
-
-# J11 模板治理 PATCH/DELETE：真 server 独有业务（builtin 409/404/重名放行）见 test_templates.py；
-# 此处只对账真 server serve（mock 同形状由 test_mock_covers_m6_endpoints 守——ENDPOINTS_M6 已含）。
-_TEMPLATES_GOVERNANCE = [
-    ("PATCH", "/templates/{template_id}"),
-    ("DELETE", "/templates/{template_id}"),
-]
-
-
-def test_templates_governance_endpoints_served(server_client: TestClient) -> None:
-    """J11 模板治理 PATCH/DELETE 真 server serve（目录 ↔ 实 serve 对账）。"""
-    served = _served(server_client)
-    missing = [(m, p) for m, p in _TEMPLATES_GOVERNANCE if (m, _norm(p)) not in served]
-    assert not missing, f"J11 模板治理端点未 serve: {missing}"
-
-
-def test_instantiate_result_shape(dual: DualClient) -> None:
-    """POST /templates/{id}/instantiate（B §11.2）：builtin 工程三角全角色映射 → InstantiateResult
-    形状零偏差（mock 回落地批 + 空任务形状；真 server 单事务落地批 + 逐节点任务）。"""
-    _, client = dual
-    build = _build_channel(client)
-    tri = next(t for t in client.get("/api/templates").json() if t["builtin"])
-    owner = _member(client, "Memcyo")  # 全角色映射到 Owner（真 server FK 需真成员，mock 忽略）
-    mapping = {ro["placeholder"]: owner["id"] for ro in tri["body"]["roles"]}
-    r = client.post(
-        f"/api/templates/{tri['id']}/instantiate",
-        json={"channel_id": build["id"], "role_mapping": mapping},
-    )
-    assert r.status_code == 201, r.text
-    result = rest.InstantiateResult.model_validate(r.json())
-    assert result.batch.channel_id == build["id"]
-    assert result.batch.kind is entities.LandingBatchKind.TMPL
 
 
 # ---------------------------------------------------------------- WS 信封与广播（A4 双跑）

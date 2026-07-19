@@ -21,8 +21,6 @@ from coagentia_server.deps import Tx, acting_member, get_tx, owner_member, requi
 from coagentia_server.files.store import StagedMeta, sha256_hex
 from coagentia_server.guard import service as guard_service
 from coagentia_server.ledger import service
-from coagentia_server.orchestration import proposal as proposal_domain
-from coagentia_server.orchestration import summary as summary_service
 from coagentia_server.routes._pagination import keyset_page
 from coagentia_server.routes.serialize import (
     file_public,
@@ -43,6 +41,7 @@ _READ = models.tbl(models.ReadPosition)
 _TASK = models.tbl(models.Task)
 _MTR = models.tbl(models.MessageTaskRef)
 _CHANNEL_MEMBER = models.tbl(models.ChannelMember)
+_CHANNEL_PROJECT = models.tbl(models.ChannelProject)
 
 # task #n 解析（B §9.5）：task 与 # 间允许空白，# 与数字紧邻；大小写不敏感。
 _TASK_REF_RE = re.compile(r"task\s*#(\d+)", re.IGNORECASE)
@@ -255,26 +254,18 @@ def persist_message(
     body_text: str,
     thread_root_id: str | None,
     file_ids: list[str],
-    as_task_title: str | None,
-    create_as_task: bool,
+    as_task: rest.AsTask | None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """消息落库核心（B §4.6 + §9.2/§9.4）：insert 消息 + mentions + task_refs + activity +
     文件绑定 + as_task，并按提交序广播 message.created(+task.created)。返回 (MessagePublic,
     TaskPublic|None)。post_message 常规发送与 held release「原样发送」（G3）共用同一核心——保「放行
-    消息与直接发送零行为差」不变量（附件绑定/建任务/@解析/activity 一致）。"""
+    消息与直接发送零行为差」不变量（附件绑定/建任务/@解析/activity 一致）。
+
+    DEDAG（B v1.6）：提案 <control> 解析挂接随提案域退役；as_task 扩 project_id/writes_code
+    （Agent create_task 工具与人类消息转任务同道）。"""
     ts = service.now_iso()
-    # 提案消息解析挂接（J8 phase1，裁决 #12）：作者是本频道某非终态提案 proposed_by 且消息在其
-    # source 线程内且正文含 <control> → 校验通过时消息即提案卡（card_kind=PROPOSAL/card_ref=pid
-    # **插入时落列**，消息不可变原则不违背）。freshness 门在前天然生效——held 草稿不落库不到此。
-    submission = proposal_domain.classify_submission(
-        tx,
-        channel=channel,
-        author_member_id=author_member_id,
-        body=body_text,
-        thread_root_id=thread_root_id,
-    )
-    card_kind = submission.card_kind if submission is not None else None
-    card_ref = submission.card_ref if submission is not None else None
+    card_kind = None
+    card_ref = None
     tx.conn.execute(
         insert(_MSG).values(
             id=msg_id,
@@ -326,42 +317,23 @@ def persist_message(
     # as_task（B §9.4）：同事务建任务；顶级/非 DM 已在上方校验通过。message.created 先、
     # task.created 后严格提交序广播；任一半失败整事务回滚，双双不落库不广播（原子）。
     task_pub = None
-    if create_as_task:
+    if as_task is not None:
         task_row = tasks_service.create_task(
             tx,
             workspace_id=workspace_id,
             channel_id=channel["id"],
             root_message_id=msg_id,
             created_by=author_member_id,
-            title=as_task_title,
+            title=as_task.title,
             source_body=body_text,
+            project_id=as_task.project_id,
+            writes_code=bool(as_task.writes_code),
         )
         task_pub = task_public(task_row)
 
     tx.emit(EventType.MESSAGE_CREATED, channel["id"], {"message": pub})
     if task_pub is not None:
         tx.emit(EventType.TASK_CREATED, channel["id"], {"task": task_pub})
-
-    # 提案域 phase2（J8）：命中提案提交 → apply（状态机/修复循环/rev+1/直落）；否则顶级 @Orch
-    # → T1 归一 decompose（转任务 + 建提案 + 注入）。inject 经 tx.after_commit **提交后**
-    # best-effort 投递（CR-M8-1：inject 同步等 daemon ack，事务内等 ack 会让 daemon 的
-    # agent.status 上报撞本事务写锁 → 连接被撕 → 注入必然丢失；离线丢失靠对账 #6 续传）。
-    injects: list[proposal_domain.PendingInject] = []
-    if submission is not None:
-        injects += submission.apply(tx)
-    else:
-        injects += proposal_domain.maybe_trigger_t1(
-            tx,
-            channel=channel,
-            author_member_id=author_member_id,
-            message_id=msg_id,
-            body=body_text,
-            thread_root_id=thread_root_id,
-            mentioned=mentioned,
-        )
-    if injects:
-        hub = tx.request.app.state.daemon_hub
-        tx.after_commit(lambda: proposal_domain.flush_injects(hub, injects))
     return pub, task_pub
 
 
@@ -401,6 +373,23 @@ def post_message(
         raise ApiError(422, rest.ErrorCode.TASK_IN_DM, "DM 不承载任务", rule="FR-5.1")
     if body.as_task is not None and body.thread_root_id is not None:
         raise ApiError(422, rest.ErrorCode.NOT_TOP_LEVEL_MESSAGE, "仅顶级消息可转任务", rule="T3")
+    # DEDAG（B v1.6）：as_task 扩展字段校验——writes_code 必须携本频道绑定的 project。
+    if body.as_task is not None:
+        if body.as_task.writes_code and body.as_task.project_id is None:
+            raise ApiError(
+                422, rest.ErrorCode.VALIDATION_FAILED, "writes_code 任务必须指定 project_id"
+            )
+        if body.as_task.project_id is not None:
+            bound = tx.conn.execute(
+                select(_CHANNEL_PROJECT.c.project_id).where(
+                    _CHANNEL_PROJECT.c.channel_id == channel_id,
+                    _CHANNEL_PROJECT.c.project_id == body.as_task.project_id,
+                )
+            ).first()
+            if bound is None:
+                raise ApiError(
+                    422, rest.ErrorCode.VALIDATION_FAILED, "project 未绑定本频道或不存在"
+                )
     # thread_root_id 校验：目标必须是同频道存在的**顶级**消息（契约 A：线程不可嵌套）。
     # 缺此校验时坏 thread_root_id → messages FK IntegrityError → 未处理 500（A8 live 实测暴露：
     # Agent 传了非消息 id 的 thread_root_id，服务端 500 而非干净 4xx，阻断对话）。
@@ -491,24 +480,8 @@ def post_message(
         body_text=body.body,
         thread_root_id=body.thread_root_id,
         file_ids=list(body.file_ids),
-        as_task_title=body.as_task.title if body.as_task is not None else None,
-        create_as_task=body.as_task is not None,
+        as_task=body.as_task,
     )
-    # O8 恢复（M8b L8，汇总设计 §6.3/裁决 #8）：人类在汇总任务线程发言 → 归零 round/stall、清
-    # blocked_at（replan_used 不重置——预算随人类介入不自动续杯）。同事务清，故提交后投递已解抑制。
-    # 恢复可见走既有 task.updated（change=None，同 patch_node 体例），刷新前端 O8 横幅。
-    if me["kind"] == MemberKind.HUMAN and body.thread_root_id is not None:
-        summary_task = summary_service.summary_task_for_thread(
-            tx.conn, {"thread_root_id": body.thread_root_id}
-        )
-        if summary_task is not None and summary_service.recover(tx, task_id=summary_task):
-            recovered = tasks_service.fetch_task(tx.conn, summary_task)
-            if recovered is not None:
-                tx.emit(
-                    EventType.TASK_UPDATED,
-                    channel_id,
-                    {"task": task_public(recovered), "change": None},
-                )
     return {"message": pub, "task": task_pub}
 
 

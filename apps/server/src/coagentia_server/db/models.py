@@ -459,6 +459,9 @@ class LedgerEntry(Base):
 
 
 class Canvas(Base):
+    """DEDAG 冻结：仅为 0001 metadata.create_all 保留，无活码读写
+    （例外：频道硬删清理存量行保 FK）。"""
+
     __tablename__ = "canvases"
 
     id: Mapped[str] = mapped_column(_ULID, primary_key=True)
@@ -594,6 +597,8 @@ class TaskContract(Base):
 
 
 class CanvasNode(Base):
+    """DEDAG 冻结：仅为 0001 metadata.create_all 保留，无活码读写。"""
+
     __tablename__ = "canvas_nodes"
     __table_args__ = (
         # kind='agent' → task_id NOT NULL（引用不是副本，C8）
@@ -635,6 +640,8 @@ class CanvasNode(Base):
 
 
 class CanvasEdge(Base):
+    """DEDAG 冻结：仅为 0001 metadata.create_all 保留，无活码读写。"""
+
     __tablename__ = "canvas_edges"
     __table_args__ = (
         UniqueConstraint(
@@ -702,7 +709,9 @@ class HeldDraft(Base):
 class Template(Base):
     """M5（FR-7.1）：工程三角等流程资产。body = TemplateBody（nodes/edges/roles/briefing，
     契约 A §4.10，入库前 model_validate）。builtin 行（工程三角）= server 启动 upsert 维护，
-    不可删改（B §11.1）。工作区级小表，查询恒按 workspace_id 全量拉——零额外索引。"""
+    不可删改（B §11.1）。工作区级小表，查询恒按 workspace_id 全量拉——零额外索引。
+
+    DEDAG 冻结：仅为 0001 metadata.create_all 保留，无活码读写。"""
 
     __tablename__ = "templates"
 
@@ -743,7 +752,8 @@ class Proposal(Base):
 
     部分唯一索引「同 source 单一非终态提案」= UNIQUE(source_task_id) WHERE
     status NOT IN ('landed','superseded','rejected','failed')——SQLite 支持 partial index。
-    """
+
+    DEDAG 冻结：仅为 0001 metadata.create_all 保留，无活码读写。"""
 
     __tablename__ = "proposals"
     __table_args__ = (
@@ -780,7 +790,9 @@ class Proposal(Base):
 class SummaryRun(Base):
     """M8（O8 汇总协调状态，契约 A v1.0.12 §6.4）：汇总任务的循环护栏计数。**可变表**——
     round/stall/replan 三计数走条件 UPDATE CAS 推进，blocked_at 置位/清空。行创建 = 汇总节点
-    gating 首次解除（lazy）。task_id 为 PK（与汇总任务 1:1）。"""
+    gating 首次解除（lazy）。task_id 为 PK（与汇总任务 1:1）。
+
+    DEDAG 冻结：仅为 0001 metadata.create_all 保留，无活码读写。"""
 
     __tablename__ = "summary_runs"
 
