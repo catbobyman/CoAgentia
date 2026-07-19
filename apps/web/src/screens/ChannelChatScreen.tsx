@@ -10,7 +10,7 @@ import { UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts';
 import type { ChannelSearch, Tab } from '../routes/search';
 import {
   memberMap, presenceMap, readPositionsMap,
-  useCanvasSnapshot, useChannelFiles, useChannelsSnapshot, useHeldDrafts, useMembers, useMessages,
+  useChannelFiles, useChannelsSnapshot, useHeldDrafts, useMembers, useMessages,
   usePresence, useTasks, useThread, useUsageByTask,
 } from '../data/queries';
 import { useReadCursor } from '../data/useReadCursor';
@@ -19,7 +19,6 @@ import { useUiStore } from '../lib/store';
 import { Composer } from '../components/Composer';
 import { MessageFlow } from '../components/MessageFlow';
 import { BoardTab } from '../components/BoardTab';
-import { CanvasTab } from '../components/CanvasTab';
 import { FilesTab } from '../components/FilesTab';
 import { Tabs } from '../components/Tabs';
 import { Topbar } from '../components/Topbar';
@@ -51,8 +50,6 @@ export function ChannelChatScreen({ search, setSearch }: {
 }) {
   const activeChannelId = useUiStore((s) => s.activeChannelId);
   const setActiveChannel = useUiStore((s) => s.setActiveChannel);
-  const setActiveDraft = useUiStore((s) => s.setActiveDraft);
-  const setActiveDelta = useUiStore((s) => s.setActiveDelta);
   const navigate = useNavigate();
   const toast = useToast();
   const archiveM = useArchiveChannel();
@@ -72,7 +69,6 @@ export function ChannelChatScreen({ search, setSearch }: {
   const tasksQ = useTasks(activeChannelId ?? undefined);
   const usageQ = useUsageByTask();
   const filesQ = useChannelFiles(activeChannelId ?? undefined);
-  const canvasQ = useCanvasSnapshot(activeChannelId ?? undefined);
   const heldDraftsQ = useHeldDrafts(activeChannelId ?? undefined);
   const markRead = useReadCursor();
 
@@ -128,7 +124,6 @@ export function ChannelChatScreen({ search, setSearch }: {
     (t) => !UNCLAIMABLE_STATUSES.includes((t.status ?? 'todo') as TaskStatus),
   ).length;
   const filesCount = files.length;
-  const canvasCount = canvasQ.data?.nodes?.length ?? 0;
   const readPos = readPositionsMap(snap)[channel.id];
   const lastReadId = readPos?.last_read_message_id;
 
@@ -182,18 +177,6 @@ export function ChannelChatScreen({ search, setSearch }: {
       .catch((e: unknown) => toast.push(e instanceof ApiError ? e.message : '转为任务失败', { tone: 'error' }));
   };
   const canConvertToTask = channel.kind !== 'dm';
-  // M6b 提案卡入口：full「查看草稿」→ 激活草稿层；delta「审查增量」→ 激活 delta 面板；均切画布页签。
-  // 二者互斥（并行审计修复）：切页签不卸 store 态,不清对方会双层叠加遮挡（频道内单提案审阅）。
-  const reviewDraft = (proposalId: string) => {
-    setActiveDelta(channel.id, null);
-    setActiveDraft(channel.id, proposalId);
-    setSearch({ tab: 'canvas' });
-  };
-  const reviewDelta = (proposalId: string) => {
-    setActiveDraft(channel.id, null);
-    setActiveDelta(channel.id, proposalId);
-    setSearch({ tab: 'canvas' });
-  };
   // 点任务牌 → 打开线程面板(?thread=root),同时高亮(?task=)。再点同一牌关闭。
   const selectTask = (taskId: string) => {
     if (search.task === taskId) {
@@ -230,7 +213,6 @@ export function ChannelChatScreen({ search, setSearch }: {
         />
         <Tabs
           active={search.tab}
-          canvasCount={canvasCount}
           boardCount={boardCount}
           filesCount={filesCount}
           onSelect={selectTab}
@@ -252,9 +234,6 @@ export function ChannelChatScreen({ search, setSearch }: {
               onLocateDone={() => setLocateId(undefined)}
               onSelectTask={selectTask}
               onOpenAgent={openAgent}
-              onReviewProposal={reviewDraft}
-              onReviewDelta={reviewDelta}
-              onOpenProposalThread={(m) => setSearch({ tab: 'chat', thread: m.thread_root_id ?? m.id })}
               onReplyInThread={openThread}
               onConvertToTask={convertToTask}
               canConvertToTask={canConvertToTask}
@@ -269,16 +248,6 @@ export function ChannelChatScreen({ search, setSearch }: {
               onLocateMessage={locateMessage}
             />
           </>
-        ) : search.tab === 'canvas' ? (
-          <CanvasTab
-            channelId={channel.id}
-            tasks={tasks}
-            members={members}
-            presence={presenceQ.data ?? []}
-            messages={messages}
-            search={search}
-            setSearch={setSearch}
-          />
         ) : search.tab === 'board' ? (
           <BoardTab
             tasks={tasks}
@@ -360,8 +329,6 @@ export function ChannelChatScreen({ search, setSearch }: {
             void api.sendMessage(channel.id, body, false, threadRootId).catch((e: unknown) =>
               toast.push(e instanceof ApiError ? e.message : '发送失败', { tone: 'error' }),
             )}
-          onReviewProposal={reviewDraft}
-          onReviewDelta={reviewDelta}
         />
       )}
 

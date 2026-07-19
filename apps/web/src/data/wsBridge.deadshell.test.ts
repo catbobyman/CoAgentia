@@ -1,6 +1,5 @@
 // F10 死壳补齐：契约登记但 wsBridge 原零处理的实时缺口。computer.*/channel.*/member.* 失效对应
-// 列表；task_contract.* 按 task_id 失效 taskDetail；draft.adjusted/confirmed/rejected 只载
-// proposal_id → 失效（**不**整体替换，区别于 delta.*）；agent.updated/workspace.updated 整体替换。
+// 列表；task_contract.* 按 task_id 失效 taskDetail；agent.updated/workspace.updated 整体替换。
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -42,28 +41,6 @@ describe('F10b task_contract.*', () => {
     const spy = vi.spyOn(qc, 'invalidateQueries');
     applyEnvelope(qc, envelope('task_contract.updated', { contract: { id: 'tc2', task_id: null } }));
     expect(spy).not.toHaveBeenCalled();
-  });
-});
-
-describe('F10c draft full 生命周期（仅载 proposal_id）', () => {
-  it.each(['draft.adjusted', 'draft.confirmed', 'draft.rejected', 'draft.superseded'])(
-    '%s → 失效该提案 query（不整体替换）',
-    (type) => {
-      const qc = new QueryClient();
-      const spy = vi.spyOn(qc, 'invalidateQueries');
-      applyEnvelope(qc, envelope(type, { proposal_id: 'prop_x', adjustments: [] }));
-      expect(keysOf(spy)).toContain(JSON.stringify(qk.proposal('prop_x')));
-    },
-  );
-
-  it('draft.adjusted 不会把只含 proposal_id 的载荷当完整提案写进缓存', () => {
-    const qc = new QueryClient();
-    // 预置一个完整提案；draft.adjusted 只应失效、不应用残缺载荷覆盖它。
-    qc.setQueryData(qk.proposal('prop_x'), { id: 'prop_x', status: 'awaiting_confirm' });
-    applyEnvelope(qc, envelope('draft.adjusted', { proposal_id: 'prop_x', adjustments: [] }));
-    const cached = qc.getQueryData<{ id: string; status: string }>(qk.proposal('prop_x'));
-    // 仍是原完整对象（有 status），未被 { proposal_id } 覆盖。
-    expect(cached?.status).toBe('awaiting_confirm');
   });
 });
 

@@ -1,11 +1,9 @@
 // P3 频道看板页签(对照 P3-board.html):5 态分列 + Done/Closed 默认折叠窄条 + 拖列改状态。
 // 拖前用 TASK_TRANSITIONS(纪律 7 单一事实源)校验合法目标列;非法列禁止放下 + toast。
 // 移列成功靠 WS task.updated 实时回灌(wsBridge 已处理),无乐观更新;过渡 --t-slow(240ms)。
-import { useMemo, useState } from 'react';
-import { Lock, Play } from 'lucide-react';
+import { useState } from 'react';
 
 import type {
-  CanvasDetail,
   MemberPublic,
   PresenceEntry,
   TaskPublic,
@@ -14,35 +12,13 @@ import type {
 import { TASK_TRANSITIONS } from '@coagentia/contracts-ts';
 
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
-import { deriveCanvasBlocked } from '../lib/graph';
-import { useCanvasSnapshot } from '../data/queries';
 import { api, ApiError } from '../api';
 import { useToast } from './Toast';
 import { Avatar } from './Avatar';
-import { ForceStartModal } from './ForceStartModal';
 import './board-tab.css';
 
 const COLUMNS: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'done', 'closed'];
 const COLLAPSIBLE: TaskStatus[] = ['done', 'closed'];
-
-/** 从频道画布快照派生「被阻塞的 task_id 集」(看板徽标消费,与画布同一 deriveBlocked 内核):
- *  agent 节点被 blocked 命中 → 其 task_id 入集。satisfied = 上游 agent 任务 done / system success。
- *  纯函数,可单测;跨频道聚合板(P11)对每个频道各调一次再并集。 */
-export function blockedTaskIdsFromCanvas(
-  detail: CanvasDetail | undefined,
-  taskById: Record<string, TaskPublic>,
-): Set<string> {
-  const nodes = detail?.nodes ?? [];
-  const edges = detail?.edges ?? [];
-  // satisfied 组装 + deriveBlocked 走 lib/graph 单源(纪律 8,与画布 buildCanvasModel 同一处),
-  // 避免看板徽标与画布着色因规则分写而打架。
-  const { blocked: blockedNodes } = deriveCanvasBlocked(nodes, edges, taskById);
-  const out = new Set<string>();
-  for (const n of nodes) {
-    if (n.kind === 'agent' && n.task_id && blockedNodes.has(n.id)) out.add(n.task_id);
-  }
-  return out;
-}
 
 export function BoardTab({ tasks, memberById, presenceOf, selectedTaskId, onSelectTask }: {
   tasks: TaskPublic[];
@@ -56,18 +32,6 @@ export function BoardTab({ tasks, memberById, presenceOf, selectedTaskId, onSele
   const [drag, setDrag] = useState<{ id: string; from: TaskStatus } | null>(null);
   // Done/Closed 默认折叠;点开加入展开集合。
   const [expanded, setExpanded] = useState<Set<TaskStatus>>(new Set());
-  // force-start 目标:blocked 卡点「强制启动」置入,ForceStartModal 二次确认后清空。
-  const [forceTask, setForceTask] = useState<TaskPublic | null>(null);
-
-  // blocked 徽标:看板同频道,故 channelId 取自任一任务;自查该频道画布快照派生 blocked task_id 集
-  // (与画布 deriveBlocked 同源,不必由父级穿透)。空画布/无任务时集为空,徽标自然不出。
-  const channelId = tasks[0]?.channel_id;
-  const canvasQ = useCanvasSnapshot(channelId);
-  const taskById = useMemo(() => Object.fromEntries(tasks.map((t) => [t.id, t])), [tasks]);
-  const blocked = useMemo(
-    () => blockedTaskIdsFromCanvas(canvasQ.data, taskById),
-    [canvasQ.data, taskById],
-  );
 
   const byStatus = (s: TaskStatus) => tasks.filter((t) => (t.status ?? 'todo') === s);
 
@@ -100,11 +64,10 @@ export function BoardTab({ tasks, memberById, presenceOf, selectedTaskId, onSele
   const renderCard = (t: TaskPublic) => {
     const st = t.status ?? 'todo';
     const owner = t.owner_member_id ? memberById[t.owner_member_id] : undefined;
-    const isBlocked = blocked.has(t.id);
     return (
       <div
         key={t.id}
-        className={`bcard${selectedTaskId === t.id ? ' sel' : ''}${drag?.id === t.id ? ' dragging' : ''}${isBlocked ? ' blocked' : ''}`}
+        className={`bcard${selectedTaskId === t.id ? ' sel' : ''}${drag?.id === t.id ? ' dragging' : ''}`}
         draggable
         onDragStart={(e) => {
           // Firefox 要求 dragstart 期间 setData,否则拖拽会话不启动(M2 二轮 review)。
@@ -120,31 +83,12 @@ export function BoardTab({ tasks, memberById, presenceOf, selectedTaskId, onSele
           <span className="bar" style={{ background: `var(${STATUS_VAR[st]})` }} />
           {owner && <Avatar name={owner.name} presence={presenceOf(owner.id)} size="nav" />}
           <span className="sp" />
-          {isBlocked && (
-            <span className="blkbadge" data-testid="board-blocked">
-              <Lock /> blocked
-            </span>
-          )}
         </div>
-        {isBlocked && (
-          <button
-            className="fsbtn"
-            data-testid="board-force-start"
-            title="强制启动(越过 gating,留痕)"
-            onClick={(e) => {
-              e.stopPropagation(); // 不触发选牌/打开线程
-              setForceTask(t);
-            }}
-          >
-            <Play /> 强制启动
-          </button>
-        )}
       </div>
     );
   };
 
   return (
-    <>
     <section className="boardtab">
       {COLUMNS.map((col) => {
         const list = byStatus(col);
@@ -199,7 +143,5 @@ export function BoardTab({ tasks, memberById, presenceOf, selectedTaskId, onSele
         );
       })}
     </section>
-    {forceTask && <ForceStartModal task={forceTask} onClose={() => setForceTask(null)} />}
-    </>
   );
 }

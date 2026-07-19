@@ -2,7 +2,7 @@
 // 路由树:
 //   root(裸 Outlet)
 //   ├─ appLayout(RootLayout 壳:Rail + 频道侧栏 + WS)—— 复用壳的主应用屏
-//   │   ├─ index '/'          会话屏(P1;?tab=&thread=&task=&node= 深链)
+//   │   ├─ index '/'          会话屏(P1;?tab=&thread=&task= 深链)
 //   │   ├─ /agents/$memberId  Agent 详情(P6;?tab= profile/home/skills/…)
 //   │   └─ /computers         机器(P7)
 //   ├─ /boot                  Boot 叙事(P0a;独立于主壳)
@@ -41,7 +41,7 @@ const appLayoutRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/',
-  // 类型化 search:任意 URL 输入 → 还原 { tab, thread?, task?, node? }
+  // 类型化 search:任意 URL 输入 → 还原 { tab, thread?, task? }
   validateSearch: (input: Record<string, unknown>): ChannelSearch => validateChannelSearch(input),
   component: IndexScreen,
 });

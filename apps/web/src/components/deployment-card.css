@@ -1,5 +1,5 @@
-/* M7b 部署卡（消息流内 card_kind==='deployment'）+ [部署] 确认弹窗 + 成本汇总 chip。
-   视觉与 proposal-card 同族：surface-2 卡 + 状态色左缘，日志 mono 等宽可滚。 */
+/* M7b 部署卡（消息流内 card_kind==='deployment'）+ [部署] 确认弹窗。
+   surface-2 卡 + 状态色左缘，日志 mono 等宽可滚。 */
 .deployment-card {
   max-width: 640px; margin: 6px 0 8px; border: 1px solid var(--border);
   border-left: 2px solid var(--accent); border-radius: var(--radius-s);
@@ -88,14 +88,3 @@
 }
 .deploy-warn svg.lucide { width: 15px; height: 15px; flex: none; }
 .deploy-note { margin: 10px 0 0; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
-
-/* 画布页签成本汇总 chip。 */
-.canvasbar-sp { flex: 1; }
-.usage-chip {
-  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
-  font-size: 11px; color: var(--text-secondary);
-  border: 1px solid var(--border); border-radius: var(--radius-round); background: var(--surface-2);
-}
-.usage-chip svg.lucide { width: 13px; height: 13px; color: var(--text-muted); }
-.usage-total { font-weight: 600; color: var(--text); }
-.usage-cov { color: var(--text-muted); }

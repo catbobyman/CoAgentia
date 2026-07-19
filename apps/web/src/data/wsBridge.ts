@@ -6,21 +6,16 @@ import type {
   ActivityItemPublic,
   AgentPublic,
   AgentUpdatedData,
-  CanvasDetail,
-  CanvasEdgePublic,
-  CanvasNodePublic,
   ChannelsSnapshot,
   DeploymentData,
   DeploymentLogData,
   DeploymentPublic,
   Envelope,
   HeldDraftPublic,
-  LandingBatchPublic,
   MemberPublic,
   MessagePublic,
   PresenceEntry,
   PreviewUpdatedData,
-  ProposalPublic,
   ReadPositionPublic,
   ReminderPublic,
   TaskContractData,
@@ -33,29 +28,6 @@ import type {
 
 import { qk } from '../lib/queryKeys';
 import { type DeployLogState, appendDeployLogChunk } from './deployLog';
-
-// canvas.* 事件 data 载 canvas_id（非 channel_id）,而快照缓存按 channel 存(qk.canvas)。
-// 二法反查承载该 canvas 的频道快照:①按 canvas.id 命中(带 canvas_id 的事件);
-// ②按内容命中(node_removed/edge_removed 只带 node_id/edge_id,无 canvas_id)。
-// ①是②在谓词 = 「canvas.id 匹配」下的特例,故 patchCanvasById 直接委托 patchCanvasContaining(单一遍历/守卫)。
-function patchCanvasContaining(
-  qc: QueryClient,
-  has: (d: CanvasDetail) => boolean,
-  fn: (d: CanvasDetail) => CanvasDetail,
-): void {
-  for (const [key, d] of qc.getQueriesData<CanvasDetail>({ queryKey: ['canvas'] })) {
-    if (d && has(d)) {
-      qc.setQueryData<CanvasDetail>(key, (prev) => (prev ? fn(prev) : prev));
-    }
-  }
-}
-function patchCanvasById(
-  qc: QueryClient,
-  canvasId: string,
-  fn: (d: CanvasDetail) => CanvasDetail,
-): void {
-  patchCanvasContaining(qc, (d) => d.canvas?.id === canvasId, fn);
-}
 
 export function applyEnvelope(qc: QueryClient, env: Envelope): void {
   const data = env.data as never;
@@ -72,8 +44,7 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       // 在停留会话中收敛(M2 二轮 review:Agent 交付文件不实时)。仅激活观察者才 refetch。
       void qc.invalidateQueries({ queryKey: qk.channelFiles(message.channel_id) });
       // 线程回复实时收敛（qk.thread 是独立 GET 缓存，非 qk.messages 派生）：携 thread_root_id 的新消息
-      // 失效对应线程查询——打开的线程面板即时收到回复（O8 汇总摘要/阻断系统消息落线程，横幅/摘要卡
-      // 靠此实时刷新；未打开的线程零额外请求）。
+      // 失效对应线程查询——打开的线程面板即时收到回复（未打开的线程零额外请求）。
       if (message.thread_root_id) {
         void qc.invalidateQueries({ queryKey: qk.thread(message.thread_root_id) });
       }
@@ -124,7 +95,7 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
     // ---- M7b 部署（契约 C deployment.*）。created/updated 全量广播，载 { deployment:
     // DeploymentPublic }（daemon queued→running→success/failed 反流，携 url/exit_code/token_summary）。
     // 按 deployment.id patch qk.deployment 缓存：整体替换、重复应用无害。未加载（卡未挂载、getQueryData
-    // ===undefined）则放行不建——部署卡挂载时由 GET 拉全（同 proposal/preview 范式）。POST 触发的
+    // ===undefined）则放行不建——部署卡挂载时由 GET 拉全（同 reminder/preview 范式）。POST 触发的
     // mutation 亦会先播种缓存，故 created 通常已有锚点。
     case 'deployment.created':
     case 'deployment.updated': {
@@ -255,81 +226,6 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       break;
     }
 
-    // ---- M3b 画布(契约 C §7 canvas.*）。事件载状态,整体替换、重复应用无害(契约 C §1)。
-    case 'canvas.node_added':
-    case 'canvas.node_updated': {
-      const { node } = data as { node: CanvasNodePublic };
-      patchCanvasById(qc, node.canvas_id, (d) => {
-        const list = d.nodes ?? [];
-        const i = list.findIndex((n) => n.id === node.id);
-        const nodes = i < 0 ? [...list, node] : list.map((n) => (n.id === node.id ? node : n));
-        return { ...d, nodes };
-      });
-      break;
-    }
-
-    case 'canvas.node_removed': {
-      const { node_id } = data as { node_id: string };
-      // 删节点时其入/出边失去锚点,一并清理(server 会另发 edge_removed,但此处收敛防悬挂边)。
-      patchCanvasContaining(
-        qc,
-        (d) => (d.nodes ?? []).some((n) => n.id === node_id),
-        (d) => ({
-          ...d,
-          nodes: (d.nodes ?? []).filter((n) => n.id !== node_id),
-          edges: (d.edges ?? []).filter(
-            (e) => e.from_node_id !== node_id && e.to_node_id !== node_id,
-          ),
-        }),
-      );
-      break;
-    }
-
-    case 'canvas.edge_added': {
-      const { edge } = data as { edge: CanvasEdgePublic };
-      patchCanvasById(qc, edge.canvas_id, (d) => {
-        const list = d.edges ?? [];
-        if (list.some((e) => e.id === edge.id)) return d; // 幂等
-        return { ...d, edges: [...list, edge] };
-      });
-      break;
-    }
-
-    case 'canvas.edge_removed': {
-      const { edge_id } = data as { edge_id: string };
-      patchCanvasContaining(
-        qc,
-        (d) => (d.edges ?? []).some((e) => e.id === edge_id),
-        (d) => ({ ...d, edges: (d.edges ?? []).filter((e) => e.id !== edge_id) }),
-      );
-      break;
-    }
-
-    case 'canvas.layout_updated': {
-      const p = data as {
-        canvas_id: string;
-        positions: Array<{ node_id: string; x: number; y: number }>;
-      };
-      const posById = new Map(p.positions.map((q) => [q.node_id, q]));
-      patchCanvasById(qc, p.canvas_id, (d) => ({
-        ...d,
-        nodes: (d.nodes ?? []).map((n) => {
-          const pos = posById.get(n.id);
-          return pos ? { ...n, pos_x: pos.x, pos_y: pos.y } : n;
-        }),
-      }));
-      break;
-    }
-
-    case 'canvas.baseline_advanced': {
-      const b = data as { canvas_id: string; baseline_version: number; baseline_hash: string };
-      patchCanvasById(qc, b.canvas_id, (d) => ({
-        ...d,
-        canvas: { ...d.canvas, baseline_version: b.baseline_version, baseline_hash: b.baseline_hash },
-      }));
-      break;
-    }
-
     // ---- M4a Reminders(契约 C reminder.*）。data 载 { reminder: ReminderPublic }。
     // 按 agent_member_id patch qk.agentReminders 缓存:created=去重 append(末尾,与 REST
     // created_at 升序一致)、updated(含 cancel 反流 status=cancelled)=按 id 替换。
@@ -369,59 +265,6 @@ export function applyEnvelope(qc: QueryClient, env: Envelope): void {
       });
       break;
     }
-
-    // ---- M6b 拆解提案（契约 C §7 M6 预留族；事件载 ProposalPublic 完整形状,整体替换、重复应用
-    // 无害）。proposal.updated = 生命周期态刷新（validating/repairing/landed/failed…）；draft.presented
-    // = 校验通过进 awaiting_confirm（草稿层渲染归后半——此处仅刷提案卡态,handler 挂点已就位）。
-    // 二者同载 {proposal}，按 proposal.id patch qk.proposal 缓存（未加载则放行不建——提案卡挂载时
-    // 由 REST 拉全，同 reminder/held_draft 范式）。消息流内提案卡数据绑定该 query,patch 即刷新。
-    // proposal.updated（生命周期态）/ draft.presented（校验通过进 awaiting_confirm，草稿层渲染源）/
-    // delta.proposed·adjusted·confirmed·rejected（delta 提案生命周期，同载 {proposal}）——全部按
-    // proposal.id patch qk.proposal 缓存（未加载则放行不建，同 reminder/held_draft 范式）。消息流提案卡、
-    // 草稿层、delta 面板均绑定该 query，patch 即刷新。
-    case 'proposal.updated':
-    case 'draft.presented':
-    case 'delta.proposed':
-    case 'delta.adjusted':
-    case 'delta.confirmed':
-    case 'delta.rejected': {
-      const { proposal } = data as { proposal: ProposalPublic };
-      const key = qk.proposal(proposal.id);
-      if (qc.getQueryData<ProposalPublic>(key) === undefined) break;
-      qc.setQueryData<ProposalPublic>(key, proposal);
-      break;
-    }
-
-    // full 草稿生命周期的「仅载 proposal_id」族（契约 C：draft.superseded/confirmed/rejected =
-    // ProposalRefData `{proposal_id}`；draft.adjusted = DraftAdjustedData `{proposal_id, adjustments}`）
-    // ——**均无完整 ProposalPublic**，无法整体替换，故一律失效该提案 query 让已挂载的提案卡/草稿层
-    // refetch 到最新态（未挂载无观察者、不触发请求）。
-    //   注意（易错点）：**delta.**adjusted/confirmed/rejected 载完整 `{proposal}` 走上面的整体替换 case；
-    // 而 **draft.**adjusted/confirmed/rejected 只载 proposal_id 走本 case——两族同名后缀但 payload 形状
-    // 不同（DraftAdjustedData/ProposalRefData vs ProposalData），切勿并进上面的 setQueryData 分支。
-    case 'draft.superseded':
-    case 'draft.adjusted':
-    case 'draft.confirmed':
-    case 'draft.rejected': {
-      const { proposal_id } = data as { proposal_id: string };
-      void qc.invalidateQueries({ queryKey: qk.proposal(proposal_id) });
-      break;
-    }
-
-    // ---- M6b 落地事件族（landing.*，契约 C §7）。data 载 { batch: LandingBatchPublic }；事件收尾即
-    // 结构落定——失效该频道画布/任务/主流（新增节点/任务/锚点消息经此收敛，"画布刷新"）。started 不改
-    // 结构（占位提示）故不失效。toast（completed「拆解已落地」/ fail_closed 错误）由 useWsSync 经 store
-    // 信号交 <LandingToaster>（wsBridge 保持纯缓存 patch，无 toast/store 耦合）。
-    case 'landing.completed':
-    case 'landing.fail_closed': {
-      const { batch } = data as { batch: LandingBatchPublic };
-      void qc.invalidateQueries({ queryKey: qk.canvas(batch.channel_id) });
-      void qc.invalidateQueries({ queryKey: qk.tasks(batch.channel_id) });
-      void qc.invalidateQueries({ queryKey: qk.messages(batch.channel_id) });
-      break;
-    }
-    case 'landing.started':
-      break; // 占位提示态，无结构变更（confirm 202 的「落地执行中」toast 已覆盖起步反馈）
 
     // ---- F10 死壳补齐：契约登记但 wsBridge 原零处理的实时缺口（靠重连 resyncAll 兜底 → 补精确 patch）。
 

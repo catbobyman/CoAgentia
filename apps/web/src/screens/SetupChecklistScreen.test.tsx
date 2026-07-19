@@ -1,11 +1,10 @@
-// P0c 起步清单(首跑态)覆盖(测试缺口 A):003「打开模板向导」在依赖达成时可点 → 开真实
-// TemplateWizard;向导 onInstantiated(channelId) 冒泡到本屏 → 关窗 + setActiveChannel + 导航画布。
-// 照 TemplateWizard.test.tsx 的 QueryClient seed + vi.mock('../api') 范式；'@tanstack/react-router'
-// 的 useNavigate/useRouterState 与 '../lib/store' 的 useUiStore 用 vi.hoisted 的 spy 全量替换
-// (SetupChecklistScreen 独立于主壳渲染，无真 RouterProvider/无需真 zustand 状态)。
+// P0c 起步清单(首跑态)覆盖:003「发第一条消息」在依赖达成时可点 → setActiveChannel(#all) + 导航会话屏
+// (DEDAG:模板向导退役，003 改为直接去会话发消息)。002「创建第一个 Agent」打开 CreateAgentModal。
+// '@tanstack/react-router' 的 useNavigate/useRouterState 与 '../lib/store' 的 useUiStore 用 vi.hoisted
+// 的 spy 全量替换(SetupChecklistScreen 独立于主壳渲染，无真 RouterProvider/无需真 zustand 状态)。
 // 运行:pnpm -F @coagentia/web test
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const { navigateMock, setActiveChannelMock } = vi.hoisted(() => ({
@@ -30,15 +29,13 @@ vi.mock('../api', async (importOriginal) => {
     ...actual,
     api: {
       ...actual.api,
-      templates: vi.fn(), instantiateTemplate: vi.fn(), agent: vi.fn(),
-      computers: vi.fn(), createAgent: vi.fn(),
+      agent: vi.fn(), computers: vi.fn(), createAgent: vi.fn(),
     },
   };
 });
 
 import type {
-  AgentPublic, ChannelPublic, ChannelsSnapshot, ComputerPublic, MemberPublic, TemplatePublic,
-  WorkspacePublic,
+  AgentPublic, ChannelPublic, ChannelsSnapshot, ComputerPublic, MemberPublic, WorkspacePublic,
 } from '@coagentia/contracts-ts';
 
 import { api } from '../api';
@@ -74,20 +71,6 @@ function computerOf(): ComputerPublic {
   return { id: 'computer_1', workspace_id: WS, name: '本机', created_at: '2026-07-11T00:00:00Z' };
 }
 
-// 单角色模板(简化驱动到实例化提交，聚焦本屏 onInstantiated 冒泡而非向导内部映射逻辑——
-// 向导内部行为已在 TemplateWizard.test.tsx 全覆盖)。
-function soloTemplate(): TemplatePublic {
-  return {
-    id: 'tpl_solo', workspace_id: WS, name: '单角色模板', builtin: true,
-    created_by_member_id: 'm', created_at: '2026-07-11T00:00:00Z',
-    body: {
-      nodes: [{ key: 'n1', title: '唯一节点', role: '角色A', plan_skeleton: null }],
-      edges: [],
-      roles: [{ placeholder: '角色A' }],
-    },
-  };
-}
-
 function renderScreen(setupState: Record<string, boolean>, members: MemberPublic[] = [member('a', 'Alice')]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData<WorkspacePublic>(qk.workspace(), workspaceOf(setupState));
@@ -102,57 +85,28 @@ function renderScreen(setupState: Record<string, boolean>, members: MemberPublic
   return { qc };
 }
 
-describe('SetupChecklistScreen 003 打开模板向导', () => {
+describe('SetupChecklistScreen 003 发第一条消息', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.templates).mockResolvedValue([soloTemplate()]);
     vi.mocked(api.agent).mockImplementation((id: string) => Promise.resolve(agentOf(id)));
   });
 
-  it('依赖(002)达成、003 未完成 → 按钮 actionable，点击后打开真实 TemplateWizard', async () => {
+  it('依赖(002)达成、003 未完成 → 按钮 actionable，点击后选中 #all 并导航会话屏', () => {
     renderScreen({ add_computer: true, create_agent: true, first_task: false });
-    const btn = screen.getByRole('button', { name: '打开模板向导' });
+    const btn = screen.getByRole('button', { name: '去会话' });
     expect(btn).not.toBeDisabled();
 
-    expect(screen.queryByTestId('template-wizard')).not.toBeInTheDocument();
     fireEvent.click(btn);
-    expect(await screen.findByTestId('template-wizard')).toBeInTheDocument();
+    expect(setActiveChannelMock).toHaveBeenCalledWith('ch_all');
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/', search: { tab: 'chat' } });
   });
 
-  it('依赖(002)未达成 → 按钮 disabled，不开向导', () => {
+  it('依赖(002)未达成 → 按钮 disabled，不导航', () => {
     renderScreen({ add_computer: true, create_agent: false, first_task: false });
-    const btn = screen.getByRole('button', { name: '打开模板向导' });
+    const btn = screen.getByRole('button', { name: '去会话' });
     expect(btn).toBeDisabled();
     fireEvent.click(btn);
-    expect(screen.queryByTestId('template-wizard')).not.toBeInTheDocument();
-  });
-
-  it('向导走完实例化 → onInstantiated 冒泡:关窗 + setActiveChannel(目标频道) + 导航到画布', async () => {
-    vi.mocked(api.instantiateTemplate).mockResolvedValue({
-      batch: {
-        id: 'b', workspace_id: WS, channel_id: 'ch_all', kind: 'tmpl', content_hash: 'h',
-        source_ref: 'tpl_solo', confirmed_by: 'm', status: 'done',
-        created_at: '2026-07-11T00:00:00Z', done_at: '2026-07-11T00:00:00Z',
-      },
-      tasks: [],
-    });
-    renderScreen({ add_computer: true, create_agent: true, first_task: false });
-    fireEvent.click(screen.getByRole('button', { name: '打开模板向导' }));
-    await screen.findByTestId('template-wizard');
-
-    // 步①选模板 → 步②映射唯一占位 → 步③实例化。
-    const card = await screen.findByTestId('template-card');
-    fireEvent.click(card);
-    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
-    await screen.findByTestId('wizard-step-2');
-    fireEvent.change(screen.getByLabelText('映射 角色A'), { target: { value: 'a' } });
-    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
-    await screen.findByTestId('wizard-step-3');
-    fireEvent.click(screen.getByTestId('instantiate-submit'));
-
-    await waitFor(() => expect(screen.queryByTestId('template-wizard')).not.toBeInTheDocument());
-    expect(setActiveChannelMock).toHaveBeenCalledWith('ch_all');
-    expect(navigateMock).toHaveBeenCalledWith({ to: '/', search: { tab: 'canvas' } });
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });
 
@@ -161,7 +115,6 @@ describe('SetupChecklistScreen 003 打开模板向导', () => {
 describe('SetupChecklistScreen 002 创建 Agent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.templates).mockResolvedValue([soloTemplate()]);
     vi.mocked(api.agent).mockImplementation((id: string) => Promise.resolve(agentOf(id)));
     vi.mocked(api.computers).mockResolvedValue([computerOf()]);
   });

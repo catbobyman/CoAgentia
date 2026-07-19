@@ -7,7 +7,6 @@ import {
 import type {
   AgentCreate,
   AgentPatch,
-  CanvasDetail,
   ChannelCreate,
   ChannelNotificationSettingPublic,
   ChannelPatch,
@@ -25,11 +24,9 @@ import type {
   PreviewSessionPublic,
   ProjectCreate,
   ProjectPatch,
-  ProposalPublic,
   ReadPositionPublic,
+  TaskMergeAccepted,
   TaskPublic,
-  TemplateCreate,
-  TemplateInstantiate,
   UsageLevel,
   WorkspacePatch,
   WorkspacePublic,
@@ -272,55 +269,6 @@ export const usePutNotificationSetting = (meId: string | undefined) => {
   });
 };
 
-// ---- M5b 模板(B §11.1/§11.2)。列表工作区级(builtin 置前，body 全量供向导预览)；模板 CRUD 零 WS
-// 事件(裁决 #7)——存为模板成功后 invalidate 列表收敛；实例化成功后 invalidate 目标频道画布/任务/
-// 主流(WS task.created/canvas.*/message.created 亦反流，invalidate 是兜底，REST 是事实源铁律 1)。
-export const useTemplates = () =>
-  useQuery({ queryKey: qk.templates(), queryFn: () => api.templates() });
-
-export const useCreateTemplate = () => {
-  const qc = useQueryClient();
-  const toast = useToast();
-  return useMutation({
-    mutationFn: (body: TemplateCreate) => api.createTemplate(body),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: qk.templates() });
-      toast.push('已存为模板', { tone: 'success' });
-    },
-    onError: (e: unknown) =>
-      toast.push(e instanceof ApiError ? e.message : '存为模板失败', { tone: 'error' }),
-  });
-};
-
-export const useInstantiateTemplate = () => {
-  const qc = useQueryClient();
-  const toast = useToast();
-  return useMutation({
-    mutationFn: ({ templateId, body, idempotencyKey }: {
-      templateId: string; body: TemplateInstantiate; idempotencyKey?: string;
-    }) => api.instantiateTemplate(templateId, body, idempotencyKey),
-    onSuccess: (_res, { body }) => {
-      const ch = body.channel_id;
-      void qc.invalidateQueries({ queryKey: qk.canvas(ch) });
-      void qc.invalidateQueries({ queryKey: qk.tasks(ch) });
-      void qc.invalidateQueries({ queryKey: qk.messages(ch) });
-      toast.push('已从模板实例化到频道', { tone: 'success' });
-    },
-    // 422 VALIDATION_FAILED 携 details.missing(未覆盖的角色占位名列表)——UI 责任层已用
-    // missingRoleMappings 拦在实例化钮前，此处仅兜底(如并发改模板等边缘态)并把占位名带进 toast。
-    onError: (e: unknown) => {
-      let msg = e instanceof ApiError ? e.message : '实例化失败';
-      if (e instanceof ApiError && e.code === 'VALIDATION_FAILED') {
-        const missing = (e.details as { missing?: unknown } | undefined)?.missing;
-        if (Array.isArray(missing) && missing.length > 0) {
-          msg = `${msg}:${missing.join('、')}`;
-        }
-      }
-      toast.push(msg, { tone: 'error' });
-    },
-  });
-};
-
 export const useAgentDiagnostics = (memberId: string | undefined) =>
   useQuery({
     queryKey: qk.agentDiagnostics(memberId ?? '_'),
@@ -355,14 +303,6 @@ export const useChannelFiles = (channelId: string | undefined) =>
   useQuery({
     queryKey: qk.channelFiles(channelId ?? '_'),
     queryFn: async () => (await api.channelFiles(channelId!)).items,
-    enabled: !!channelId,
-  });
-
-// P2 画布快照(B §4.9):画布头 + 节点/边。写路径不做乐观更新,靠 canvas.* WS 反流(wsBridge)。
-export const useCanvasSnapshot = (channelId: string | undefined) =>
-  useQuery({
-    queryKey: qk.canvas(channelId ?? '_'),
-    queryFn: () => api.canvasSnapshot(channelId!),
     enabled: !!channelId,
   });
 
@@ -455,45 +395,6 @@ export const useCleanupOrphan = () => {
   });
 };
 
-// ---- M6b 拆解提案（B §4.10）。提案卡渲染源，按 proposal_id GET；proposal.updated/draft.* WS
-// 事件通过 wsBridge 按 proposal.id patch 本缓存（REST 是事实源，WS 载 ProposalPublic 整体替换）。
-export const useProposal = (proposalId: string | undefined, enabled = true) =>
-  useQuery({
-    queryKey: qk.proposal(proposalId ?? '_'),
-    queryFn: () => api.proposal(proposalId!),
-    enabled: !!proposalId && enabled,
-  });
-
-/** 409 STALE_CONFIRM 的 latest 载荷（B §5 ①：`{proposal, baseline_version, baseline_hash}`）→ 刷新
- *  提案缓存 + 画布基线（草稿层/delta 面板"已刷新最新态，请重审"的收敛源）。返回刷新后的提案（供调用方
- *  据其新状态决定后续，如已转 rejected/failed）。latest 形状异常 → 原样返回 undefined 不动缓存。 */
-export function refreshProposalFromLatest(
-  qc: QueryClient,
-  channelId: string,
-  latest: unknown,
-): ProposalPublic | undefined {
-  if (!latest || typeof latest !== 'object') return undefined;
-  const l = latest as {
-    proposal?: ProposalPublic;
-    baseline_version?: number;
-    baseline_hash?: string;
-  };
-  const proposal = l.proposal;
-  if (proposal && typeof proposal === 'object' && 'id' in proposal) {
-    qc.setQueryData<ProposalPublic>(qk.proposal(proposal.id), proposal);
-  }
-  if (typeof l.baseline_version === 'number' && typeof l.baseline_hash === 'string') {
-    const version = l.baseline_version;
-    const hash = l.baseline_hash;
-    qc.setQueryData<CanvasDetail>(qk.canvas(channelId), (prev) =>
-      prev
-        ? { ...prev, canvas: { ...prev.canvas, baseline_version: version, baseline_hash: hash } }
-        : prev,
-    );
-  }
-  return proposal;
-}
-
 // P13 创建 Agent（引导链 [创建 Orchestrator] 消费）。成功后失效成员列表让新 Agent 现身（无乐观
 // 更新；MEMBER_CREATED WS 亦反流成员，invalidate 是兜底/收敛，REST 是事实源）。toast/就地错误由
 // 调用方弹窗处理（NAME_TAKEN 等结构化错误上浮，同 ProjectSettingsSection 就地报错体例）。
@@ -571,6 +472,33 @@ export const useTriggerDeploy = () => {
   });
 };
 
+// ---- DEDAG 任务级合并（B v1.6 §14）。POST /tasks/{id}/merge 202 异步受理：accepted → daemon 执行，
+// 结果以频道系统消息回报 + worktree.updated 反流（wsBridge 已 patch taskDetail.worktree，零新 WS
+// 订阅）；merged → 幂等命中（worktree 已 merged 无反流），invalidate taskDetail 让交付卡收敛已合并态。
+// 错误据 code 组 toast：409 DEPLOY_IN_PROGRESS（同 Project 合并串行，沿 deploy 先例同码）/503
+// DAEMON_OFFLINE（目标电脑离线）/404/422 走既有 message 通道。成功提示归调用方（accepted/merged 两态文案）。
+export const useMergeTask = () => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (taskId: string) => api.mergeTask(taskId),
+    onSuccess: (res: TaskMergeAccepted) => {
+      if (res.status === 'merged') {
+        void qc.invalidateQueries({ queryKey: qk.taskDetail(res.task_id) });
+      }
+    },
+    onError: (e: unknown) => {
+      const msg =
+        e instanceof ApiError && e.code === 'DEPLOY_IN_PROGRESS'
+          ? '该项目已有合并在执行，稍后再试'
+          : e instanceof ApiError && e.code === 'DAEMON_OFFLINE'
+            ? '目标电脑 daemon 离线'
+            : e instanceof Error ? e.message : '合并触发失败';
+      toast.push(msg, { tone: 'error' });
+    },
+  });
+};
+
 // 部署日志累积（qk.deploymentLog(id)）：卡打开时 seedDeployLog 播种空缓存（让 WS deployment.log 有
 // 锚点可追加），loadDeployLogPage 拉历史（首页无 after，「加载更多」按 nextAfter 续翻）；实时新行由
 // wsBridge deployment.log 追加同一缓存。enabled:false + 缓存驱动（同 usePreviewSession/usageByTask 范式）。
@@ -610,7 +538,7 @@ export function flushDeployLogPending(qc: QueryClient, deploymentId: string): vo
   );
 }
 
-// 成本核算（GET /usage?level=&ref=）：画布页签汇总条（level=canvas ref=channel_id）与成本面共用。
+// 成本核算（GET /usage?level=&ref=）：按层锚聚合的成本读面。
 // 永不折算货币（W7）；tasks_reporting 诚实标注覆盖率。ref 缺失（如频道无锚）则不拉取。
 export const useUsage = (level: UsageLevel, ref: string | undefined, rollup = false) =>
   useQuery({
@@ -618,17 +546,6 @@ export const useUsage = (level: UsageLevel, ref: string | undefined, rollup = fa
     queryFn: () => api.usage(level, ref!, rollup),
     enabled: !!ref,
   });
-
-export const useRetryCanvasNode = (channelId: string) => {
-  const qc = useQueryClient();
-  const toast = useToast();
-  return useMutation({
-    mutationFn: (nodeId: string) => api.retryCanvasNode(nodeId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.canvas(channelId) }),
-    onError: (e: unknown) =>
-      toast.push(e instanceof ApiError ? e.message : '系统节点重试失败', { tone: 'error' }),
-  });
-};
 
 // ---- M4b HeldDraft(被扣草稿,B §4.14)。列表 GET 现行被扣(默认活动态 held/reevaluating);三键写路径不做乐观更新,
 // 靠成功响应体 held_draft(或 409 HELD_DRAFT_RESOLVED 的 error.details.held_draft)按 id 就地替换缓存,

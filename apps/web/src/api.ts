@@ -4,9 +4,6 @@ import type {
   AgentPatch,
   AgentPublic,
   AgentSkillPublic,
-  CanvasDetail,
-  CanvasMutation,
-  CanvasNodePublic,
   ChannelCreate,
   ChannelProjectPublic,
   ChannelNotificationSettingPublic,
@@ -16,25 +13,19 @@ import type {
   ComputerCreated,
   ComputerPublic,
   ContractDraftRequest,
-  DecomposeRequest,
   DeploymentLogPage,
   DeploymentPublic,
   DiagnosticEventPublic,
   DiffPayload,
-  EdgeCreate,
   FsTreeReply,
   HeldDraftPublic,
   HeldDraftReleaseResponse,
   HeldDraftResponse,
-  InstantiateResult,
-  LayoutPut,
   LifecycleAction,
   MemberPublic,
   MemberRole,
   MessageCreated,
   MessagePublic,
-  NodeCreate,
-  NodePatch,
   NotificationMode,
   OrphanCleanup,
   OrphanCleanupResult,
@@ -43,19 +34,14 @@ import type {
   ProjectCreate,
   ProjectPatch,
   ProjectPublic,
-  ProposalConfirm,
-  ProposalConfirmResult,
-  ProposalPublic,
   ReminderPublic,
   RestPaths,
   SearchResponse,
   TaskDetail,
+  TaskMergeAccepted,
   TaskPatch,
   TaskPublic,
   TaskStatus,
-  TemplateCreate,
-  TemplateInstantiate,
-  TemplatePublic,
   UsageLevel,
   UsageReport,
   WorkspaceCreate,
@@ -96,21 +82,17 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; rule?: string | null; details?: unknown };
 }
 
-/** 带契约错误码的前端异常:UI 层 catch 后据 code/details 组 toast 文案(纪律:结构化错误上浮)。
- *  `latest` = 少数端点(§5 STALE_CONFIRM 的 `{error, latest}` 双顶层键)在 error 之外并列的最新态载荷,
- *  由 responseError 从响应体顶层原样带出(草稿确认 409 刷新重审用)。 */
+/** 带契约错误码的前端异常:UI 层 catch 后据 code/details 组 toast 文案(纪律:结构化错误上浮)。 */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: unknown;
-  readonly latest: unknown;
-  constructor(status: number, code: string, message: string, details?: unknown, latest?: unknown) {
+  constructor(status: number, code: string, message: string, details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.details = details;
-    this.latest = latest;
   }
 }
 
@@ -140,20 +122,17 @@ async function responseError(r: Response, fallback: string): Promise<ApiError> {
   let code = `HTTP_${r.status}`;
   let message = fallback;
   let details: unknown;
-  let latest: unknown;
   try {
-    const parsed = (await r.json()) as ErrorEnvelope & { latest?: unknown };
+    const parsed = (await r.json()) as ErrorEnvelope;
     if (parsed.error) {
       code = parsed.error.code ?? code;
       message = parsed.error.message ?? message;
       details = parsed.error.details;
     }
-    // STALE_CONFIRM(§5)响应形状 = `{error, latest}` 双顶层键——latest 与 error 并列,带出供刷新重审。
-    latest = parsed.latest;
   } catch {
     // 非 JSON 错误体保留 transport 兜底。
   }
-  return new ApiError(r.status, code, message, details, latest);
+  return new ApiError(r.status, code, message, details);
 }
 
 // home/tree 是 daemon 查询帧代理(契约 D §6),mock 无 response_model → OpenAPI 未定形状;此处窄化为 UI 消费形。
@@ -183,7 +162,7 @@ export const api = {
   members: () => get<MemberPublic[]>('/api/members'),
   presence: () => get<PresenceSnapshot>('/api/presence'),
   // check/merge 输出与冲突锚点都是普通系统消息。只取最旧首页会在频道 >200 条后让最新留痕
-  // 从 Canvas/冲突卡消失，故沿 tasks 同款游标护栏翻全（升序拼接，WS 后续继续 append）。
+  // 从冲突卡消失，故沿 tasks 同款游标护栏翻全（升序拼接，WS 后续继续 append）。
   messages: async (channelId: string): Promise<MessagesPage> => {
     const items: MessagePublic[] = [];
     let after: string | null | undefined;
@@ -242,24 +221,6 @@ export const api = {
   // 的 ContractDraftRequest 源类型手写路径 —— 端点上线后形状不变,无需改动。
   requestContractDraft: (taskId: string, body: ContractDraftRequest) =>
     writeJson<void>(`/api/tasks/${taskId}/contracts/request-draft`, 'POST', body),
-
-  // ---- M3b 画布(B §4.9)。GET 已在 RestPaths;结构写端点随 apps/server M3 并行落地,
-  // 此处按 packages/contracts 源类型手写路径(端点上线后形状不变)。变更全走 writeJson——
-  // GRAPH_CYCLE(V9 连边成环)/DAEMON_OFFLINE 等结构化错误据 code/details 组 toast。无乐观更新,
-  // 命中的节点/边靠 canvas.* WS 反流(wsBridge)。
-  canvasSnapshot: (channelId: string) => get<CanvasDetail>(`/api/channels/${channelId}/canvas`),
-  createCanvasNode: (canvasId: string, body: NodeCreate) =>
-    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/nodes`, 'POST', body),
-  patchCanvasNode: (canvasId: string, nodeId: string, patch: NodePatch) =>
-    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/nodes/${nodeId}`, 'PATCH', patch),
-  createCanvasEdge: (canvasId: string, body: EdgeCreate) =>
-    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/edges`, 'POST', body),
-  deleteCanvasEdge: (canvasId: string, edgeId: string) =>
-    writeJson<void>(`/api/canvases/${canvasId}/edges/${edgeId}`, 'DELETE'),
-  putCanvasLayout: (canvasId: string, body: LayoutPut) =>
-    writeJson<CanvasMutation>(`/api/canvases/${canvasId}/layout`, 'PUT', body),
-  retryCanvasNode: (nodeId: string) =>
-    writeJson<CanvasNodePublic>(`/api/canvas-nodes/${nodeId}/retry`, 'POST'),
 
   // ---- M2 文件 / 搜索 / 活动(B §9.6 / §4.6-4.8)
   channelFiles: (channelId: string, after?: string) =>
@@ -384,8 +345,7 @@ export const api = {
   // ---- P13 创建 Agent（B §11.3）。role_template_key 可选：携带即按角色模板落地（Orchestrator 引导
   // 链预选），缺省 = 现行创建行为不变。NAME_TAKEN(409) 等结构化错误上浮（writeJson）。
   createAgent: (body: AgentCreate) => writeJson<AgentPublic>('/api/agents', 'POST', body),
-  // 频道加成员（B §4.5）。引导链创建 Orchestrator 后须入频道——decompose 的 NO_ORCHESTRATOR
-  // 判定按「频道成员中 role_template_key='orchestrator' 的 Agent」（server find_orchestrator）。
+  // 频道加成员（B §4.5）。引导链创建 Orchestrator 后须入频道（群聊 @ 委派的前提）。
   addChannelMember: (channelId: string, memberId: string) =>
     writeJson<void>(`/api/channels/${channelId}/members`, 'POST', { member_id: memberId }),
 
@@ -441,6 +401,14 @@ export const api = {
   unbindProject: (channelId: string, projectId: string) =>
     writeJson<void>(`/api/channels/${channelId}/projects/${projectId}`, 'DELETE'),
   taskDiff: (taskId: string) => get<DiffPayload>(`/api/tasks/${taskId}/diff`),
+
+  // ---- DEDAG 任务级合并（B v1.6 §14）：POST /tasks/{task_id}/merge，202 异步受理。人类按钮与
+  // Agent trigger_merge 工具同端点同权。status=accepted → daemon 执行合并，结果以频道系统消息回报
+  // + worktree.updated 反流（wsBridge 既有 patch taskDetail.worktree，零新 WS 订阅）；status=merged
+  // → 幂等命中（worktree 已 merged，不再下发）。409 DEPLOY_IN_PROGRESS（同 Project 串行）/503
+  // DAEMON_OFFLINE/404/422 结构化 ApiError 上浮，UI 据 code 组 toast。
+  mergeTask: (taskId: string) =>
+    writeJson<TaskMergeAccepted>(`/api/tasks/${taskId}/merge`, 'POST'),
 
   // ---- PS-WT ① 目录选择器（契约 D FS_TREE 代理，B §5.1）。GET /computers/{cid}/fs?path=；path 缺省 =
   // 根视图（win32 盘符列表 / posix 单条 "/"）。admin 门；daemon 离线/超时 → 503 DAEMON_OFFLINE
@@ -500,7 +468,7 @@ export const api = {
       `/api/deployments/${deploymentId}/log${after != null ? `?after=${after}` : ''}`,
     ),
 
-  // ---- M7b 成本核算（B §13.4）。三层聚合（task/agent/canvas）；rollup=true 附 breakdown 明细。
+  // ---- M7b 成本核算（B §13.4）。按层聚合；rollup=true 附 breakdown 明细。
   // 永不折算货币（W7）；tasks_reporting 诚实标注覆盖率。ref 是层锚（task_id / agent_member_id /
   // channel_id）。
   usage: (level: UsageLevel, ref: string, rollup = false) => {
@@ -508,42 +476,6 @@ export const api = {
     if (rollup) qs.set('rollup', 'true');
     return get<UsageReport>(`/api/usage?${qs.toString()}`);
   },
-
-  // ---- M6b 拆解编排（B §4.10）。POST decompose 三入口归一（T1 @Orchestrator 消息自然走消息路；
-  // T2 携 task_id / T3 携 text）→ 202 ProposalPublic；无 Orchestrator → 409 NO_ORCHESTRATOR
-  // （前端据此弹创建引导，交互 §6.8）；Orchestrator 离线 → 503 DAEMON_OFFLINE（引导去 P7）。
-  // 均走 writeJson 结构化错误上浮，UI 据 code 分派引导弹窗。
-  decompose: (channelId: string, body: DecomposeRequest) =>
-    writeJson<ProposalPublic>(`/api/channels/${channelId}/decompose`, 'POST', body),
-  // 提案卡渲染源。react-query GET，proposal.updated/draft.* WS 载体刷新。
-  proposal: (proposalId: string) => get<ProposalPublic>(`/api/proposals/${proposalId}`),
-  // 草稿确认 CAS（B §5）：expected 三字段 + adjustments（full 全量草稿）+ removed_ops（delta 部分接受）。
-  // 202 {batch, proposal}；409 STALE_CONFIRM → ApiError.latest 携最新态；409 DELTA_BASE_MISMATCH /
-  // 422 VALIDATION_FAILED·NODE_ACTIVE → code/details 上浮（UI 据 code 分派横幅/就地错误清单）。
-  confirmProposal: (proposalId: string, body: ProposalConfirm) =>
-    writeJson<ProposalConfirmResult>(`/api/proposals/${proposalId}/confirm`, 'POST', body),
-  // 拒绝草稿/delta（B §4.10）：理由可空（发进 source 线程，Orchestrator 可读的纠正信号）→ 提案转
-  // rejected 终态；非 awaiting → 409 STALE_CONFIRM 携最新态（latest）。
-  rejectProposal: (proposalId: string, reason?: string) =>
-    writeJson<ProposalPublic>(`/api/proposals/${proposalId}/reject`, 'POST', { reason: reason ?? null }),
-
-  // ---- M5(B-M5-2)模板域(B §4.12/§11.1/§11.2)。列表 GET(builtin 置前，body 全量携带供向导预览)；
-  // 存为模板 POST(server 读频道画布快照序列化 TemplateBody，画布无正式节点/有草稿层 → 409
-  // TEMPLATE_CANVAS_NOT_READY，入口 disabled 是 UI 责任、API 兜底)；实例化 POST(单事务落地批
-  // tmpl:<batch_id>:<node_key> 幂等，role_mapping 缺占位 → 422 VALIDATION_FAILED details.missing)。
-  // 均走 writeJson 结构化错误上浮(据 code/details 组 toast)。
-  templates: () => get<TemplatePublic[]>('/api/templates'),
-  createTemplate: (body: TemplateCreate) =>
-    writeJson<TemplatePublic>('/api/templates', 'POST', body),
-  // idempotencyKey 可选:同键同体重放回同一批(见 routes/templates.py OPID_REST_IDEMPOTENCY)，
-  // 防丢响应网络重试在目标频道重复落地一批。
-  instantiateTemplate: (templateId: string, body: TemplateInstantiate, idempotencyKey?: string) =>
-    writeJson<InstantiateResult>(
-      `/api/templates/${templateId}/instantiate`,
-      'POST',
-      body,
-      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
-    ),
 
   setReadPosition: (channelId: string, lastReadMessageId: string) =>
     fetch(`${API_BASE}/api/channels/${channelId}/read-position`, {
