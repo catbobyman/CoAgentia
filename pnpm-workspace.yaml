@@ -1,3 +1,4 @@
 packages:
   - packages/contracts-ts
   - apps/web
+  - apps/daemon-ts

@@ -68,9 +68,42 @@ def main() -> None:
     transitions = {
         frm.value: sorted(to.value for to in tos) for frm, tos in TASK_TRANSITIONS.items()
     }
+    # daemon 运行时常量（TS 迁移批裁决 #6）：daemon-ts 对 contracts-ts 只许 import type，
+    # 运行时值经本导出 → gen.mjs → apps/daemon-ts/src/generated/constants.ts（单一事实源）。
+    from coagentia_contracts.constants import (
+        BUFFER_DEPLOY_LOG_MAX_BYTES,
+        BUFFER_DIAGNOSTICS_MAX,
+        BUFFER_USAGE_MAX,
+        COAGENTIA_MCP_TOOLS,
+        CODEX_DISALLOWED_TOOLS,
+        DISALLOWED_TOOLS,
+    )
+    from coagentia_contracts.daemon import (
+        ACK_TIMEOUT_SEC,
+        CLOSE_PROTOCOL_MISMATCH,
+        CLOSE_SUPERSEDED,
+        DAEMON_PROTOCOL_V,
+        DAEMON_WS_PATH,
+        RECONCILE_INTERVAL_SEC,
+    )
+
     (BUILD / "constants.json").write_text(
         json.dumps(
             {
+                "DAEMON": {
+                    "ACK_TIMEOUT_SEC": ACK_TIMEOUT_SEC,
+                    "BUFFER_DEPLOY_LOG_MAX_BYTES": BUFFER_DEPLOY_LOG_MAX_BYTES,
+                    "BUFFER_DIAGNOSTICS_MAX": BUFFER_DIAGNOSTICS_MAX,
+                    "BUFFER_USAGE_MAX": BUFFER_USAGE_MAX,
+                    "CLOSE_PROTOCOL_MISMATCH": CLOSE_PROTOCOL_MISMATCH,
+                    "CLOSE_SUPERSEDED": CLOSE_SUPERSEDED,
+                    "CODEX_DISALLOWED_TOOLS": list(CODEX_DISALLOWED_TOOLS),
+                    "COAGENTIA_MCP_TOOLS": list(COAGENTIA_MCP_TOOLS),
+                    "DAEMON_PROTOCOL_V": DAEMON_PROTOCOL_V,
+                    "DAEMON_WS_PATH": DAEMON_WS_PATH,
+                    "DISALLOWED_TOOLS": list(DISALLOWED_TOOLS),
+                    "RECONCILE_INTERVAL_SEC": RECONCILE_INTERVAL_SEC,
+                },
                 "ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL": (
                     ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL
                 ),

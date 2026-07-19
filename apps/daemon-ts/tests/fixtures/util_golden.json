@@ -1,0 +1,51 @@
+{
+ "ulid": [
+  {
+   "timestamp_ms": 0,
+   "random_hex": "00000000000000000000",
+   "expected": "00000000000000000000000000"
+  },
+  {
+   "timestamp_ms": 1,
+   "random_hex": "00000000000000000001",
+   "expected": "00000000010000000000000001"
+  },
+  {
+   "timestamp_ms": 1721385600123,
+   "random_hex": "0123456789abcdef0123",
+   "expected": "01J3597H3V04HMASW9NF6YY093"
+  },
+  {
+   "timestamp_ms": 1784465643822,
+   "random_hex": "ffffffffffffffffffff",
+   "expected": "01KXX71P9EZZZZZZZZZZZZZZZZ"
+  },
+  {
+   "timestamp_ms": 281474976710655,
+   "random_hex": "deadbeefcafebabe1234",
+   "expected": "7ZZZZZZZZZVTPVXVYAZTXBW4HM"
+  }
+ ],
+ "now_iso": [
+  {
+   "epoch_ms": 0,
+   "expected": "1970-01-01T00:00:00.000Z"
+  },
+  {
+   "epoch_ms": 1,
+   "expected": "1970-01-01T00:00:00.001Z"
+  },
+  {
+   "epoch_ms": 1721385600123,
+   "expected": "2024-07-19T10:40:00.123Z"
+  },
+  {
+   "epoch_ms": 1784465643822,
+   "expected": "2026-07-19T12:54:03.822Z"
+  },
+  {
+   "epoch_ms": 1784500000999,
+   "expected": "2026-07-19T22:26:40.999Z"
+  }
+ ]
+}

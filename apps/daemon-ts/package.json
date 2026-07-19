@@ -1,0 +1,25 @@
+{
+  "name": "@coagentia/daemon-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CoAgentia daemon 的 TS 对等实现（契约 D daemon 侧 + 契约 E 适配器接缝；TS 迁移批 daemon 先行）",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "coagentia-daemon-ts": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@coagentia/contracts-ts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.10"
+  }
+}

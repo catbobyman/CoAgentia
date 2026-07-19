@@ -8,6 +8,22 @@ importers:
 
   .: {}
 
+  apps/daemon-ts:
+    dependencies:
+      '@coagentia/contracts-ts':
+        specifier: workspace:*
+        version: link:../../packages/contracts-ts
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(happy-dom@20.10.6)(vite@6.4.3(@types/node@26.1.1)(jiti@2.7.0))
+
   apps/web:
     dependencies:
       '@coagentia/contracts-ts':

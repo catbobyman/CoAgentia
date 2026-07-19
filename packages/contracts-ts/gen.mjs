@@ -63,4 +63,21 @@ const constTs =
   )};\n`;
 writeFileSync(join(out, "constants.ts"), constTs);
 
-console.log("generated: src/generated/models.ts, src/generated/rest.ts, src/generated/constants.ts");
+// 4) daemon-ts 运行时常量（TS 迁移批裁决 #6）：daemon-ts 对本包只许 import type（node 直跑
+//    无法运行时解析本包的无扩展名导入），运行时值由此处单独产出到 daemon-ts 包内。
+const daemonOut = join(repo, "apps", "daemon-ts", "src", "generated");
+mkdirSync(daemonOut, { recursive: true });
+const d = constants.DAEMON;
+const lit = (v) => JSON.stringify(v, null, v && typeof v === "object" ? 2 : undefined);
+const daemonConstTs =
+  BANNER +
+  `/** daemon 协议/缓冲/工具白名单运行时常量\n` +
+  ` *  （源 = packages/contracts 的 daemon.py 与 constants.py，经 build/constants.json）。 */\n` +
+  Object.entries(d)
+    .map(([k, v]) => `export const ${k} = ${lit(v)};\n`)
+    .join("");
+writeFileSync(join(daemonOut, "constants.ts"), daemonConstTs);
+
+console.log(
+  "generated: src/generated/{models,rest,constants}.ts + apps/daemon-ts/src/generated/constants.ts",
+);

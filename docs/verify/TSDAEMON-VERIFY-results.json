@@ -1,0 +1,66 @@
+{
+  "passed": 12,
+  "total": 12,
+  "results": [
+    {
+      "probe": "T0 node daemon hello 握手 → computer online",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "T1 fs.tree 根视图（win32 盘符经 node daemon 回流）",
+      "ok": true,
+      "detail": "entries=3"
+    },
+    {
+      "probe": "T2 worktree 派生落盘（node daemon 真 git ensure）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "T3a merge → 202 accepted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "T3b merged + merge_commit + main 含内容 + --no-ff",
+      "ok": true,
+      "detail": "commit=f366c671"
+    },
+    {
+      "probe": "T4 已 merged 再触发 → 幂等 202 status=merged",
+      "ok": true,
+      "detail": "{\"task_id\":\"01KXXDPRJGSD4RXNG7K0MH89HA\",\"status\":\"merged\"}"
+    },
+    {
+      "probe": "T5 真冲突 → conflicted + abort 主干净 + 冲突任务派回",
+      "ok": true,
+      "detail": "conflict_task=01KXXDPWHPEDVF2FGV6SK79SV7"
+    },
+    {
+      "probe": "T6a 触发部署受理",
+      "ok": true,
+      "detail": "status=201"
+    },
+    {
+      "probe": "T6b 部署 succeeded + URL 提取（deploy.run→log→finished 全 wire）",
+      "ok": true,
+      "detail": "status=success url=https://tsdemo.example.com/app"
+    },
+    {
+      "probe": "T7a taskkill daemon → computer offline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "T7b daemon 离线 merge → 503 DAEMON_OFFLINE",
+      "ok": true,
+      "detail": "status=503"
+    },
+    {
+      "probe": "T8 daemon 重启 → 重连 online（真重启对账面）",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
