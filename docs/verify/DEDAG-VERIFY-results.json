@@ -1,0 +1,86 @@
+{
+  "passed": 16,
+  "total": 16,
+  "results": [
+    {
+      "probe": "P0 真 daemon 连上真 server",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "D2 as_task writes_code 缺 project → 422",
+      "ok": true,
+      "detail": "status=422"
+    },
+    {
+      "probe": "D1 as_task→任务→真 git worktree 落盘（纯任务驱动派生）",
+      "ok": true,
+      "detail": "task=01KXWATQNMX09N5GRXA9K3EWNE"
+    },
+    {
+      "probe": "D3 未 done → 422 TASK_TRANSITION_INVALID",
+      "ok": true,
+      "detail": "status=422"
+    },
+    {
+      "probe": "D4 done 任务 merge → 202 accepted",
+      "ok": true,
+      "detail": "{\"task_id\":\"01KXWATQNMX09N5GRXA9K3EWNE\",\"status\":\"accepted\"}"
+    },
+    {
+      "probe": "D5a worktree merged + merge_commit 持久",
+      "ok": true,
+      "detail": "commit=c9c84fe8"
+    },
+    {
+      "probe": "D5b 真 git：main 含任务内容 + --no-ff merge commit",
+      "ok": true,
+      "detail": "c9c84fe CoAgentia merge task #1 改欢迎语A (task_id=01KXWATQNMX09N5GRXA9K3EWNE)"
+    },
+    {
+      "probe": "D6 频道系统消息「已合并主干」",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "D7 已 merged 再触发 → 幂等 202 status=merged",
+      "ok": true,
+      "detail": "{\"task_id\":\"01KXWATQNMX09N5GRXA9K3EWNE\",\"status\":\"merged\"}"
+    },
+    {
+      "probe": "D8a 同文件真冲突 → worktree conflicted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "D8b abort 恢复：主干工作区干净",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "D9 自动建冲突解决任务派回（writes_code 同 project）",
+      "ok": true,
+      "detail": "task=01KXWATVNXJX4GDEW47CV1E5GG"
+    },
+    {
+      "probe": "D12 退役端点（画布/拆解/模板/提案/retry）全部移除",
+      "ok": true,
+      "detail": "gone=[True, True, True, True, True]"
+    },
+    {
+      "probe": "D10 diagnostic task.merge 留痕（running/merged/conflicted）",
+      "ok": true,
+      "detail": "entries=4"
+    },
+    {
+      "probe": "D11a daemon 断连 → computer offline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "probe": "D11 daemon 离线 → 503 DAEMON_OFFLINE",
+      "ok": true,
+      "detail": "status=503"
+    }
+  ]
+}
