@@ -95,6 +95,16 @@ def test_dispatch_section_tool_semantics() -> None:
     assert "writes_code: true 并携频道绑定的 project_id" in text
 
 
+def test_delivery_wake_discipline_present() -> None:
+    """R2 实测教训（2026-07-19）：交付消息不 @ 协调者 → in_review 停滞 76 分钟需人类 nudge。
+    第 2 条须要求任务 body 写明「交付 @ 你」；第 3 条须点破协调者非常驻的唤醒前提。"""
+    text = _sections_text()
+    assert "完成置 in_review 后在频道发交付消息" in text  # 第 2 条派活侧
+    assert "你只有被 @ 才会被唤醒验收" in text
+    assert "你不常驻在线" in text  # 第 3 条盯交付侧
+    assert "停在 in_review 等人来救" in text
+
+
 def test_merge_section_semantics() -> None:
     """第 4 条钉契约 B v1.6 §14 任务级合并语义：done 且经确认才触发、与人类 UI 同端点同权、
     同项目逐个串行（并发被 409 拒）、结果被动触达不轮询、冲突任务自动派回原负责人。"""

@@ -99,6 +99,8 @@ def test_identity_prompt_contains_required_elements() -> None:
     assert "coagentia" in text.lower()  # 工具用法
     assert "held" in text.lower()  # 护栏约定
     assert "submit_task_contract" in text  # B5 交付纪律：置 in_review/done 前提交 handoff
+    # R2 实测教训（2026-07-19）：交付不 @ 派活人 → 协调者不被唤醒，in_review 停滞。
+    assert "交付消息并 @ 派活人" in text
 
 
 def test_build_env_isolates_config_dir() -> None:

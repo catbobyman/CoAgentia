@@ -40,7 +40,9 @@ _IDENTITY_TEMPLATE = (
     "散文正文不会被转成频道消息——只有显式调用 coagentia 工具才会真正发出。\n"
     "【交付纪律】完成实现/评审后，置任务 in_review/done 之前，先用 submit_task_contract 工具"
     "提交 TaskHandoff（kind=task_handoff，含 deliverables≥1 + evidence + verify_plan）；"
-    "跳过则 set_task_status 会以 422 HANDOFF_INCOMPLETE 退回（错误里带补齐提示）。\n"
+    "跳过则 set_task_status 会以 422 HANDOFF_INCOMPLETE 退回（错误里带补齐提示）。"
+    "置 in_review 后，在频道发一条交付消息并 @ 派活人（通常是协调者）——对方只有被 @ 才会"
+    "被唤醒验收，交付不 @ 人会停在 in_review 没人接。\n"
     "护栏：send_message 返回 202 held（被扣）时停止重发、等待反馈直投，勿盲目重试。\n"
     "记忆载体是你的 Home（MEMORY.md / notes/），当前工作目录即你的 Home。"
 )
