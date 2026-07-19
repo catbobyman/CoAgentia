@@ -2,8 +2,9 @@
 
 dev 工具 + pytest fixture 双用途。M1 子集 = workspace / computers / members / agents /
 channels / channel_members / messages / message_mentions / read_positions /
-token_usage_events / canvases（agent_skills/reminders/ledger/landing_batches 无种子行；
-tasks/presence 非 M1 表跳过）。插入顺序满足外键依赖。
+token_usage_events（agent_skills/reminders/ledger/landing_batches 无种子行；
+tasks/presence 非 M1 表跳过；DEDAG：canvases 随画布退役不再灌种，seed.json 里的
+canvases 键被 _PLAN 天然跳过）。插入顺序满足外键依赖。
 """
 
 from __future__ import annotations
@@ -37,7 +38,6 @@ _PLAN: tuple[tuple[str, str, bool], ...] = (
     ("message_mentions", "message_mentions", False),
     ("read_positions", "read_positions", False),
     ("token_usage_events", "token_usage_events", False),
-    ("canvases", "canvases", False),
 )
 
 

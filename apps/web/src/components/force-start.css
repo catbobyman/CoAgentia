@@ -13,6 +13,10 @@
 .fsdesc { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin: 0; }
 .fsdesc b { color: var(--text); font-weight: 600; }
 
-/* 红色校验条:danger token,强调越过 gating 的代价与留痕 */
+/* 红色校验条:danger token,强调强制启动的代价与留痕 */
 .fswarn { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; font-size: 12px; line-height: 1.5; color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger); border-radius: var(--radius-s); }
 .fswarn svg.lucide { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+
+/* DEDAG 催动入口:任务牌头 row2 的小型 ghost 按钮(owner 为 Agent 且未开工/进行中时可见) */
+.fsentry { height: 22px; padding: 0 8px; font-size: 12px; color: var(--warning); border: 1px solid var(--border); border-radius: var(--radius-s); }
+.fsentry:hover { border-color: var(--warning); }

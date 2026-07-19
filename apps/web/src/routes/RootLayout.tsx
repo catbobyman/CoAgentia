@@ -20,7 +20,6 @@ import { ChannelList } from '../components/ChannelList';
 import { hasUnreadMention, notifyModeOf } from '../lib/notify';
 import { ReconnectBar } from '../components/ReconnectBar';
 import { ToastProvider, Toaster } from '../components/Toast';
-import { LandingToaster } from '../components/LandingToaster';
 import { SearchOverlay } from '../components/SearchOverlay';
 
 export function RootLayout() {
@@ -145,7 +144,6 @@ export function RootLayout() {
       </div>
       <SearchOverlay />
       <Toaster />
-      <LandingToaster />
     </ToastProvider>
   );
 }

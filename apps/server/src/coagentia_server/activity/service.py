@@ -31,7 +31,7 @@ def muted_members(conn: Connection, *, channel_id: str, member_ids: list[str]) -
 
     mute → 该接收者的 mention activity **不生成**；无行=默认 all=不静音。判定语义单源本层，
     messages._generate_activity 在 emit_activity 之前调用以过滤 mention 接收者——**只作用人类
-    通知面，不作用 Agent 投递层**（投递 gating 归画布、freshness 归发送侧，第三作用层）；dm 分支
+    通知面，不作用 Agent 投递层**（投递过滤归 hub、freshness 归发送侧，第三作用层）；dm 分支
     恒生成不过此门（DM 必达）。未读**事实**不受影响（§9.7 #5 解耦）。批取单查避免逐接收者 N+1。
     """
     if not member_ids:

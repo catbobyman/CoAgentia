@@ -525,17 +525,31 @@ async def get_task_contracts(task_id: str) -> Any:
     return []
 
 
-@app.get("/api/channels/{channel_id}/canvas", response_model=rest.CanvasDetail)
-async def get_canvas(channel_id: str) -> Any:
-    """M3b 画布读形状（形状源非逻辑源，纪律 4）：mock 只回画布头 + 空节点/边。
+@app.post("/api/tasks/{task_id}/contracts", response_model=entities.TaskContractPublic,
+          status_code=201)
+async def submit_task_contract(task_id: str, body: rest.ContractCreate) -> Any:
+    """M3 契约提交（形状源非逻辑源，纪律 4）：mock 回契约行形状；kind↔schema 二次
+    model_validate/修订链只活真 server（E2）。"""
+    require_task(task_id)
+    return {"id": new_id(), "workspace_id": store.workspace["id"], "task_id": task_id,
+            "reminder_id": None, "kind": body.kind,
+            "version": f"coagentia.{body.kind.value.replace('_', '-')}.v1",
+            "body": body.body, "revision": 1, "superseded_at": None,
+            "created_by_member_id": store.members[0]["id"], "created_at": now_ts()}
 
-    环校验/gating/baseline 推进只活真 server（E4/E5）。每频道恰一画布，缺行 → 404。
-    """
-    require_channel(channel_id)
-    canvas = store.canvas(channel_id)
-    if canvas is None:
-        raise ApiError(404, rest.ErrorCode.NOT_FOUND, "canvas not found")
-    return {"canvas": canvas, "nodes": [], "edges": []}
+
+@app.post("/api/tasks/{task_id}/contracts/request-draft", status_code=202)
+async def request_contract_draft(task_id: str, body: rest.ContractDraftRequest) -> Any:
+    """让 @Agent 起草契约（B §4.3；P-3）：mock 回受理形状；S1 定向直投与 503
+    DAEMON_OFFLINE 判定只活真 server。"""
+    require_task(task_id)
+    return {"status": "accepted"}
+
+
+@app.post("/api/tasks/{task_id}/force-start", response_model=entities.TaskPublic)
+async def force_start_task(task_id: str) -> Any:
+    """人类强制启动（裁决 3）：mock 回任务现状形状；投递放行/双留痕/Agent 403 C3 活真 server。"""
+    return require_task(task_id)
 
 
 @app.post("/api/messages/{message_id}/task", response_model=entities.TaskPublic,
@@ -619,63 +633,52 @@ async def list_held_drafts(status: str | None = None, channel_id: str | None = N
     return {"items": [], "next_cursor": None}
 
 
-# ---------------------------------------------------------------- M5 模板与通知设置（纯形状）
+def _mock_held_draft(held_draft_id: str, *, status: str,
+                     resolution: str | None) -> dict[str, Any]:
+    """三键干预响应的 held 行形状占位（真状态机/终态 409 活真 server）。"""
+    build = next(c for c in store.channels if c.get("name") == "build")
+    return {
+        "id": held_draft_id, "workspace_id": store.workspace["id"],
+        "agent_member_id": store.agents[0]["member_id"], "channel_id": build["id"],
+        "thread_root_id": None, "draft_body": "(mock) 被扣草稿正文", "file_ids": None,
+        "as_task": None, "reasons": {"unread_message_ids": [], "total_unread": 0},
+        "status": status, "held_count": 1, "next_reeval_at": now_ts(),
+        "escalated_at": None,
+        "resolved_by_member_id": store.members[0]["id"] if resolution else None,
+        "resolved_at": now_ts() if resolution else None, "resolution": resolution,
+        "created_at": now_ts(),
+    }
+
+
+@app.post("/api/held-drafts/{held_draft_id}/release",
+          response_model=rest.HeldDraftReleaseResponse)
+async def release_held_draft(held_draft_id: str) -> Any:
+    """放行原样发送（G3）：mock 回落消息 + released 形状；跳过 freshness 复查语义活真 server。"""
+    build = next(c for c in store.channels if c.get("name") == "build")
+    msg = store.append_message(build["id"], store.agents[0]["member_id"], "(mock) 放行的草稿")
+    return {"message": msg,
+            "held_draft": _mock_held_draft(held_draft_id, status="released",
+                                           resolution="released")}
+
+
+@app.post("/api/held-drafts/{held_draft_id}/discard", response_model=rest.HeldDraftResponse)
+async def discard_held_draft(held_draft_id: str) -> Any:
+    """丢弃草稿：mock 回 discarded 形状；guard_feedback 直投活真 server。"""
+    return {"held_draft": _mock_held_draft(held_draft_id, status="discarded",
+                                           resolution="discarded")}
+
+
+@app.post("/api/held-drafts/{held_draft_id}/reevaluate", response_model=rest.HeldDraftResponse)
+async def reevaluate_held_draft(held_draft_id: str) -> Any:
+    """触发重评估（G4）：mock 回 reevaluating 形状；hub 同步桥/死锁规避活真 server。"""
+    return {"held_draft": _mock_held_draft(held_draft_id, status="reevaluating",
+                                           resolution=None)}
+
+
+# ---------------------------------------------------------------- M5 通知设置（纯形状）
 #
-# C0 登记：mock 只验形状不做业务（纪律 4）——快照序列化/实例化事务/409 约束/mode 门/dm 422 全活
-# 真 server（H3/H5/H6）。此处仅喂 OpenAPI→rest.ts：GET /templates 含 builtin 工程三角形状占位。
-
-
-def _builtin_triangle_template() -> dict[str, Any]:
-    """工程三角 builtin 的形状占位（真值 = contracts 常量 + server 启动 upsert，H5）。"""
-    return {
-        "id": new_id(), "workspace_id": store.workspace["id"], "name": "工程三角",
-        "description": "PM 框定→评审门→实现契约→TDD 实现→独立验收→人类终审（builtin 形状占位）",
-        "builtin": True, "created_by_member_id": store.members[0]["id"], "created_at": now_ts(),
-        "body": {
-            "nodes": [
-                {"key": "impl", "title": "实现", "role": "实现工程师", "plan_skeleton": None,
-                 "writes_code": False, "project_id": None},
-                {"key": "review", "title": "独立验收", "role": "评审工程师",
-                 "plan_skeleton": None, "writes_code": False, "project_id": None},
-            ],
-            "edges": [{"from_key": "impl", "to_key": "review"}],
-            "roles": [
-                {"placeholder": "实现工程师", "description": "落地实现（doer）"},
-                {"placeholder": "评审工程师", "description": "独立评审（checker ≠ doer）"},
-            ],
-            "briefing": "本频道由工程三角模板实例化：实现方交付、评审方独立复核、人类终审。",
-        },
-    }
-
-
-@app.get("/api/templates", response_model=list[entities.TemplatePublic])
-async def list_templates() -> Any:
-    """工作区级列表（builtin 置前，body 全量携带——向导预览用）；用户模板 mock 恒空。"""
-    return [_builtin_triangle_template()]
-
-
-@app.post("/api/templates", response_model=entities.TemplatePublic, status_code=201)
-async def create_template(body: rest.TemplateCreate) -> Any:
-    """存为模板（B §4.12）：mock 回形状占位（不读画布、不校验 409，纪律 4）。"""
-    return {
-        "id": new_id(), "workspace_id": store.workspace["id"], "name": body.name,
-        "description": body.description, "builtin": False,
-        "created_by_member_id": store.members[0]["id"], "created_at": now_ts(),
-        "body": {"nodes": [], "edges": [], "roles": [], "briefing": ""},
-    }
-
-
-@app.post("/api/templates/{template_id}/instantiate", response_model=rest.InstantiateResult,
-          status_code=201)
-async def instantiate_template(template_id: str, body: rest.TemplateInstantiate) -> Any:
-    """实例化（B §4.12/§11.2）：mock 回落地批 + 空任务形状（单事务/幂等/briefing 活真 server）。"""
-    batch = {
-        "id": new_id(), "workspace_id": store.workspace["id"], "channel_id": body.channel_id,
-        "kind": "tmpl", "content_hash": hashlib.sha256(template_id.encode()).hexdigest(),
-        "source_ref": template_id, "confirmed_by": store.members[0]["id"], "status": "done",
-        "created_at": now_ts(), "done_at": now_ts(),
-    }
-    return {"batch": batch, "tasks": []}
+# C0 登记：mock 只验形状不做业务（纪律 4）——mode 门/dm 422 活真 server（H6）。
+# 模板组（§4.12）随 DEDAG v1.6 整组退役。
 
 
 @app.get("/api/channels/{channel_id}/notification-setting",
@@ -694,10 +697,10 @@ async def put_notification_setting(channel_id: str, body: rest.NotificationSetti
     return {"channel_id": channel_id, "member_id": store.members[0]["id"], "mode": body.mode}
 
 
-# ---------------------------------------------------------------- M6 编排与交付链（纯形状）
+# ---------------------------------------------------------------- M6 Project 与交付链（纯形状）
 #
-# J0 只让 mock 为 OpenAPI/前端提供稳定形状。Project 权限与仓库校验、提案状态机、CAS、git
-# diff、系统节点 retry 约束都只活在真 server/daemon（纪律 4）。
+# J0 只让 mock 为 OpenAPI/前端提供稳定形状。Project 权限与仓库校验、git diff 都只活在
+# 真 server/daemon（纪律 4）。编排组（decompose/proposals/画布节点 retry）随 DEDAG v1.6 退役。
 
 
 def _mock_project(project_id: str | None = None, **updates: Any) -> dict[str, Any]:
@@ -717,75 +720,6 @@ def _mock_project(project_id: str | None = None, **updates: Any) -> dict[str, An
     }
     row.update({key: value for key, value in updates.items() if value is not None})
     return row
-
-
-def _mock_proposal(
-    proposal_id: str | None = None,
-    *,
-    channel_id: str | None = None,
-    status: str = "awaiting_confirm",
-) -> dict[str, Any]:
-    body = {"version": "coagentia.decomposition.v1", "nodes": [], "edges": []}
-    digest = hashlib.sha256(repr(body).encode("utf-8")).hexdigest()
-    return {
-        "id": proposal_id or new_id(),
-        "workspace_id": store.workspace["id"],
-        "channel_id": channel_id or store.tasks[0]["channel_id"],
-        "source_task_id": store.tasks[0]["id"],
-        "kind": "full",
-        "revision": 1,
-        "status": status,
-        "body": body,
-        "proposal_hash": digest,
-        "base_hash": None,
-        "landed_hash": digest if status == "landed" else None,
-        "adjustments": [],
-        "repair_count": 0,
-        "proposed_by_member_id": store.members[0]["id"],
-        "created_at": now_ts(),
-        "updated_at": now_ts(),
-    }
-
-
-@app.post("/api/channels/{channel_id}/decompose", response_model=entities.ProposalPublic,
-          status_code=202)
-async def decompose(channel_id: str, body: rest.DecomposeRequest) -> Any:
-    # 形状源非逻辑源（纪律 4）：sentinel 文本触发 409/503 错误变体的**形状**——真判定
-    # （find_orchestrator / daemon 在线）只活在真 server；前端引导链（交互 §6.8）据 code 分派。
-    if body.text == "__no_orchestrator__":
-        raise ApiError(409, rest.ErrorCode.NO_ORCHESTRATOR, "本频道还没有协调 Agent")
-    if body.text == "__daemon_offline__":
-        raise ApiError(503, rest.ErrorCode.DAEMON_OFFLINE, "@Orchestrator 当前离线（机器断连）")
-    return _mock_proposal(channel_id=channel_id)
-
-
-@app.get("/api/proposals/{proposal_id}", response_model=entities.ProposalPublic)
-async def get_proposal(proposal_id: str) -> Any:
-    return _mock_proposal(proposal_id)
-
-
-@app.post("/api/proposals/{proposal_id}/confirm", response_model=rest.ProposalConfirmResult,
-          status_code=202)
-async def confirm_proposal(proposal_id: str, body: rest.ProposalConfirm) -> Any:
-    proposal = _mock_proposal(proposal_id, status="landed")
-    batch = {
-        "id": new_id(),
-        "workspace_id": store.workspace["id"],
-        "channel_id": proposal["channel_id"],
-        "kind": "decomp",
-        "content_hash": proposal["proposal_hash"],
-        "source_ref": proposal_id,
-        "confirmed_by": store.members[0]["id"],
-        "status": "done",
-        "created_at": now_ts(),
-        "done_at": now_ts(),
-    }
-    return {"batch": batch, "proposal": proposal}
-
-
-@app.post("/api/proposals/{proposal_id}/reject", response_model=entities.ProposalPublic)
-async def reject_proposal(proposal_id: str, body: rest.ProposalReject) -> Any:
-    return _mock_proposal(proposal_id, status="rejected")
 
 
 @app.get("/api/projects", response_model=list[entities.ProjectPublic])
@@ -839,39 +773,18 @@ async def get_task_diff(task_id: str) -> Any:
     }
 
 
-@app.post("/api/canvas-nodes/{node_id}/retry", response_model=entities.CanvasNodePublic,
+# ---------------------------------------------------------------- DEDAG 任务级 merge（纯形状）
+#
+# 登记：mock 只验形状不做业务（纪律 4）——merged 幂等命中/同 project 409 DEPLOY_IN_PROGRESS/
+# daemon 离线 503 全活真 server（routes/tasks.py）。此处仅喂 OpenAPI→rest.ts：202 受理形状。
+
+
+@app.post("/api/tasks/{task_id}/merge", response_model=rest.TaskMergeAccepted,
           status_code=202)
-async def retry_canvas_node(node_id: str) -> Any:
-    canvas = store.canvases[0]
-    return {
-        "id": node_id,
-        "canvas_id": canvas["id"],
-        "kind": "system",
-        "task_id": None,
-        "is_summary": False,
-        "system_action": "check",
-        "command": "pnpm test",
-        "system_status": "running",
-        "pos_x": 0,
-        "pos_y": 0,
-        "created_at": now_ts(),
-    }
-
-
-@app.patch("/api/templates/{template_id}", response_model=entities.TemplatePublic)
-async def patch_template(template_id: str, body: rest.TemplatePatch) -> Any:
-    row = _builtin_triangle_template()
-    row["id"] = template_id
-    row.update({
-        key: value for key, value in body.model_dump(exclude_unset=True).items()
-        if value is not None
-    })
-    return row
-
-
-@app.delete("/api/templates/{template_id}", status_code=204)
-async def delete_template(template_id: str) -> Response:
-    return Response(status_code=204)
+async def merge_task(task_id: str) -> Any:
+    """任务级合并（B v1.6 §14）：mock 恒回 accepted 受理形状；真合并/幂等判定活真 server。"""
+    require_task(task_id)
+    return {"task_id": task_id, "status": "accepted"}
 
 
 # ---------------------------------------------------------------- M7 预览/部署/成本（纯形状）

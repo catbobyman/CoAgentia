@@ -1,7 +1,11 @@
-"""浏览器 WS 事件协议（契约 C 的代码化）：信封、事件目录、上行消息、payload 形状。
+"""浏览器 WS 事件协议（契约 C v1.1 的代码化）：信封、事件目录、上行消息、payload 形状。
 
 铁律（契约 C §1）：事件载状态（payload 带完整 Public 形状），客户端整体替换、重复应用无害；
 新事件必须先登记进本目录（契约 C §6/§7 与元素库白名单同一纪律）。
+
+契约 C v1.1（DEDAG 批，2026-07-18）：画布编排随 DAG 退役——canvas.*（节点/边/布局/基线）、
+draft.* / delta.* / proposal.*（提案生命周期）、landing.*（落地批）事件族整体移出目录；
+message / task / agent / preview / deploy / worktree / presence 等在用事件不变。
 """
 
 from enum import StrEnum
@@ -12,18 +16,14 @@ from pydantic import JsonValue
 from coagentia_contracts.entities import (
     ActivityItemPublic,
     AgentPublic,
-    CanvasEdgePublic,
-    CanvasNodePublic,
     ChannelPublic,
     ComputerPublic,
     ContractModel,
     DeploymentPublic,
     HeldDraftPublic,
-    LandingBatchPublic,
     MemberPublic,
     MessagePublic,
     PreviewSessionPublic,
-    ProposalPublic,
     ReminderPublic,
     TaskContractPublic,
     TaskPublic,
@@ -36,7 +36,7 @@ from coagentia_contracts.enums import (
     TaskEventKind,
     TaskStatus,
 )
-from coagentia_contracts.ids import Sha256Hex, TimestampZ, Ulid
+from coagentia_contracts.ids import TimestampZ, Ulid
 
 PROTOCOL_V = 1
 HEARTBEAT_SEC = 25  # 契约 C §2；daemon WS 同参（契约 D §2）
@@ -75,14 +75,7 @@ class EventType(StrEnum):
     ACTIVITY_CREATED = "activity.created"
     ACTIVITY_DONE = "activity.done"
     TOKEN_USAGE_REPORTED = "token_usage.reported"
-    # 6.5 画布（M3；S3）
-    CANVAS_NODE_ADDED = "canvas.node_added"
-    CANVAS_NODE_UPDATED = "canvas.node_updated"
-    CANVAS_NODE_REMOVED = "canvas.node_removed"
-    CANVAS_EDGE_ADDED = "canvas.edge_added"
-    CANVAS_EDGE_REMOVED = "canvas.edge_removed"
-    CANVAS_LAYOUT_UPDATED = "canvas.layout_updated"
-    CANVAS_BASELINE_ADVANCED = "canvas.baseline_advanced"
+    # 6.5 画布事件族已随 DEDAG 退役（契约 C v1.1）
     # 6.6 护栏与提醒（M4/M1）
     HELD_DRAFT_CREATED = "held_draft.created"
     HELD_DRAFT_UPDATED = "held_draft.updated"
@@ -94,20 +87,7 @@ class EventType(StrEnum):
     DEPLOYMENT_CREATED = "deployment.created"
     DEPLOYMENT_UPDATED = "deployment.updated"
     DEPLOYMENT_LOG = "deployment.log"  # 订阅制（§8）
-    # §7 M6 预留事件族（与拆解设计 §15 DiagnosticEvent 一名两用——预留 #4）
-    DRAFT_PRESENTED = "draft.presented"
-    DRAFT_ADJUSTED = "draft.adjusted"
-    DRAFT_CONFIRMED = "draft.confirmed"
-    DRAFT_REJECTED = "draft.rejected"
-    DRAFT_SUPERSEDED = "draft.superseded"
-    DELTA_PROPOSED = "delta.proposed"
-    DELTA_ADJUSTED = "delta.adjusted"
-    DELTA_CONFIRMED = "delta.confirmed"
-    DELTA_REJECTED = "delta.rejected"
-    LANDING_STARTED = "landing.started"
-    LANDING_COMPLETED = "landing.completed"
-    LANDING_FAIL_CLOSED = "landing.fail_closed"
-    PROPOSAL_UPDATED = "proposal.updated"
+    # §7 M6 提案/落地事件族（draft.*/delta.*/landing.*/proposal.*）已随 DEDAG 退役（契约 C v1.1）
     # §8 订阅制诊断流（M1，P6 实时尾随）
     DIAGNOSTIC_APPENDED = "diagnostic.appended"
 
@@ -250,39 +230,6 @@ class TokenUsageReportedData(ContractModel):
     totals: TokenTotals
 
 
-class CanvasNodeData(ContractModel):
-    node: CanvasNodePublic
-
-
-class CanvasNodeRemovedData(ContractModel):
-    node_id: Ulid
-
-
-class CanvasEdgeData(ContractModel):
-    edge: CanvasEdgePublic
-
-
-class CanvasEdgeRemovedData(ContractModel):
-    edge_id: Ulid
-
-
-class NodePosition(ContractModel):
-    node_id: Ulid
-    x: float
-    y: float
-
-
-class CanvasLayoutUpdatedData(ContractModel):
-    canvas_id: Ulid
-    positions: list[NodePosition]
-
-
-class CanvasBaselineAdvancedData(ContractModel):
-    canvas_id: Ulid
-    baseline_version: int
-    baseline_hash: Sha256Hex
-
-
 class HeldDraftData(ContractModel):
     draft: HeldDraftPublic
 
@@ -307,23 +254,6 @@ class DeploymentLogData(ContractModel):
     deployment_id: Ulid
     chunk_seq: int
     lines: list[str]
-
-
-class ProposalData(ContractModel):
-    proposal: ProposalPublic
-
-
-class DraftAdjustedData(ContractModel):
-    proposal_id: Ulid
-    adjustments: list[JsonValue]
-
-
-class ProposalRefData(ContractModel):
-    proposal_id: Ulid
-
-
-class LandingBatchData(ContractModel):
-    batch: LandingBatchPublic
 
 
 class DiagnosticAppendedData(ContractModel):
@@ -360,13 +290,6 @@ EVENT_PAYLOADS: dict[EventType, type[ContractModel]] = {
     EventType.ACTIVITY_CREATED: ActivityCreatedData,
     EventType.ACTIVITY_DONE: ActivityDoneData,
     EventType.TOKEN_USAGE_REPORTED: TokenUsageReportedData,
-    EventType.CANVAS_NODE_ADDED: CanvasNodeData,
-    EventType.CANVAS_NODE_UPDATED: CanvasNodeData,
-    EventType.CANVAS_NODE_REMOVED: CanvasNodeRemovedData,
-    EventType.CANVAS_EDGE_ADDED: CanvasEdgeData,
-    EventType.CANVAS_EDGE_REMOVED: CanvasEdgeRemovedData,
-    EventType.CANVAS_LAYOUT_UPDATED: CanvasLayoutUpdatedData,
-    EventType.CANVAS_BASELINE_ADVANCED: CanvasBaselineAdvancedData,
     EventType.HELD_DRAFT_CREATED: HeldDraftData,
     EventType.HELD_DRAFT_UPDATED: HeldDraftData,
     EventType.REMINDER_CREATED: ReminderData,
@@ -376,18 +299,5 @@ EVENT_PAYLOADS: dict[EventType, type[ContractModel]] = {
     EventType.DEPLOYMENT_CREATED: DeploymentData,
     EventType.DEPLOYMENT_UPDATED: DeploymentData,
     EventType.DEPLOYMENT_LOG: DeploymentLogData,
-    EventType.DRAFT_PRESENTED: ProposalData,
-    EventType.DRAFT_ADJUSTED: DraftAdjustedData,
-    EventType.DRAFT_CONFIRMED: ProposalRefData,
-    EventType.DRAFT_REJECTED: ProposalRefData,
-    EventType.DRAFT_SUPERSEDED: ProposalRefData,
-    EventType.DELTA_PROPOSED: ProposalData,
-    EventType.DELTA_ADJUSTED: ProposalData,
-    EventType.DELTA_CONFIRMED: ProposalData,
-    EventType.DELTA_REJECTED: ProposalData,
-    EventType.LANDING_STARTED: LandingBatchData,
-    EventType.LANDING_COMPLETED: LandingBatchData,
-    EventType.LANDING_FAIL_CLOSED: LandingBatchData,
-    EventType.PROPOSAL_UPDATED: ProposalData,
     EventType.DIAGNOSTIC_APPENDED: DiagnosticAppendedData,
 }

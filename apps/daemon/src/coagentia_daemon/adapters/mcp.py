@@ -278,9 +278,58 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["task_id", "kind", "body"],
         },
     },
+    # DEDAG（契约 E v1.7）委派/合并——去画布编排后 Orchestrator 对话式派活的行为通道
+    {
+        "name": "create_task",
+        "description": "派活：以你的名义在频道发锚点消息并**原子转任务**（委派的唯一通道）。"
+        "建议负责人直接在正文 text 里写 @名字——mention 即唤醒对方；不设 owner，"
+        "认领仍走 claim 防重。writes_code=true（任务要写代码、需 worktree）时**必须**携带"
+        "本频道绑定项目的 project_id，否则 422；纯讨论/文档类任务不带 writes_code 即可。"
+        "成功返回 message+task（task_id 从 data.task.id 取）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {"type": "string"},
+                "text": {
+                    "type": "string",
+                    "description": "锚点消息正文（任务背景/要求；建议负责人用 @名字 写进正文）。",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "任务标题（缺省由 server 取缺省标题）。",
+                },
+                "project_id": {
+                    "type": "string",
+                    "description": "writes_code=true 时必填 = 本频道绑定项目的 id。",
+                },
+                "writes_code": {
+                    "type": "boolean",
+                    "description": "任务是否要写代码（默认 false；true 由 server 建 worktree）。",
+                },
+            },
+            "required": ["channel_id", "text"],
+        },
+    },
+    {
+        "name": "trigger_merge",
+        "description": "把已完成任务的 worktree 合并回主干（请求体空，合并计划由 server 解析）。"
+        "202 受理：status=accepted=已受理异步执行，结果以频道系统消息回报（勿轮询勿重发）；"
+        "status=merged=该任务早已合并、幂等命中无需再动。"
+        "409 DEPLOY_IN_PROGRESS=同项目已有合并在跑、稍后重试；503=daemon 离线。"
+        "合并冲突时 server 会自动创建冲突解决任务派回原 owner，无需你介入。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+        },
+    },
 ]
 
 _TOOL_NAMES = frozenset(t["name"] for t in TOOLS)
+
+# freshness 202 held 仅对消息发送面成立（send_message / create_task 同端点同护栏）；
+# trigger_merge 的 202 是 TaskMergeAccepted 受理回执，误标 held 会让 Agent 误停等待。
+_FRESHNESS_HELD_TOOLS = frozenset({"send_message", "create_task"})
 
 
 def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
@@ -351,6 +400,15 @@ def build_request(tool: str, args: dict[str, Any]) -> ToolRequest:
             f"/api/tasks/{a['task_id']}/contracts",
             json_body={"kind": a["kind"], "body": a["body"]},
         )
+    if tool == "create_task":  # 锚点消息 + 转任务复合（as_task 语义 = 契约 B §9.4 既有）
+        as_task = {k: a[k] for k in ("title", "project_id", "writes_code") if a.get(k) is not None}
+        return ToolRequest(
+            "POST",
+            f"/api/channels/{a['channel_id']}/messages",
+            json_body={"body": a["text"], "as_task": as_task},
+        )
+    if tool == "trigger_merge":  # 空请求体：合并计划（worktree/分支）由 server 按任务解析
+        return ToolRequest("POST", f"/api/tasks/{a['task_id']}/merge")
     raise KeyError(tool)
 
 
@@ -371,7 +429,7 @@ def call_tool(tool: str, args: dict[str, Any], http: HttpFn) -> dict[str, Any]:
         return _text_result({"error": "missing_argument", "detail": str(exc)}, is_error=True)
     res = http(req)
     payload = {"status": res.status, "data": res.data}
-    if res.status == 202:
+    if res.status == 202 and tool in _FRESHNESS_HELD_TOOLS:
         payload["held"] = True  # freshness 命中：Agent 停止重发、等待反馈直投（D §5.2）
     is_error = res.is_error or res.status >= 400
     return _text_result(payload, is_error=is_error)

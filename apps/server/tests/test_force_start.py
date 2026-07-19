@@ -1,9 +1,9 @@
-"""M3b E5 force-start（裁决 3）：人类强制启动任务 = 解除本次投递 gating + 双留痕。
+"""M3b E5 force-start（裁决 3）：人类强制唤醒任务 owner + 双留痕（DEDAG 后 gating 已退役）。
 
 - 人类 force-start：留痕 task_events(force_start) 行 + 任务线程系统消息 + owner agent 被
   唤醒一次（假 daemon 收 AGENT_WAKE + MESSAGE_DELIVER）。
 - Agent 调 force-start → 403 rule=C3（且前置拒绝不留痕）。
-- 不改 status、不删边（owner agent 但 daemon 离线 → best-effort 仅留痕）。
+- 不改 status（owner agent 但 daemon 离线 → best-effort 仅留痕）。
 
 驱动方式仿 test_daemon.py：假 daemon 连真 server /api/daemon/ws；force_start_wake 经 _run_sync
 同步等 ack，故 REST 在后台线程发起，主线程驱动 daemon ack。
@@ -59,22 +59,6 @@ def _bg(fn: Any) -> tuple[threading.Thread, dict[str, Any]]:
 # ---------------------------------------------------------------- 库构造辅助
 
 
-def _add_canvas(env: Env, channel_id: str) -> str:
-    cid = nid()
-    with env.engine.begin() as c:
-        c.execute(
-            insert(models.Canvas.__table__).values(
-                id=cid,
-                workspace_id=env.ws_id,
-                channel_id=channel_id,
-                baseline_version=0,
-                baseline_hash="fs-test",
-                updated_at=now_iso(),
-            )
-        )
-    return cid
-
-
 def _add_task(
     env: Env,
     channel_id: str,
@@ -105,39 +89,9 @@ def _add_task(
     return tid, anchor
 
 
-def _add_agent_node(env: Env, canvas_id: str, task_id: str) -> str:
-    node_id = nid()
-    with env.engine.begin() as c:
-        c.execute(
-            insert(models.CanvasNode.__table__).values(
-                id=node_id,
-                canvas_id=canvas_id,
-                kind="agent",
-                task_id=task_id,
-                is_summary=False,
-                pos_x=0,
-                pos_y=0,
-                created_at=now_iso(),
-            )
-        )
-    return node_id
-
-
-def _add_edge(env: Env, canvas_id: str, from_id: str, to_id: str) -> str:
-    edge_id = nid()
-    with env.engine.begin() as c:
-        c.execute(
-            insert(models.CanvasEdge.__table__).values(
-                id=edge_id, canvas_id=canvas_id, from_node_id=from_id, to_node_id=to_id
-            )
-        )
-    return edge_id
-
-
 _TASK = models.Task.__table__
 _EVT = models.TaskEvent.__table__
 _MSG = models.Message.__table__
-_EDGE = models.CanvasEdge.__table__
 
 
 def _force_start_count(env: Env, task_id: str) -> int:
@@ -161,11 +115,6 @@ def _thread_sys_msg_count(env: Env, root_message_id: str) -> int:
 def _task_status(env: Env, task_id: str) -> str:
     with env.engine.connect() as c:
         return c.execute(select(_TASK.c.status).where(_TASK.c.id == task_id)).scalar_one()
-
-
-def _edge_exists(env: Env, edge_id: str) -> bool:
-    with env.engine.connect() as c:
-        return c.execute(select(_EDGE.c.id).where(_EDGE.c.id == edge_id)).first() is not None
 
 
 # ---------------------------------------------------------------- 人类 force-start：留痕 + 唤醒
@@ -223,27 +172,21 @@ def test_agent_force_start_forbidden(ctx: tuple[TestClient, Env, Any]) -> None:
     assert _force_start_count(env, tid) == 0  # 前置拒绝，整事务回滚不留痕
 
 
-# ---------------------------------------------------------------- 不改 status / 不删边（离线）
+# ---------------------------------------------------------------- 不改 status（离线）
 
 
-def test_force_start_keeps_status_and_edges(ctx: tuple[TestClient, Env, Any]) -> None:
-    """owner agent 但 daemon 离线 → force_start_wake best-effort no-op；留痕仍写、status/边不变。"""
+def test_force_start_keeps_status(ctx: tuple[TestClient, Env, Any]) -> None:
+    """owner agent 但 daemon 离线 → force_start_wake best-effort no-op；留痕仍写、status 不变。"""
     client, env, _hub = ctx
     ch = env.add_channel(name="build")
     bee = env.add_agent("Bee", "idle")  # 无 daemon 连接
     env.join(ch, bee)
-    canvas = _add_canvas(env, ch)
-    ta, _ = _add_task(env, ch, number=1, status="todo")
-    tb, _rb = _add_task(env, ch, number=2, status="todo", owner=bee)
-    na = _add_agent_node(env, canvas, ta)
-    nb = _add_agent_node(env, canvas, tb)
-    eid = _add_edge(env, canvas, na, nb)
+    tb, _rb = _add_task(env, ch, number=1, status="todo", owner=bee)
 
     r = client.post(f"/api/tasks/{tb}/force-start")  # daemon 离线 → 仅留痕，不阻塞
     assert r.status_code == 200
     assert r.json()["status"] == "todo"
     assert _task_status(env, tb) == "todo"  # 不改 status
-    assert _edge_exists(env, eid)  # 不删边
     assert _force_start_count(env, tb) == 1  # 仍留痕
 
 

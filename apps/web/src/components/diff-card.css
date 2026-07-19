@@ -7,6 +7,15 @@
 .delivery-status.conflicted { border-color: var(--danger); color: var(--danger); }
 .delivery-status.cleaned { color: var(--text-muted); }
 .delivery-status.pending { border-color: var(--warning); color: var(--warning); }
+/* DEDAG [合并到主干]（交付卡行内小钮，与 preview-btn 同体例）。 */
+.merge-btn {
+  height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-s);
+  background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px;
+}
+.merge-btn:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
+.merge-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.merge-btn svg.lucide { width: 14px; height: 14px; }
 .diff-card { min-width: 0; }
 .diff-toggle { width: 100%; height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; }
 .diff-toggle:hover { color: var(--text); background: var(--surface-hover); }

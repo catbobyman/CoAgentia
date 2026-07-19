@@ -1,41 +1,19 @@
-"""M8 契约登记的聚焦形状测试（L0）：W9 放行档、汇总协调状态、原子建边入参、rule 目录。
+"""M8 契约登记的聚焦形状测试（L0 存留面）：汇总协调状态实体、rule 目录。
 
-契约 A v1.0.12（summary_runs + canvas_nodes.upstream_policy）/ B v1.5.1
-（NodeCreate.upstream_node_ids + replan 403 rule=O8，错误码目录仍 29）。
-迁移 0012 与内核 W9 双档语义归 M8b L7，本文件只钉形状。
+画布面（UpstreamPolicy 两档 / CanvasNodePublic / NodeCreate.upstream_node_ids / NodePatch.
+upstream_policy）用例随 DEDAG v1.6 退役删除；summary_runs 表冻结不删，实体形状仍钉。
 """
 
 from coagentia_contracts import constants, entities, rest
-from coagentia_contracts.enums import CanvasNodeKind, SystemAction, UpstreamPolicy
 
 U1 = "01KX0000000000000000000001"
 U2 = "01KX0000000000000000000002"
 U3 = "01KX0000000000000000000003"
-U4 = "01KX0000000000000000000004"
 TS = "2026-07-14T12:00:00.000Z"
 
 
-def test_upstream_policy_values() -> None:
-    """W9 两档可枚举：strict（现状）/ partial（终态即放行）。"""
-    assert {p.value for p in UpstreamPolicy} == {"strict", "partial"}
-
-
-def test_canvas_node_upstream_policy_defaults_strict() -> None:
-    """canvas_nodes.upstream_policy 默认 strict——旧载荷（无该键）行为不变（向后兼容）。"""
-    legacy = entities.CanvasNodePublic.model_validate({
-        "id": U1, "canvas_id": U2, "kind": "agent", "task_id": U3, "created_at": TS,
-    })
-    assert legacy.upstream_policy is UpstreamPolicy.STRICT
-
-    summary = entities.CanvasNodePublic.model_validate({
-        "id": U1, "canvas_id": U2, "kind": "agent", "task_id": U3, "is_summary": True,
-        "upstream_policy": "partial", "created_at": TS,
-    })
-    assert summary.upstream_policy is UpstreamPolicy.PARTIAL and summary.is_summary is True
-
-
 def test_summary_run_roundtrip() -> None:
-    """SummaryRun（O8 协调状态，§6.4）：三计数默认 0、指纹/阻断可空、直挂 workspace_id。"""
+    """SummaryRun（冻结表实体，§6.4）：三计数默认 0、指纹/阻断可空、直挂 workspace_id。"""
     fresh = entities.SummaryRunPublic.model_validate({
         "task_id": U1, "canvas_id": U2, "workspace_id": U3, "created_at": TS, "updated_at": TS,
     })
@@ -51,34 +29,7 @@ def test_summary_run_roundtrip() -> None:
     assert blocked.blocked_at is not None and blocked.last_fingerprint == "a" * 64
 
 
-def test_node_create_upstream_node_ids_optional() -> None:
-    """NodeCreate.upstream_node_ids（L1 方案 A）：缺省 None（现状路径）；给定则原子建入边。"""
-    plain = rest.NodeCreate.model_validate({
-        "title": "Merge", "kind": "system", "system_action": "merge",
-    })
-    assert plain.kind is CanvasNodeKind.SYSTEM and plain.upstream_node_ids is None
-
-    with_upstream = rest.NodeCreate.model_validate({
-        "title": "Merge", "kind": "system", "system_action": "merge",
-        "upstream_node_ids": [U1, U2],
-    })
-    assert with_upstream.system_action is SystemAction.MERGE
-    assert with_upstream.upstream_node_ids == [U1, U2]
-
-
-def test_node_patch_upstream_policy_optional() -> None:
-    """NodePatch.upstream_policy（M8b L7 / W9，B v1.5.2）：人类改放行档；缺省 None（不改档，
-    向后兼容）。Agent 主体经此端点仍 403 rule=O9（服务端 _require_human_actor 门，非契约面）。"""
-    plain = rest.NodePatch.model_validate({"title": "新标题"})
-    assert plain.upstream_policy is None
-
-    changed = rest.NodePatch.model_validate({"upstream_policy": "partial"})
-    assert changed.upstream_policy is UpstreamPolicy.PARTIAL
-
-
-def test_rule_codes_carry_o8_o9() -> None:
-    """rule 字段值域含 O8（M8 replan 超额）+ O9（M6b Agent 结构变更，v1.0.12 回填）；
-    错误码目录随里程碑扩容（PS-WT +3 工作树清理码 → 32），rule 仍是 403 的正交维度。"""
-    assert "O8" in constants.RULE_CODES and "O9" in constants.RULE_CODES
+def test_rule_codes_catalog_well_formed() -> None:
+    """rule 目录无重复；错误码目录 32（DEDAG 零新增，退役域错误码暂保留枚举成员）。"""
     assert len(constants.RULE_CODES) == len(set(constants.RULE_CODES))  # 无重复
-    assert len({c.value for c in rest.ErrorCode}) == 32  # PS-WT 后错误码目录 = 32
+    assert len({c.value for c in rest.ErrorCode}) == 32  # DEDAG 后错误码目录仍 32

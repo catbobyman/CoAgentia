@@ -1,6 +1,6 @@
-"""mock server 契约一致性测试（M4 验证）：
+"""mock server 契约一致性测试（M4 验证；DEDAG v1.6 升级为全清单对照）：
 
-1. OpenAPI 覆盖契约 B 的 M1 端点清单（ENDPOINTS_M1）；
+1. OpenAPI 恰好 serve 契约 B 端点清单全集（ENDPOINTS_M1..M7/PSWT/DEDAG，不多不少）；
 2. 每个读端点的响应能被 contracts 响应模型反向校验；
 3. 代表性拒绝路径的错误形状（TASK_IN_DM 等）；
 4. WS：hello / ping-pong / 信封校验 / seq 单调 / 写端点广播；
@@ -14,23 +14,33 @@ from coagentia_contracts import entities, rest, ws
 from coagentia_mock.app import app
 from fastapi.testclient import TestClient
 
+# 契约端点清单全集（DEDAG v1.6 后的现行面）——mock 必须 serve 全集、不多不少。
+ALL_ENDPOINTS: tuple[tuple[str, str], ...] = (
+    rest.ENDPOINTS_M1 + rest.ENDPOINTS_M2 + rest.ENDPOINTS_M3 + rest.ENDPOINTS_M4
+    + rest.ENDPOINTS_M5 + rest.ENDPOINTS_M6 + rest.ENDPOINTS_M7
+    + rest.ENDPOINTS_PSWT + rest.ENDPOINTS_DEDAG
+)
+
 
 @pytest.fixture(scope="module")
 def client() -> TestClient:
     return TestClient(app)
 
 
-def test_openapi_covers_m1_endpoints(client: TestClient) -> None:
+def test_openapi_serves_contract_endpoints_exactly(client: TestClient) -> None:
+    """清单全集对照（不多不少）：/__mock/* 控制面与 WS 不属契约，不参与对照。"""
     spec = client.get("/openapi.json").json()
-    served: set[tuple[str, str]] = set()
-    for path, methods in spec["paths"].items():
-        for method in methods:
-            served.add((method.upper(), path.removeprefix("/api")))
-    missing = [
-        (m, p) for m, p in rest.ENDPOINTS_M1
-        if (m, normalize(p)) not in {(mm, normalize(pp)) for mm, pp in served}
-    ]
-    assert not missing, f"mock 未实现的 M1 端点: {missing}"
+    served = {
+        (method.upper(), normalize(path.removeprefix("/api")))
+        for path, methods in spec["paths"].items()
+        if path.startswith("/api")
+        for method in methods
+    }
+    expected = {(m, normalize(p)) for m, p in ALL_ENDPOINTS}
+    missing = sorted(expected - served)
+    extra = sorted(served - expected)
+    assert not missing, f"mock 未实现的契约端点: {missing}"
+    assert not extra, f"mock 多出清单外端点（退役域残留?）: {extra}"
 
 
 def normalize(path: str) -> str:
@@ -60,21 +70,6 @@ def test_read_endpoints_validate_against_contracts(client: TestClient) -> None:
         entities.TaskPublic.model_validate(t)
 
 
-def test_canvas_read_shape(client: TestClient) -> None:
-    channels = client.get("/api/channels").json()["items"]
-    build = next(c for c in channels if c["name"] == "build")
-    detail = rest.CanvasDetail.model_validate(
-        client.get(f"/api/channels/{build['id']}/canvas").json()
-    )
-    assert detail.canvas.channel_id == build["id"]
-    assert detail.nodes == [] and detail.edges == []  # mock 形状源：结构留空
-    # 无画布的频道（DM）→ 404 NOT_FOUND
-    dm = next(c for c in channels if c["kind"] == "dm")
-    r = client.get(f"/api/channels/{dm['id']}/canvas")
-    assert r.status_code == 404
-    assert rest.ErrorResponse.model_validate(r.json()).error.code is rest.ErrorCode.NOT_FOUND
-
-
 def test_held_drafts_list_shape(client: TestClient) -> None:
     """M4 护栏被扣草稿清单（§4.14）：mock 形状源回空页，Page[HeldDraftPublic] 反向校验。"""
     page = rest.Page[entities.HeldDraftPublic].model_validate(
@@ -83,13 +78,51 @@ def test_held_drafts_list_shape(client: TestClient) -> None:
     assert page.items == []
 
 
-def test_template_nodes_expose_m6a_delivery_shape(client: TestClient) -> None:
-    """mock 全量模板读面显式携带 TemplateNode 的 M6a 两字段。"""
-    template = client.get("/api/templates").json()[0]
-    node = template["body"]["nodes"][0]
-    assert node["writes_code"] is False
-    assert node["project_id"] is None
-    entities.TemplatePublic.model_validate(template)
+def test_held_draft_intervention_shapes(client: TestClient) -> None:
+    """M4 三键干预（§4.14）：release/discard/reevaluate 的响应形状反向校验。"""
+    held_id = "0" * 26  # Ulid 模式合法即可（mock 形状源不校验存在性）
+    released = rest.HeldDraftReleaseResponse.model_validate(
+        client.post(f"/api/held-drafts/{held_id}/release").json()
+    )
+    assert released.held_draft.status == "released"
+    discarded = rest.HeldDraftResponse.model_validate(
+        client.post(f"/api/held-drafts/{held_id}/discard").json()
+    )
+    assert discarded.held_draft.status == "discarded"
+    reevaluating = rest.HeldDraftResponse.model_validate(
+        client.post(f"/api/held-drafts/{held_id}/reevaluate").json()
+    )
+    assert reevaluating.held_draft.status == "reevaluating"
+
+
+def test_task_contract_write_shapes(client: TestClient) -> None:
+    """M3 契约提交/请求起草/force-start：mock 形状源的写端点响应反向校验。"""
+    task = client.get("/api/tasks").json()["items"][0]
+    r = client.post(f"/api/tasks/{task['id']}/contracts",
+                    json={"kind": "task_plan", "body": {"goal": "x"}})
+    assert r.status_code == 201
+    contract = entities.TaskContractPublic.model_validate(r.json())
+    assert contract.task_id == task["id"] and contract.version == "coagentia.task-plan.v1"
+    agent = next(m for m in client.get("/api/members").json() if m["kind"] == "agent")
+    r = client.post(f"/api/tasks/{task['id']}/contracts/request-draft",
+                    json={"kind": "task_plan", "agent_member_id": agent["id"]})
+    assert r.status_code == 202 and r.json() == {"status": "accepted"}
+    entities.TaskPublic.model_validate(
+        client.post(f"/api/tasks/{task['id']}/force-start").json()
+    )
+
+
+def test_task_merge_accepted_shape(client: TestClient) -> None:
+    """DEDAG 任务级 merge（B v1.6 §14）：202 受理形状；任务不存在 404 NOT_FOUND。"""
+    task = client.get("/api/tasks").json()["items"][0]
+    r = client.post(f"/api/tasks/{task['id']}/merge")
+    assert r.status_code == 202
+    accepted = rest.TaskMergeAccepted.model_validate(r.json())
+    assert accepted.task_id == task["id"] and accepted.status == "accepted"
+    missing = client.post(f"/api/tasks/{'0' * 26}/merge")
+    assert missing.status_code == 404
+    err = rest.ErrorResponse.model_validate(missing.json())
+    assert err.error.code is rest.ErrorCode.NOT_FOUND
 
 
 def test_agent_detail_shapes(client: TestClient) -> None:

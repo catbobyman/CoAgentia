@@ -38,7 +38,6 @@ class Store:
         self.messages: list[dict[str, Any]] = seed["messages"]
         self.message_mentions: list[dict[str, Any]] = seed["message_mentions"]
         self.tasks: list[dict[str, Any]] = seed["tasks"]
-        self.canvases: list[dict[str, Any]] = seed["canvases"]
         self.read_positions: list[dict[str, Any]] = seed["read_positions"]
         self.token_usage_events: list[dict[str, Any]] = seed["token_usage_events"]
         self.presence: list[dict[str, Any]] = seed["presence"]
@@ -56,9 +55,6 @@ class Store:
 
     def channel(self, channel_id: str) -> dict[str, Any] | None:
         return next((c for c in self.channels if c["id"] == channel_id), None)
-
-    def canvas(self, channel_id: str) -> dict[str, Any] | None:
-        return next((c for c in self.canvases if c["channel_id"] == channel_id), None)
 
     def agent(self, member_id: str) -> dict[str, Any] | None:
         return next((a for a in self.agents if a["member_id"] == member_id), None)

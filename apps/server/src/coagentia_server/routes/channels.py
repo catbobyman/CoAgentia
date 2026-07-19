@@ -6,7 +6,6 @@ from typing import Any
 
 from coagentia_contracts import entities, rest
 from coagentia_contracts.enums import ChannelKind, MemberKind, MessageKind, NotificationMode
-from coagentia_contracts.kernel.fingerprint import fingerprint
 from coagentia_contracts.ws import EventType
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import delete, insert, select, update
@@ -35,11 +34,10 @@ _CHANNEL = models.tbl(models.Channel)
 _CHANNEL_MEMBER = models.tbl(models.ChannelMember)
 _READ = models.tbl(models.ReadPosition)
 _MSG = models.tbl(models.Message)
-_CANVAS = models.tbl(models.Canvas)
 _MEMBER = models.tbl(models.Member)
 _NOTIF = models.tbl(models.ChannelNotificationSetting)
-
-EMPTY_CANVAS_HASH = fingerprint({"edges": [], "nodes": []})
+# DEDAG：canvases 表冻结；此句柄仅供频道硬删清理存量画布行（FK 完整性），无其余读写。
+_CANVAS = models.tbl(models.Canvas)
 
 
 def _notif_setting_public(row: dict[str, Any]) -> dict[str, Any]:
@@ -130,17 +128,7 @@ def create_channel(body: rest.ChannelCreate, request: Request, tx: Tx = Depends(
         tx.conn.execute(
             insert(_CHANNEL_MEMBER).values(channel_id=channel_id, member_id=mid, joined_at=ts)
         )
-    # 每频道恰一空画布（契约 A §6；与 bootstrap #all 同构）。
-    tx.conn.execute(
-        insert(_CANVAS).values(
-            id=new_ulid(),
-            workspace_id=ws["id"],
-            channel_id=channel_id,
-            baseline_version=0,
-            baseline_hash=EMPTY_CANVAS_HASH,
-            updated_at=ts,
-        )
-    )
+    # DEDAG：画布退役，建频道不再建 canvases 行（表冻结仅存量）。
     pub = channel_public(_fetch_channel(tx, channel_id))
     tx.emit(EventType.CHANNEL_CREATED, channel_id, {"channel": pub})
     return pub
@@ -200,7 +188,7 @@ def delete_channel(channel_id: str, request: Request, tx: Tx = Depends(get_tx)) 
             rest.ErrorCode.CHANNEL_NOT_EMPTY,
             "频道含消息，无法删除（消息不可变）——请改用归档",
         )
-    # 清理非不可变依赖行后删频道。
+    # 清理非不可变依赖行后删频道（canvases 为 DEDAG 前存量行，删以保 FK 完整性）。
     tx.conn.execute(delete(_CANVAS).where(_CANVAS.c.channel_id == channel_id))
     tx.conn.execute(delete(_CHANNEL_MEMBER).where(_CHANNEL_MEMBER.c.channel_id == channel_id))
     tx.conn.execute(delete(_READ).where(_READ.c.channel_id == channel_id))

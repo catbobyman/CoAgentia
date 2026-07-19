@@ -8,7 +8,6 @@ from pydantic import ValidationError
 U1 = "01KX0000000000000000000001"
 U2 = "01KX0000000000000000000002"
 U3 = "01KX0000000000000000000003"
-SHA = "a" * 64
 
 
 def test_project_requests_and_public_shape() -> None:
@@ -37,10 +36,6 @@ def test_task_delivery_extensions_are_backward_compatible() -> None:
     assert rest.TaskHandoffBody.model_validate({
         "from_member": U1, "to_member": U2, "verify_plan": "inspect",
     }).review_verdict is None
-    node = rest.NodeCreate.model_validate({
-        "title": "implement", "kind": "agent", "writes_code": True, "project_id": U3,
-    })
-    assert node.writes_code is True and node.project_id == U3
 
 
 def test_template_node_code_task_requires_project_and_old_json_defaults() -> None:
@@ -114,21 +109,6 @@ def test_daemon_m6_frames_and_diff_payload() -> None:
         "output_tail": "failed",
     })
     assert check.exit_code == 1
-
-
-def test_proposal_request_shapes() -> None:
-    assert rest.DecomposeRequest(text="build it").task_id is None
-    with pytest.raises(ValidationError):
-        rest.DecomposeRequest()
-    confirm = rest.ProposalConfirm.model_validate({
-        "expected": {
-            "proposal_hash": SHA,
-            "baseline_version": 3,
-            "baseline_hash": SHA,
-        },
-        "removed_ops": [2],
-    })
-    assert confirm.removed_ops == [2]
 
 
 def test_review_verdict_catalog_exact() -> None:

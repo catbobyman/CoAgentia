@@ -410,10 +410,10 @@ class TaskContractPublic(TaskContractRow):
 
 # ---- L2 契约 body schema：TaskPlan（PRD §4.3 v1）
 #
-# JSON 列嵌套模型（§8.3）：task_contracts.body 按 kind 二次 model_validate 的 TaskPlan 分支、
-# 且 templates.plan_skeleton 复用同形状（A §4.10）。放在 entities 层（下层）供 rest（NodeCreate/
-# CONTRACT_BODY_MODELS，上层 re-export）与 TemplateBody 共用——TaskHandoff/LoopContract body 仍
-# 在 rest（仅请求侧消费，无实体 JSON 列引用）。纪律 7 单一事实源。
+# JSON 列嵌套模型（§8.3）：task_contracts.body 按 kind 二次 model_validate 的 TaskPlan 分支。
+# 放在 entities 层（下层）供 rest（CONTRACT_BODY_MODELS，上层 re-export）消费——TaskHandoff/
+# LoopContract body 仍在 rest（仅请求侧消费，无实体 JSON 列引用）。纪律 7 单一事实源。
+# DEDAG：模板域退役，templates.plan_skeleton（TemplateBody）仅作冻结表形状保留，无活码复用。
 
 
 class AcceptanceCriterion(ContractModel):

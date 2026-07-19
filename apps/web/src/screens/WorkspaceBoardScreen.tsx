@@ -4,7 +4,6 @@
 import { useMemo, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Lock, Play } from 'lucide-react';
 
 import type { MemberPublic, TaskPublic, TaskStatus } from '@coagentia/contracts-ts';
 import { TASK_TRANSITIONS } from '@coagentia/contracts-ts';
@@ -16,8 +15,6 @@ import { channelsOf, memberMap, useChannelsSnapshot, useMembers } from '../data/
 import { useUiStore } from '../lib/store';
 import { useToast } from '../components/Toast';
 import { Avatar } from '../components/Avatar';
-import { ForceStartModal } from '../components/ForceStartModal';
-import { blockedTaskIdsFromCanvas } from '../components/BoardTab';
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
 import { relTime } from '../lib/time';
 import './workspace-board.css';
@@ -43,32 +40,17 @@ export function WorkspaceBoardScreen() {
       queryFn: () => api.tasks(c.id),
     })),
   });
-  // 逐频道查画布快照(与 tasks 同构):blocked 徽标跨频道聚合 —— 每个频道各派生一次再并集。
-  const canvasQueries = useQueries({
-    queries: channels.map((c) => ({
-      queryKey: qk.canvas(c.id),
-      queryFn: () => api.canvasSnapshot(c.id),
-    })),
-  });
   const channelNameById = useMemo(
     () => Object.fromEntries(channels.map((c) => [c.id, c.name ?? '—'])),
     [channels],
   );
   const allTasks: TaskPublic[] = taskQueries.flatMap((q) => q.data ?? []);
 
-  // blocked task_id 全局集:对每个频道画布快照跑 blockedTaskIdsFromCanvas(与频道看板/画布同源),并集。
-  const taskById = Object.fromEntries(allTasks.map((t) => [t.id, t]));
-  const blockedIds = new Set<string>();
-  for (const q of canvasQueries) {
-    for (const id of blockedTaskIdsFromCanvas(q.data, taskById)) blockedIds.add(id);
-  }
-
   const [view, setView] = useState<'board' | 'list'>('board');
   const [fChannel, setFChannel] = useState('');
   const [fCreator, setFCreator] = useState('');
   const [fAssignee, setFAssignee] = useState('');
   const [dragOver, setDragOver] = useState<TaskStatus | null>(null);
-  const [forceTask, setForceTask] = useState<TaskPublic | null>(null);
 
   const tasks = allTasks.filter((t) =>
     (!fChannel || t.channel_id === fChannel)
@@ -144,35 +126,21 @@ export function WorkspaceBoardScreen() {
                 <div className="wcol-body">
                   {colTasks.map((t) => {
                     const owner = t.owner_member_id ? byId[t.owner_member_id] : undefined;
-                    const isBlocked = blockedIds.has(t.id);
                     return (
                       <div
                         key={t.id}
-                        className={`wcard${isBlocked ? ' blocked' : ''}`}
+                        className="wcard"
                         draggable
                         onDragStart={(e) => e.dataTransfer.setData('text/plain', t.id)}
                         onClick={() => openTask(t)}
                       >
                         <div className="wcard-top">
                           <span className="chchip"><span className="hash">#</span>{channelNameById[t.channel_id] ?? '—'}</span>
-                          {isBlocked && (
-                            <span className="blkbadge" data-testid="ws-blocked"><Lock /> blocked</span>
-                          )}
                           <span className="no">#{t.number}</span>
                         </div>
                         <div className="wcard-ttl">{t.title}</div>
                         {owner && (
                           <div className="wcard-owner"><Avatar name={owner.name} size="nav" />{owner.name}</div>
-                        )}
-                        {isBlocked && (
-                          <button
-                            className="fsbtn"
-                            data-testid="ws-force-start"
-                            title="强制启动(越过 gating,留痕)"
-                            onClick={(e) => { e.stopPropagation(); setForceTask(t); }}
-                          >
-                            <Play /> 强制启动
-                          </button>
                         )}
                       </div>
                     );
@@ -200,31 +168,16 @@ export function WorkspaceBoardScreen() {
                 const status = t.status ?? 'todo';
                 const owner = t.owner_member_id ? byId[t.owner_member_id] : undefined;
                 const done = status === 'done' || status === 'closed';
-                const isBlocked = blockedIds.has(t.id);
                 return (
-                  <tr key={t.id} className={`row${done ? ' done' : ''}${isBlocked ? ' blocked' : ''}`} onClick={() => openTask(t)}>
+                  <tr key={t.id} className={`row${done ? ' done' : ''}`} onClick={() => openTask(t)}>
                     <td className="no">#{t.number}</td>
                     <td className="title">{t.title}</td>
                     <td><span className="chchip"><span className="hash">#</span>{channelNameById[t.channel_id] ?? '—'}</span></td>
                     <td>{owner ? <span className="ownercell"><Avatar name={owner.name} size="nav" />{owner.name}</span> : <span className="mu">—</span>}</td>
                     <td>
                       <span className="stcell"><i style={{ background: `var(${STATUS_VAR[status]})` }} />{STATUS_WORD[status]}</span>
-                      {isBlocked && (
-                        <span className="blkbadge" data-testid="wsrow-blocked"><Lock /> blocked</span>
-                      )}
                     </td>
-                    <td className="rt">
-                      {isBlocked ? (
-                        <button
-                          className="fsbtn"
-                          data-testid="wsrow-force-start"
-                          title="强制启动(越过 gating,留痕)"
-                          onClick={(e) => { e.stopPropagation(); setForceTask(t); }}
-                        >
-                          <Play /> 强制启动
-                        </button>
-                      ) : relTime(t.status_changed_at)}
-                    </td>
+                    <td className="rt">{relTime(t.status_changed_at)}</td>
                   </tr>
                 );
               })}
@@ -235,8 +188,6 @@ export function WorkspaceBoardScreen() {
           </table>
         </div>
       )}
-
-      {forceTask && <ForceStartModal task={forceTask} onClose={() => setForceTask(null)} />}
     </main>
   );
 }

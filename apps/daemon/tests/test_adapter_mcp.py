@@ -230,12 +230,16 @@ def test_create_reminder_body_matches_contract() -> None:
 
 
 def test_tool_catalog_matches_contract() -> None:
-    """TOOLS 名集恰等于契约正目录 COAGENTIA_MCP_TOOLS（含 M7 trigger_deploy，无遗漏/多发明）。"""
+    """TOOLS 名集 = 契约正目录 ∪ DEDAG 两工具（契约 E v1.7，17→19，无遗漏/多发明）。
+
+    constants.COAGENTIA_MCP_TOOLS 收编 create_task/trigger_merge 属契约包（本批越界面，
+    已挂账主编排）；并集写法两态均成立——收编后自然退化为纯等值，勿忘同步 19 计数守门。
+    """
     from coagentia_contracts.constants import COAGENTIA_MCP_TOOLS
 
     names = [t["name"] for t in mcp.TOOLS]
-    assert set(names) == set(COAGENTIA_MCP_TOOLS)
-    assert len(names) == len(set(names)) == len(COAGENTIA_MCP_TOOLS)  # 无重复
+    assert set(names) == set(COAGENTIA_MCP_TOOLS) | {"create_task", "trigger_merge"}
+    assert len(names) == len(set(names)) == 19  # 无重复；契约 E v1.7 工具总数
     assert "trigger_deploy" in names
 
 
@@ -453,6 +457,186 @@ def test_tools_list_includes_submit_task_contract() -> None:
     tool = next(t for t in listed["result"]["tools"] if t["name"] == "submit_task_contract")
     assert set(tool["inputSchema"]["required"]) == {"task_id", "kind", "body"}
     assert set(tool["inputSchema"]["properties"]["kind"]["enum"]) == {"task_plan", "task_handoff"}
+
+
+# ---------------- DEDAG（契约 E v1.7）：create_task 委派 / trigger_merge 任务级合并
+
+
+def test_build_request_create_task() -> None:
+    """create_task → POST /api/channels/{id}/messages，text→body + as_task 三字段装配。"""
+    r = mcp.build_request(
+        "create_task",
+        {
+            "channel_id": "C1",
+            "text": "@小码 做登录页",
+            "title": "登录页",
+            "project_id": "01K5PRJX00000000000000000A",
+            "writes_code": True,
+        },
+    )
+    assert r.method == "POST"
+    assert r.path == "/api/channels/C1/messages"
+    assert r.json_body == {
+        "body": "@小码 做登录页",
+        "as_task": {
+            "title": "登录页",
+            "project_id": "01K5PRJX00000000000000000A",
+            "writes_code": True,
+        },
+    }
+    assert r.query is None
+
+    # 最小集：仅 channel_id+text → as_task 空 {}（server 缺省 title；writes_code 默认 false）
+    minimal = mcp.build_request("create_task", {"channel_id": "C1", "text": "先讨论"})
+    assert minimal.json_body == {"body": "先讨论", "as_task": {}}
+
+
+def test_create_task_body_matches_contract() -> None:
+    """构造 body 过 MessageCreate/AsTask 契约校验（含 DEDAG 扩展 project_id/writes_code）。"""
+    from coagentia_contracts.rest import AsTask, MessageCreate
+
+    req = mcp.build_request(
+        "create_task",
+        {
+            "channel_id": "C1",
+            "text": "@小码 修复登录",
+            "title": "修复登录",
+            "project_id": "01K5PRJX00000000000000000A",
+            "writes_code": True,
+        },
+    )
+    parsed = MessageCreate.model_validate(req.json_body)
+    assert isinstance(parsed.as_task, AsTask)
+    assert parsed.as_task.writes_code is True
+    # 空 as_task {} 也过契约（writes_code 缺省 False，同 send_message as_task={} 先例）
+    minimal = MessageCreate.model_validate(
+        mcp.build_request("create_task", {"channel_id": "C1", "text": "x"}).json_body
+    )
+    assert minimal.as_task is not None and minimal.as_task.writes_code is False
+
+
+def test_create_task_missing_text_arg() -> None:
+    """必填 text 缺失 → 不触 HTTP，收敛为 missing_argument（同其它必填参防御）。"""
+    http = StubHttp()
+    out = mcp.call_tool("create_task", {"channel_id": "C1"}, http)
+    assert out["isError"] is True
+    assert http.calls == []
+    assert json.loads(out["content"][0]["text"])["error"] == "missing_argument"
+
+
+def test_create_task_writes_code_without_project_422_passthrough() -> None:
+    """writes_code=true 缺 project_id → 422 原样透传（描述文案已预告须携频道绑定项目）。"""
+    data = {"code": "VALIDATION_FAILED", "details": {"hint": "writes_code 须携本频道绑定项目"}}
+    http = StubHttp(status=422, data=data)
+    out = mcp.call_tool(
+        "create_task", {"channel_id": "C1", "text": "@小码 写代码", "writes_code": True}, http
+    )
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 422
+    assert payload["data"]["code"] == "VALIDATION_FAILED"
+    assert http.calls[0].path == "/api/channels/C1/messages"
+    assert http.calls[0].json_body["as_task"] == {"writes_code": True}
+
+
+def test_create_task_success_passthrough() -> None:
+    """201 → MessageCreated（message+task 原子）原样透传，Agent 从 data.task.id 取 task_id。"""
+    data = {
+        "message": {"id": "01K5MSG100000000000000000A"},
+        "task": {"id": "01K5TASK00000000000000000A", "number": 42},
+    }
+    http = StubHttp(status=201, data=data)
+    out = mcp.call_tool(
+        "create_task", {"channel_id": "C1", "text": "@小码 做登录页", "title": "登录页"}, http
+    )
+    assert out["isError"] is False
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 201
+    assert payload["data"]["task"]["id"] == "01K5TASK00000000000000000A"
+
+
+def test_create_task_held_202_marks_held() -> None:
+    """create_task 与 send_message 同端点同 freshness 护栏：202 → held=True 结构化透传。"""
+    http = StubHttp(status=202, data={"held_draft": {"id": "01K5HELD0000000000000000A"}})
+    out = mcp.call_tool("create_task", {"channel_id": "C1", "text": "hi"}, http)
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 202
+    assert payload["held"] is True
+
+
+def test_build_request_trigger_merge() -> None:
+    """trigger_merge → POST /api/tasks/{id}/merge，空请求体（合并计划由 server 按任务解析）。"""
+    r = mcp.build_request("trigger_merge", {"task_id": "T1"})
+    assert r.method == "POST"
+    assert r.path == "/api/tasks/T1/merge"
+    assert r.json_body is None
+    assert r.query is None
+
+
+def test_trigger_merge_accepted_202_not_marked_held() -> None:
+    """202 受理回执（TaskMergeAccepted status=accepted）→ isError=False 且**不标 held**——
+    held 语义专属消息发送面 freshness，误标会让 Agent 误入「停止重发等待直投」姿态。"""
+    from coagentia_contracts.rest import TaskMergeAccepted
+
+    data = {"task_id": "01K5TASK00000000000000000A", "status": "accepted"}
+    TaskMergeAccepted.model_validate(data)  # 桩响应对齐契约 202 形状
+    http = StubHttp(status=202, data=data)
+    out = mcp.call_tool("trigger_merge", {"task_id": "01K5TASK00000000000000000A"}, http)
+    assert out["isError"] is False
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 202
+    assert payload["data"]["status"] == "accepted"
+    assert "held" not in payload
+
+
+def test_trigger_merge_idempotent_merged_202() -> None:
+    """早已合并 → 202 status=merged 幂等命中（不再下发），原样透传。"""
+    data = {"task_id": "01K5TASK00000000000000000A", "status": "merged"}
+    http = StubHttp(status=202, data=data)
+    out = mcp.call_tool("trigger_merge", {"task_id": "01K5TASK00000000000000000A"}, http)
+    assert out["isError"] is False
+    assert json.loads(out["content"][0]["text"])["data"]["status"] == "merged"
+
+
+def test_trigger_merge_in_progress_passthrough() -> None:
+    """同项目已有合并在跑 → 409 DEPLOY_IN_PROGRESS 原样透传（稍后重试）。"""
+    http = StubHttp(status=409, data={"code": "DEPLOY_IN_PROGRESS"})
+    out = mcp.call_tool("trigger_merge", {"task_id": "T1"}, http)
+    assert out["isError"] is True
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["status"] == 409
+    assert payload["data"]["code"] == "DEPLOY_IN_PROGRESS"
+    assert http.calls[0].path == "/api/tasks/T1/merge"
+    assert http.calls[0].method == "POST"
+
+
+def test_trigger_merge_daemon_offline_passthrough() -> None:
+    """daemon 离线 → 503 DAEMON_OFFLINE 原样透传。"""
+    http = StubHttp(status=503, data={"code": "DAEMON_OFFLINE"})
+    out = mcp.call_tool("trigger_merge", {"task_id": "T1"}, http)
+    assert out["isError"] is True
+    assert json.loads(out["content"][0]["text"])["data"]["code"] == "DAEMON_OFFLINE"
+
+
+def test_tools_list_includes_dedag_tools() -> None:
+    """tools/list 往返：DEDAG 两工具出现；create_task 必填恰 channel_id/text 且属性面**无**
+    suggested_owner_member_id（契约 E 文档偏差不实现——建议 owner 走正文 @名字 mention 唤醒）；
+    trigger_merge 必填恰 task_id。"""
+    state = mcp._RpcState(http=StubHttp())
+    listed = mcp.handle_rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, state)
+    tools = {t["name"]: t for t in listed["result"]["tools"]}
+    ct = tools["create_task"]
+    assert set(ct["inputSchema"]["required"]) == {"channel_id", "text"}
+    assert set(ct["inputSchema"]["properties"]) == {
+        "channel_id",
+        "text",
+        "title",
+        "project_id",
+        "writes_code",
+    }
+    tm = tools["trigger_merge"]
+    assert tm["inputSchema"]["required"] == ["task_id"]
+    assert list(tm["inputSchema"]["properties"]) == ["task_id"]
 
 
 def test_codex_reuses_same_mcp_catalog() -> None:

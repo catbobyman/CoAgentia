@@ -1,5 +1,5 @@
 // M7b 消息流部署卡路由：card_kind==='deployment' 且有 card_ref → 渲染 DeploymentCard（结果卡走系统
-// 消息）；无 card_kind 不触发。照 MessageFlow.proposal.test.tsx / conflict.test.tsx 体例。
+// 消息）；无 card_kind 不触发。照 MessageFlow.conflict.test.tsx 体例。
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

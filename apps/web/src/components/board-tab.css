@@ -50,24 +50,6 @@
 .bcard .bt .bar { width: 24px; height: 3px; flex: none; }
 .bcard .bt .sp { flex: 1; }
 
-/* blocked 徽标(锁标 + 「blocked」)+ 强制启动按钮:blocked 卡才出。 */
-.bcard.blocked { border-color: var(--warning); }
-.bcard .blkbadge {
-  display: inline-flex; align-items: center; gap: 4px; flex: none;
-  font-family: var(--font-mono); font-size: 11px; color: var(--warning);
-}
-.bcard .blkbadge svg.lucide { width: 12px; height: 12px; }
-.bcard .fsbtn {
-  margin-top: 8px; width: 100%; height: 26px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  font-family: var(--font-sans); font-size: 12px; font-weight: 500;
-  color: var(--danger); background: transparent;
-  border: 1px solid var(--danger); border-radius: var(--radius-s);
-  cursor: pointer; transition: background var(--t-fast);
-}
-.bcard .fsbtn:hover { background: var(--danger-bg); }
-.bcard .fsbtn svg.lucide { width: 13px; height: 13px; }
-
 .bempty {
   font-family: var(--font-mono);
   font-size: 12px;

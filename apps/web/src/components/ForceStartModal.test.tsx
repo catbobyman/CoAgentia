@@ -1,5 +1,5 @@
-// M3b force-start 二次确认弹层:确认 → POST force-start → 成功 toast「已强制启动,已留痕」;
-// 403(非人类 owner)→ 专属错误文案;取消 → onClose,不发请求。
+// force-start 二次确认弹层(DEDAG 催动语义):确认 → POST force-start → 成功 toast
+// 「已强制启动,已留痕」;403(非人类)→ 专属错误文案;取消 → onClose,不发请求。
 // 运行:pnpm -F @coagentia/web test
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -59,7 +59,7 @@ describe('ForceStartModal 二次确认', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('403 → 专属错误文案(仅人类 owner 可越过 gating),不关闭', async () => {
+  it('403 → 专属错误文案(仅人类可强制启动任务),不关闭', async () => {
     vi.mocked(api.forceStart).mockRejectedValue(
       new ApiError(403, 'FORBIDDEN', '禁止', undefined),
     );
@@ -68,7 +68,7 @@ describe('ForceStartModal 二次确认', () => {
     fireEvent.click(screen.getByTestId('force-start-confirm-btn'));
 
     await waitFor(() => {
-      expect(screen.getByText(/仅人类 owner 可越过 gating/)).toBeInTheDocument();
+      expect(screen.getByText(/仅人类可强制启动任务/)).toBeInTheDocument();
     });
     expect(onClose).not.toHaveBeenCalled();
   });

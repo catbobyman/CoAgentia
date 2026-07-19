@@ -92,24 +92,6 @@ def task_contract_public(row: dict[str, Any]) -> dict[str, Any]:
     return _dump(entities.TaskContractPublic, row)
 
 
-def canvas_public(row: dict[str, Any]) -> dict[str, Any]:
-    return _dump(entities.CanvasPublic, row)
-
-
-def canvas_node_public(row: dict[str, Any]) -> dict[str, Any]:
-    return _dump(entities.CanvasNodePublic, row)
-
-
-def canvas_edge_public(row: dict[str, Any]) -> dict[str, Any]:
-    return _dump(entities.CanvasEdgePublic, row)
-
-
-def template_public(row: dict[str, Any]) -> dict[str, Any]:
-    """M5 模板（工程三角/存为模板）。body JSON 列 → TemplateBody 嵌套模型、builtin INTEGER 0/1 →
-    bool，均由 TemplatePublic 校验自然互转（ContractModel lax 模式）。"""
-    return _dump(entities.TemplatePublic, row)
-
-
 def project_public(row: dict[str, Any], *, channel_ids: list[str]) -> dict[str, Any]:
     """Project 的 channel_ids 来自 channel_projects 联查，不落 projects 表。"""
     return _dump(entities.ProjectPublic, {**row, "channel_ids": channel_ids})
@@ -127,11 +109,6 @@ def preview_session_public(row: dict[str, Any]) -> dict[str, Any]:
     """M7a 预览会话（FR-11，契约 A v1.0.11 §4.9）。port/last_active_at/recycled_at/fail_log_tail
     可空列直接透传，即 PreviewSessionPublic。"""
     return _dump(entities.PreviewSessionPublic, row)
-
-
-def proposal_public(row: dict[str, Any]) -> dict[str, Any]:
-    """M6b 提案（拆解生命周期）。body/adjustments JSON 列直接透传，即 ProposalPublic。"""
-    return _dump(entities.ProposalPublic, row)
 
 
 def deployment_public(row: dict[str, Any]) -> dict[str, Any]:

@@ -74,7 +74,7 @@ describe('F5 MessageActions', () => {
   });
 
   it('承载卡片的消息（card_kind）→ 不显示「转为任务」（防卡片与任务牌叠加）', () => {
-    const carded = { ...baseMsg, card_kind: 'proposal' as const };
+    const carded = { ...baseMsg, card_kind: 'deployment' as const };
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>

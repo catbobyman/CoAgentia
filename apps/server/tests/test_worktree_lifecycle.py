@@ -1,4 +1,11 @@
-"""M6a J3 server：激活/对账 #5/目录注入/force-start/keep_days 清理。"""
+"""M6a J3 server：激活/对账 #5/目录注入/force-start/keep_days 清理。
+
+DEDAG 批（2026-07-18）：画布/节点/边/blocked gating 退役——worktree 派生改纯任务驱动
+（writes_code + project 绑定 + 非终态即派生）。wake 帧 reason=canvas_activation 帧名系契约 D
+冻结沿用，refs.node_id 恒 None。原「trusted merge 挺过节点移除」用例随节点语义退役改写为
+computer 归属门（merge 信任路径的完整行为已由 test_task_merge.py 覆盖）；原「上游 done 解锁」
+「force-start 绕过 blocked」「reblocked 排除」等 gating 前提的用例按新语义改写。
+"""
 
 from __future__ import annotations
 
@@ -28,7 +35,6 @@ _CHANNEL_PROJECT = models.tbl(models.ChannelProject)
 _CANVAS = models.tbl(models.Canvas)
 _TASK = models.tbl(models.Task)
 _NODE = models.tbl(models.CanvasNode)
-_EDGE = models.tbl(models.CanvasEdge)
 _WORKTREE = models.tbl(models.Worktree)
 _MESSAGE = models.tbl(models.Message)
 
@@ -138,16 +144,40 @@ def _task_node(
     return task_id, node_id, root_id
 
 
-def _edge(env: Env, canvas_id: str, from_node_id: str, to_node_id: str) -> None:
+def _task(
+    env: Env,
+    channel_id: str,
+    *,
+    number: int,
+    owner: str | None,
+    project_id: str | None,
+    writes_code: bool,
+    status: str = "todo",
+    status_changed_at: str | None = None,
+) -> tuple[str, str]:
+    """DEDAG 精简版任务构造器：只插任务行（新语义下节点/边行无影响，不再建 canvas/node）。"""
+    root_id = env.add_message(channel_id, kind="system", body=f"task {number}")
+    task_id = nid()
     with env.engine.begin() as c:
         c.execute(
-            insert(_EDGE).values(
-                id=nid(),
-                canvas_id=canvas_id,
-                from_node_id=from_node_id,
-                to_node_id=to_node_id,
+            insert(_TASK).values(
+                id=task_id,
+                workspace_id=env.ws_id,
+                channel_id=channel_id,
+                number=number,
+                root_message_id=root_id,
+                title=f"Task {number}",
+                status=status,
+                owner_member_id=owner,
+                level="l2",
+                created_by_member_id=env.owner_id,
+                project_id=project_id,
+                writes_code=writes_code,
+                status_changed_at=status_changed_at or now_iso(),
+                created_at=now_iso(),
             )
         )
+    return task_id, root_id
 
 
 def _worktree(
@@ -245,11 +275,12 @@ def _report_active(d: StubDaemon, task_id: str, branch: str) -> None:
     )
 
 
-def _ack_activation(d: StubDaemon, *, node_id: str) -> dict[str, Any]:
+def _ack_activation(d: StubDaemon) -> dict[str, Any]:
     wake = d.recv_instr()
     assert wake["type"] == "agent.wake"
     assert wake["data"]["reason"] == "canvas_activation"
-    assert wake["data"]["refs"]["node_id"] == node_id
+    # DEDAG：canvas_activation 帧名系契约 D 冻结沿用，refs 不再携节点（node_id 恒 None）。
+    assert wake["data"]["refs"]["node_id"] is None
     d.ack(wake, "done")
     deliver = d.recv_instr()
     assert deliver["type"] == "message.deliver"
@@ -267,7 +298,7 @@ def test_reconcile_ensure_status_path_then_canvas_wake_is_idempotent(
     env.join(channel, agent)
     project = _project(env, channel)
     canvas = _canvas(env, channel)
-    task_id, node_id, root_id = _task_node(
+    task_id, _, root_id = _task_node(
         env,
         channel,
         canvas,
@@ -301,7 +332,7 @@ def test_reconcile_ensure_status_path_then_canvas_wake_is_idempotent(
         assert _poll(lambda: (_worktree_row(env, task_id) or {}).get("path") == WORKTREE_PATH)
         assert _directory_message_count(env, root_id) == 1
         d.ack(ensure, "done")
-        deliver = _ack_activation(d, node_id=node_id)
+        deliver = _ack_activation(d)
         assert _worktree_row(env, task_id)["status"] == "active"  # type: ignore[index]
 
         # 定向副本只改 body：id 不变，DB 锚点原文与 read 身份不变。
@@ -327,104 +358,87 @@ def test_reconcile_ensure_status_path_then_canvas_wake_is_idempotent(
         assert _directory_message_count(env, root_id) == 1
 
 
-def test_task_updated_unblocks_and_immediately_ensures_once(
+def test_task_event_triggers_immediate_ensure_once(
     ctx: tuple[TestClient, Env, Any],
 ) -> None:
+    """DEDAG 改写（原「上游 done 解锁下游」随画布 gating 退役）：保留原用例的两点价值——
+    task 事件触发**即时**扫描（不等 60s 周期对账）+ task 自然键/DB 重查幂等（同事件重发不重复
+    ensure）。hello 时无 writes_code 任务，连接期间新建任务并 emit task.created 即触发派生。"""
     client, env, _hub = ctx
     agent = env.add_agent("Coder", "idle")
     channel = env.add_channel(kind="channel", name="build")
     env.join(channel, agent)
     project = _project(env, channel)
-    canvas = _canvas(env, channel)
-    upstream, upstream_node, _ = _task_node(
-        env,
-        channel,
-        canvas,
-        number=1,
-        owner=env.owner_id,
-        project_id=None,
-        writes_code=False,
-        status="in_review",
-    )
-    downstream, downstream_node, _ = _task_node(
-        env,
-        channel,
-        canvas,
-        number=2,
-        owner=agent,
-        project_id=project,
-        writes_code=True,
-    )
-    _edge(env, canvas, upstream_node, downstream_node)
 
     with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
         d = StubDaemon(ws)
         d.hello([(agent, "idle")])
         d.recv_hello_ack()
-        d.sync()  # 上游只读、下游 blocked：均无 ensure
+        d.sync()  # hello 时无 writes_code 任务：无 ensure
 
-        response = client.post(f"/api/tasks/{upstream}/status", json={"to": "done"})
-        assert response.status_code == 200
-        ensure = d.recv_instr()  # task.updated 提交后立即扫描，不等 60s
-        assert ensure["type"] == "worktree.ensure"
-        assert ensure["data"]["task_id"] == downstream
-        _report_active(d, downstream, ensure["data"]["branch"])
-        d.ack(ensure, "done")
-        _ack_activation(d, node_id=downstream_node)
-
-        # 同一 task.updated 再发一次，task 自然键+DB 重查不重发 ensure。
-        client.app.state.bus.emit(  # type: ignore[union-attr]
-            EventType.TASK_UPDATED,
-            channel,
-            {"task": response.json(), "change": None},
+        task_id, root_id = _task(
+            env, channel, number=1, owner=agent, project_id=project, writes_code=True
         )
+        task_event = {"task": {"id": task_id, "writes_code": True}, "change": None}
+        client.app.state.bus.emit(EventType.TASK_CREATED, channel, task_event)  # type: ignore[union-attr]
+        ensure = d.recv_instr()  # task 事件提交后立即扫描，不等 60s
+        assert ensure["type"] == "worktree.ensure"
+        assert ensure["data"]["task_id"] == task_id
+        _report_active(d, task_id, ensure["data"]["branch"])
+        d.ack(ensure, "done")
+        _ack_activation(d)
+
+        # 同一 task 事件再发一次，task 自然键+DB 重查不重发 ensure（sync 直回 pong 即证无帧）。
+        client.app.state.bus.emit(EventType.TASK_UPDATED, channel, task_event)  # type: ignore[union-attr]
         d.sync()
-        assert _worktree_row(env, downstream) is not None
+        assert _worktree_row(env, task_id) is not None
+        assert _directory_message_count(env, root_id) == 1
 
 
-def test_force_start_blocked_writes_code_ensures_before_wake(
+def test_force_start_wakes_after_directory_persisted(
     ctx: tuple[TestClient, Env, Any],
 ) -> None:
+    """DEDAG 改写（原 blocked 前提随画布 gating 退役）：writes_code 任务 hello 即收 ensure；
+    force-start 收敛为人工催动直投（不查投递门）——wake 前目录必须已持久（顺序断言保留）。
+    Agent 报 starting（不可投递）以隔离 message.created 触发的常规唤醒面，帧序确定 =
+    ensure → (status/目录持久) → force-start wake → deliver。"""
     client, env, _hub = ctx
-    agent = env.add_agent("Coder", "idle")
+    agent = env.add_agent("Coder", "starting")
     channel = env.add_channel(kind="channel", name="build")
     env.join(channel, agent)
     project = _project(env, channel)
-    canvas = _canvas(env, channel)
-    _, upstream_node, _ = _task_node(
-        env,
-        channel,
-        canvas,
-        number=1,
-        owner=env.owner_id,
-        project_id=None,
-        writes_code=False,
+    task_id, root_id = _task(
+        env, channel, number=1, owner=agent, project_id=project, writes_code=True
     )
-    task_id, node_id, root_id = _task_node(
-        env,
-        channel,
-        canvas,
-        number=2,
-        owner=agent,
-        project_id=project,
-        writes_code=True,
-    )
-    _edge(env, canvas, upstream_node, node_id)
 
     with client.websocket_connect(DAEMON_WS, headers=AUTH) as ws:
         d = StubDaemon(ws)
-        d.hello([(agent, "idle")])
+        d.hello([(agent, "starting")])
         d.recv_hello_ack()
-        d.sync()
+        ensure = d.recv_instr()
+        assert ensure["type"] == "worktree.ensure"  # 无 blocked 门：hello 对账即派生
+        assert ensure["data"]["task_id"] == task_id
+        _report_active(d, task_id, ensure["data"]["branch"])
+        d.ack(ensure, "done")
+        # wake 前目录已持久：绝对 path 与 durable 目录消息先于任何唤醒落库。
+        assert _poll(lambda: (_worktree_row(env, task_id) or {}).get("path") == WORKTREE_PATH)
+        assert _poll(lambda: _directory_message_count(env, root_id) == 1)
+        d.sync()  # starting 不可投递：目录消息不触发常规唤醒（无帧即 pong 直回）
 
         response = client.post(f"/api/tasks/{task_id}/force-start")
         assert response.status_code == 200
-        ensure = d.recv_instr()
-        assert ensure["type"] == "worktree.ensure"  # 任何 wake 前必须先 ensure
-        _report_active(d, task_id, ensure["data"]["branch"])
-        assert _poll(lambda: _directory_message_count(env, root_id) == 1)
-        d.ack(ensure, "done")
-        _ack_activation(d, node_id=node_id)
+        wake = d.recv_instr()  # 催动直投：ensure 复核（path 已持久）通过后才发 wake
+        assert wake["type"] == "agent.wake"
+        assert wake["data"]["reason"] == "canvas_activation"
+        assert wake["data"]["refs"]["node_id"] is None  # DEDAG：不携节点
+        d.ack(wake, "done")
+        deliver = d.recv_instr()
+        assert deliver["type"] == "message.deliver"
+        bodies = [item["body"] for item in deliver["data"]["messages"]]
+        assert any(WORKTREE_PATH in body for body in bodies)  # 投递副本注入目录
+        assert any("强制启动" in body for body in bodies)  # 催动锚点系统消息在批内
+        d.ack(deliver, "done")
+        d.sync()
 
 
 def test_cleanup_terminal_and_daemon_noop_converges_cleaned(
@@ -678,46 +692,52 @@ def test_status_upsert_persists_basic_transition_fields(migrated_engine: Engine)
         assert cleaned.row["cleaned_at"] is not None
 
 
-def test_apply_status_trusted_merge_survives_node_removal(migrated_engine: Engine) -> None:
-    """F2 回归（M6 review）：running merge 的 merged 上报（trusted_running_merge）在任务的
-    agent 画布节点已被 delta 删除后不得被丢弃——内连接会返回 None → merge 节点永卡 RUNNING。
-    非信任路径仍要求节点存在（越界上报不污染事实源）。"""
+def test_apply_status_trusted_merge_bypasses_computer_gate(migrated_engine: Engine) -> None:
+    """DEDAG 改写（原「trusted merge 挺过节点移除」的节点前提随画布退役；merge 信任路径的完整
+    行为——merged 落行/alias/冲突派回——已由 test_task_merge.py 覆盖）：apply_status 非信任路径
+    以 Project.computer_id 归属为门（越界上报 → None 不污染事实源）；trusted_running_merge=
+    任务级 merge 运行身份放行同一上报（merge 步上报不因归属门被丢弃）。"""
     env = Env(migrated_engine)
     channel = env.add_channel(kind="channel", name="build")
     project = _project(env, channel)
-    canvas = _canvas(env, channel)
-    task_id, node_id, _ = _task_node(
-        env, channel, canvas, number=1, owner=None, project_id=project, writes_code=True,
+    task_id, _ = _task(
+        env, channel, number=1, owner=None, project_id=project, writes_code=True
     )
     branch = f"coagentia/task-{task_id}"
+    other_rig = "01K5CMPT00000000000000000B"
     with env.engine.begin() as c:
-        assert worktree_service.apply_status(
+        # 归属机上报 active：正常落行。
+        active = worktree_service.apply_status(
             c, computer_id=env.comp_id,
             data=WorktreeStatusData(
                 task_id=task_id, status="active", branch=branch, path=WORKTREE_PATH),
-        ) is not None
-    # delta 删除该任务的 agent 节点（done 任务节点可删）。
-    with env.engine.begin() as c:
-        c.execute(delete(_NODE).where(_NODE.c.id == node_id))
-    with env.engine.begin() as c:
-        # 信任路径（merge 步快照匹配）：节点没了也要吃下 merged 上报。
-        merged = worktree_service.apply_status(
-            c, computer_id=env.comp_id,
+        )
+        assert active is not None and active.became_active
+        # 非信任路径：非归属 computer 的越界上报被拒（None，不污染事实源）。
+        rejected = worktree_service.apply_status(
+            c, computer_id=other_rig,
             data=WorktreeStatusData(
                 task_id=task_id, status="merged", branch=branch,
-                path=WORKTREE_PATH, merge_commit="merge-f2",
+                path=WORKTREE_PATH, merge_commit="merge-x",
+            ),
+        )
+        assert rejected is None
+        # 越界上报确未污染行：状态仍为 active（同事务内读，未提交态可见）。
+        assert c.execute(
+            select(_WORKTREE.c.status).where(_WORKTREE.c.task_id == task_id)
+        ).scalar_one() == "active"
+        # 信任路径（任务级 merge 运行身份）：同一上报放行并落 merged。
+        merged = worktree_service.apply_status(
+            c, computer_id=other_rig,
+            data=WorktreeStatusData(
+                task_id=task_id, status="merged", branch=branch,
+                path=WORKTREE_PATH, merge_commit="merge-x",
             ),
             trusted_running_merge=True,
         )
-        assert merged is not None, "修复前：内连接 agent 节点 → None → 上报被丢弃"
-        assert merged.row["merge_commit"] == "merge-f2" and merged.node_id is None
-        # 非信任路径：节点缺失仍拒收（越界上报）。
-        rejected = worktree_service.apply_status(
-            c, computer_id=env.comp_id,
-            data=WorktreeStatusData(
-                task_id=task_id, status="active", branch=branch, path=WORKTREE_PATH),
-        )
-        assert rejected is None
+        assert merged is not None, "信任路径不得被 computer 归属门丢弃"
+        assert merged.row["merge_commit"] == "merge-x"
+        assert merged.row["merged_at"] is not None
 
 
 def test_existing_task_still_ensures_after_project_unbind(migrated_engine: Engine) -> None:
@@ -771,50 +791,35 @@ def test_ensure_plans_covers_reopened_task_with_cleaned_worktree(migrated_engine
         assert worktree_service.ensure_plans(c, task_id=task_id) == []
 
 
-def test_directory_context_excludes_terminal_and_reblocked_tasks(
+def test_directory_context_excludes_terminal_tasks(
     migrated_engine: Engine,
 ) -> None:
+    """DEDAG 改写（原「reblocked 排除」随画布 gating 退役）：directory_contexts 只排除终态任务
+    （done/closed），存活任务的 active 树正常给出（终态排除断言保留，blocked 部分删除）。"""
     env = Env(migrated_engine)
     agent = env.add_agent("Coder", "idle")
     channel = env.add_channel(kind="channel", name="build")
     project = _project(env, channel)
-    canvas = _canvas(env, channel)
-    _, upstream_node, _ = _task_node(
-        env,
-        channel,
-        canvas,
-        number=1,
-        owner=None,
-        project_id=None,
-        writes_code=False,
+    live, _ = _task(
+        env, channel, number=1, owner=agent, project_id=project, writes_code=True
     )
-    blocked, blocked_node, _ = _task_node(
-        env,
-        channel,
-        canvas,
-        number=2,
-        owner=agent,
-        project_id=project,
-        writes_code=True,
-    )
-    terminal, _, _ = _task_node(
-        env,
-        channel,
-        canvas,
-        number=3,
-        owner=agent,
-        project_id=project,
-        writes_code=True,
+    done, _ = _task(
+        env, channel, number=2, owner=agent, project_id=project, writes_code=True,
         status="done",
     )
-    _edge(env, canvas, upstream_node, blocked_node)
-    _worktree(env, task_id=blocked, project_id=project)
-    _worktree(env, task_id=terminal, project_id=project, path=WORKTREE_PATH + "-terminal")
+    closed, _ = _task(
+        env, channel, number=3, owner=agent, project_id=project, writes_code=True,
+        status="closed",
+    )
+    _worktree(env, task_id=live, project_id=project)
+    _worktree(env, task_id=done, project_id=project, path=WORKTREE_PATH + "-done")
+    _worktree(env, task_id=closed, project_id=project, path=WORKTREE_PATH + "-closed")
     with env.engine.connect() as c:
         contexts = worktree_service.directory_contexts(
             c, agent_member_id=agent, channel_id=channel
         )
-    assert contexts == []
+    assert [item.task_id for item in contexts] == [live]
+    assert contexts[0].path == WORKTREE_PATH
 
 
 def test_briefing_delivery_injects_copy_without_mutating_db(
@@ -826,7 +831,7 @@ def test_briefing_delivery_injects_copy_without_mutating_db(
     env.join(channel, agent)
     project = _project(env, channel)
     canvas = _canvas(env, channel)
-    task_id, node_id, root_id = _task_node(
+    task_id, _, root_id = _task_node(
         env,
         channel,
         canvas,
@@ -850,7 +855,7 @@ def test_briefing_delivery_injects_copy_without_mutating_db(
         d.hello([(agent, "idle")])
         d.recv_hello_ack()
         drain_revalidation(d)  # 握手复验既有 active 行（#3），先消费再走原帧序
-        deliver = _ack_activation(d, node_id=node_id)
+        deliver = _ack_activation(d)
         briefing = next(
             item for item in deliver["data"]["messages"] if item["id"] == briefing_id
         )
@@ -1037,7 +1042,9 @@ def test_ensure_failures_without_owner_do_not_escalate(
 def test_cleanup_failures_do_not_escalate(
     ctx: tuple[TestClient, Env, Any],
 ) -> None:
-    """#2 负例：cleanup 失败不升级（升级门仅 worktree.ensure）。"""
+    """#2 负例：cleanup 失败不升级（升级门仅 worktree.ensure）。
+
+    DEDAG：done+active 树是待 merge 输入不清理——种子改 closed（终态弃单）触发 cleanup。"""
     client, env, _hub = ctx
     agent = env.add_agent("Coder", "idle")
     channel = env.add_channel(kind="channel", name="build")
@@ -1053,7 +1060,7 @@ def test_cleanup_failures_do_not_escalate(
         owner=agent,
         project_id=project,
         writes_code=True,
-        status="done",
+        status="closed",
         status_changed_at="2020-01-01T00:00:00.000Z",
     )
     _worktree(env, task_id=task_id, project_id=project)
@@ -1188,26 +1195,25 @@ def test_revalidation_plans_only_cover_active_rows_of_live_tasks(
         assert worktree_service.revalidation_plans(c, computer_id=other_rig) == []
 
 
-def test_node_create_persists_delivery_fields_and_requires_bound_project(
+def test_as_task_persists_delivery_fields_and_requires_bound_project(
     ctx: tuple[TestClient, Env, Any],
 ) -> None:
+    """DEDAG（B v1.6）：as_task 扩展字段是交付字段唯一入口——writes_code/project_id 落任务行；
+    writes_code 缺 project / project 未绑本频道 → 422（原画布建节点面已退役）。"""
     client, env, _hub = ctx
     channel = env.add_channel(kind="channel", name="build")
     env.join(channel, env.owner_id)
     project = _project(env, channel)
-    canvas = _canvas(env, channel)
 
     response = client.post(
-        f"/api/canvases/{canvas}/nodes",
+        f"/api/channels/{channel}/messages",
         json={
-            "title": "实现功能",
-            "kind": "agent",
-            "writes_code": True,
-            "project_id": project,
+            "body": "实现功能",
+            "as_task": {"title": "实现功能", "writes_code": True, "project_id": project},
         },
     )
     assert response.status_code == 201
-    task_id = response.json()["node"]["task_id"]
+    task_id = response.json()["task"]["id"]
     with env.engine.connect() as c:
         row = c.execute(
             select(_TASK).where(_TASK.c.id == task_id)
@@ -1216,21 +1222,21 @@ def test_node_create_persists_delivery_fields_and_requires_bound_project(
     assert row["project_id"] == project
 
     invalid = client.post(
-        f"/api/canvases/{canvas}/nodes",
-        json={"title": "缺 Project", "kind": "agent", "writes_code": True},
+        f"/api/channels/{channel}/messages",
+        json={"body": "缺 Project", "as_task": {"writes_code": True}},
     )
     assert invalid.status_code == 422
-    assert invalid.json()["error"]["rule"] == "W2"
+    assert invalid.json()["error"]["code"] == "VALIDATION_FAILED"
 
-    system_invalid = client.post(
-        f"/api/canvases/{canvas}/nodes",
+    other_channel = env.add_channel(kind="channel", name="other")
+    env.join(other_channel, env.owner_id)
+    unbound_project = _project(env, other_channel)
+    unbound = client.post(
+        f"/api/channels/{channel}/messages",
         json={
-            "title": "merge",
-            "kind": "system",
-            "system_action": "merge",
-            "writes_code": True,
-            "project_id": project,
+            "body": "错绑 Project",
+            "as_task": {"writes_code": True, "project_id": unbound_project},
         },
     )
-    assert system_invalid.status_code == 422
-    assert system_invalid.json()["error"]["rule"] == "W2"
+    assert unbound.status_code == 422
+    assert unbound.json()["error"]["code"] == "VALIDATION_FAILED"

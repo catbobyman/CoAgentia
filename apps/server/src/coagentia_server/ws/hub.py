@@ -35,10 +35,11 @@ _WS = models.tbl(models.Workspace)
 _MEMBER = models.tbl(models.Member)
 
 # 幂等键 <实体>:<id>:<单调标记>（契约 C §3）——扫 payload 内的实体 dict 取 id + 时间标记。
+# DEDAG（契约 C v1.1）：proposal/edge/node 随画布编排事件族退役移出。
 _ENTITY_FIELDS = (
     "message", "task", "channel", "member", "computer", "workspace",
-    "draft", "reminder", "deployment", "proposal", "item", "agent",
-    "contract", "worktree", "preview", "edge", "node",
+    "draft", "reminder", "deployment", "item", "agent",
+    "contract", "worktree", "preview",
 )
 _MARKER_FIELDS = ("updated_at", "status_changed_at", "created_at")
 

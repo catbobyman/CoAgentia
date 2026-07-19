@@ -31,7 +31,6 @@ from coagentia_server.files import FileStore
 from coagentia_server.files.gc import run_gc
 from coagentia_server.orchestration.role_templates import upsert_builtin_role_templates
 from coagentia_server.routes import install_routes
-from coagentia_server.templates.service import upsert_builtin_templates
 from coagentia_server.ws import WsHub
 
 GC_INTERVAL_SEC = 60 * 60  # 契约 D §9.2：每小时扫 staging
@@ -96,8 +95,6 @@ def create_app(
         loop = asyncio.get_running_loop()
         ws_task = ws_hub.start(loop)
         daemon_hub.start(loop)  # daemon 网关：bus 订阅 + 周期对账/reminder/心跳 loop
-        # 启动对每 workspace upsert 工程三角 builtin 模板（B §11.1 #3；幂等、空库优雅跳过）。
-        await asyncio.to_thread(upsert_builtin_templates, engine)
         # 启动 upsert 内置 Orchestrator 角色模板（A §4.1；全局字典表、幂等键 key='orchestrator'）。
         await asyncio.to_thread(upsert_builtin_role_templates, engine)
         # 启动时 GC 一次 + 每小时定时（坑 3：任务挂 lifespan，随应用生命周期收放）。

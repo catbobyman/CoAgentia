@@ -1,8 +1,8 @@
 // P5 任务线程面板(420px):任务牌头 §2.2 + 契约折叠卡 §4.6 + 线程回复流(复用 MessageFlow)+ 状态操作条。
 // 由类型化深链 ?thread= 驱动(在 ChannelChatScreen 内消费,非顶层路由)。
 // M2 接真:opsbar 的 claim/unclaim/状态流转打真端点;契约/usage 用 useTaskDetail 真数据(成功靠 WS task.updated 回灌,无乐观更新)。
-import { useMemo, useState } from 'react';
-import { ArrowUp, ChevronDown, CircleAlert, GitBranch, ListTree, Sparkles, X } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowUp, ChevronDown, CircleAlert, GitBranch, Sparkles, X } from 'lucide-react';
 
 import type {
   ContractKind,
@@ -20,22 +20,19 @@ import { TASK_TRANSITIONS, UNCLAIMABLE_STATUSES } from '@coagentia/contracts-ts'
 
 import { STATUS_VAR, STATUS_WORD } from '../lib/uiMaps';
 import { fmtTime } from '../lib/time';
-import { deriveO8Banner } from '../lib/summary';
 import { useProjects, useTaskDetail, useThread } from '../data/queries';
 import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
 import { useUiStore } from '../lib/store';
 import { Avatar } from '../components/Avatar';
-import { DecomposeGuideModals, useDecompose } from '../components/DecomposeGuide';
 import { MessageFlow } from '../components/MessageFlow';
-import { SummaryBanner } from '../components/SummaryBanner';
-import { ForceStartModal } from '../components/ForceStartModal';
 import { Composer } from '../components/Composer';
 import { HeldDraftList } from './HeldDraftCard';
 import { DiffCard } from '../components/DiffCard';
+import { ForceStartModal } from '../components/ForceStartModal';
+import { MergeButton } from '../components/MergeButton';
 import { PreviewButton } from '../components/PreviewPanel';
 import '../components/diff-card.css';
-import '../components/summary.css';
 
 // 契约 kind → 中文短名(§4.6);loop_contract 归 Reminder 上岗流程,不在任务线程契约卡出现。
 const CONTRACT_KIND_LABEL: Record<ContractKind, string> = {
@@ -183,7 +180,6 @@ export function TaskHandoffCard({
 export function ThreadPanel({
   task, rootMessageId, channelId, archived, memberById, memberNames, meName, meId, presenceOf, usage,
   heldDrafts, canResolve, onLocateMessage, locateId, onLocateDone, onClose, onSend,
-  onReviewProposal, onReviewDelta,
 }: {
   task?: TaskPublic;
   rootMessageId: string;
@@ -204,10 +200,6 @@ export function ThreadPanel({
   onLocateDone?: () => void;
   onClose: () => void;
   onSend: (body: string) => void;
-  /** M6b 提案卡「查看草稿/在画布中审阅」→ 切画布 + 激活草稿层（会话屏传入通道）。 */
-  onReviewProposal?: (proposalId: string) => void;
-  /** M6b delta 卡「审查增量」→ 切画布 + 激活 delta 面板。 */
-  onReviewDelta?: (proposalId: string) => void;
 }) {
   const threadQ = useThread(rootMessageId);
   const detailQ = useTaskDetail(task?.id);
@@ -216,17 +208,11 @@ export function ThreadPanel({
   const toast = useToast();
   const [stOpen, setStOpen] = useState(false);
   const [draftOpen, setDraftOpen] = useState(false);
-  // O8 协调阻断恢复弹层（B-M8-2 ①）：force-start 汇总任务同事务 recover（归零轮/stall，清 blocked_at）。
-  const [recoverOpen, setRecoverOpen] = useState(false);
+  const [fsOpen, setFsOpen] = useState(false);
   // T7(HANDOFF_INCOMPLETE)就地提示:缺失字段列表,非通用 toast(交互 §5.4)。
   const [handoffMissing, setHandoffMissing] = useState<string[] | undefined>(undefined);
 
   const items = threadQ.data ?? [];
-  // O8 汇总任务线程横幅（B-M8-2 ①）：从线程系统消息体派生协调态（零新端点）。非汇总线程 → null。
-  const o8Banner = useMemo(
-    () => deriveO8Banner(items, (id) => memberById[id]?.kind === 'human'),
-    [items, memberById],
-  );
   // 任务线程：root 内容由任务牌头呈现，回复流去掉 root；普通消息线程（F5-④ 泛化）：无任务牌，
   // root 直接进流在最上（回复不进主流，PRD §4.1）。
   const replies = task ? items.filter((m) => m.id !== rootMessageId) : items;
@@ -308,17 +294,6 @@ export function ThreadPanel({
     void api.promoteTask(task.id).catch(onWriteError);
   };
 
-  // M6b 拆解入口 T2（拆解设计 §4）：任务卡「拆解」动作——该任务即 source，POST {task_id}。
-  // 202 → toast（提案将出现在本线程）；409 NO_ORCHESTRATOR / 503 DAEMON_OFFLINE 由
-  // useDecompose 分派引导态（DecomposeGuideModals 渲染，交互 §6.8）。
-  const decomposeH = useDecompose(channelId, () => {
-    toast.push('拆解已发起，提案将出现在本线程', { tone: 'success' });
-  });
-  const doDecompose = () => {
-    if (!task) return;
-    void decomposeH.request({ task_id: task.id });
-  };
-
   // "让 @Agent 起草"(契约 D 定向直投唤醒);202 成功 toast,daemon 离线(503)单独文案。
   const doRequestDraft = (agentMemberId: string, kind: ContractKind) => {
     if (!task) return;
@@ -358,6 +333,17 @@ export function ThreadPanel({
             {usageTotal !== undefined && usageTotal > 0 && (
               <span className="tokbadge">{(usageTotal / 1000).toFixed(1)}k tok</span>
             )}
+            {/* DEDAG 催动通道：owner 是 Agent 且未进入交付/终态时可强制启动（直投唤醒,带留痕;
+                原画布 blocked 徽标挂载点随域退役,改挂任务牌头）。 */}
+            {task && owner?.kind === 'agent' && (status === 'todo' || status === 'in_progress') && (
+              <button
+                className="btn btn-ghost fsentry"
+                data-testid="force-start-entry"
+                onClick={() => setFsOpen(true)}
+              >
+                强制启动
+              </button>
+            )}
           </div>
         )}
         {task && (activePlan || activeHandoff) && (
@@ -379,14 +365,6 @@ export function ThreadPanel({
         )}
       </header>
 
-      {/* O8 汇总协调横幅（B-M8-2 ①）：仅汇总任务线程（含 O8 系统消息）显示；阻断态挂 force-start 恢复。 */}
-      {task && o8Banner && (
-        <SummaryBanner
-          banner={o8Banner}
-          onRecover={o8Banner.kind === 'blocked' ? () => setRecoverOpen(true) : undefined}
-        />
-      )}
-
       {task && (task.writes_code || detail?.worktree) && (
         <section className="delivery-card" aria-label="交付工作树">
           <div className="delivery-head">
@@ -407,12 +385,15 @@ export function ThreadPanel({
                 })
               }
             />
+            {/* DEDAG [合并到主干]：done 且 writes_code 才显（组件内门）；202 异步，结果以频道系统
+                消息回报 + worktree.updated 反流（上方 status 芯片与本按钮同源收敛）。 */}
+            <MergeButton task={task} worktree={detail?.worktree} />
           </div>
           <DiffCard taskId={task.id} />
         </section>
       )}
 
-      {/* [2] 契约折叠卡（任务专属：活动 TaskPlan/TaskHandoff + 历史修订 + 起草/升格/拆解入口）——
+      {/* [2] 契约折叠卡（任务专属：活动 TaskPlan/TaskHandoff + 历史修订 + 起草/升格入口）——
           普通消息线程无契约概念，整段不渲染（F5-④ 泛化：任务专属区按 root 是否任务条件渲染）。 */}
       {task && (
       <section className="contract">
@@ -455,16 +436,6 @@ export function ThreadPanel({
               <ArrowUp />升格为 L2
             </button>
           )}
-          <button
-            className="draft-ai"
-            data-testid="task-decompose"
-            style={{ marginLeft: 8 }}
-            onClick={doDecompose}
-            disabled={!task || decomposeH.busy}
-            title="以本任务为 source 发起拆解(@Orchestrator 产出任务 DAG 提案)"
-          >
-            <ListTree />拆解
-          </button>
           {draftOpen && (
             <div className="drop" style={{ top: 32, bottom: 'auto', left: 0, right: 'auto' }}>
               {agents.length === 0 && <div className="it" style={{ color: 'var(--text-muted)' }}>暂无可用 Agent</div>}
@@ -498,8 +469,6 @@ export function ThreadPanel({
         usageByTask={{}}
         locateId={locateId}
         onLocateDone={onLocateDone}
-        onReviewProposal={onReviewProposal}
-        onReviewDelta={onReviewDelta}
         onToast={(msg) => toast.push(msg, { tone: 'success' })}
       />
 
@@ -548,17 +517,7 @@ export function ThreadPanel({
         <Composer channelName="thread" variant="panel" hideAsTask onSend={(body) => onSend(body)} />
       )}
 
-      {/* O8 阻断恢复：force-start 汇总任务 → 同事务 recover（裁决 #8）。复用 override 二次确认弹层。 */}
-      {recoverOpen && task && <ForceStartModal task={task} onClose={() => setRecoverOpen(false)} />}
-
-      {/* M6b 拆解引导链（T2 路径的 409/503 引导；创建完成 toast 引导重新点击「拆解」）。 */}
-      <DecomposeGuideModals
-        guide={decomposeH.guide}
-        channelId={channelId}
-        onClose={() => decomposeH.setGuide(null)}
-        onOrchestratorCreated={() =>
-          toast.push('@Orchestrator 已创建并拉入频道，可重新点击「拆解」', { tone: 'success' })}
-      />
+      {fsOpen && task && <ForceStartModal task={task} onClose={() => setFsOpen(false)} />}
     </aside>
   );
 }
