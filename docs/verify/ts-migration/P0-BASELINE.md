@@ -2,6 +2,7 @@
 
 > 状态：IN PROGRESS
 > 阶段：P0「基线、范围和当前试验裁决」
+> 执行规则来源：[仓库根 plan.md](../../../plan.md)
 > 计划代码基准：`54f1372`
 > P0 产品执行起点：`cee5d98577e81c43264db15ebcb24cdbdcfcf436`
 > P0 工具/证据制品基线：`a7de995590e9d59cae6d4a9df02fdc99627e8c3a`
@@ -11,7 +12,7 @@
 
 ## 1. 基线边界
 
-- owner 已批准仓库根 `plan.md` v1.0 的「全仓纯 TypeScript / `.py=0` / TS 契约唯一权威」终态。
+- owner 已批准仓库根 `plan.md` v1.0 的「全仓纯 TypeScript / `.py=0` / TS 契约单源」终态。
 - P0 不修改产品契约，不删除 Python，不切默认 server/daemon，不改生产数据库。
 - `cee5d98577e81c43264db15ebcb24cdbdcfcf436` 是产品表面的执行起点；P0 工具、workflow 与 authority 首个实现提交为 `27c044dfdf97283f7618a6d454a1499fe8e75fec`，fresh-checkout fingerprint 修复提交为 `a7de995590e9d59cae6d4a9df02fdc99627e8c3a`，冻结 JSON 制品统一绑定后者。
 - 开工前的 7 处 daemon 分发/退役试验已原样冻结于本地分支 `codex/p0-daemon-distribution-spike`（`96492b8`），不计入绿基线；裁决见 [P0-EXPERIMENT-DECISIONS.md](P0-EXPERIMENT-DECISIONS.md)。
@@ -116,6 +117,6 @@ P1 将从本清单冻结 operation 全字段、WS 帧/时序、DDL/触发器/索
 | TS-P0-03 全新 Windows runner 可复现 | 未实跑 | workflow 已落盘；本机 Git + Chromium smoke 通过；仍需 push 授权取得外部 run URL/SHA |
 | TS-P0-04 独立评审无漏入口/命令 | 本地通过 | `docs/reviews/ts-migration/P0-REVIEW.md`；Critical/Major = 0 |
 | TS-P0-05 test-ledger mutants 逐类被拒 | 本地通过 | ledger 45/45 + target 8/8 + tooling 29/29 |
-| TS-P0-06 唯一 active authority | 本地通过 | `PLAN-AUTHORITY.md` + scanner 35/35 mutants |
+| TS-P0-06 `plan.md` authority 单源检查 | 本地通过 | `PLAN-AUTHORITY.md` + scanner 35/35 mutants |
 
 P0 只在六项全部 reviewed/accepted 后改为完成；未授权的外部 CI 跑次是当前唯一明示门，不会被本地绿线替代，也不会提前进入 P1/A/B。
