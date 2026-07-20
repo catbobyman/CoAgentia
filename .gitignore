@@ -12,3 +12,6 @@ build/
 scratchpad/m6_keep.log
 .claude/
 docs/
+scratchpad/tscal/tmp/
+scratchpad/tscal/cal8_out/
+*.pid
