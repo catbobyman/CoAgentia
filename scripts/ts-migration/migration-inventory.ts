@@ -179,8 +179,73 @@ function commandFingerprint(kind: string, detail: string): string {
   return sha256(`${kind}\0${detail}`);
 }
 
-function fileFingerprint(filePath: string): string {
-  return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+function gitBlobContentFingerprints(repoRoot: string, blobIds: readonly string[]): Map<string, string> {
+  const unique = [...new Set(blobIds)].sort(compareText);
+  if (unique.length === 0) return new Map();
+  const result = spawnSync('git', ['-C', repoRoot, 'cat-file', '--batch'], {
+    env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' },
+    input: `${unique.join('\n')}\n`,
+    windowsHide: true,
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (result.error !== undefined) throw result.error;
+  if (result.status !== 0) {
+    const stderr = result.stderr?.toString('utf8').trim() ?? '';
+    throw new Error(`git cat-file --batch 失败 (${String(result.status)}): ${stderr}`);
+  }
+  const output = result.stdout ?? Buffer.alloc(0);
+  const fingerprints = new Map<string, string>();
+  let offset = 0;
+  for (const expectedBlob of unique) {
+    const headerEnd = output.indexOf(0x0a, offset);
+    if (headerEnd < 0) throw new Error(`git cat-file --batch 缺少 header: ${expectedBlob}`);
+    const header = output.subarray(offset, headerEnd).toString('ascii');
+    const match = /^([0-9a-f]{40}(?:[0-9a-f]{24})?) blob (\d+)$/u.exec(header);
+    if (match === null || match[1] !== expectedBlob) {
+      throw new Error(`git cat-file --batch header 不匹配: expected ${expectedBlob}, got ${header}`);
+    }
+    const size = Number.parseInt(match[2]!, 10);
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error(`git blob size 无效: ${header}`);
+    const contentStart = headerEnd + 1;
+    const contentEnd = contentStart + size;
+    if (contentEnd >= output.length || output[contentEnd] !== 0x0a) {
+      throw new Error(`git cat-file --batch payload 截断: ${expectedBlob}`);
+    }
+    fingerprints.set(
+      expectedBlob,
+      createHash('sha256').update(output.subarray(contentStart, contentEnd)).digest('hex'),
+    );
+    offset = contentEnd + 1;
+  }
+  if (offset !== output.length) throw new Error('git cat-file --batch 返回未消费的额外字节');
+  return fingerprints;
+}
+
+function applyFileContentFingerprints(
+  repoRoot: string,
+  files: ReadonlyMap<string, RepositoryFileState>,
+  entries: Map<string, DiscoveredInventoryEntry>,
+): void {
+  const contentEntries = [...entries.values()].filter((entry) => (
+    entry.kind === 'file' || entry.kind === 'ci-workflow' || entry.kind === 'executable-config'
+  ));
+  const trackedBlobs = contentEntries.flatMap((entry) => {
+    const state = files.get(entry.path);
+    return state === undefined || state.file_mode === 'untracked' ? [] : [state.git_blob];
+  });
+  const trackedFingerprints = gitBlobContentFingerprints(repoRoot, trackedBlobs);
+  for (const entry of contentEntries) {
+    const state = files.get(entry.path);
+    if (state === undefined) throw new Error(`fingerprint entry 缺少文件状态: ${entry.id}`);
+    if (state.file_mode === 'untracked') {
+      const absolutePath = path.resolve(repoRoot, ...entry.path.split('/'));
+      entry.fingerprint = createHash('sha256').update(fs.readFileSync(absolutePath)).digest('hex');
+      continue;
+    }
+    const fingerprint = trackedFingerprints.get(state.git_blob);
+    if (fingerprint === undefined) throw new Error(`fingerprint entry 缺少 canonical Git blob: ${entry.id}`);
+    entry.fingerprint = fingerprint;
+  }
 }
 
 export function inventoryScanScopeSha256(entries: readonly DiscoveredInventoryEntry[]): string {
@@ -603,7 +668,6 @@ export function scanMigrationInventory(repo = '.'): InventoryScan {
         path: relativePath,
         reasons,
         migration_residual: isResidualSource,
-        fingerprint: fileFingerprint(absolutePath),
       });
     }
 
@@ -616,7 +680,6 @@ export function scanMigrationInventory(repo = '.'): InventoryScan {
         path: relativePath,
         reasons: [mode === 'untracked' ? 'standard untracked workflow' : 'workflow file'],
         migration_residual: false,
-        fingerprint: fileFingerprint(absolutePath),
       });
       scanWorkflow(absolutePath, relativePath, add);
     }
@@ -630,12 +693,12 @@ export function scanMigrationInventory(repo = '.'): InventoryScan {
         path: relativePath,
         reasons: ['executable build/task configuration'],
         migration_residual: NON_TS_COMMAND_RE.test(text),
-        fingerprint: fileFingerprint(absolutePath),
       });
       if (/\.ya?ml$/iu.test(relativePath)) scanWorkflow(absolutePath, relativePath, add);
     }
   }
 
+  applyFileContentFingerprints(repoRoot, files, entries);
   return {
     repo_root: toPosix(repoRoot),
     generated_from_head: generatedFromHead,

@@ -10,7 +10,8 @@
 | 七项试验 | 已原样冻结到本地 `codex/p0-daemon-distribution-spike` / `96492b8`；main 不含试验红测，逐项裁决见 `docs/verify/ts-migration/P0-EXPERIMENT-DECISIONS.md`。 |
 | clean 测试锚 | pytest collection 981（server 668 / daemon 230 / contracts 71 / mock 12），执行口径 977 passed / 4 skipped；web 266；daemon-ts 270 passed / 4 skipped。P0 完整复跑结果以 `P0-BASELINE.md` 本轮证据为准。 |
 | P0 产物 | `docs/verify/ts-migration/P0-BASELINE.md`、`PLAN-AUTHORITY.md`、不可变 oracle、可演进 ledger、迁移/API/DB 清单、Windows CI 骨架与独立评审。 |
-| 本地守门 | pytest `977/4`、web `266`、daemon-ts `270/4`、typecheck/ruff/gen 双跑/build/frozen install、`verify:p0` 与真 Git+Chromium smoke 均通过；P0 tooling `28/28`，mutants 为 target `8/8`、ledger `45/45`、inventory `18/18`、authority `35/35`，hermetic core `244/4`。 |
+| P0 评审修复 | 独立复核修正 2 个错取 mock 的 operationId、2 个受 CRLF 工作树影响的迁移 SHA，并将 tracked 文件 fingerprint 改为 baseline Git blob payload 权威；真实 LF 源仓→`core.autocrlf=true` CRLF fresh clone 回归同时锁住 scope/tree/document 等价、binary batch 边界及 dirty/untracked fail-closed。 |
+| 本地守门 | pytest `977/4`、web `266`、daemon-ts `270/4`、typecheck/ruff/gen 双跑/build/frozen install、`verify:p0` 与真 Git+Chromium smoke 均通过；P0 tooling `29/29`，mutants 为 target `8/8`、ledger `45/45`、inventory `18/18`、authority `35/35`，hermetic core `244/4`。 |
 | 环境缺口 | 本机 Node SQLite 3.51.2 低于后续 B0 候选门 3.51.3；Playwright `1.61.1` 与对应 Chromium 已安装，本机 Git/browser smoke 通过。SQLite 候选门不冒充通过，且不在 P0 擅自进入 B0。 |
 | 外部动作 | 未授权 push、npm 发布或生产数据写入；CI workflow 可本地落盘，但 `TS-P0-03` 必须等 owner 明示 push 后用全新 Windows runner 实跑。 |
 | 下一步 | 本地 P0 独立 review 已完成且 Critical/Major=`0`；当前唯一未闭环项是 `TS-P0-03` 外部全新 Windows runner 的 run URL/SHA，须等 owner 明示 push 授权。此前保持 P0 `IN PROGRESS`，不得提前切 P1。 |

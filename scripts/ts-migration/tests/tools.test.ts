@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -26,7 +27,9 @@ import {
 } from '../test-ledger.ts';
 import {
   assertInventoryGenerationBaseline,
+  inventoryScanScopeSha256,
   resolveInventoryBaseline,
+  resolveInventoryBaselineTree,
   runInventorySyntheticMutants,
   scanMigrationInventory,
   verifyMigrationInventoryDocument,
@@ -476,6 +479,97 @@ test('inventory scanner includes standard untracked source and workflow before c
   } finally {
     const resolved = path.resolve(tempRoot);
     assert.equal(path.basename(resolved).startsWith('coagentia-inventory-test-'), true);
+    assert.equal(resolved.startsWith(path.resolve(os.tmpdir())), true);
+    fs.rmSync(resolved, { recursive: true, force: true });
+  }
+});
+
+test('inventory tracked fingerprints are stable across LF and CRLF checkouts', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coagentia-inventory-eol-test-'));
+  try {
+    const sourceRoot = path.join(tempRoot, 'source');
+    const cloneRoot = path.join(tempRoot, 'clone');
+    fs.mkdirSync(sourceRoot, { recursive: true });
+    const git = (cwd: string, ...args: string[]): string => execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: 'pipe',
+      windowsHide: true,
+    });
+    git(sourceRoot, 'init');
+    git(sourceRoot, 'config', 'user.name', 'CoAgentia Test');
+    git(sourceRoot, 'config', 'user.email', 'coagentia-test@example.invalid');
+    git(sourceRoot, 'config', 'core.autocrlf', 'false');
+    const workflowDirectory = path.join(sourceRoot, '.github', 'workflows');
+    const sourceWorkflowPath = path.join(workflowDirectory, 'ci.yml');
+    fs.mkdirSync(workflowDirectory, { recursive: true });
+    const workflowLf = 'name: fixture\non: push\njobs:\n  check:\n    runs-on: windows-latest\n    steps:\n      - run: pnpm test\n';
+    const binaryPayload = Buffer.concat([
+      Buffer.from([0x00, 0x0a, 0xff, 0x7f]),
+      Buffer.from('0123456789abcdef0123456789abcdef01234567 blob 4\nDATA\n', 'ascii'),
+    ]);
+    fs.writeFileSync(sourceWorkflowPath, workflowLf, 'utf8');
+    fs.writeFileSync(path.join(sourceRoot, 'legacy.bin'), binaryPayload);
+    git(sourceRoot, 'add', '.github/workflows/ci.yml', 'legacy.bin');
+    git(sourceRoot, 'commit', '-m', 'fixture');
+
+    const lfScan = scanMigrationInventory(sourceRoot);
+    const lfWorkflow = lfScan.entries.find((entry) => entry.id === 'ci-workflow:.github/workflows/ci.yml');
+    const lfBinary = lfScan.entries.find((entry) => entry.id === 'file:legacy.bin');
+    assert.notEqual(lfWorkflow, undefined);
+    assert.equal(lfBinary?.fingerprint, createHash('sha256').update(binaryPayload).digest('hex'));
+    const baseline = resolveInventoryBaseline(sourceRoot, 'HEAD');
+    const baselineTree = resolveInventoryBaselineTree(sourceRoot, baseline);
+    const document = buildP0MigrationInventory(lfScan, baseline);
+    assert.doesNotThrow(() => { assertInventoryGenerationBaseline(lfScan, baseline); });
+
+    execFileSync('git', ['-c', 'core.autocrlf=true', 'clone', '--no-local', sourceRoot, cloneRoot], {
+      cwd: tempRoot,
+      stdio: 'pipe',
+      windowsHide: true,
+    });
+    git(cloneRoot, 'config', 'core.autocrlf', 'true');
+    const cloneWorkflowPath = path.join(cloneRoot, '.github', 'workflows', 'ci.yml');
+    assert.match(fs.readFileSync(cloneWorkflowPath, 'utf8'), /\r\n/u, 'fresh autocrlf checkout must contain CRLF');
+    assert.equal(git(cloneRoot, 'status', '--porcelain=v1').trim(), '', 'fresh autocrlf checkout must remain Git-clean');
+    const crlfScan = scanMigrationInventory(cloneRoot);
+    const crlfWorkflow = crlfScan.entries.find((entry) => entry.id === 'ci-workflow:.github/workflows/ci.yml');
+    const crlfBinary = crlfScan.entries.find((entry) => entry.id === 'file:legacy.bin');
+
+    assert.equal(crlfWorkflow?.git_blob, lfWorkflow?.git_blob);
+    assert.equal(crlfWorkflow?.fingerprint, lfWorkflow?.fingerprint);
+    assert.equal(crlfBinary?.fingerprint, lfBinary?.fingerprint);
+    assert.equal(inventoryScanScopeSha256(crlfScan.entries), inventoryScanScopeSha256(lfScan.entries));
+    assert.equal(resolveInventoryBaselineTree(cloneRoot, baseline), baselineTree);
+    const verification = verifyMigrationInventoryDocument(crlfScan, document, 'json', baseline);
+    assert.equal(verification.ok, true, verification.issues.map((issue) => issue.code).join(', '));
+    assert.doesNotThrow(() => { assertInventoryGenerationBaseline(crlfScan, baseline); });
+
+    const untrackedPath = path.join(cloneRoot, 'untracked.py');
+    fs.writeFileSync(untrackedPath, 'print("fixture")\n', 'utf8');
+    const untrackedLf = scanMigrationInventory(cloneRoot).entries.find((entry) => entry.id === 'file:untracked.py');
+    fs.writeFileSync(untrackedPath, 'print("fixture")\r\n', 'utf8');
+    const untrackedCrlfScan = scanMigrationInventory(cloneRoot);
+    const untrackedCrlf = untrackedCrlfScan.entries.find((entry) => entry.id === 'file:untracked.py');
+    assert.notEqual(untrackedCrlf?.git_blob, untrackedLf?.git_blob);
+    assert.notEqual(untrackedCrlf?.fingerprint, untrackedLf?.fingerprint);
+    assert.throws(
+      () => { assertInventoryGenerationBaseline(untrackedCrlfScan, baseline); },
+      /requires a clean/u,
+    );
+    fs.rmSync(untrackedPath);
+
+    fs.writeFileSync(cloneWorkflowPath, `# dirty-only; scanner semantics remain unchanged\r\n${fs.readFileSync(cloneWorkflowPath, 'utf8')}`, 'utf8');
+    assert.match(git(cloneRoot, 'status', '--porcelain=v1'), /\.github\/workflows\/ci\.yml/u);
+    const dirtyScan = scanMigrationInventory(cloneRoot);
+    assert.equal(inventoryScanScopeSha256(dirtyScan.entries), inventoryScanScopeSha256(crlfScan.entries));
+    assert.throws(
+      () => { assertInventoryGenerationBaseline(dirtyScan, baseline); },
+      /requires a clean/u,
+    );
+  } finally {
+    const resolved = path.resolve(tempRoot);
+    assert.equal(path.basename(resolved).startsWith('coagentia-inventory-eol-test-'), true);
     assert.equal(resolved.startsWith(path.resolve(os.tmpdir())), true);
     fs.rmSync(resolved, { recursive: true, force: true });
   }
