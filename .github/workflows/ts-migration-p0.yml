@@ -1,0 +1,226 @@
+name: TS migration P0 gates
+
+# Active authority: plan.md (P0). Historical TS roadmaps must not drive this workflow.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ts-migration-p0-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MIGRATION_PLAN: plan.md
+  NODE_VERSION: 22.22.1
+  PNPM_VERSION: 10.6.2
+  GIT_FOR_WINDOWS_TAG: v2.55.0.windows.3
+  GIT_FOR_WINDOWS_ASSET_VERSION: 2.55.0.3
+  GIT_FOR_WINDOWS_EXPECTED: 2.55.0.windows.3
+  GIT_FOR_WINDOWS_SHA256: f48e2d2dc74a24454adc6d8fd0ac25bf9c2386f19cfb06202b9465aaad4f9f05
+
+jobs:
+  hermetic-core-windows:
+    name: Hermetic core / Windows x64 / Node only
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Deny undeclared Python, node-gyp, uv, and Git toolchains
+        shell: pwsh
+        run: |
+          $denyRoot = Join-Path $env:RUNNER_TEMP 'coagentia-runtime-deny'
+          New-Item -ItemType Directory -Path $denyRoot -Force | Out-Null
+          $guardSource = @'
+          using System;
+          using System.Diagnostics;
+
+          public static class CoAgentiaHermeticDeny
+          {
+              public static int Main(string[] args)
+              {
+                  Console.Error.WriteLine(
+                      "COAGENTIA_HERMETIC_DENY: " + Process.GetCurrentProcess().ProcessName
+                  );
+                  return 86;
+              }
+          }
+          '@
+          $guardExe = Join-Path $denyRoot 'coagentia-hermetic-deny.exe'
+          Add-Type `
+            -TypeDefinition $guardSource `
+            -Language CSharp `
+            -OutputAssembly $guardExe `
+            -OutputType ConsoleApplication
+          $guardCmd = "@echo off`r`necho COAGENTIA_HERMETIC_DENY: %~n0 1>&2`r`nexit /b 86`r`n"
+          foreach ($name in @('python', 'python3', 'py', 'uv', 'pip', 'pip3', 'node-gyp', 'git')) {
+            Copy-Item -LiteralPath $guardExe -Destination (Join-Path $denyRoot "$name.exe") -Force
+            Set-Content -LiteralPath (Join-Path $denyRoot "$name.cmd") -Value $guardCmd -Encoding ascii -NoNewline
+          }
+          $denyRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "npm_config_python=$(Join-Path $denyRoot 'python.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHON=$(Join-Path $denyRoot 'python.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "npm_config_node_gyp=$(Join-Path $denyRoot 'node-gyp.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Assert native deny shims intercept Node child processes
+        shell: pwsh
+        run: |
+          $denyRoot = (Resolve-Path (Join-Path $env:RUNNER_TEMP 'coagentia-runtime-deny')).Path
+          foreach ($name in @('python', 'python3', 'py', 'uv', 'pip', 'pip3', 'node-gyp', 'git')) {
+            $resolved = (Get-Command $name -ErrorAction Stop).Source
+            $expected = Join-Path $denyRoot "$name.exe"
+            if (-not $resolved.Equals($expected, [System.StringComparison]::OrdinalIgnoreCase)) {
+              throw "$name bypasses native deny executable: $resolved"
+            }
+          }
+          @'
+          const { spawnSync } = require('node:child_process');
+          const denied = ['python', 'python3', 'py', 'uv', 'pip', 'pip3', 'node-gyp', 'git'];
+          for (const command of denied) {
+            const result = spawnSync(command, ['--version'], {
+              encoding: 'utf8',
+              windowsHide: true,
+            });
+            if (result.error !== undefined) throw result.error;
+            if (result.status !== 86) {
+              throw new Error(`${command} deny guard returned ${result.status}; expected 86`);
+            }
+            if (!result.stderr.includes('COAGENTIA_HERMETIC_DENY')) {
+              throw new Error(`${command} did not execute the native deny guard`);
+            }
+          }
+          const node = spawnSync(process.execPath, ['--version'], { encoding: 'utf8', windowsHide: true });
+          if (node.error !== undefined) throw node.error;
+          if (node.status !== 0) throw new Error(`Node runtime was denied: ${node.status}`);
+          '@ | node --input-type=commonjs -
+          if ($LASTEXITCODE -ne 0) { throw 'Node deny-shim assertions failed' }
+      - name: Frozen install (no Python/node-gyp fallback)
+        run: pnpm install --frozen-lockfile
+      - name: TypeScript generation is byte-deterministic
+        shell: pwsh
+        run: |
+          pnpm gen:ts
+          $generated = Join-Path $env:GITHUB_WORKSPACE 'packages/contracts-ts/src/generated'
+          $first = Get-ChildItem -LiteralPath $generated -File | Sort-Object FullName | ForEach-Object {
+            "$($_.Name):$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash)"
+          }
+          pnpm gen:ts
+          $second = Get-ChildItem -LiteralPath $generated -File | Sort-Object FullName | ForEach-Object {
+            "$($_.Name):$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash)"
+          }
+          if (Compare-Object -ReferenceObject $first -DifferenceObject $second) {
+            throw 'TypeScript generation changed between consecutive runs'
+          }
+      - name: P0 tooling typecheck (no repository or legacy runtime access)
+        run: pnpm p0:tools:typecheck
+      - name: TypeScript package typechecks
+        run: |
+          pnpm --filter @coagentia/contracts-ts --fail-if-no-match typecheck
+          pnpm --filter @coagentia/web --fail-if-no-match typecheck
+          pnpm --filter @coagentia/daemon-ts --fail-if-no-match typecheck
+      - name: TypeScript tests and build
+        run: |
+          pnpm --filter @coagentia/web --fail-if-no-match test
+          pnpm p0:daemon-tests:core
+          pnpm --filter @coagentia/web --fail-if-no-match build
+
+  git-browser-integration-windows:
+    name: Git + Chromium integration / Windows x64
+    runs-on: windows-latest
+    needs: hermetic-core-windows
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install checksum-pinned MinGit
+        shell: pwsh
+        run: |
+          $asset = "MinGit-$env:GIT_FOR_WINDOWS_ASSET_VERSION-64-bit.zip"
+          $archive = Join-Path $env:RUNNER_TEMP $asset
+          $install = Join-Path $env:RUNNER_TEMP 'coagentia-mingit'
+          $url = "https://github.com/git-for-windows/git/releases/download/$env:GIT_FOR_WINDOWS_TAG/$asset"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $env:GIT_FOR_WINDOWS_SHA256) { throw "MinGit SHA-256 mismatch: $actual" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $install -Force
+          $version = & (Join-Path $install 'cmd/git.exe') --version
+          if ($version -ne "git version $env:GIT_FOR_WINDOWS_EXPECTED") { throw "Unexpected Git: $version" }
+          (Join-Path $install 'cmd') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: P0 repository-bound machine gates
+        run: pnpm verify:p0:git
+      - name: Install the lockfile-pinned Chromium build
+        run: pnpm exec playwright install chromium
+      - name: Reproduce Git and browser smoke
+        run: pnpm p0:integration:smoke
+
+  legacy-oracle-windows:
+    name: Legacy Python oracle / Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install checksum-pinned MinGit
+        shell: pwsh
+        run: |
+          $asset = "MinGit-$env:GIT_FOR_WINDOWS_ASSET_VERSION-64-bit.zip"
+          $archive = Join-Path $env:RUNNER_TEMP $asset
+          $install = Join-Path $env:RUNNER_TEMP 'coagentia-mingit'
+          $url = "https://github.com/git-for-windows/git/releases/download/$env:GIT_FOR_WINDOWS_TAG/$asset"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $env:GIT_FOR_WINDOWS_SHA256) { throw "MinGit SHA-256 mismatch: $actual" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $install -Force
+          $version = & (Join-Path $install 'cmd/git.exe') --version
+          if ($version -ne "git version $env:GIT_FOR_WINDOWS_EXPECTED") { throw "Unexpected Git: $version" }
+          (Join-Path $install 'cmd') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.0'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: '0.9.0'
+          enable-cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --frozen
+      - name: Legacy and TypeScript regression gates
+        run: |
+          uv run pytest -q
+          pnpm --filter @coagentia/web --fail-if-no-match test
+          pnpm --filter @coagentia/daemon-ts --fail-if-no-match test
+          pnpm typecheck
+          uv run ruff check .
+      - name: Generation is deterministic
+        run: |
+          pnpm gen
+          git diff --exit-code
+      - run: pnpm --filter @coagentia/web --fail-if-no-match build
+      - run: pnpm verify:p0

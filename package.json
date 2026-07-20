@@ -2,12 +2,40 @@
   "name": "coagentia-workspace",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "scripts": {
     "gen:schemas": "uv run python scripts/export_schemas.py",
     "gen:ts": "pnpm --filter @coagentia/contracts-ts gen",
     "gen": "pnpm gen:schemas && pnpm gen:ts",
     "typecheck": "pnpm -r typecheck && uv run pyright",
-    "typecheck:py": "uv run pyright"
+    "typecheck:py": "uv run pyright",
+    "p0:tools:typecheck": "tsc -p scripts/ts-migration/tsconfig.json",
+    "p0:tools:test": "node --test scripts/ts-migration/tests/tools.test.ts scripts/ts-migration/tests/hermetic-tests.test.ts",
+    "p0:daemon-tests:verify": "node scripts/ts-migration/hermetic-tests.ts verify --repo . --classification scripts/ts-migration/daemon-test-classification.json",
+    "p0:daemon-tests:core": "node scripts/ts-migration/hermetic-tests.ts run-core --repo . --classification scripts/ts-migration/daemon-test-classification.json",
+    "p0:integration:smoke": "node scripts/ts-migration/integration-smoke.ts",
+    "p0:oracle:build": "node scripts/ts-migration/cli.ts collect-pytest-oracle --repo . --output docs/verify/ts-migration/oracle-collection.json --baseline-sha HEAD",
+    "p0:ledger:build": "node scripts/ts-migration/cli.ts build-test-ledger --oracle docs/verify/ts-migration/oracle-collection.json --output docs/verify/ts-migration/test-ledger.json --owner migration-phase-owner",
+    "p0:targets:build": "node scripts/ts-migration/cli.ts collect-ts-test-targets --repo . --output docs/verify/ts-migration/ts-test-collection.json --baseline-sha HEAD",
+    "p0:inventory:build": "node scripts/ts-migration/cli.ts build-migration-inventory --repo . --baseline-sha HEAD --output docs/verify/ts-migration/migration-inventory.json",
+    "p0:inventory:list": "node scripts/ts-migration/cli.ts verify-migration-inventory --repo . --baseline-sha HEAD --list",
+    "verify:oracle-collection": "node scripts/ts-migration/cli.ts verify-oracle-collection --repo . --oracle docs/verify/ts-migration/oracle-collection.json",
+    "verify:test-ledger": "node scripts/ts-migration/cli.ts verify-test-ledger --repo . --oracle docs/verify/ts-migration/oracle-collection.json --ledger docs/verify/ts-migration/test-ledger.json --targets docs/verify/ts-migration/ts-test-collection.json",
+    "verify:test-ledger:baseline": "pnpm verify:test-ledger -- --baseline",
+    "verify:test-ledger:mutants": "node scripts/ts-migration/cli.ts verify-test-ledger --self-test",
+    "verify:ts-test-targets": "node scripts/ts-migration/cli.ts verify-ts-test-targets --repo . --targets docs/verify/ts-migration/ts-test-collection.json",
+    "verify:ts-test-targets:mutants": "node scripts/ts-migration/cli.ts verify-ts-test-targets --self-test",
+    "verify:migration-inventory": "node scripts/ts-migration/cli.ts verify-migration-inventory --repo . --inventory docs/verify/ts-migration/migration-inventory.json",
+    "verify:migration-inventory:mutants": "node scripts/ts-migration/cli.ts verify-migration-inventory --self-test",
+    "verify:plan-authority": "node scripts/ts-migration/cli.ts verify-plan-authority --repo .",
+    "verify:plan-authority:mutants": "node scripts/ts-migration/cli.ts verify-plan-authority --self-test",
+    "verify:p0:git": "pnpm p0:tools:typecheck && pnpm p0:tools:test && pnpm p0:daemon-tests:verify && pnpm verify:ts-test-targets && pnpm verify:ts-test-targets:mutants && pnpm verify:test-ledger:baseline && pnpm verify:test-ledger:mutants && pnpm verify:migration-inventory && pnpm verify:migration-inventory:mutants && pnpm verify:plan-authority && pnpm verify:plan-authority:mutants",
+    "verify:p0": "pnpm verify:oracle-collection && pnpm verify:p0:git"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "playwright": "1.61.1",
+    "typescript": "5.9.3"
   },
   "packageManager": "pnpm@10.6.2"
 }

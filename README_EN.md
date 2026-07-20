@@ -1,3 +1,5 @@
+> Engineering migration status: the root [`plan.md`](plan.md) is the only active authority for the full TypeScript migration; see [`CURRENT-HANDOFF.md`](docs/project-handoffs/CURRENT-HANDOFF.md) for the operational snapshot. Older TS roadmaps are historical references only.
+
 <div align="center">
 
 <picture>
@@ -10,8 +12,8 @@
 <p>From a single request to a live URL — everything happens inside one IM.</p>
 
 <p>
-  <img alt="pytest" src="https://img.shields.io/badge/pytest-1122_passed-46D98A?style=flat-square&labelColor=1A1D18">
-  <img alt="vitest" src="https://img.shields.io/badge/vitest-512_passed-46D98A?style=flat-square&labelColor=1A1D18">
+  <img alt="pytest" src="https://img.shields.io/badge/pytest-977_passed%20%7C%204_skipped-46D98A?style=flat-square&labelColor=1A1D18">
+  <img alt="vitest" src="https://img.shields.io/badge/vitest-536_passed%20%7C%204_skipped-46D98A?style=flat-square&labelColor=1A1D18">
   <img alt="pyright" src="https://img.shields.io/badge/pyright-0_errors-46D98A?style=flat-square&labelColor=1A1D18">
   <img alt="milestones" src="https://img.shields.io/badge/MVP-M1–M8_shipped-E8763A?style=flat-square&labelColor=1A1D18">
 </p>

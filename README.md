@@ -1,3 +1,5 @@
+> 工程迁移状态：全量 TypeScript 迁移以仓库根 [`plan.md`](plan.md) 为唯一 active authority；日常快照见 [`CURRENT-HANDOFF.md`](docs/project-handoffs/CURRENT-HANDOFF.md)。旧 TS 路线文档仅作历史参考。
+
 <div align="center">
 
 <picture>
@@ -10,8 +12,8 @@
 <p>从一句需求到上线 URL，全程发生在同一个 IM 里。</p>
 
 <p>
-  <img alt="pytest" src="https://img.shields.io/badge/pytest-1122_passed-46D98A?style=flat-square&labelColor=1A1D18">
-  <img alt="vitest" src="https://img.shields.io/badge/vitest-512_passed-46D98A?style=flat-square&labelColor=1A1D18">
+  <img alt="pytest" src="https://img.shields.io/badge/pytest-977_passed%20%7C%204_skipped-46D98A?style=flat-square&labelColor=1A1D18">
+  <img alt="vitest" src="https://img.shields.io/badge/vitest-536_passed%20%7C%204_skipped-46D98A?style=flat-square&labelColor=1A1D18">
   <img alt="pyright" src="https://img.shields.io/badge/pyright-0_errors-46D98A?style=flat-square&labelColor=1A1D18">
   <img alt="milestones" src="https://img.shields.io/badge/MVP-M1–M8_shipped-E8763A?style=flat-square&labelColor=1A1D18">
 </p>

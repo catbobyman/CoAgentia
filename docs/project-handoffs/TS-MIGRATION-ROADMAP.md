@@ -1,7 +1,10 @@
 # TS 迁移总路线与当前状态（TS-MIGRATION-ROADMAP）
 
+> **执行状态：SUPERSEDED / HISTORICAL**
+> 2026-07-20 起已由仓库根 [`plan.md`](../../plan.md) v1.0 取代执行权威；本文仅保留当时事实与决策历史。
+
 v1.0 · 2026-07-19 · owner 指示「把所有需要 TS 迁移批的写成文档，并记录当前状态」落笔。
-上游决策 = DEDAG 裁决 #5「终态架构已定 TS，daemon 先行」；本文档 = **剩余 TS 化工作的唯一路线图**，各批开工时以此为起点另立任务书。
+历史定位：上游决策 = DEDAG 裁决 #5「终态架构已定 TS，daemon 先行」；本文当时曾作为剩余路线图，现已失效，后续不得以本文为起点开工。
 daemon 先行批的裁决与执行记录见 [TS-MIGRATION-HANDOFF.md](TS-MIGRATION-HANDOFF.md)（含 §8 CR-TS 评审修复批）；日常状态以 [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) 为准。
 
 ---

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "kind": "coagentia-daemon-test-classification",
+  "core": [
+    "apps/daemon-ts/tests/adapter_codex.test.ts",
+    "apps/daemon-ts/tests/adapter_encoding_cmdline.test.ts",
+    "apps/daemon-ts/tests/adapter_frames.test.ts",
+    "apps/daemon-ts/tests/adapter_lifecycle.test.ts",
+    "apps/daemon-ts/tests/adapter_mcp.test.ts",
+    "apps/daemon-ts/tests/adapter_smoke.test.ts",
+    "apps/daemon-ts/tests/buffer.test.ts",
+    "apps/daemon-ts/tests/checks.test.ts",
+    "apps/daemon-ts/tests/deploy.test.ts",
+    "apps/daemon-ts/tests/idempotency.test.ts",
+    "apps/daemon-ts/tests/import_discipline.test.ts",
+    "apps/daemon-ts/tests/logconfig.test.ts",
+    "apps/daemon-ts/tests/paths.test.ts",
+    "apps/daemon-ts/tests/preview.test.ts",
+    "apps/daemon-ts/tests/probe.test.ts",
+    "apps/daemon-ts/tests/protocol.test.ts",
+    "apps/daemon-ts/tests/pswt_fs_scan.test.ts",
+    "apps/daemon-ts/tests/reconnect.test.ts",
+    "apps/daemon-ts/tests/transport.test.ts",
+    "apps/daemon-ts/tests/util.test.ts"
+  ],
+  "integration": [
+    "apps/daemon-ts/tests/git_diff.test.ts",
+    "apps/daemon-ts/tests/git_worktrees.test.ts",
+    "apps/daemon-ts/tests/worktree_handlers.test.ts"
+  ]
+}

@@ -1,3 +1,5 @@
+> エンジニアリング移行状況：全面 TypeScript 移行の唯一の active authority はルートの [`plan.md`](plan.md) です。運用スナップショットは [`CURRENT-HANDOFF.md`](docs/project-handoffs/CURRENT-HANDOFF.md) を参照してください。旧 TS ロードマップは履歴資料です。
+
 <div align="center">
 
 <picture>
@@ -10,8 +12,8 @@
 <p>ひと言のリクエストから公開 URL まで、すべてが同じ IM の中で完結します。</p>
 
 <p>
-  <img alt="pytest" src="https://img.shields.io/badge/pytest-1122_passed-46D98A?style=flat-square&labelColor=1A1D18">
-  <img alt="vitest" src="https://img.shields.io/badge/vitest-512_passed-46D98A?style=flat-square&labelColor=1A1D18">
+  <img alt="pytest" src="https://img.shields.io/badge/pytest-977_passed%20%7C%204_skipped-46D98A?style=flat-square&labelColor=1A1D18">
+  <img alt="vitest" src="https://img.shields.io/badge/vitest-536_passed%20%7C%204_skipped-46D98A?style=flat-square&labelColor=1A1D18">
   <img alt="pyright" src="https://img.shields.io/badge/pyright-0_errors-46D98A?style=flat-square&labelColor=1A1D18">
   <img alt="milestones" src="https://img.shields.io/badge/MVP-M1–M8_shipped-E8763A?style=flat-square&labelColor=1A1D18">
 </p>
