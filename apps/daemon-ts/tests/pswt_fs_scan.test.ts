@@ -148,12 +148,17 @@ describe('fs.tree 子层列目录', () => {
 // ---------------------------------------------------------------- fs.tree：单条目扫描
 
 /** 伪 Dirent：isDirectory 可被指定抛错以覆盖 denied 逐条降级（py _FakeEntry 对等）。 */
+// erasableSyntaxOnly：构造器参数属性是非可擦除语法 → 显式字段 + 赋值。
 class FakeEntry {
-  constructor(
-    readonly name: string,
-    readonly parentPath: string,
-    private readonly opts: { raiseIsDir?: boolean; isDir?: boolean } = {},
-  ) {}
+  readonly name: string;
+  readonly parentPath: string;
+  private readonly opts: { raiseIsDir?: boolean; isDir?: boolean };
+
+  constructor(name: string, parentPath: string, opts: { raiseIsDir?: boolean; isDir?: boolean } = {}) {
+    this.name = name;
+    this.parentPath = parentPath;
+    this.opts = opts;
+  }
 
   isDirectory(): boolean {
     if (this.opts.raiseIsDir) throw new Error('拒绝访问');

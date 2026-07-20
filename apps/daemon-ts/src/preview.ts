@@ -235,17 +235,14 @@ export class PreviewRunner {
     pv.proc = proc;
     this.previews.set(sessionId, pv);
     // 对等 py _finish_monitor（add_done_callback 取走异常）：catch 收敛为已决 Promise。
-    pv.monitor = this.runMonitor(pv, reportCb).catch(() => {});
+    pv.monitor = this.monitor(pv, reportCb).catch(() => {});
     return [true, null];
   }
 
   // ------------------------------------------------------------ 后台 monitor（健康 vs 存活竞速）
 
-  private async runMonitor(pv: _Preview, reportCb: PreviewStatusCallback): Promise<void> {
-    // py _run_monitor finally 处 cancel reader task；TS 的 'data' 监听随流关闭自然终结，无需收尾。
-    await this.monitor(pv, reportCb);
-  }
-
+  // py _run_monitor 的 finally 处 cancel reader task 在 TS 无对应义务（'data' 监听随流关闭
+  // 自然终结）——wrapper 层无事可做，直接以 monitor 为后台任务体。
   private async monitor(pv: _Preview, reportCb: PreviewStatusCallback): Promise<void> {
     const reachable = await this.awaitReady(pv);
     if (pv.stopping) {

@@ -88,8 +88,11 @@ export class RecordingTransport {
 
 /** RecordingTransport + 自动应答 hello→hello_ack、ping→pong（免真 server 的握手驱动）。 */
 export class AutoAckTransport extends RecordingTransport {
-  constructor(readonly heartbeatSec: number = 25) {
+  readonly heartbeatSec: number; // 体例规则 1：禁参数属性（erasable-only）——显式声明 + 构造器赋值
+
+  constructor(heartbeatSec: number = 25) {
     super();
+    this.heartbeatSec = heartbeatSec;
   }
 
   override async send(frame: JsonObject): Promise<void> {

@@ -1,8 +1,14 @@
 /** transport 纯函数 + 内存传输桩自检（WS 真连接归实机 verify；契约 D §2）。 */
 
-import { describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
-import { TransportClosed, serverUrlToWs } from '../src/transport.ts';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { resetFileLogging, setupFileLogging } from '../src/logconfig.ts';
+import { DataPaths } from '../src/paths.ts';
+import { TransportClosed, WebSocketTransport, serverUrlToWs } from '../src/transport.ts';
 import { RecordingTransport, AutoAckTransport } from './helpers.ts';
 
 describe('serverUrlToWs', () => {
@@ -41,5 +47,38 @@ describe('RecordingTransport（测试底座自检）', () => {
     expect(ack.data.heartbeat_sec).toBe(7);
     await t.send({ kind: 'ping' });
     expect((await t.recv())['kind']).toBe('pong');
+  });
+});
+
+describe('WebSocketTransport 非 JSON 帧丢弃（CR 修复批 FIX 9）', () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coagentia-transport-'));
+    resetFileLogging();
+  });
+
+  afterEach(() => {
+    resetFileLogging();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('丢弃留痕 warn 落盘、连接不撕（后续帧照常投递）', async () => {
+    const paths = new DataPaths(tmp);
+    setupFileLogging(paths, 'DEBUG');
+    // 最小 ws 桩：捕获监听器直接注入 message 事件（无真 socket；构造器只用 addEventListener 面）。
+    type MessageListener = (ev: { data: unknown }) => void;
+    const listeners = new Map<string, MessageListener>();
+    const fakeWs = {
+      addEventListener: (type: string, cb: MessageListener) => {
+        listeners.set(type, cb);
+      },
+    };
+    const t = new WebSocketTransport(fakeWs as unknown as WebSocket);
+    listeners.get('message')!({ data: 'not-json-frame-原文' });
+    listeners.get('message')!({ data: '{"kind":"pong"}' });
+    expect(await t.recv()).toEqual({ kind: 'pong' }); // 丢弃不撕语义保持：后续帧照常投递
+    const content = fs.readFileSync(paths.logPath, 'utf-8');
+    expect(content).toContain('drop non-JSON frame: not-json-frame-原文'); // 丢弃留痕（截 120 字符）
   });
 });

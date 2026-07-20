@@ -82,3 +82,12 @@
 - **实机抓真缺陷**：构造器参数属性 6 文件 12 处——tsc/vitest 全放过、node strip-only 直跑即崩（「模拟件掩盖面」家族新例；全库批改 + `scratchpad/tscal/check_erasable.mjs` 常驻检出 + mcp 真 cli spawn 测试例守门）。探针自身教训：`uv run` 包装进程 terminate 杀不到 uvicorn 孙（cal3 孤儿形态实锤，收尾改杀树）；server 在线枚举值=`connected`、部署终态=`success`（谓词勿凭直觉）。
 - **真 CLI 冒烟首跑 2 例超时根因 = 环境**：机器级 OAuth 凭证被 agent 侧轮换腐坏（py 同挂）；已手工修复并登记挂账 TS-④/⑤。
 - **新挂账**：TS-①~⑤ 登记 CURRENT-HANDOFF §5。**接续**：py daemon 退役时机（owner 拍板）→ server/web TS 化另立项（冻结七表 drop 归彼批清算）。
+
+## §8 CR-TS 评审修复批（/code-review high，2026-07-19 当日追加收口）
+
+- **编排**：9 路 finder（双逐行/py 对等审计/跨文件追踪/复用/简化/效率/高度/规约）45 候选 → 去重 → 6 组对抗核实（1-vote recall 偏向，含实机复现）→ **1 critical + 10 major + 12 minor CONFIRMED / 1 REFUTED** → 3 路修复代理（文件集互斥）+ 23 回归测试 → 六门复跑全绿（daemon-ts vitest **247→270**/4）。
+- **critical**：claude NodeStdin 零 `error` 监听（子进程死后投递 → 异步 EPIPE = uncaughtException 崩整 daemon；codex 侧有守 claude 漏——同批双适配器不同代理产出的对称性缺口）。修=补监听 + drain 三事件竞速；EPIPE 回归测试用真子进程（不修必崩 vitest worker）。
+- **本机现行缺陷两条（实机复现修复再实证）**：which/PATHEXT 裸名优先 → `resolveCodexBin()` 解析到 npm sh shim（spawn 必 ENOENT）、`probeCodex()` 返回 `installed=false`（12/12 verify 未断言 codex 检测面故漏网）。修后实测 `codex.CMD` / `installed=true, version=0.144.0`。**教训：verify 断言面=verify 覆盖面，没断言的字段等于没验。**
+- **对等缺口模式**：py 靠 pydantic fail-closed 的面（deliver id 必填、hello_ack heartbeat_sec），TS 裸 cast 直通 → 毒化游标/NaN 洪泛。**直译 py 时「验证由 pydantic 承担」的隐形义务必须显式补齐。**
+- **机制级守门补上**：tsconfig `erasableSyntaxOnly`（参数属性族从「逐点修+外置检出器」升级为编译器拦截；tests 残留 4 处实证原状态无守门）+ import 纪律锚封三逃逸面（双引号/无扩展名副作用导入/动态导入）。
+- **修复清单/裁决详情**：CURRENT-HANDOFF 更新行（CR-TS 评审修复批）；共享件结构性重复（与 py 同构散点，非缺陷）扩记挂账 TS-⑥ 勿顺手重构。

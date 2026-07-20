@@ -817,7 +817,11 @@ export async function serveStdio(
     }
   };
 
-  let buf: Buffer = Buffer.alloc(0);
+  // 累积法 = parts[] 段引用聚合（同 codex LineReader 修复族）：逐 chunk 只存引用、按完行才
+  // concat 一次——原「每 chunk 与未终止前缀整段 Buffer.concat」在长行/多 chunk 下是 O(n²) 拷贝。
+  // 不变量：parts 内不含 0x0a（换行只可能出现在新到 chunk 中）。
+  let parts: Buffer[] = [];
+  let partBytes = 0;
   let skipping = false; // 超限行已回 parse error，弃字节直到下一换行
   for await (const chunkRaw of rin) {
     let chunk = typeof chunkRaw === 'string' ? Buffer.from(chunkRaw, 'utf-8') : chunkRaw;
@@ -829,21 +833,35 @@ export async function serveStdio(
       chunk = chunk.subarray(nl + 1);
       skipping = false;
     }
-    buf = buf.length === 0 ? chunk : Buffer.concat([buf, chunk]);
     let idx: number;
-    while ((idx = buf.indexOf(0x0a)) !== -1) {
-      const lineBuf = buf.subarray(0, idx);
-      buf = buf.subarray(idx + 1);
+    while ((idx = chunk.indexOf(0x0a)) !== -1) {
+      const head = chunk.subarray(0, idx);
+      chunk = chunk.subarray(idx + 1);
+      let lineBuf: Buffer;
+      if (parts.length === 0) {
+        lineBuf = head;
+      } else {
+        parts.push(head);
+        lineBuf = Buffer.concat(parts); // 完行才 concat 恰一次
+        parts = [];
+        partBytes = 0;
+      }
       await handleLine(lineBuf);
     }
-    if (buf.length > MAX_LINE_BYTES) {
+    if (chunk.length > 0) {
+      parts.push(chunk);
+      partBytes += chunk.length;
+    }
+    if (partBytes > MAX_LINE_BYTES) {
       await reply(_err(null, -32700, `parse error: line exceeds ${MAX_LINE_BYTES} bytes`));
-      buf = Buffer.alloc(0);
+      parts = [];
+      partBytes = 0;
       skipping = true;
     }
   }
-  if (!skipping && buf.length > 0) {
-    await handleLine(buf); // py `for line in rin` 对末尾无换行行同样产出
+  if (!skipping && partBytes > 0) {
+    // py `for line in rin` 对末尾无换行行同样产出
+    await handleLine(parts.length === 1 ? parts[0]! : Buffer.concat(parts));
   }
 }
 

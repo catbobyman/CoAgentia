@@ -11,6 +11,8 @@
  *   sessionId/status/port/logTail 四字段，桩覆盖该面）。
  * - py client._flush_usage/_resolve_report_ack 私有面直调；TS 同名 flushUsage/resolveReportAck
  *   为 private 且无公开驱动面 → (client as ...) 结构断言直调（任务书授权的最后手段）。
+ * - TS 增补（CR 修复批，无 py 对应用例）：停机/断连收尾 FIX 1/2/3/4/5 + homeFile 码点截断
+ *   FIX 7——py 侧靠 task.cancel/pydantic/异常传播天然覆盖，TS 侧为显式修复面故补显式用例。
  */
 
 import * as fs from 'node:fs';
@@ -19,10 +21,10 @@ import * as path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { DaemonAgentState, PreviewStatusData, TokenUsageEventIn } from '@coagentia/contracts-ts';
+import type { DaemonAgentState, DiagnosticEventIn, PreviewStatusData, TokenUsageEventIn } from '@coagentia/contracts-ts';
 
 import { sleep, withTimeout } from '../src/aio.ts';
-import { BACKOFF_CAP, nextBackoff } from '../src/client.ts';
+import { BACKOFF_CAP, nextBackoff, truncateByCodePoints } from '../src/client.ts';
 import type { JsonObject } from '../src/transport.ts';
 import { newUlid } from '../src/util.ts';
 import {
@@ -243,5 +245,167 @@ describe('reconnect（契约 D §2/§4.1/§7）', () => {
     await withTimeout(flush, 2000);
     expect(client.buffer.counts().usage).toBe(0);
     expect(((rep2['data'] as JsonObject)['events'] as Array<{ id: string }>).map((e) => e.id)).toEqual(ids);
+  });
+});
+
+describe('停机与断连收尾（CR 修复批 FIX 1/2/3/4/5）', () => {
+  it('stop() 打断退避等待：长退避期间停机即刻退出，不烧满退避窗（FIX 1a）', async () => {
+    let calls = 0;
+
+    const connectFn = async (): Promise<never> => {
+      calls += 1;
+      throw new Error('connection refused');
+    };
+
+    const { client } = makeClient(tmp, { connectFn, backoffStart: 30, backoffCap: 30 }); // 30s 档退避
+    const task = client.run();
+    task.catch(() => {});
+    await until(() => calls >= 1); // 已进入退避等待
+    const t0 = Date.now();
+    client.stop();
+    await withTimeout(task, 2000); // 修前需烧满 30s 退避；修后 stopEvent 即刻打断
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+
+  it('stop() 落在 connect 在飞窗口：连上即弃不进 serve（FIX 1b：SIGINT 不丢）', async () => {
+    const tr = new AutoAckTransport();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let inFlight = false;
+
+    const connectFn = async (): Promise<AutoAckTransport> => {
+      inFlight = true;
+      await gate;
+      return tr;
+    };
+
+    const { client } = makeClient(tmp, { connectFn });
+    const task = client.run();
+    task.catch(() => {});
+    await until(() => inFlight); // connectFn 在飞
+    client.stop();
+    release(); // 停机之后连接才建立
+    await withTimeout(task, 2000); // 修前 serve 握手后无限服务（SIGINT 全丢）；修后即刻收尾
+    expect(client.connected.isSet()).toBe(false);
+    expect(tr.reports('hello')).toHaveLength(0); // 未握手 = 未进 serve
+    expect(tr.closed).toBe(true); // 连上即弃关闭
+  });
+
+  it('flush 循环中途抛错不成为 unhandledRejection、连接维持（FIX 2）', async () => {
+    const tr = new AutoAckTransport();
+    const { client } = makeClient(tmp, { connectFn: async () => tr });
+    const task = client.run();
+    task.catch(() => {});
+    try {
+      await withTimeout(client.connected.wait(), 5000);
+      // 桩缓冲读面抛非 TransportClosed 错（EPERM 位）→ flushLoop 重抛：修前该 rejection 在
+      // serve finally 的 allSettled 之前无人接手 = unhandledRejection（vitest 记为用例错误，
+      // 生产=daemon 死）；修后创建即挂的 handler 记 warn 吞掉，仅冲刷降级。
+      const faces = client.buffer as unknown as { hasUsage: () => boolean; peekUsage: () => never };
+      faces.hasUsage = () => true;
+      faces.peekUsage = () => {
+        throw new Error('EPERM: operation not permitted');
+      };
+      client.onUsage(usageEvent('01K5AGENT0000000000000000A') as unknown as TokenUsageEventIn);
+      await sleep(50); // 留窗让 flushLoop 抛错并被兜底 handler 消化
+      tr.feed({ v: 1, kind: 'ping' }); // reader 仍活：server ping 照常回 pong = 连接未撕
+      await until(() => tr.sent.some((f) => f['kind'] === 'pong'));
+    } finally {
+      client.stop();
+      await tr.close();
+      await withTimeout(task, 5000);
+    }
+  });
+
+  it('断连即清账在飞 ack 等待：重连不烧 ackTimeout 满窗（FIX 3）', async () => {
+    const transports: AutoAckTransport[] = [];
+
+    const connectFn = async (): Promise<AutoAckTransport> => {
+      const t = new AutoAckTransport();
+      transports.push(t);
+      return t;
+    };
+
+    // ackTimeout 取默认 10s：修前断连后 flush 卡 reportAwaited withTimeout 满窗才让位重连。
+    const { client } = makeClient(tmp, { connectFn, backoffStart: 0.01, backoffCap: 0.02 });
+    const task = client.run();
+    task.catch(() => {});
+    try {
+      await withTimeout(client.connected.wait(), 5000);
+      const t1 = transports[transports.length - 1]!;
+      // usage.batch 无人应答（AutoAck 只答 hello/ping）→ flush 挂在等 ack。
+      client.onUsage(usageEvent('01K5AGENT0000000000000000A') as unknown as TokenUsageEventIn);
+      await until(() => t1.reports('usage.batch').length > 0);
+      const t0 = Date.now();
+      await t1.close(); // 断连
+      await until(() => transports.length >= 2 && client.connected.isSet(), 8000);
+      expect(Date.now() - t0).toBeLessThan(5000); // 修后毫秒级重连；修前 ≥10s（ackTimeout 满窗）
+    } finally {
+      client.stop();
+      if (transports.length > 0) await transports[transports.length - 1]!.close();
+      await withTimeout(task, 5000);
+    }
+  });
+
+  it('hello_ack heartbeat_sec 非法（0/负/NaN）→ serve 抛错走退避重连，不进 PING 风暴（FIX 4）', async () => {
+    for (const bad of [0, -5, Number.NaN]) {
+      const tr = new AutoAckTransport(bad);
+      const { client } = makeClient(tmp, {});
+      await expect(client.serve(tr)).rejects.toThrow(/heartbeat_sec/);
+      expect(client.connected.isSet()).toBe(false); // 未连接成功 → run 侧走退避重连
+    }
+  });
+
+  it('onUsage/onDiagnostic 缓冲落盘抛错不反噬适配器读循环（FIX 5）', () => {
+    const { client } = makeClient(tmp, {});
+    // 桩 buffer 落盘面抛错（EPERM/ENOSPC 位）：sink 面必须吞掉，不外泄进适配器帧回调。
+    const faces = client.buffer as unknown as { appendUsage: () => void; appendDiagnostic: () => void };
+    faces.appendUsage = () => {
+      throw new Error('ENOSPC: no space left on device');
+    };
+    faces.appendDiagnostic = () => {
+      throw new Error('EPERM: operation not permitted');
+    };
+    expect(() =>
+      client.onUsage(usageEvent('01K5AGENT0000000000000000A') as unknown as TokenUsageEventIn),
+    ).not.toThrow();
+    expect(() => client.onDiagnostic({} as DiagnosticEventIn)).not.toThrow();
+  });
+});
+
+describe('homeFile 码点截断（FIX 7：truncateByCodePoints 与旧 Array.from 实现逐字节等价）', () => {
+  /** 旧实现参照（Array.from 逐码点物化）——等价性基准，代理对语义相同。 */
+  const legacy = (text: string, max: number): [string, boolean] => {
+    if (text.length <= max) return [text, false];
+    const points = Array.from(text);
+    const truncated = points.length > max;
+    return [truncated ? points.slice(0, max).join('') : text, truncated];
+  };
+
+  it('星际字符（代理对）截断不劈开、全采样与旧实现逐字节一致', () => {
+    const samples = [
+      '',
+      'abc',
+      'a\u{1F600}b\u{1F600}c', // 混合 BMP/星际
+      '\u{1F600}\u{1F600}\u{1F600}\u{1F600}', // 纯星际
+      '中文\u{1F40D}emoji\u{1F680}混排x',
+      '\u{1F600}'.repeat(7) + 'tail',
+    ];
+    for (const text of samples) {
+      for (const max of [0, 1, 2, 3, 4, 5, 8, 100]) {
+        expect(truncateByCodePoints(text, max), `text=${JSON.stringify(text)} max=${max}`).toEqual(
+          legacy(text, max),
+        );
+      }
+    }
+  });
+
+  it('切点语义：满 max 码点整取、truncated 判定准确', () => {
+    const text = 'a\u{1F600}b'; // 3 码点 / 4 UTF-16 单元
+    expect(truncateByCodePoints(text, 3)).toEqual(['a\u{1F600}b', false]); // UTF-16 超长但码点数恰满 → 不截
+    expect(truncateByCodePoints(text, 2)).toEqual(['a\u{1F600}', true]); // 切点落在代理对之后
+    expect(truncateByCodePoints(text, 1)).toEqual(['a', true]);
   });
 });

@@ -11,9 +11,10 @@
  * 对等基准 = apps/daemon adapters/claude_code.py。`spawn` 可注入 → 单测/冒烟脱离真 claude。
  *
  * py/TS 差异（逐条登记，非行为改进；README 体例 5 / 任务书 §4）：
- * - 取消语义：py reader/stderr 任务 task.cancel（CancelledError 注入 await 点）→ TS 读循环 race
- *   一个 stop() 显式 reject 的 cancelled promise（命中 ReaderCancelled → 不触发退出回调，对等
- *   py CancelledError re-raise）；restart_task.cancel → 取消标志 + stopping/身份判等（===）双守卫
+ * - 取消语义：py reader/stderr 任务 task.cancel（CancelledError 注入 await 点）→ TS 读循环逐行
+ *   经 CancelSignal **退订式** race（命中 ReaderCancelled → 不触发退出回调，对等 py
+ *   CancelledError re-raise；禁止回退成逐行 race 单个长命 promise，见 CancelSignal 注释）；
+ *   restart_task.cancel → 取消标志 + stopping/身份判等（===）双守卫
  *   （退避睡眠不被打断，但睡后复核阻止重拉起——副作用等价）。
  * - monkeypatch 面：py 测试 monkeypatch 模块常量 CRASH_BACKOFF / AUTH_RECOVERY_DELAYS → TS 导出
  *   **可就地替换数组**（测试 splice 归零 + afterEach 还原），代码读取点保持动态取值。
@@ -34,7 +35,6 @@
 
 import { spawn as nodeSpawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Readable, Writable } from 'node:stream';
@@ -110,6 +110,45 @@ export const STREAM_LINE_LIMIT = 32 * 1024 * 1024;
 
 /** stop() 主动取消读循环的穿透位（对等 py CancelledError：不触发退出回调）。 */
 class ReaderCancelled extends Error {}
+
+/**
+ * 取消信号（py task.cancel 的 TS 线程化）：race() 任一落定即退订等待者。
+ * 禁止回退成「逐行 race 单个长命 cancelled promise」——每次 race 都在该 promise 的 reaction
+ * 列表追加**永久**记录并经胜果钉住行 Buffer（读循环热路径 → 会话内无界增长）。
+ */
+class CancelSignal {
+  private err: Error | null = null;
+  private readonly waiters = new Set<(e: Error) => void>();
+
+  cancel(err: Error): void {
+    if (this.err !== null) return;
+    this.err = err;
+    const ws = [...this.waiters];
+    this.waiters.clear();
+    for (const w of ws) w(err);
+  }
+
+  /** p 与取消信号竞速：已取消立即抛；任一落定即退订，不留逐行残留。 */
+  async race<T>(p: Promise<T>): Promise<T> {
+    if (this.err !== null) {
+      p.catch(() => {}); // 仍消费 p（对齐原 race 全路径订阅语义，杜绝潜在 unhandledRejection）
+      throw this.err;
+    }
+    let unsubscribe!: () => void;
+    const cancelP = new Promise<never>((_, reject) => {
+      const w = (e: Error): void => reject(e);
+      this.waiters.add(w);
+      unsubscribe = (): void => {
+        this.waiters.delete(w);
+      };
+    });
+    try {
+      return await Promise.race([p, cancelP]);
+    } finally {
+      unsubscribe();
+    }
+  }
+}
 
 function isDict(v: unknown): v is JsonObject {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -212,14 +251,16 @@ class NodeLineReader implements ProcStdout {
   }
 }
 
-/** stdin 包装：write 背压 → drain 等 'drain'（cal6：write()===false → await once('drain')）。 */
-class NodeStdin implements ProcStdin {
+/** stdin 包装（测试面导出）：write 背压 → drain 等 'drain'/'close'/'error' 先至者（cal6）。 */
+export class NodeStdin implements ProcStdin {
   private needDrain = false;
 
   private readonly stream: Writable;
 
   constructor(stream: Writable) {
     this.stream = stream;
+    // EPIPE 等写侧错误必须有 handler（未挂 'error' 的流错误 = uncaughtException 崩进程）。
+    stream.on('error', () => {});
   }
 
   write(data: Buffer | string): void {
@@ -229,7 +270,20 @@ class NodeStdin implements ProcStdin {
   async drain(): Promise<void> {
     if (!this.needDrain) return;
     this.needDrain = false;
-    if (this.stream.writableNeedDrain) await once(this.stream, 'drain');
+    if (!this.stream.writableNeedDrain) return;
+    // 背压中 'drain' 可能永不来（流关闭/出错）→ close/error 兜底收敛不悬挂；error 胜出吞掉
+    //（写失败已由构造挂的 'error' handler 免于崩进程，经后续写/进程退出路径浮出）。
+    await new Promise<void>((resolve) => {
+      const done = (): void => {
+        this.stream.removeListener('drain', done);
+        this.stream.removeListener('close', done);
+        this.stream.removeListener('error', done);
+        resolve();
+      };
+      this.stream.once('drain', done);
+      this.stream.once('close', done);
+      this.stream.once('error', done);
+    });
   }
 
   close(): void {
@@ -299,12 +353,28 @@ class NodeProcess implements ProcLike {
   }
 }
 
-async function defaultSpawn(argv: string[], cwd: string, env: Record<string, string>): Promise<ProcLike> {
-  const child = nodeSpawn(argv[0]!, argv.slice(1), {
-    cwd,
-    env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+/** win32 cmd.exe 拉起时的参数引用（路径含空格；校准条款 3 shell:true 通道）。 */
+// codex.ts 同名同实现的文件内自持副本（W3 文件域隔离，W4/W5 收敛单点挂账；勿另建共享模块）。
+function quoteForShell(s: string): string {
+  return /[\s"]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s;
+}
+
+/**
+ * 默认 spawn（测试面导出；argv 由调用方给定）：win32 `.cmd`/`.bat`（npm shim claude）必须
+ * shell:true（node 22 裸 spawn EINVAL，校准条款 3）；spawn 失败 race 'spawn'/'error' 还原
+ * py 创建点同步 OSError 语义。
+ */
+export async function defaultSpawn(argv: string[], cwd: string, env: Record<string, string>): Promise<ProcLike> {
+  const [cmd, ...args] = argv;
+  const needsShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd ?? '');
+  const child = needsShell
+    ? nodeSpawn([quoteForShell(cmd ?? ''), ...args.map(quoteForShell)].join(' '), {
+        cwd,
+        env,
+        shell: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    : nodeSpawn(cmd ?? '', args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   const proc = new NodeProcess(child); // cal6：当拍同步挂 stdout/stderr 消费者
   await new Promise<void>((resolve, reject) => {
     child.once('spawn', () => resolve());
@@ -345,9 +415,8 @@ export class ClaudeCodeProcess implements ProcessContract {
   private proc: ProcLike | null = null;
   private readerTask: Promise<void> | null = null;
   private stderrTask: Promise<void> | null = null;
-  // stop() 主动取消位（py task.cancel 的 TS 线程化：读循环/排空在 await 点 race 收敛）
-  private cancelled: Promise<never> | null = null;
-  private cancelReject: ((err: Error) => void) | null = null;
+  // stop() 主动取消位（py task.cancel 的 TS 线程化：读循环/排空在 await 点经退订式 race 收敛）
+  private cancelSignal: CancelSignal | null = null;
   private resumeArgs: string[] = [];
   private configDir: string | null = null;
   private lastInput: string | null = null;
@@ -420,10 +489,7 @@ export class ClaudeCodeProcess implements ProcessContract {
     this._sink.onDiagnostic(
       this.diag('agent.process_started', { pid: this.pid, resume: Boolean(resumeId) }),
     );
-    this.cancelled = new Promise<never>((_, reject) => {
-      this.cancelReject = reject;
-    });
-    this.cancelled.catch(() => {}); // 预挂接消费：防 unhandledRejection（deploy.ts 先例）
+    this.cancelSignal = new CancelSignal();
     this.readerTask = this.readLoop();
     this.readerTask.catch(() => {}); // 读循环内部已兜底；双保险
     this.stderrTask = null;
@@ -457,7 +523,7 @@ export class ClaudeCodeProcess implements ProcessContract {
     const stdout = proc.stdout;
     try {
       for (;;) {
-        const line = await Promise.race([stdout.readline(), this.cancelled!]);
+        const line = await this.cancelSignal!.race(stdout.readline());
         if (line.length === 0) break;
         await this.onLine(line);
       }
@@ -485,7 +551,7 @@ export class ClaudeCodeProcess implements ProcessContract {
     if (stderr === undefined || stderr === null) return;
     try {
       for (;;) {
-        const line = await Promise.race([stderr.readline(), this.cancelled!]);
+        const line = await this.cancelSignal!.race(stderr.readline());
         if (line.length === 0) break;
         const text = line.toString('utf-8').trimEnd(); // decode('utf-8','replace') 对等（U+FFFD）
         if (text) {
@@ -598,8 +664,8 @@ export class ClaudeCodeProcess implements ProcessContract {
       }
     }
     // py for task in (reader, stderr): task.cancel(); await task（suppress）
-    if (this.cancelReject !== null) {
-      this.cancelReject(new ReaderCancelled('stopped'));
+    if (this.cancelSignal !== null) {
+      this.cancelSignal.cancel(new ReaderCancelled('stopped'));
     }
     for (const task of [this.readerTask, this.stderrTask]) {
       if (task !== null) {
@@ -888,6 +954,14 @@ export class RuntimeManager implements ManagerContract {
     const entry = this.agents.get(agentMemberId);
     if (entry === undefined || messages.length === 0) {
       return false;
+    }
+    // 契约 MessagePublic.id 必填，fail-close 对等 py pydantic（FAILED ack、游标不动）：缺 id 时
+    // String(undefined)="undefined" 会入游标，且 'u' 高于全部 Crockford ULID 字符 → 该频道此后
+    // 投递永久 noop。整批抛错 → handleInstr 捕获转 ack failed。
+    for (const m of messages) {
+      if (typeof m['id'] !== 'string' || m['id'] === '') {
+        throw new Error('message.deliver 批含缺 id 消息（契约 MessagePublic.id 必填）');
+      }
     }
     let maxId = String(messages[0]!['id']);
     for (const m of messages) {

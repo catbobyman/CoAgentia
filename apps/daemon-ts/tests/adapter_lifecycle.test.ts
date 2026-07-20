@@ -16,13 +16,21 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { Writable } from 'node:stream';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentBoot } from '@coagentia/contracts-ts';
 
 import type { ClaudeCodeProcess } from '../src/adapters/claude_code.ts';
-import { AUTH_RECOVERY_DELAYS, CRASH_BACKOFF, ClaudeCodeAdapter } from '../src/adapters/claude_code.ts';
+import {
+  AUTH_RECOVERY_DELAYS,
+  CRASH_BACKOFF,
+  ClaudeCodeAdapter,
+  NodeStdin,
+  defaultSpawn,
+} from '../src/adapters/claude_code.ts';
+import { sleep, withTimeout } from '../src/aio.ts';
 import { DataPaths } from '../src/paths.ts';
 import { RecordingSink, SpawnRecorder, fBlockStart, fInit, fResult, seqUlid } from './adapter_helpers.ts';
 import { until } from './helpers.ts';
@@ -275,6 +283,78 @@ describe('ClaudeCodeAdapter 生命周期（契约 E §4/§5/§6）', () => {
     expect(spawnRec.procs[0]!.stdin.lines()).toHaveLength(2);
     expect(spawnRec.procs[0]!.stdin.lines()[0]).toBe(spawnRec.procs[0]!.stdin.lines()[1]);
   });
+
+  it('deliver 批含缺 id 消息 → fail-close 抛错且游标不动（契约 MessagePublic.id 必填；无 py 对等：pydantic 上游拦截）', async () => {
+    // 若缺 id 走 String(undefined)="undefined" 入游标：'u' 高于全部 Crockford ULID 字符 →
+    // 该频道此后投递永久 noop。修复 = 整批抛错（handleInstr 转 ack failed），游标不动。
+    const [adapter, sink, spawnRec] = make();
+    await adapter.start(boot(path.join(tmp, 'home')));
+    const bad = [
+      { id: '01K5MSG900000000000000000A', channel_id: 'C', body: 'valid' },
+      { channel_id: 'C', body: 'no-id' }, // 缺 id
+    ];
+    await expect(adapter.deliver(AID, 'C', bad, null)).rejects.toThrow('MessagePublic.id 必填');
+    expect(spawnRec.procs[0]!.stdin.lines()).toHaveLength(0); // 整批未投
+    expect(sink.statuses()).not.toContain('busy'); // 抛错先于 BUSY 先行
+    // 游标未动：比失败批合法 id 更小的后续批仍送达（曾记 maxId/"undefined" 则此处 noop）。
+    const ok = { id: '01K5MSG100000000000000000A', channel_id: 'C', body: 'later-ok' };
+    expect(await adapter.deliver(AID, 'C', [ok], null)).toBe(true);
+    expect(spawnRec.procs[0]!.stdin.lines().some((ln) => ln.includes('later-ok'))).toBe(true);
+  });
+});
+
+// ========================================================= 真子进程底座（NodeStdin / defaultSpawn）
+
+describe('NodeStdin / defaultSpawn（cal6/校准条款 3；无 py 对等：node 流侧特有面）', () => {
+  it('NodeStdin：流 error 已挂 handler 不直抛；背压中流关闭 drain 兜底收敛', async () => {
+    const stream = new Writable({
+      highWaterMark: 1,
+      write(_chunk, _enc, _cb) {
+        // 扣住回调：持续背压（writableNeedDrain 恒 true，'drain' 永不来）
+      },
+    });
+    const sin = new NodeStdin(stream);
+    sin.write('x'); // hwm=1 → write()===false → needDrain
+    // 无 'error' handler 时 emit('error') 直抛 ERR_UNHANDLED_ERROR（真机 = EPIPE 异步到达 →
+    // uncaughtException 崩整个 daemon）。
+    expect(() => stream.emit('error', new Error('EPIPE'))).not.toThrow();
+    // 背压中流销毁（只来 'close' 不来 'drain'）→ drain() 不得永久悬挂。
+    const drained = sin.drain();
+    stream.destroy();
+    await withTimeout(drained, 2000);
+  });
+
+  it('真子进程退出后写 stdin：异步写错误不成为 uncaughtException（EPIPE 家族真机面）', async () => {
+    const proc = await defaultSpawn([process.execPath, '-e', 'process.exit(0)'], tmp, {
+      ...process.env,
+    } as Record<string, string>);
+    expect(await withTimeout(proc.wait(), 15_000)).toBe(0);
+    proc.stdin!.write('late\n'); // 死后写：错误异步到达 stream
+    await proc.stdin!.drain?.();
+    await sleep(100); // 给异步 'error' 浮出窗口——无 handler 版在此 uncaughtException 崩 worker
+  });
+
+  it.runIf(process.platform === 'win32')(
+    'win32 .cmd（npm shim）经 shell:true 拉起 + 含空格路径引用（校准条款 3）',
+    async () => {
+      const cmdPath = path.join(tmp, 'claude shim.cmd'); // 文件名含空格：覆盖 quoteForShell
+      fs.writeFileSync(cmdPath, '@echo off\r\necho shim-ok %1\r\n', 'utf-8');
+      const proc = await defaultSpawn([cmdPath, 'arg1'], tmp, {
+        ...process.env,
+      } as Record<string, string>);
+      try {
+        const line = await withTimeout(proc.stdout.readline(), 15_000);
+        expect(line.toString('utf-8').trim()).toBe('shim-ok arg1'); // 未修版 node 22 裸 spawn EINVAL
+        expect(await withTimeout(proc.wait(), 15_000)).toBe(0);
+      } finally {
+        try {
+          proc.kill(); // 收尾必杀（正常路径已退出，幂等兜底；README 体例 7）
+        } catch {
+          // 已退出
+        }
+      }
+    },
+  );
 });
 
 function writeCredentials(p: string, expiresAt: number): void {

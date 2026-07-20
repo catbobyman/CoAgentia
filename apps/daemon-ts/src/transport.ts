@@ -10,6 +10,9 @@
  */
 
 import { DAEMON_WS_PATH } from './generated/constants.ts';
+import { getLogger } from './logconfig.ts';
+
+const log = getLogger('coagentia_daemon.transport');
 
 export type JsonObject = Record<string, unknown>;
 
@@ -34,11 +37,15 @@ export class WebSocketTransport implements Transport {
     this.ws = ws;
     ws.addEventListener('message', (ev: MessageEvent) => {
       let frame: JsonObject;
+      let raw = '';
       try {
-        const raw = typeof ev.data === 'string' ? ev.data : Buffer.from(ev.data as ArrayBuffer).toString('utf-8');
+        raw = typeof ev.data === 'string' ? ev.data : Buffer.from(ev.data as ArrayBuffer).toString('utf-8');
         frame = JSON.parse(raw) as JsonObject;
       } catch {
-        return; // 非 JSON 帧丢弃（py json.loads 抛错撕连接；server 不发非 JSON，此处防御性丢弃不撕）
+        // 非 JSON 帧丢弃（py json.loads 抛错撕连接；server 不发非 JSON，此处防御性丢弃不撕）；
+        // 丢弃留痕：截原文前 120 字符防日志爆量（未装配 logconfig 时静默，语义不变）。
+        log.warn(`drop non-JSON frame: ${raw.slice(0, 120)}`);
+        return;
       }
       if (this.waiter !== null) {
         const w = this.waiter;

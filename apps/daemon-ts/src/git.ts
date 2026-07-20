@@ -24,12 +24,12 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { DiffFile, DiffPayload, GitDiffQuery, WorktreeCleanupData, WorktreeEnsureData } from '@coagentia/contracts-ts';
 import type { WorktreeMergeData, WorktreeScanEntry, WorktreeScanQuery, WorktreeScanReply, WorktreeStatusData } from '@coagentia/contracts-ts';
 
+import { expanduser } from './adapters/cmdline.ts';
 import { TimeoutError, withTimeout } from './aio.ts';
 import { killProcessTree } from './checks.ts';
 import type { DataPaths } from './paths.ts';
@@ -114,7 +114,9 @@ export async function runProcess(
   if (spawnError !== null) throw spawnError;
   return {
     argv: args,
-    returncode: proc.exitCode ?? 0,
+    // 信号终止（exitCode null）fail-closed 非 0（py 为负 signum；对齐 checks/deploy 的
+    // null→失败）——被杀的 `status --porcelain` 若映射为 0 会以空 stdout 冒充「工作区干净」。
+    returncode: proc.exitCode ?? 1,
     stdout: Buffer.concat(outChunks).toString('utf-8'),
     stderr: Buffer.concat(errChunks).toString('utf-8'),
   };
@@ -1137,12 +1139,6 @@ function isDir(p: string): boolean {
 /** node 系 OS 错误（ErrnoException）判定：scan 降级面对等 py except OSError。 */
 function isOsError(err: unknown): boolean {
   return err instanceof Error && typeof (err as NodeJS.ErrnoException).code === 'string';
-}
-
-function expanduser(p: string): string {
-  if (p === '~') return os.homedir();
-  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
-  return p;
 }
 
 /**

@@ -165,7 +165,7 @@ describe('TelemetryBuffer', () => {
   });
 
   it('临时文件断裂写不污染正式文件，重启可恢复（test_torn_check_rewrite_keeps_old_file_and_restart_can_recover）', () => {
-    // 临时文件已写一行后断裂，正式 check-finished.jsonl 仍是旧完整版。
+    // 第二行序列化断裂（批量聚合下临时文件尚无已落行），正式 check-finished.jsonl 仍是旧完整版。
     const { buf, paths } = makeBuf();
     const first = makeCheck('old-complete');
     const second = makeCheck('new-after-recovery');
@@ -183,7 +183,7 @@ describe('TelemetryBuffer', () => {
 
     expect(() => buf.appendCheck(second)).toThrow(/torn JSONL/);
 
-    expect(dumpsCalls).toBe(2); // 临时文件先写出了旧行。
+    expect(dumpsCalls).toBe(2); // dumps 逐行接缝不变：第二行序列化即断。
     expect(fs.readFileSync(official)).toEqual(oldBytes);
     const restarted = new TelemetryBuffer(paths);
     expect(restarted.peekChecks(10)).toEqual([first]);

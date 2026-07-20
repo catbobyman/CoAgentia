@@ -11,6 +11,7 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src", "tests", "vitest.config.ts"]

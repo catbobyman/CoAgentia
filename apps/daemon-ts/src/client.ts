@@ -43,7 +43,7 @@ import { TelemetryBuffer } from './buffer.ts';
 import { CheckRunner } from './checks.ts';
 import { DeployRunner } from './deploy.ts';
 import { FS_TREE_MAX, fsDirEntries, fsRootEntries } from './fsscan.ts';
-import { DAEMON_PROTOCOL_V } from './generated/constants.ts';
+import { ACK_TIMEOUT_SEC, DAEMON_PROTOCOL_V } from './generated/constants.ts';
 import { GitWorktreeManager, resolvePath } from './git.ts';
 import { HANDLERS } from './handlers.ts';
 import { getLogger } from './logconfig.ts';
@@ -108,7 +108,6 @@ export interface DaemonClientOptions {
 }
 
 interface PendingAck {
-  promise: Promise<JsonObject>;
   resolve: (frame: JsonObject) => void;
   reject: (err: Error) => void;
 }
@@ -152,6 +151,9 @@ export class DaemonClient implements AdapterSink {
   private readonly recentFrameSet = new Set<string>();
   private readonly activityLast = new Map<string, number>();
   private stopped = false;
+  // stop() 即 set：打断 run() 的退避等待 + 拦截在飞 connect 后进入 serve（SIGINT 不丢）。
+  // 注：AsyncEvent.wait 的 race 输家 waiter 泊到 set 为止，量级=重连次数，可接受（登记差异）。
+  private readonly stopEvent = new AsyncEvent();
   private wasConnected = false;
 
   // worktree ensure/merge/cleanup 后台通道（#1：解放 reader，避免大 merge 阻塞 PONG 误重连）。
@@ -173,7 +175,7 @@ export class DaemonClient implements AdapterSink {
     this.runner = opts.runner ?? null;
     this.heartbeatSec = opts.heartbeatSec ?? 25.0;
     this.pongTimeout = opts.pongTimeout ?? 10.0;
-    this.ackTimeout = opts.ackTimeout ?? 10.0;
+    this.ackTimeout = opts.ackTimeout ?? ACK_TIMEOUT_SEC; // 值与契约 D §3 ack 超时同源（py 侧硬编码同值）
     this.backoffStart = opts.backoffStart ?? BACKOFF_START;
     this.backoffCap = opts.backoffCap ?? BACKOFF_CAP;
 
@@ -198,9 +200,15 @@ export class DaemonClient implements AdapterSink {
         transport = await this.connectFn(this.serverUrl, this.apiKey);
       } catch (exc) {
         this.logWarn(`connect failed: ${String(exc)}`);
-        await sleep(backoff * 1000);
+        await Promise.race([sleep(backoff * 1000), this.stopEvent.wait()]); // stop() 立即打断退避
         backoff = nextBackoff(backoff, this.backoffCap);
         continue;
+      }
+      if (this.stopped) {
+        // stop() 落在 connectFn 在飞窗口：连上即弃，绝不进入 serve（否则 SIGINT 全丢，daemon
+        // 握手后无限服务）。py KeyboardInterrupt 全程取消；TS 差异收窄到仅在飞连接的网络等待本身。
+        await this.safeClose(transport);
+        break;
       }
       this.wasConnected = false;
       try {
@@ -218,7 +226,7 @@ export class DaemonClient implements AdapterSink {
       if (this.wasConnected) {
         backoff = this.backoffStart; // 成功连过一轮 → 退避复位
       } else {
-        await sleep(backoff * 1000);
+        await Promise.race([sleep(backoff * 1000), this.stopEvent.wait()]); // stop() 立即打断退避
         backoff = nextBackoff(backoff, this.backoffCap);
       }
     }
@@ -226,6 +234,7 @@ export class DaemonClient implements AdapterSink {
 
   stop(): void {
     this.stopped = true;
+    this.stopEvent.set(); // 打断 run() 退避等待 / 在飞 connect 后的进入判定（SIGINT 不丢）
     this.checks.cancel();
     this.previews.cancel();
     this.deploys.cancel();
@@ -260,12 +269,23 @@ export class DaemonClient implements AdapterSink {
     this.flushEvent.set(); // 重连即重传离线期缓冲（契约 D §4.1 第 5 步）
 
     this.connClosed = new AsyncEvent();
-    const heartbeat = this.heartbeatLoop(transport);
-    const flush = this.flushLoop();
+    // 创建即挂兜底 handler：两循环中途抛错（如 buffer 落盘 EPERM/ENOSPC 经 flushLoop 重抛）在
+    // finally 的 allSettled 之前无人 await = unhandledRejection 杀 daemon。此处记 warn 后吞掉——
+    // 连接照常由 reader 主导生死，仅该循环降级（py 侧死 task 滞留到 finally 同语义），不撕连接。
+    const heartbeat = this.heartbeatLoop(transport).catch((exc) => {
+      this.logWarn(`心跳循环异常（连接维持，心跳降级）: ${String(exc)}`);
+    });
+    const flush = this.flushLoop().catch((exc) => {
+      this.logWarn(`遥测冲刷循环异常（连接维持，冲刷降级；含 buffer 落盘错误重抛面）: ${String(exc)}`);
+    });
     try {
       await this.readerLoop(transport); // reader 结束/抛 TransportClosed = 连接终结
     } finally {
       this.connClosed.set();
+      // 连接终结即清账在飞 ack 等待：卡在 reportAwaited withTimeout 的 flush 不再烧满 10s 才
+      // 让位重连（reject=TransportClosed → reportAwaited 捕获归 false 收敛）。run() finally 的
+      // failPending 保留作幂等兜底（map 此处已清空）。
+      this.failPending('connection closed');
       this.flushEvent.set(); // 唤醒 flush 循环观察 connClosed
       this.pongEvent.set(); // 唤醒心跳等待
       await Promise.allSettled([heartbeat, flush]);
@@ -301,7 +321,13 @@ export class DaemonClient implements AdapterSink {
     if (data.protocol_v !== DAEMON_PROTOCOL_V) {
       throw new TransportClosed(`protocol mismatch: ${data.protocol_v}`);
     }
-    this.heartbeatSec = Number(data.heartbeat_sec); // 记 heartbeat_sec（契约 D §2）
+    // 记 heartbeat_sec（契约 D §2）；NaN/0/负会令心跳 sleep 退化为 PING 风暴——非法即抛
+    // → serve 错误 → 退避重连（py 侧 pydantic 校验同语义位）。
+    const hb = Number(data.heartbeat_sec);
+    if (!Number.isFinite(hb) || hb <= 0) {
+      throw new Error(`hello_ack heartbeat_sec 非法: ${String(data.heartbeat_sec)}`);
+    }
+    this.heartbeatSec = hb;
   }
 
   // ---------------------------------------------------------------- 收帧循环 + 分发
@@ -491,13 +517,10 @@ export class DaemonClient implements AdapterSink {
     if (text.length <= HOME_FILE_MAX) {
       return { kind: 'text', content: text, truncated: false };
     }
-    const points = Array.from(text);
-    const truncated = points.length > HOME_FILE_MAX;
-    return {
-      kind: 'text',
-      content: truncated ? points.slice(0, HOME_FILE_MAX).join('') : text,
-      truncated,
-    };
+    // 慢路径：codePointAt 步进找 UTF-16 切点后一次 slice（旧 Array.from 每超限视图瞬时物化
+    // 每码点一字符串，~80MB+ 峰值）。全输入逐字节等价旧实现（代理对绝不劈开）。
+    const [content, truncated] = truncateByCodePoints(text, HOME_FILE_MAX);
+    return { kind: 'text', content, truncated };
   }
 
   /** PS-WT fs.tree：computer 级只读目录浏览。path=null → 根视图；否则列该目录仅子目录。 */
@@ -543,12 +566,24 @@ export class DaemonClient implements AdapterSink {
   }
 
   onUsage(event: TokenUsageEventIn): void {
-    this.buffer.appendUsage(event);
+    // buffer 落盘为同步 fs（EPERM/ENOSPC 可抛）；抛错若外泄会打死适配器帧回调 → readLoop 退出
+    // → Agent 冻结。遥测落盘失败不反噬适配器读循环（py 同语义：丢持久化不丢 Agent）。
+    // 注：append 先入内存后重写落盘，抛错时事件仍在内存缓冲 → flushEvent 照常 set，flush 可发。
+    try {
+      this.buffer.appendUsage(event);
+    } catch (exc) {
+      this.logWarn(`usage 缓冲落盘失败（读循环维持）: ${String(exc)}`);
+    }
     this.flushEvent.set();
   }
 
   onDiagnostic(event: DiagnosticEventIn): void {
-    this.buffer.appendDiagnostic(event);
+    // 同 onUsage：遥测落盘失败不反噬适配器读循环。
+    try {
+      this.buffer.appendDiagnostic(event);
+    } catch (exc) {
+      this.logWarn(`diagnostic 缓冲落盘失败（读循环维持）: ${String(exc)}`);
+    }
     this.flushEvent.set();
   }
 
@@ -670,7 +705,7 @@ export class DaemonClient implements AdapterSink {
       reject = rej;
     });
     promise.catch(() => {}); // 防断连清账时无 awaiter 的孤儿 rejection
-    this.reportAcks.set(frameId, { promise, resolve, reject });
+    this.reportAcks.set(frameId, { resolve, reject }); // promise 仅本地 await，不入账
     try {
       await this.send(reportFrame(rtype, data, frameId));
       const ack = await withTimeout(promise, this.ackTimeout * 1000);
@@ -745,6 +780,23 @@ export class DaemonClient implements AdapterSink {
 
 function isoFromMtime(mtimeMs: number): string {
   return new Date(mtimeMs).toISOString();
+}
+
+/**
+ * 按码点上限截断（对等 py `text[:max]` 语义；homeFile 慢路径专用，导出供聚焦单测）：
+ * codePointAt 步进数码点找 UTF-16 切点，切点只落在完整码点边界——代理对绝不劈开，
+ * 行为对全输入与旧 Array.from 实现逐字节一致，但零逐码点数组物化。
+ */
+export function truncateByCodePoints(text: string, maxPoints: number): [content: string, truncated: boolean] {
+  if (text.length <= maxPoints) return [text, false]; // 快路径不变量：UTF-16 长度 ≤ max ⇒ 码点数 ≤ max
+  let cut = 0; // UTF-16 切点（始终指向码点边界）
+  let counted = 0; // 已计码点数
+  while (cut < text.length && counted < maxPoints) {
+    cut += text.codePointAt(cut)! > 0xffff ? 2 : 1; // 星际面码点占 2 个 UTF-16 单元
+    counted += 1;
+  }
+  const truncated = cut < text.length;
+  return [truncated ? text.slice(0, cut) : text, truncated];
 }
 
 function expandHome(p: string): string {

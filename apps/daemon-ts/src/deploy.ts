@@ -31,11 +31,11 @@
 
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { DeployFinishedData, DeployLogReportData, DeployRunData } from '@coagentia/contracts-ts';
 
+import { expanduser } from './adapters/cmdline.ts';
 import { TimeoutError, withTimeout } from './aio.ts';
 import { killProcessTree } from './checks.ts';
 
@@ -65,19 +65,18 @@ export type DeployProcessRunner = (
   signal?: AbortSignal,
 ) => Promise<DeployProcessResult>;
 
-function expanduser(p: string): string {
-  if (p === '~') return os.homedir();
-  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
-  return p;
-}
-
 /**
  * 校准条款 2 行读法：Buffer 累积按 `\n` 字节切行；行文本 UTF-8 decode（无效序列 → U+FFFD，
  * 对等 py errors="replace"）+ rstrip("\r\n")（CRLF 容忍）；EOF 残段作末行吐出（对等 py
  * readline 在 EOF 返回无换行残段）；未终止行累积超 32MB 即强制切出为一行继续（不崩读循环）。
+ *
+ * 累积法 = parts[] 段引用聚合（同 codex LineReader 修复族）：逐 chunk 只存引用、按完行才
+ * concat 一次——原「每 chunk 与 pending 整段 Buffer.concat」在长行/多 chunk 下是 O(n²) 拷贝。
+ * 不变量：parts 内不含 0x0a（换行只可能出现在新到 chunk 中）。
  */
 class LineSplitter {
-  private pending: Buffer = Buffer.alloc(0);
+  private parts: Buffer[] = [];
+  private partBytes = 0;
 
   private readonly onLine: (text: string) => void;
 
@@ -86,23 +85,36 @@ class LineSplitter {
   }
 
   push(chunk: Buffer): void {
-    let buf = this.pending.length === 0 ? chunk : Buffer.concat([this.pending, chunk]);
+    let rest = chunk;
     let idx: number;
-    while ((idx = buf.indexOf(0x0a)) >= 0) {
-      this.emit(buf.subarray(0, idx));
-      buf = buf.subarray(idx + 1);
+    while ((idx = rest.indexOf(0x0a)) >= 0) {
+      const head = rest.subarray(0, idx);
+      rest = rest.subarray(idx + 1);
+      if (this.parts.length === 0) {
+        this.emit(head);
+      } else {
+        this.parts.push(head);
+        this.emit(Buffer.concat(this.parts)); // 完行才 concat 恰一次
+        this.parts = [];
+        this.partBytes = 0;
+      }
     }
-    if (buf.length > MAX_LINE_BYTES) {
-      this.emit(buf);
-      buf = Buffer.alloc(0);
+    if (rest.length > 0) {
+      this.parts.push(rest);
+      this.partBytes += rest.length;
     }
-    this.pending = buf;
+    if (this.partBytes > MAX_LINE_BYTES) {
+      this.emit(Buffer.concat(this.parts)); // 超限强制切出为一行继续（语义同前）
+      this.parts = [];
+      this.partBytes = 0;
+    }
   }
 
   eof(): void {
-    if (this.pending.length > 0) {
-      this.emit(this.pending);
-      this.pending = Buffer.alloc(0);
+    if (this.partBytes > 0) {
+      this.emit(this.parts.length === 1 ? this.parts[0]! : Buffer.concat(this.parts));
+      this.parts = [];
+      this.partBytes = 0;
     }
   }
 

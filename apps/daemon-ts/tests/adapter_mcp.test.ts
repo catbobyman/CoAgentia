@@ -773,6 +773,41 @@ describe('JSON-RPC / stdio 循环', () => {
     expect(responses[0]!.error.code).toBe(-32700);
   });
 
+  it('TS 侧补充：单行跨多 chunk 拼接（serveStdio parts 聚合等价；含多字节序列跨 chunk 切断）', async () => {
+    const stub = new StubHttp(201, { message: { id: '01K5MSG100000000000000000B' } });
+    const lines = [
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'send_message', arguments: { channel_id: 'C1', body: '中文跨界' } },
+      }),
+    ];
+    const whole = Buffer.from(lines.join('\n') + '\n', 'utf-8');
+    // 在「中」的 3 字节 UTF-8 序列内部切两刀：跨 chunk 必须按字节聚合、完行才一次解码
+    // （聚合重构后 parts[] 引用累积，逐 chunk toString 会碎成 U+FFFD——cal1 同族守门）。
+    const zhongIndex = whole.indexOf(Buffer.from('中', 'utf-8'));
+    const chunks = [
+      whole.subarray(0, 3), // 行 1 前缀（无换行 → 进 parts）
+      whole.subarray(3, zhongIndex + 1), // 行 1 收尾 + 行 2 前缀（切在「中」第 1 字节后）
+      whole.subarray(zhongIndex + 1, zhongIndex + 2), // 「中」第 2 字节单独成 chunk
+      whole.subarray(zhongIndex + 2), // 余量 + 末尾换行
+    ];
+    const sink = { data: '', write(chunk: string): boolean { this.data += chunk; return true; } };
+    await mcp.serveStdio(stub.http, chunks, sink);
+    const responses = sink.data
+      .split('\n')
+      .filter((x) => x.trim())
+      .map((x) => JSON.parse(x) as { id: number | null; result?: { isError?: boolean } });
+    expect(responses).toHaveLength(2);
+    expect(responses[0]!.id).toBe(1);
+    expect(responses[1]!.id).toBe(2);
+    expect(responses[1]!.result!.isError).toBe(false);
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0]!.jsonBody?.['body']).toBe('中文跨界'); // 多字节逐字节存活
+  });
+
   it('真 node 子进程经 cli.ts `mcp` 子命令 stdio UTF-8 roundtrip（test_mcp_subprocess_utf8_roundtrip_without_ioencoding 对等）', async () => {
     // py 侧剥 PYTHONIOENCODING/PYTHONUTF8 验「claude 拉起」真实形态（win32 GBK 面）；node 管道
     // 无 locale 文本层（GBK 教训不存在），此处不注任何编码 env（铁规：探针不带掩盖性 env），

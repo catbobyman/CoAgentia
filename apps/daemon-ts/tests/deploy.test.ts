@@ -344,6 +344,25 @@ describe('deploy（契约 D §5.3/§7）', () => {
     expect(batches.flat()).toEqual(['first', 'second https://late.example.com']);
   });
 
+  it('TS 侧补充：单行跨多 chunk（分段写无换行）拼接为一行（LineSplitter parts 聚合等价验证）', async () => {
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(repo);
+    // 先写无换行前段，150ms 后补后段+换行：两次 pipe 到达 → LineSplitter 跨 chunk 聚合为一行
+    // （聚合重构后完行才 concat 一次；URL 必须在拼接后的整行上才可见）。
+    const script =
+      "process.stdout.write('part1-');" +
+      "setTimeout(() => { process.stdout.write('part2 https://joined.example.com\\n'); }, 150)";
+    const command = `"${process.execPath}" -e "${script}"`;
+    const batches: string[][] = [];
+    const onLog: LogBatchCallback = async (lines) => {
+      batches.push(lines);
+    };
+    const result = await runDeployProcess(makeRun(repo, command), onLog, 10);
+    expect(result.exitCode).toBe(0);
+    expect(result.url).toBe('https://joined.example.com'); // 整行拼好后才匹配得到
+    expect(batches.flat()).toEqual(['part1-part2 https://joined.example.com']);
+  });
+
   it('TS 侧补充：满 20 行立即成批（py len(buffer) >= 20 的满批 flush 等价验证）', async () => {
     const repo = path.join(tmp, 'repo');
     fs.mkdirSync(repo);

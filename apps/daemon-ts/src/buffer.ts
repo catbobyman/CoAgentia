@@ -323,8 +323,24 @@ function writeJsonl(filePath: string, rows: JsonObject[]): void {
   const fd = fs.openSync(tempPath, 'wx');
   let fdOpen = true;
   try {
+    // 批量写：逐行 writeSync 在全量重写策略下 = 行数次系统调用（10 万行 = 10 万次）；对齐 py
+    // 缓冲流（io 默认 ~8KB 聚合）语义面，按 ~64KB 聚合后少量 writeSync。dumps 仍逐行调用
+    // （测试接缝 _io.dumps 不变）；追加制/原子重写策略与 fsync/rename 语义均不变。
+    const FLUSH_CHARS = 64 * 1024; // UTF-16 码元数近似阈值（阈值非语义，只控批大小）
+    let batch: string[] = [];
+    let batchChars = 0;
     for (const row of rows) {
-      fs.writeSync(fd, `${_io.dumps(row)}\n`);
+      const line = `${_io.dumps(row)}\n`;
+      batch.push(line);
+      batchChars += line.length;
+      if (batchChars >= FLUSH_CHARS) {
+        fs.writeSync(fd, batch.join(''));
+        batch = [];
+        batchChars = 0;
+      }
+    }
+    if (batch.length > 0) {
+      fs.writeSync(fd, batch.join(''));
     }
     _io.fsync(fd);
     fs.closeSync(fd);

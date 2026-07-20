@@ -17,8 +17,9 @@
  * 对等基准 = apps/daemon adapters/codex.py。与 py 版的接口差异（逐条登记，非行为改进）：
  * - py 从 claude_code.py import STREAM_LINE_LIMIT / ProcLike / SpawnFn / _safe_wait；TS W3 并行波
  *   文件域隔离（claude_code.ts 由并行代理落地）→ 本模块自持等价定义，W4/W5 收敛单点（挂账）。
- * - py asyncio task.cancel 注入取消 → TS 用停止事件显式线程化（读循环 / stderr / 握手 request
- *   在 await 点 race 停止事件退出；checks.ts/deploy.ts AbortSignal 同族先例）。
+ * - py asyncio task.cancel 注入取消 → TS 显式线程化：读循环 / stderr 逐行经 StopSignal 退订式
+ *   race 退出（禁止回退成逐行 race 单个长命 stopP，见 StopSignal 注释）；握手 request 仍 race
+ *   停止事件（checks.ts/deploy.ts AbortSignal 同族先例）。
  * - py `isinstance(proc, asyncio.subprocess.Process)` 判真进程决定 taskkill → TS 判据 =
  *   `proc instanceof SpawnedCodexProc`（真 spawn 包装类标记；FakeProc 走 terminate() 桩路径）。
  * - py `_run_taskkill`（codex_cmdline.taskkill_argv 自起子进程）→ TS 复用 checks.killProcessTree
@@ -552,6 +553,45 @@ export interface CodexProcessOptions {
 /** 读循环 race 停止事件的哨兵（py task.cancel 的 TS 线程化）。 */
 const STOPPED = Symbol('codex-stopped');
 
+/**
+ * 停止信号（读循环/stderr 专用）：race() 停止先至返回 STOPPED 哨兵，任一落定即退订等待者。
+ * 禁止回退成「逐行 race 单个长命 stopP」——每次 race 都在该 promise 的 reaction 列表追加
+ * **永久**记录并经胜果钉住行 Buffer（读循环热路径 → 会话内无界增长；claude CancelSignal 同款）。
+ */
+class StopSignal {
+  private fired = false;
+  private readonly waiters = new Set<() => void>();
+
+  set(): void {
+    if (this.fired) return;
+    this.fired = true;
+    const ws = [...this.waiters];
+    this.waiters.clear();
+    for (const w of ws) w();
+  }
+
+  /** p 与停止信号竞速：已停/停止先至 → STOPPED；任一落定即退订，不留逐行残留。 */
+  async race<T>(p: Promise<T>): Promise<T | typeof STOPPED> {
+    if (this.fired) {
+      p.catch(() => {}); // 仍消费 p（对齐原 race 全路径订阅语义，杜绝潜在 unhandledRejection）
+      return STOPPED;
+    }
+    let unsubscribe!: () => void;
+    const stopP = new Promise<typeof STOPPED>((resolve) => {
+      const w = (): void => resolve(STOPPED);
+      this.waiters.add(w);
+      unsubscribe = (): void => {
+        this.waiters.delete(w);
+      };
+    });
+    try {
+      return await Promise.race([p, stopP]);
+    } finally {
+      unsubscribe();
+    }
+  }
+}
+
 /** 单 Agent 的 codex app-server 子进程驱动（base.RuntimeAdapter / E §9）。 */
 export class CodexProcess {
   readonly agentMemberId: string;
@@ -581,9 +621,11 @@ export class CodexProcess {
   private _threadId: string | null = null;
   private _turnQueue: Array<[string, string | null, string | null]> = [];
   private _turnInFlight = false;
-  // 停止事件（py task.cancel 的 TS 对应物：读循环/stderr/握手 request 在 await 点 race 退出）
+  // 停止事件（py task.cancel 的 TS 对应物：握手 request 在 await 点 race 退出）
   private _stopping = false;
   private _stopEvent = new AsyncEvent();
+  // 读循环/stderr 的停止信号（退订式 race；与 _stopEvent 同时机置位/换新）
+  private _stopSignal = new StopSignal();
 
   constructor(agentMemberId: string, sink: AdapterSink, paths: DataPaths, opts: CodexProcessOptions) {
     this.agentMemberId = agentMemberId;
@@ -663,6 +705,7 @@ export class CodexProcess {
     // stop 后同实例可再 start（py 管理器 _launch 复用 entry.process）→ 停止态复位、事件换新。
     this._stopping = false;
     this._stopEvent = new AsyncEvent();
+    this._stopSignal = new StopSignal();
   }
 
   private async handshake(boot: AgentBoot, resume: boolean): Promise<void> {
@@ -736,10 +779,10 @@ export class CodexProcess {
       return;
     }
     const stdout = proc.stdout;
-    const stopP: Promise<typeof STOPPED> = this._stopEvent.wait().then(() => STOPPED);
+    const stopSignal = this._stopSignal; // 本次 spawn 的信号（restart 换新，同 stopP 绑定时机）
     try {
       while (true) {
-        const line = await Promise.race([stdout.readline(), stopP]);
+        const line = await stopSignal.race(stdout.readline());
         if (line === STOPPED) {
           return; // 对等 py CancelledError re-raise：stop() 主动取消 → 不触发退出回调
         }
@@ -769,10 +812,10 @@ export class CodexProcess {
     if (stderr === null || stderr === undefined) {
       return;
     }
-    const stopP: Promise<typeof STOPPED> = this._stopEvent.wait().then(() => STOPPED);
+    const stopSignal = this._stopSignal;
     try {
       while (true) {
-        const line = await Promise.race([stderr.readline(), stopP]);
+        const line = await stopSignal.race(stderr.readline());
         if (line === STOPPED || line.length === 0) {
           return;
         }
@@ -966,6 +1009,7 @@ export class CodexProcess {
     // 对等 py 三任务 task.cancel()：停止事件线程化，读循环/stderr/握手在 await 点退出（先停任务）。
     this._stopping = true;
     this._stopEvent.set();
+    this._stopSignal.set();
     try {
       if (proc.stdin !== null) {
         proc.stdin.close();
@@ -1038,14 +1082,18 @@ export class CodexProcess {
 // ============================================================ 真 spawn（py _default_codex_spawn 对等）
 
 /**
- * 校准条款 2 行读法（readline 视图）：Buffer 累积按 `\n` 字节切行（含换行符吐出，py readline
- * 语义）；EOF 残段作末行；EOF 后 readline 恒返回空 Buffer（py b"" 对等）；未终止行累积超
- * STREAM_LINE_LIMIT 强制切出为一行继续读（超限帧必非合法 JSON → 防腐层计数，不崩读循环）。
+ * 校准条款 2 行读法（readline 视图；测试面导出）：Buffer 累积按 `\n` 字节切行（含换行符吐出，
+ * py readline 语义）；EOF 残段作末行；EOF 后 readline 恒返回空 Buffer（py b"" 对等）；未终止行
+ * 累积超 STREAM_LINE_LIMIT 强制切出为一行继续读（超限帧必非合法 JSON → 防腐层计数，不崩读循环；
+ * 区别于 claude 侧丢帧语义，两处各自登记）。未终止段 = chunk 引用数组 + 字节计数，每行恰一次
+ * Buffer.concat（claude NodeLineReader 同款；逐 chunk concat 是跨 chunk O(n²) 拷贝——
+ * 32MB 上限 ⇒ ~8GB memcpy，禁止回退）。
  */
-class LineReader implements CodexProcStdout {
+export class LineReader implements CodexProcStdout {
   private lines: Buffer[] = [];
   private waiters: Array<(b: Buffer) => void> = [];
-  private pending: Buffer = Buffer.alloc(0);
+  private parts: Buffer[] = [];
+  private partBytes = 0;
   private closed = false;
 
   private readonly maxLineBytes: number;
@@ -1055,26 +1103,47 @@ class LineReader implements CodexProcStdout {
   }
 
   push(chunk: Buffer): void {
-    let buf = this.pending.length === 0 ? chunk : Buffer.concat([this.pending, chunk]);
-    let idx: number;
-    while ((idx = buf.indexOf(0x0a)) >= 0) {
-      this.deliver(Buffer.from(buf.subarray(0, idx + 1)));
-      buf = buf.subarray(idx + 1);
+    let start = 0;
+    for (let i = 0; i < chunk.length; i += 1) {
+      if (chunk[i] === 0x0a) {
+        this.completeLine(chunk.subarray(start, i + 1));
+        start = i + 1;
+      }
     }
-    if (buf.length > this.maxLineBytes) {
-      this.deliver(Buffer.from(buf)); // 校准条款 2：超限强制切出，不崩读循环、不无界累积
-      buf = Buffer.alloc(0);
+    if (start < chunk.length) {
+      this.parts.push(chunk.subarray(start));
+      this.partBytes += chunk.length - start;
+      if (this.partBytes > this.maxLineBytes) {
+        this.deliver(this.takeParts()); // 校准条款 2：超限强制切出，不崩读循环、不无界累积
+      }
     }
-    this.pending = buf;
+  }
+
+  /** 完整行收口（含行尾 \n）：无累积段直投视图，有则恰一次 concat。 */
+  private completeLine(piece: Buffer): void {
+    if (this.parts.length === 0) {
+      this.deliver(piece);
+      return;
+    }
+    this.parts.push(piece);
+    this.partBytes += piece.length;
+    this.deliver(this.takeParts());
+  }
+
+  /** 累积段收口：恰一次 Buffer.concat 并清空计数。 */
+  private takeParts(): Buffer {
+    const line = Buffer.concat(this.parts);
+    this.parts = [];
+    this.partBytes = 0;
+    return line;
   }
 
   end(): void {
     if (this.closed) {
       return;
     }
-    if (this.pending.length > 0) {
-      this.deliver(Buffer.from(this.pending));
-      this.pending = Buffer.alloc(0);
+    if (this.parts.length > 0) {
+      this.deliver(this.takeParts()); // EOF 残段作末行
     }
     this.closed = true;
     for (const w of this.waiters.splice(0)) {
@@ -1173,8 +1242,8 @@ export class SpawnedCodexProc implements ProcLike {
     child.stderr?.on('data', (chunk: Buffer) => this.stderr.push(chunk));
     this.stdin = child.stdin !== null ? new RealStdin(child.stdin) : null;
     this.pid = child.pid ?? null;
-    child.on('exit', (code, signal) => {
-      this.rc = code !== null ? code : signal !== null ? -1 : -1; // 信号终止 py 为负值；统一 -1（登记差异）
+    child.on('exit', (code) => {
+      this.rc = code ?? -1; // 信号终止 py 为负值；统一 -1（登记差异）
     });
     child.on('close', () => {
       // 定稿只挂 'close'（cal6）：全部管道收尾后才吐 EOF / 放行 wait。

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * CLI 入口（契约 D §2 daemon 主进程；契约 E §3 `mcp` 子命令；对等基准 = apps/daemon cli.py）。
  *
@@ -17,6 +18,8 @@ import { setupFileLogging, getLogger } from './logconfig.ts';
 import { DataPaths } from './paths.ts';
 import { DAEMON_VERSION } from './version.ts';
 import * as os from 'node:os';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 interface Args {
   command: 'daemon' | 'mcp';
@@ -100,11 +103,16 @@ export async function main(argv: string[]): Promise<number> {
   return 0;
 }
 
-// 直跑判定按 URL 尾段对齐（win32 盘符大小写/分隔符差异容忍）；vitest/import 消费不触发。
+// 直跑判定=完整路径 URL 对齐（旧尾段比较退化为 basename 比对——宿主任何同名 cli.ts 入口 import
+// 本模块会误触发 main() 吃掉外来 argv）；win32 FS 大小写不敏感 → 仅 win32 双侧小写化。
+// vitest/import 消费不触发。
 const argv1 = process.argv[1];
-const isDirectRun =
-  argv1 !== undefined &&
-  import.meta.url.toLowerCase().endsWith(argv1.replace(/\\/g, '/').toLowerCase().replace(/^.*\//, '/'));
+const isDirectRun = (() => {
+  if (argv1 === undefined) return false;
+  const entry = pathToFileURL(path.resolve(argv1)).href;
+  const self = import.meta.url;
+  return process.platform === 'win32' ? entry.toLowerCase() === self.toLowerCase() : entry === self;
+})();
 if (isDirectRun) {
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),

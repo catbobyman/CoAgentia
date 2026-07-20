@@ -16,11 +16,11 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { CheckFinishedData, CheckRunData } from '@coagentia/contracts-ts';
 
+import { expanduser } from './adapters/cmdline.ts';
 import { TimeoutError, withTimeout } from './aio.ts';
 
 export const CHECK_TIMEOUT_SEC = 30 * 60;
@@ -40,12 +40,6 @@ export type CheckProcessRunner = (
   signal?: AbortSignal,
 ) => Promise<CheckProcessResult>;
 export type CheckFinishedCallback = (data: CheckFinishedData) => Promise<void>;
-
-function expanduser(p: string): string {
-  if (p === '~') return os.homedir();
-  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
-  return p;
-}
 
 /** 有界字节尾（对等 py _append_tail：超 4KB 即掐头）。 */
 class TailBuffer {

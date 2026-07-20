@@ -14,7 +14,9 @@
  *
  * 对等基准 = apps/daemon adapters/codex_cmdline.py。
  * resolveCodexBin 的 which = 手写 shutil.which 近似（win32 PATHEXT 遍历 + 当前目录前置），
- * 命中语义对齐 py（win32 下解析 codex.cmd npm shim）。
+ * 候选顺序对齐 py 3.12.1+（gh-109590）：PATHEXT 变体在前、裸名最后——npm 三 shim
+ * （无扩展名 sh 脚本 codex + codex.cmd + codex.ps1）下命中 codex.CMD 而非不可 spawn 的
+ * sh 脚本（probe.ts 共享同一实现，勿再复制）。
  */
 
 import * as fs from 'node:fs';
@@ -43,8 +45,14 @@ function accessCheck(p: string): boolean {
   }
 }
 
-/** 手写 shutil.which 近似：带目录成分 → 直查；否则遍历 PATH（win32 前置 '.' + PATHEXT）。 */
-function which(cmd: string): string | null {
+/**
+ * 手写 shutil.which 近似（probe.ts 共享单点）：带目录成分 → 直查；否则遍历 PATH
+ * （win32 前置 '.'）。win32 候选顺序 = py 3.12.1+ shutil.which（gh-109590）：base 自带
+ * PATHEXT 扩展（大小写不敏感）→ 直查优先；否则 **PATHEXT 变体在前、裸名最后**
+ * （py ≤3.11 完全不试裸名，裸名置尾是其兼容超集）。修复面：npm 三 shim（无扩展名
+ * sh 脚本 + .cmd + .ps1）下裸名前置会命中不可 spawn 的 sh 脚本 → 裸 spawn ENOENT。
+ */
+export function which(cmd: string): string | null {
   const isWin = process.platform === 'win32';
   const hasSep = cmd.includes('/') || (isWin && cmd.includes('\\'));
   let dirs: string[];
@@ -57,15 +65,16 @@ function which(cmd: string): string | null {
     dirs = (process.env['PATH'] ?? '').split(path.delimiter);
     if (isWin && !dirs.includes('.')) dirs.unshift('.');
   }
-  const files = isWin
-    ? [
-        base,
-        ...(process.env['PATHEXT'] || WIN_DEFAULT_PATHEXT)
-          .split(';')
-          .filter(Boolean)
-          .map((ext) => base + ext),
-      ]
-    : [base];
+  let files: string[];
+  if (isWin) {
+    const exts = (process.env['PATHEXT'] || WIN_DEFAULT_PATHEXT).split(';').filter(Boolean);
+    const variants = exts.map((ext) => base + ext);
+    const baseLower = base.toLowerCase();
+    const baseHasExt = exts.some((ext) => baseLower.endsWith(ext.toLowerCase()));
+    files = baseHasExt ? [base, ...variants] : [...variants, base];
+  } else {
+    files = [base];
+  }
   for (const dir of dirs) {
     for (const file of files) {
       const name = path.join(dir, file);

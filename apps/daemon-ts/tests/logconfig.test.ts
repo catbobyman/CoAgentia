@@ -4,8 +4,8 @@
  * 差异登记（py logging 底座 vs TS 手写滚动落盘器 src/logconfig.ts——既有底座，本文件只测不改）：
  * - py 断言 logging 内部态（handler 数 / logger.level / propagate）；TS 无对应内部面 → 一律改断
  *   **观测行为**（落盘内容 / 级别过滤 / 不写 stdout）；
- * - py env 级别名 "WARNING"（logging.getLevelName 口径）；TS 底座 LEVELS 用 "WARN"（"WARNING"
- *   不识别回落 INFO——底座既有行为）→ 本测试用 WARN 口径；
+ * - py env 级别名 "WARNING"（logging.getLevelName 口径）；TS 底座规范名用 "WARN"，另识别 py
+ *   别名 WARNING/CRITICAL/FATAL（CR 修复批 FIX 11a，未知名仍静默回落 INFO）——两口径都有用例；
  * - py 无滚动测试（托付 stdlib RotatingFileHandler）；TS 手写滚动器 → 补滚动面；MAX_BYTES(8MB)
  *   不可注入（底座常量，禁改），用 64KB 行 × 140 逼近触发一次滚动；
  * - py 隔离靠 _isolated_root_logger 存档/还原 handler；TS 用底座提供的 resetFileLogging()。
@@ -78,6 +78,25 @@ describe('logconfig 文件日志装配', () => {
     expect(content).not.toContain('info-should-be-filtered');
   });
 
+  // py 级别别名（FIX 11a）：WARNING/CRITICAL 对齐 py logging.getLevelName 口径。
+  it('py 级别别名 WARNING/CRITICAL 识别（env 与显式 level 两路）', () => {
+    vi.stubEnv('COAGENTIA_DAEMON_LOG_LEVEL', 'WARNING');
+    const paths = new DataPaths(tmp);
+    setupFileLogging(paths); // env=WARNING（py 口径）→ WARN 档
+    const logger = getLogger('coagentia_daemon');
+    logger.info('alias-info-filtered');
+    logger.warn('alias-warn-appears');
+    let content = fs.readFileSync(paths.logPath, 'utf-8');
+    expect(content).toContain('alias-warn-appears');
+    expect(content).not.toContain('alias-info-filtered');
+    setupFileLogging(paths, 'CRITICAL'); // 显式 CRITICAL（=ERROR 档 40）幂等改级别
+    logger.warn('alias-warn-filtered-at-critical');
+    logger.error('alias-error-appears');
+    content = fs.readFileSync(paths.logPath, 'utf-8');
+    expect(content).toContain('alias-error-appears');
+    expect(content).not.toContain('alias-warn-filtered-at-critical');
+  });
+
   // py test_explicit_level_overrides_env（py 断 logger.level；TS 改断观测行为：DEBUG 行落盘）
   it('显式 level 优先于 env', () => {
     vi.stubEnv('COAGENTIA_DAEMON_LOG_LEVEL', 'ERROR');
@@ -109,6 +128,21 @@ describe('logconfig 文件日志装配', () => {
     expect(fs.existsSync(`${paths.logPath}.1`)).toBe(true); // 滚出备份
     expect(fs.statSync(`${paths.logPath}.1`).size).toBeLessThanOrEqual(MAX_BYTES);
     expect(fs.statSync(paths.logPath).size).toBeLessThan(MAX_BYTES); // 当前文件重新累积
+  });
+
+  // FIX 11b 持久 fd：resetFileLogging 必关句柄（win32 tmp 清理/删文件依赖句柄先释放——
+  // 本文件每个 afterEach 的 rmSync 也在实测该义务），重装配后惰性重开续写。
+  it('持久 fd：resetFileLogging 关句柄、删文件后重装配续写正常', () => {
+    const paths = new DataPaths(tmp);
+    setupFileLogging(paths, 'INFO');
+    getLogger('fd').info('fd-first-line');
+    resetFileLogging(); // 关持久 fd
+    fs.rmSync(paths.logPath); // 句柄已释放 → win32 直接删得动（未关则 delete-pending 卡后续重开）
+    setupFileLogging(paths, 'INFO');
+    getLogger('fd').info('fd-second-line');
+    const content = fs.readFileSync(paths.logPath, 'utf-8');
+    expect(content).toContain('fd-second-line');
+    expect(content).not.toContain('fd-first-line'); // 新文件重新累积
   });
 
   // TS 补充未装配面（py 同款纪律：单测直建组件不落盘，logconfig.py 注释语义、无显式用例）
