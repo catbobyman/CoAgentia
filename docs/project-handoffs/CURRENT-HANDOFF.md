@@ -1,4 +1,4 @@
-# CoAgentia 当前交接（**MVP M1–M8 完成 + DEDAG 收口 + 实机铺开 R1–R3 + TS 迁移批 daemon 先行收口（2026-07-19，apps/daemon-ts 全功能对等 + 实机 12/12 + 真 CLI 冒烟 3/3）；接续 = server TS 化未立项 / py daemon 退役待拍板 / 挂账择机**）
+# CoAgentia 当前交接（**MVP M1–M8 完成 + DEDAG 收口 + 实机铺开 R1–R3 + TS 迁移批 daemon 先行收口 + CR-TS 评审修复批（2026-07-19，daemon-ts vitest 270/4）；接续 = TS 迁移剩余路线见 [TS-MIGRATION-ROADMAP.md](TS-MIGRATION-ROADMAP.md)（批 A py daemon 退役待拍板 / 批 B server TS 化未立项）**）
 
 | 项 | 内容 |
 | --- | --- |
