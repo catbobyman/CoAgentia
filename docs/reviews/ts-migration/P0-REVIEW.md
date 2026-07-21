@@ -2,7 +2,7 @@
 
 > 评审日期：2026-07-20
 > 首个实现：`27c044dfdf97283f7618a6d454a1499fe8e75fec`
-> 最终制品基线：`a7de995590e9d59cae6d4a9df02fdc99627e8c3a`
+> 最终制品基线：`238aef645338ca4fe105c6a2d913a64a99343551`
 > 执行规则来源：[仓库根 plan.md](../../../plan.md)
 > 评审结论：PASS（Critical = 0，Major = 0）
 > 阶段结论：P0 仍为 IN PROGRESS；TS-P0-03 外部 Windows runner 证据未取得
@@ -23,12 +23,15 @@
 | inventory 完整性 | 多后缀、shebang/executable、package scripts/bin、CI、Markdown/Pandoc/PowerShell/Git alias 等入口覆盖；tracked fingerprint 绑定 Git blob canonical payload；18/18 mutants 被拒 | PASS |
 | hermetic core | 删除 `NODE_OPTIONS` 的 child/fork 仍回注 guard；Worker、隐藏 shell Git、绝对 Git 路径被拒；允许 Vite `net use` | PASS |
 | workflow 可复现性 | 3 个 Windows job 均为 checkout v6 + `fetch-depth: 0`；Python 固定 `3.14.0`；Node/pnpm/MinGit/Playwright 固定版本或校验和 | PASS |
+| 首次 fresh-run 修复 | PowerShell 5.1 编译 native exit-86 guard；first-parent 结果树审计；history-only merge、merge 带入内容及 rename 伪装回归 | PASS |
 
 评审过程中识别出的 authority 伪装、文档命令漏扫、Git alias/间接 shell、child/Worker 隔离等问题均已修复，并转化为冻结回归 mutant。证据收口复核另发现 2 个产品 operationId 错取 mock 值、2 个迁移哈希受 CRLF 工作树字节影响，以及 tracked workflow fingerprint 会随 `core.autocrlf=true` fresh checkout 漂移；前两项已改为真实 server OpenAPI 与 baseline Git blob 的值，后一项已改为批量读取 baseline Git blob payload，并由 CRLF clone、binary payload、dirty/untracked fail-closed 回归锁定。首次证据提交后，live authority gate 又发现两份证据的措辞会被解读成替代计划声明，现已改为带根计划链接的中性验收表述。最终复审未留下 Critical 或 Major。
 
+owner 授权首次 push 后，[GitHub Actions #29798911693](https://github.com/catbobyman/CoAgentia/actions/runs/29798911693) 实证 PowerShell 7 无法输出 console `Add-Type` assembly，且 history-only merge 会被旧 `diff-tree -m` 按第二父提交展开。修复改用绝对路径 Windows PowerShell 5.1 编译 guard，并显式以 `commit^1` 比较每个 first-parent 结果树。独立对抗复核先指出原 fixture 没有真正复现多父误报，收紧后进一步发现 `git diff --name-only` 的 rename detection 可把非证据源路径伪装进 evidence prefix；最终实现强制 `--no-renames`，并以“无树变化 ours merge”和“README rename 进 evidence 后由 merge 带入”双 fixture 锁定允许/拒绝两面。最终复核为 Critical = 0、Major = 0、Minor = 0，reviewer 未修改受评文件。
+
 ## 3. 实证摘要
 
-- P0 tooling tests：`29/29`。
+- P0 tooling tests：`30/30`。
 - daemon hermetic core：`244 passed / 4 skipped / 20 files`。
 - daemon 全量：`270 passed / 4 skipped / 23 files`。
 - web：`266 passed / 47 files`。
@@ -39,7 +42,7 @@
 
 ## 4. 未闭环项与裁决
 
-唯一未闭环项为 TS-P0-03：当前仓库已配置 `origin`，但 owner 尚未授权 push，因此不能产生本轮新鲜 GitHub Actions Windows runner 的 run URL 与 SHA。本地运行和静态解析不能替代该外部证据。
+唯一未闭环项仍为 TS-P0-03：owner 已授权 push，首次 fresh-run 已如实保留为红线并完成修复与独立复核；当前等待绑定 `238aef6` 及其冻结证据的第二次全新 Windows runner 全绿 URL/SHA。本地运行和静态解析不能替代该外部证据。
 
 在取得并归档该 run URL/SHA 前：
 

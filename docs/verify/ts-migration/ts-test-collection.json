@@ -1,6 +1,6 @@
 {
-  "baseline_sha": "a7de995590e9d59cae6d4a9df02fdc99627e8c3a",
-  "baseline_tree_sha": "867458147481d07420ceb72c774f83031e42b1a1",
+  "baseline_sha": "238aef645338ca4fe105c6a2d913a64a99343551",
+  "baseline_tree_sha": "7d43354ee04ba150b522cd46b98074882b457174",
   "collector": "vitest-json-reporter",
   "commands": [
     {
