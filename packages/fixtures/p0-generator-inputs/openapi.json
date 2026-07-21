@@ -1,0 +1,7857 @@
+{
+ "components": {
+  "schemas": {
+   "ActivityFilter": {
+    "description": "GET /activity?filter=（B §9.7.3）。",
+    "enum": [
+     "all",
+     "unread",
+     "mentions"
+    ],
+    "title": "ActivityFilter",
+    "type": "string"
+   },
+   "ActivityItemPublic": {
+    "additionalProperties": false,
+    "description": "读面派生字段：actor_member_id = 触发本条的消息作者（自 message_id 联查，不落库）。\n\nmember_id 是接收者（表列语义）；前端渲染\"谁提及了你/谁发来私信\"需要作者，\n缺此字段时前端只能错用 member_id（M2 review 确认的行为人错位）。",
+    "properties": {
+     "actor_member_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actor Member Id"
+     },
+     "channel_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Channel Id"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "done_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Done At"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/ActivityKind"
+     },
+     "member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Member Id",
+      "type": "string"
+     },
+     "message_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message Id"
+     },
+     "task_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Id"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "member_id",
+     "kind",
+     "created_at"
+    ],
+    "title": "ActivityItemPublic",
+    "type": "object"
+   },
+   "ActivityKind": {
+    "enum": [
+     "mention",
+     "dm",
+     "silence_escalation",
+     "held_escalation",
+     "fail_closed",
+     "system"
+    ],
+    "title": "ActivityKind",
+    "type": "string"
+   },
+   "AgentCreate": {
+    "additionalProperties": false,
+    "properties": {
+     "computer_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Computer Id",
+      "type": "string"
+     },
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "model": {
+      "title": "Model",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "role_template_key": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Role Template Key"
+     },
+     "runtime": {
+      "title": "Runtime",
+      "type": "string"
+     }
+    },
+    "required": [
+     "computer_id",
+     "name",
+     "runtime",
+     "model"
+    ],
+    "title": "AgentCreate",
+    "type": "object"
+   },
+   "AgentPatch": {
+    "additionalProperties": false,
+    "description": "runtime/model/description 修改 = 下次启动生效（FR-3.5）；R3 门。",
+    "properties": {
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "runtime": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Runtime"
+     }
+    },
+    "title": "AgentPatch",
+    "type": "object"
+   },
+   "AgentPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "computer_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Computer Id",
+      "type": "string"
+     },
+     "created_by_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Created By Member Id",
+      "type": "string"
+     },
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "home_path": {
+      "title": "Home Path",
+      "type": "string"
+     },
+     "member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Member Id",
+      "type": "string"
+     },
+     "model": {
+      "title": "Model",
+      "type": "string"
+     },
+     "role_template_key": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Role Template Key"
+     },
+     "runtime": {
+      "$ref": "#/components/schemas/Runtime"
+     },
+     "status": {
+      "$ref": "#/components/schemas/AgentStatus",
+      "default": "offline"
+     }
+    },
+    "required": [
+     "member_id",
+     "computer_id",
+     "runtime",
+     "model",
+     "home_path",
+     "created_by_member_id"
+    ],
+    "title": "AgentPublic",
+    "type": "object"
+   },
+   "AgentSkillPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "agent_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Agent Member Id",
+      "type": "string"
+     },
+     "granted_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Granted At",
+      "type": "string"
+     },
+     "granted_by_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Granted By Member Id",
+      "type": "string"
+     },
+     "skill": {
+      "title": "Skill",
+      "type": "string"
+     }
+    },
+    "required": [
+     "agent_member_id",
+     "skill",
+     "granted_by_member_id",
+     "granted_at"
+    ],
+    "title": "AgentSkillPublic",
+    "type": "object"
+   },
+   "AgentStatus": {
+    "description": "PRD §4.4 五态；持久化\"最后已知态\"（契约 A agents 表 / 契约 D §2 级联裁决）。",
+    "enum": [
+     "starting",
+     "idle",
+     "busy",
+     "error",
+     "offline"
+    ],
+    "title": "AgentStatus",
+    "type": "string"
+   },
+   "AsTask": {
+    "additionalProperties": false,
+    "description": "消息转任务意图（B §9.4；DEDAG v1.6 扩展）。\n\nproject_id/writes_code：Agent `create_task` 工具与人类消息转任务同道——writes_code=True\n必须携本频道绑定的 project_id（服务端 422 执法）；建议 owner 走正文 @名字（mention 即唤醒，\n认领仍走 claim 防重，O4 语义不变）。",
+    "properties": {
+     "project_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "writes_code": {
+      "default": false,
+      "title": "Writes Code",
+      "type": "boolean"
+     }
+    },
+    "title": "AsTask",
+    "type": "object"
+   },
+   "AssignRequest": {
+    "additionalProperties": false,
+    "description": "改派（B §9.2）——POST /tasks/{id}/assign；member_id=None → 取消指派（不动 status）。",
+    "properties": {
+     "member_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member Id"
+     }
+    },
+    "title": "AssignRequest",
+    "type": "object"
+   },
+   "Body_upload_file_api_files_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_upload_file_api_files_post",
+    "type": "object"
+   },
+   "CardKind": {
+    "description": "结构化卡片锚点消息（契约 A messages.card_kind；卡片 = 不可变锚点 + 实体状态走 WS）。",
+    "enum": [
+     "proposal",
+     "held_draft",
+     "deployment",
+     "fail_closed",
+     "handoff_delivery",
+     "merge_conflict"
+    ],
+    "title": "CardKind",
+    "type": "string"
+   },
+   "ChannelCreate": {
+    "additionalProperties": false,
+    "properties": {
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "is_private": {
+      "default": false,
+      "title": "Is Private",
+      "type": "boolean"
+     },
+     "member_ids": {
+      "default": [],
+      "items": {
+       "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+       "type": "string"
+      },
+      "title": "Member Ids",
+      "type": "array"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "ChannelCreate",
+    "type": "object"
+   },
+   "ChannelKind": {
+    "enum": [
+     "channel",
+     "dm"
+    ],
+    "title": "ChannelKind",
+    "type": "string"
+   },
+   "ChannelMemberAdd": {
+    "additionalProperties": false,
+    "properties": {
+     "member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Member Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "member_id"
+    ],
+    "title": "ChannelMemberAdd",
+    "type": "object"
+   },
+   "ChannelNotificationSettingPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Channel Id",
+      "type": "string"
+     },
+     "member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Member Id",
+      "type": "string"
+     },
+     "mode": {
+      "$ref": "#/components/schemas/NotificationMode",
+      "default": "all"
+     }
+    },
+    "required": [
+     "channel_id",
+     "member_id"
+    ],
+    "title": "ChannelNotificationSettingPublic",
+    "type": "object"
+   },
+   "ChannelPatch": {
+    "additionalProperties": false,
+    "properties": {
+     "decomp_mode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decomp Mode"
+     },
+     "decomp_node_limit": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decomp Node Limit"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "held_escalate_n": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Held Escalate N"
+     },
+     "held_reeval_min": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Held Reeval Min"
+     },
+     "is_private": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Is Private"
+     },
+     "orch_escalation": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Orch Escalation"
+     },
+     "remind_escalation": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remind Escalation"
+     },
+     "remind_inprog_h": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remind Inprog H"
+     },
+     "remind_review_h": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remind Review H"
+     },
+     "remind_todo_h": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remind Todo H"
+     }
+    },
+    "title": "ChannelPatch",
+    "type": "object"
+   },
+   "ChannelProjectPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Channel Id",
+      "type": "string"
+     },
+     "project_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Project Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "channel_id",
+     "project_id"
+    ],
+    "title": "ChannelProjectPublic",
+    "type": "object"
+   },
+   "ChannelPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "archived_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Archived At"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "decomp_mode": {
+      "$ref": "#/components/schemas/DecompMode",
+      "default": "draft"
+     },
+     "decomp_node_limit": {
+      "default": 12,
+      "title": "Decomp Node Limit",
+      "type": "integer"
+     },
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "dm_key": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dm Key"
+     },
+     "held_escalate_n": {
+      "default": 3,
+      "title": "Held Escalate N",
+      "type": "integer"
+     },
+     "held_reeval_min": {
+      "default": 5,
+      "title": "Held Reeval Min",
+      "type": "integer"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "is_private": {
+      "default": false,
+      "title": "Is Private",
+      "type": "boolean"
+     },
+     "joint_ref": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Joint Ref"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/ChannelKind"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "next_task_number": {
+      "default": 1,
+      "title": "Next Task Number",
+      "type": "integer"
+     },
+     "orch_escalation": {
+      "default": false,
+      "title": "Orch Escalation",
+      "type": "boolean"
+     },
+     "remind_escalation": {
+      "default": true,
+      "title": "Remind Escalation",
+      "type": "boolean"
+     },
+     "remind_inprog_h": {
+      "default": 12,
+      "title": "Remind Inprog H",
+      "type": "integer"
+     },
+     "remind_review_h": {
+      "default": 24,
+      "title": "Remind Review H",
+      "type": "integer"
+     },
+     "remind_todo_h": {
+      "default": 24,
+      "title": "Remind Todo H",
+      "type": "integer"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "kind",
+     "created_at"
+    ],
+    "title": "ChannelPublic",
+    "type": "object"
+   },
+   "ChannelsSnapshot": {
+    "additionalProperties": false,
+    "description": "GET /channels：全量频道 + 自身 read-position + 本人非默认通知设置（B §4.5/§6/§11.4）。\n\nv1.3：扩第三字段 `notification_settings`（本人全部**非默认**行，前端渲染徽标源；PUT 后\n本地更新，零新增 WS 事件）。冷态/全默认 → []（H0 字段就位，H3 填充）。",
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ChannelPublic"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "notification_settings": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/ChannelNotificationSettingPublic"
+      },
+      "title": "Notification Settings",
+      "type": "array"
+     },
+     "read_positions": {
+      "items": {
+       "$ref": "#/components/schemas/ReadPositionPublic"
+      },
+      "title": "Read Positions",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items",
+     "read_positions"
+    ],
+    "title": "ChannelsSnapshot",
+    "type": "object"
+   },
+   "ComputerCreate": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "ComputerCreate",
+    "type": "object"
+   },
+   "ComputerCreated": {
+    "additionalProperties": false,
+    "description": "api_key 明文仅此一次（库中只存哈希，契约 A）。",
+    "properties": {
+     "api_key": {
+      "title": "Api Key",
+      "type": "string"
+     },
+     "command_line": {
+      "title": "Command Line",
+      "type": "string"
+     },
+     "computer": {
+      "$ref": "#/components/schemas/ComputerPublic"
+     }
+    },
+    "required": [
+     "computer",
+     "api_key",
+     "command_line"
+    ],
+    "title": "ComputerCreated",
+    "type": "object"
+   },
+   "ComputerPatch": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "ComputerPatch",
+    "type": "object"
+   },
+   "ComputerPublic": {
+    "additionalProperties": false,
+    "description": "= ComputerRow 剔除 api_key_hash（契约 A §8.2 敏感列）。",
+    "properties": {
+     "arch": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Arch"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "daemon_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daemon Version"
+     },
+     "detected_runtimes": {
+      "items": {
+       "$ref": "#/components/schemas/DetectedRuntime"
+      },
+      "title": "Detected Runtimes",
+      "type": "array"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "last_seen_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Seen At"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "os": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Os"
+     },
+     "status": {
+      "$ref": "#/components/schemas/ComputerStatus",
+      "default": "offline"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "name",
+     "created_at"
+    ],
+    "title": "ComputerPublic",
+    "type": "object"
+   },
+   "ComputerStatus": {
+    "enum": [
+     "connected",
+     "offline"
+    ],
+    "title": "ComputerStatus",
+    "type": "string"
+   },
+   "ContractCreate": {
+    "additionalProperties": false,
+    "description": "POST /tasks/{id}/contracts（提交与修订）。\n\n`body` 故意留 JsonValue：按 `kind` 对应哪个 body 模型二次 `model_validate` 是 server\n侧职责（kind≠schema 或字段校验失败 → 422 VALIDATION_FAILED），此包不做 kind↔模型分派。",
+    "properties": {
+     "body": {
+      "$ref": "#/components/schemas/JsonValue"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/ContractKind"
+     }
+    },
+    "required": [
+     "kind",
+     "body"
+    ],
+    "title": "ContractCreate",
+    "type": "object"
+   },
+   "ContractDraftRequest": {
+    "additionalProperties": false,
+    "description": "POST /tasks/{id}/contracts/request-draft（\"让 @Agent 起草\"）。\n\n效果 = S1 定向直投唤醒（`InjectKind.CONTRACT_DRAFT_REQUEST`，契约 D）；daemon 离线 → 503\nDAEMON_OFFLINE（P-3，best-effort 非积压）。",
+    "properties": {
+     "agent_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Agent Member Id",
+      "type": "string"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/ContractKind"
+     }
+    },
+    "required": [
+     "kind",
+     "agent_member_id"
+    ],
+    "title": "ContractDraftRequest",
+    "type": "object"
+   },
+   "ContractKind": {
+    "enum": [
+     "task_plan",
+     "task_handoff",
+     "loop_contract"
+    ],
+    "title": "ContractKind",
+    "type": "string"
+   },
+   "ConvertToTask": {
+    "additionalProperties": false,
+    "description": "Convert to Task（B §9.3）——POST /messages/{id}/task。\n\ntitle 缺省 = 锚点 body 首非空行剥 MD 前缀、>80 截断。",
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     }
+    },
+    "title": "ConvertToTask",
+    "type": "object"
+   },
+   "DecompMode": {
+    "enum": [
+     "draft",
+     "direct"
+    ],
+    "title": "DecompMode",
+    "type": "string"
+   },
+   "DeploymentLogPage": {
+    "additionalProperties": false,
+    "description": "GET /deployments/{id}/log?after=<行号>（B §13.3）：server 直读落盘日志文件（不依赖 daemon\n在线）。next_after = 下一页游标行号（无更多为 None）；truncated = 文件超 5MB 上限截断置真。",
+    "properties": {
+     "lines": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Lines",
+      "type": "array"
+     },
+     "next_after": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next After"
+     },
+     "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+     }
+    },
+    "title": "DeploymentLogPage",
+    "type": "object"
+   },
+   "DeploymentPublic": {
+    "additionalProperties": false,
+    "description": "= DeploymentRow 剔除 log_path（服务端内部；日志经端点/WS 流读取）。",
+    "properties": {
+     "branch": {
+      "title": "Branch",
+      "type": "string"
+     },
+     "command": {
+      "title": "Command",
+      "type": "string"
+     },
+     "commit_hash": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Commit Hash"
+     },
+     "exit_code": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Exit Code"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "project_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Project Id",
+      "type": "string"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "status": {
+      "$ref": "#/components/schemas/DeploymentStatus"
+     },
+     "token_summary": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TokenSummary"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "triggered_by_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Triggered By Member Id",
+      "type": "string"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "project_id",
+     "triggered_by_member_id",
+     "branch",
+     "command",
+     "status"
+    ],
+    "title": "DeploymentPublic",
+    "type": "object"
+   },
+   "DeploymentStatus": {
+    "enum": [
+     "queued",
+     "running",
+     "success",
+     "failed"
+    ],
+    "title": "DeploymentStatus",
+    "type": "string"
+   },
+   "DetectedRuntime": {
+    "additionalProperties": false,
+    "description": "computers.detected_runtimes 数组元素（FR-2.3）。",
+    "properties": {
+     "installed": {
+      "title": "Installed",
+      "type": "boolean"
+     },
+     "models": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Models",
+      "type": "array"
+     },
+     "runtime": {
+      "$ref": "#/components/schemas/Runtime"
+     },
+     "skills": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Skills",
+      "type": "array"
+     }
+    },
+    "required": [
+     "runtime",
+     "installed"
+    ],
+    "title": "DetectedRuntime",
+    "type": "object"
+   },
+   "DiagnosticEventPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "agent_member_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Agent Member Id"
+     },
+     "batch_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Id"
+     },
+     "channel_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Channel Id"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "payload": {
+      "$ref": "#/components/schemas/JsonValue"
+     },
+     "seq": {
+      "title": "Seq",
+      "type": "integer"
+     },
+     "task_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Id"
+     },
+     "type": {
+      "title": "Type",
+      "type": "string"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "seq",
+     "workspace_id",
+     "type",
+     "payload",
+     "created_at"
+    ],
+    "title": "DiagnosticEventPublic",
+    "type": "object"
+   },
+   "DiffFile": {
+    "additionalProperties": false,
+    "properties": {
+     "additions": {
+      "title": "Additions",
+      "type": "integer"
+     },
+     "deletions": {
+      "title": "Deletions",
+      "type": "integer"
+     },
+     "old_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Old Path"
+     },
+     "patch": {
+      "title": "Patch",
+      "type": "string"
+     },
+     "patch_truncated": {
+      "title": "Patch Truncated",
+      "type": "boolean"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "status": {
+      "enum": [
+       "added",
+       "modified",
+       "deleted",
+       "renamed"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "path",
+     "status",
+     "additions",
+     "deletions",
+     "patch",
+     "patch_truncated"
+    ],
+    "title": "DiffFile",
+    "type": "object"
+   },
+   "DiffPayload": {
+    "additionalProperties": false,
+    "description": "git.diff 查询响应（契约 D §6）；REST Diff 卡直接复用此形状。",
+    "properties": {
+     "base_ref": {
+      "title": "Base Ref",
+      "type": "string"
+     },
+     "files": {
+      "items": {
+       "$ref": "#/components/schemas/DiffFile"
+      },
+      "title": "Files",
+      "type": "array"
+     },
+     "files_truncated": {
+      "title": "Files Truncated",
+      "type": "boolean"
+     },
+     "head_ref": {
+      "title": "Head Ref",
+      "type": "string"
+     },
+     "total_additions": {
+      "title": "Total Additions",
+      "type": "integer"
+     },
+     "total_deletions": {
+      "title": "Total Deletions",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "base_ref",
+     "head_ref",
+     "files",
+     "total_additions",
+     "total_deletions",
+     "files_truncated"
+    ],
+    "title": "DiffPayload",
+    "type": "object"
+   },
+   "DmCreate": {
+    "additionalProperties": false,
+    "properties": {
+     "member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Member Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "member_id"
+    ],
+    "title": "DmCreate",
+    "type": "object"
+   },
+   "FilePublic": {
+    "additionalProperties": false,
+    "description": "= FileRow 剔除 stored_path（服务端内部）；message_id/channel_id 可空 = staging 态\n（契约 D §9.2：预上传返回的 FilePublic 尚未绑定消息）。",
+    "properties": {
+     "channel_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Channel Id"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "message_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message Id"
+     },
+     "mime": {
+      "title": "Mime",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sha256",
+      "type": "string"
+     },
+     "size_bytes": {
+      "title": "Size Bytes",
+      "type": "integer"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "name",
+     "mime",
+     "size_bytes",
+     "sha256",
+     "created_at"
+    ],
+    "title": "FilePublic",
+    "type": "object"
+   },
+   "FsTreeEntry": {
+    "additionalProperties": false,
+    "properties": {
+     "denied": {
+      "default": false,
+      "title": "Denied",
+      "type": "boolean"
+     },
+     "has_git": {
+      "title": "Has Git",
+      "type": "boolean"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "path",
+     "has_git"
+    ],
+    "title": "FsTreeEntry",
+    "type": "object"
+   },
+   "FsTreeReply": {
+    "additionalProperties": false,
+    "properties": {
+     "entries": {
+      "items": {
+       "$ref": "#/components/schemas/FsTreeEntry"
+      },
+      "title": "Entries",
+      "type": "array"
+     },
+     "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "entries"
+    ],
+    "title": "FsTreeReply",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "HeldDraftAsTask": {
+    "additionalProperties": false,
+    "description": "草稿携带的 as_task 意图（v1.0.5）——放行时随消息同一事务执行（语义同 B §9.4）。\n\n形状镜像 `rest.AsTask`（entities 为下层不能反向 import rest；字段单源在此，rest.AsTask\n另有其消息端点用途，二者刻意分立以免层次倒置）。",
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     }
+    },
+    "title": "HeldDraftAsTask",
+    "type": "object"
+   },
+   "HeldDraftPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "agent_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Agent Member Id",
+      "type": "string"
+     },
+     "as_task": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/HeldDraftAsTask"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Channel Id",
+      "type": "string"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "draft_body": {
+      "title": "Draft Body",
+      "type": "string"
+     },
+     "escalated_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Escalated At"
+     },
+     "file_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File Ids"
+     },
+     "held_count": {
+      "default": 1,
+      "title": "Held Count",
+      "type": "integer"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "next_reeval_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Next Reeval At",
+      "type": "string"
+     },
+     "reasons": {
+      "$ref": "#/components/schemas/HeldDraftReasons"
+     },
+     "resolution": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/HeldResolution"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "resolved_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Resolved At"
+     },
+     "resolved_by_member_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Resolved By Member Id"
+     },
+     "status": {
+      "$ref": "#/components/schemas/HeldDraftStatus",
+      "default": "held"
+     },
+     "thread_root_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thread Root Id"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "agent_member_id",
+     "channel_id",
+     "draft_body",
+     "reasons",
+     "next_reeval_at",
+     "created_at"
+    ],
+    "title": "HeldDraftPublic",
+    "type": "object"
+   },
+   "HeldDraftReasons": {
+    "additionalProperties": false,
+    "description": "结构化被扣原因（G2：未读消息清单，可点跳转）。\n\nv1.0.5：`unread_message_ids` 上限 50 条（截断保留最新）；`total_unread` 为真实未读计数\n（截断前的全量口径，卡片显示\"还有 N 条\"）。",
+    "properties": {
+     "total_unread": {
+      "title": "Total Unread",
+      "type": "integer"
+     },
+     "unread_message_ids": {
+      "items": {
+       "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+       "type": "string"
+      },
+      "title": "Unread Message Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "unread_message_ids",
+     "total_unread"
+    ],
+    "title": "HeldDraftReasons",
+    "type": "object"
+   },
+   "HeldDraftReleaseResponse": {
+    "additionalProperties": false,
+    "description": "POST /held-drafts/{id}/release 响应（B §4.14）：以原载荷落消息 + held 行置 released 终态。",
+    "properties": {
+     "held_draft": {
+      "$ref": "#/components/schemas/HeldDraftPublic"
+     },
+     "message": {
+      "$ref": "#/components/schemas/MessagePublic"
+     }
+    },
+    "required": [
+     "message",
+     "held_draft"
+    ],
+    "title": "HeldDraftReleaseResponse",
+    "type": "object"
+   },
+   "HeldDraftResponse": {
+    "additionalProperties": false,
+    "description": "POST /held-drafts/{id}/discard | /reevaluate 响应（B §4.14）：仅回 held 行最新态。",
+    "properties": {
+     "held_draft": {
+      "$ref": "#/components/schemas/HeldDraftPublic"
+     }
+    },
+    "required": [
+     "held_draft"
+    ],
+    "title": "HeldDraftResponse",
+    "type": "object"
+   },
+   "HeldDraftStatus": {
+    "enum": [
+     "held",
+     "released",
+     "discarded",
+     "reevaluating",
+     "resolved"
+    ],
+    "title": "HeldDraftStatus",
+    "type": "string"
+   },
+   "HeldResolution": {
+    "enum": [
+     "released",
+     "discarded",
+     "reevaluated"
+    ],
+    "title": "HeldResolution",
+    "type": "string"
+   },
+   "JsonValue": {},
+   "LifecycleAction": {
+    "description": "`POST /agents/{id}/lifecycle`（契约 B §4.3；三档重置枚举只定义这一次）。",
+    "enum": [
+     "start",
+     "stop",
+     "restart",
+     "reset_session",
+     "reset_full"
+    ],
+    "title": "LifecycleAction",
+    "type": "string"
+   },
+   "LifecycleRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "action": {
+      "$ref": "#/components/schemas/LifecycleAction"
+     }
+    },
+    "required": [
+     "action"
+    ],
+    "title": "LifecycleRequest",
+    "type": "object"
+   },
+   "LoopBudget": {
+    "additionalProperties": false,
+    "properties": {
+     "max_retries": {
+      "default": 1,
+      "title": "Max Retries",
+      "type": "integer"
+     },
+     "max_runtime_min": {
+      "title": "Max Runtime Min",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "max_runtime_min"
+    ],
+    "title": "LoopBudget",
+    "type": "object"
+   },
+   "LoopContractBody": {
+    "additionalProperties": false,
+    "description": "循环任务上岗契约（创建循环 Reminder 时必填——PRD §4.3 v1；生成消费归 M4，模型 M3 建齐）。",
+    "properties": {
+     "budget": {
+      "$ref": "#/components/schemas/LoopBudget"
+     },
+     "cadence": {
+      "title": "Cadence",
+      "type": "string"
+     },
+     "escalation": {
+      "title": "Escalation",
+      "type": "string"
+     },
+     "tools": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Tools",
+      "type": "array"
+     },
+     "verification": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Verification",
+      "type": "array"
+     },
+     "version": {
+      "const": "coagentia.loop-contract.v1",
+      "default": "coagentia.loop-contract.v1",
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "cadence",
+     "verification",
+     "budget",
+     "escalation"
+    ],
+    "title": "LoopContractBody",
+    "type": "object"
+   },
+   "MemberKind": {
+    "enum": [
+     "human",
+     "agent"
+    ],
+    "title": "MemberKind",
+    "type": "string"
+   },
+   "MemberPatch": {
+    "additionalProperties": false,
+    "properties": {
+     "role": {
+      "$ref": "#/components/schemas/MemberRole"
+     }
+    },
+    "required": [
+     "role"
+    ],
+    "title": "MemberPatch",
+    "type": "object"
+   },
+   "MemberPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/MemberKind"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "removed_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Removed At"
+     },
+     "role": {
+      "$ref": "#/components/schemas/MemberRole",
+      "default": "member"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "kind",
+     "name",
+     "created_at"
+    ],
+    "title": "MemberPublic",
+    "type": "object"
+   },
+   "MemberRole": {
+    "enum": [
+     "member",
+     "admin",
+     "owner"
+    ],
+    "title": "MemberRole",
+    "type": "string"
+   },
+   "MessageCreate": {
+    "additionalProperties": false,
+    "properties": {
+     "as_task": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AsTask"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "body": {
+      "title": "Body",
+      "type": "string"
+     },
+     "file_ids": {
+      "default": [],
+      "items": {
+       "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+       "type": "string"
+      },
+      "title": "File Ids",
+      "type": "array"
+     },
+     "thread_root_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thread Root Id"
+     }
+    },
+    "required": [
+     "body"
+    ],
+    "title": "MessageCreate",
+    "type": "object"
+   },
+   "MessageCreated": {
+    "additionalProperties": false,
+    "description": "as_task 成功时 task 非空（原子）。",
+    "properties": {
+     "message": {
+      "$ref": "#/components/schemas/MessagePublic"
+     },
+     "task": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TaskPublic"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "message"
+    ],
+    "title": "MessageCreated",
+    "type": "object"
+   },
+   "MessageKind": {
+    "enum": [
+     "user",
+     "system"
+    ],
+    "title": "MessageKind",
+    "type": "string"
+   },
+   "MessagePublic": {
+    "additionalProperties": false,
+    "description": "读面派生字段 files（v1.0.4，Public≠Row 放宽先例同 ActivityItemPublic.actor_member_id）：\nREST 消息读面（列表/线程/发消息响应/搜索命中）与 message.created 广播填充（[] = 无附件）；\n未附着面（daemon backlog/deliver 帧）保持 None——否则旧消息附件卡受 channelFiles\n首页 ≤50 截断（M2 挂账）。serialize 时按 message_id 联查 files，不落 messages 表。",
+    "properties": {
+     "author_member_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Author Member Id"
+     },
+     "body": {
+      "title": "Body",
+      "type": "string"
+     },
+     "card_kind": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CardKind"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "card_ref": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Card Ref"
+     },
+     "channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Channel Id",
+      "type": "string"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "files": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/FilePublic"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Files"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/MessageKind",
+      "default": "user"
+     },
+     "thread_root_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thread Root Id"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "channel_id",
+     "body",
+     "created_at"
+    ],
+    "title": "MessagePublic",
+    "type": "object"
+   },
+   "NotificationMode": {
+    "enum": [
+     "all",
+     "mentions",
+     "mute"
+    ],
+    "title": "NotificationMode",
+    "type": "string"
+   },
+   "NotificationSettingPut": {
+    "additionalProperties": false,
+    "description": "PUT /channels/{id}/notification-setting（B §4.5/§11.4）：upsert 懒建；人类成员本人自治\n（无 admin 门）；Agent 主体 403（通知是人类面）；kind=dm → 422 NOTIF_IN_DM（DM 必达）。\nGET 无行回默认 `{mode: all}`（响应用 entities.ChannelNotificationSettingPublic）。",
+    "properties": {
+     "mode": {
+      "$ref": "#/components/schemas/NotificationMode"
+     }
+    },
+    "required": [
+     "mode"
+    ],
+    "title": "NotificationSettingPut",
+    "type": "object"
+   },
+   "OrphanCleanup": {
+    "additionalProperties": false,
+    "description": "POST /computers/{id}/worktrees/cleanup-orphan：ids-only 定位（永不传裸路径）。",
+    "properties": {
+     "project_id": {
+      "title": "Project Id",
+      "type": "string"
+     },
+     "task_id": {
+      "title": "Task Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_id",
+     "task_id"
+    ],
+    "title": "OrphanCleanup",
+    "type": "object"
+   },
+   "OrphanCleanupResult": {
+    "additionalProperties": false,
+    "description": "孤儿清理响应：无 DB 行可写、不产生 worktree.updated，前端以本响应刷新。",
+    "properties": {
+     "project_id": {
+      "title": "Project Id",
+      "type": "string"
+     },
+     "removed": {
+      "title": "Removed",
+      "type": "boolean"
+     },
+     "task_id": {
+      "title": "Task Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_id",
+     "task_id",
+     "removed"
+    ],
+    "title": "OrphanCleanupResult",
+    "type": "object"
+   },
+   "Page_ActivityItemPublic_": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ActivityItemPublic"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[ActivityItemPublic]",
+    "type": "object"
+   },
+   "Page_DiagnosticEventPublic_": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/DiagnosticEventPublic"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[DiagnosticEventPublic]",
+    "type": "object"
+   },
+   "Page_FilePublic_": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/FilePublic"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[FilePublic]",
+    "type": "object"
+   },
+   "Page_HeldDraftPublic_": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/HeldDraftPublic"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[HeldDraftPublic]",
+    "type": "object"
+   },
+   "Page_MessagePublic_": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/MessagePublic"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[MessagePublic]",
+    "type": "object"
+   },
+   "Page_TaskPublic_": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/TaskPublic"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[TaskPublic]",
+    "type": "object"
+   },
+   "PresenceEntry": {
+    "additionalProperties": false,
+    "description": "GET /presence 合并视图：presence 不完全入库（契约 B §4.3 / 契约 D §2 级联裁决）。",
+    "properties": {
+     "busy_detail": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Busy Detail"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/MemberKind"
+     },
+     "member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Member Id",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/PresenceStatus"
+     }
+    },
+    "required": [
+     "member_id",
+     "kind",
+     "status"
+    ],
+    "title": "PresenceEntry",
+    "type": "object"
+   },
+   "PresenceSnapshot": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/PresenceEntry"
+      },
+      "title": "Items",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "PresenceSnapshot",
+    "type": "object"
+   },
+   "PresenceStatus": {
+    "description": "`GET /presence` 与 `presence.changed` 的合并视图值域：人类 online/offline，Agent 五态。",
+    "enum": [
+     "online",
+     "offline",
+     "starting",
+     "idle",
+     "busy",
+     "error"
+    ],
+    "title": "PresenceStatus",
+    "type": "string"
+   },
+   "PreviewSessionPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "fail_log_tail": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fail Log Tail"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "last_active_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Active At"
+     },
+     "port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Port"
+     },
+     "recycled_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recycled At"
+     },
+     "started_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Started At",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/PreviewStatus"
+     },
+     "task_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Task Id",
+      "type": "string"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     },
+     "worktree_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Worktree Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "task_id",
+     "worktree_id",
+     "status",
+     "started_at"
+    ],
+    "title": "PreviewSessionPublic",
+    "type": "object"
+   },
+   "PreviewStatus": {
+    "enum": [
+     "starting",
+     "running",
+     "recycled",
+     "failed"
+    ],
+    "title": "PreviewStatus",
+    "type": "string"
+   },
+   "ProjectBind": {
+    "additionalProperties": false,
+    "properties": {
+     "project_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Project Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_id"
+    ],
+    "title": "ProjectBind",
+    "type": "object"
+   },
+   "ProjectCreate": {
+    "additionalProperties": false,
+    "properties": {
+     "computer_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Computer Id",
+      "type": "string"
+     },
+     "deploy_command": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deploy Command"
+     },
+     "dev_command": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dev Command"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "preview_idle_min": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Preview Idle Min"
+     },
+     "repo_path": {
+      "title": "Repo Path",
+      "type": "string"
+     },
+     "worktree_keep_days": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Worktree Keep Days"
+     }
+    },
+    "required": [
+     "name",
+     "repo_path",
+     "computer_id"
+    ],
+    "title": "ProjectCreate",
+    "type": "object"
+   },
+   "ProjectPatch": {
+    "additionalProperties": false,
+    "properties": {
+     "computer_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Computer Id"
+     },
+     "deploy_command": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deploy Command"
+     },
+     "dev_command": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dev Command"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "preview_idle_min": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Preview Idle Min"
+     },
+     "repo_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Repo Path"
+     },
+     "worktree_keep_days": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Worktree Keep Days"
+     }
+    },
+    "title": "ProjectPatch",
+    "type": "object"
+   },
+   "ProjectPublic": {
+    "additionalProperties": false,
+    "description": "频道绑定读面由 channel_projects 联查得出，不落 projects 表。",
+    "properties": {
+     "channel_ids": {
+      "items": {
+       "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+       "type": "string"
+      },
+      "title": "Channel Ids",
+      "type": "array"
+     },
+     "computer_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Computer Id",
+      "type": "string"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "deploy_command": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deploy Command"
+     },
+     "dev_command": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dev Command"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "preview_idle_min": {
+      "default": 30,
+      "title": "Preview Idle Min",
+      "type": "integer"
+     },
+     "repo_path": {
+      "title": "Repo Path",
+      "type": "string"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     },
+     "worktree_keep_days": {
+      "default": 7,
+      "title": "Worktree Keep Days",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "computer_id",
+     "name",
+     "repo_path",
+     "created_at",
+     "channel_ids"
+    ],
+    "title": "ProjectPublic",
+    "type": "object"
+   },
+   "ReadPositionPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Channel Id",
+      "type": "string"
+     },
+     "last_read_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Last Read At",
+      "type": "string"
+     },
+     "last_read_message_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Last Read Message Id",
+      "type": "string"
+     },
+     "member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Member Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "member_id",
+     "channel_id",
+     "last_read_message_id",
+     "last_read_at"
+    ],
+    "title": "ReadPositionPublic",
+    "type": "object"
+   },
+   "ReadPositionPut": {
+    "additionalProperties": false,
+    "properties": {
+     "last_read_message_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Last Read Message Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "last_read_message_id"
+    ],
+    "title": "ReadPositionPut",
+    "type": "object"
+   },
+   "ReminderCreate": {
+    "additionalProperties": false,
+    "description": "Agent 主体自设（FR-3.9）；recurring 无 loop_contract → 422（D1-L2）。\n\nM4 起（v1.2）：可携内联 `loop_contract`——recurring 必填（缺 → 422），server `model_validate`\n后同一事务建 task_contracts（kind=loop_contract、reminder_id 挂接，契约 A §4.3 XOR）并回填\nreminders.loop_contract_id；once 携带 loop_contract → 422（B §4.4/§10.6）。契约在同事务才\n创建，故请求侧不接受 loop_contract_id（那是存储列，非请求字段）。前向引用 LoopContractBody\n（定义序在后，同 entities.MessagePublic.files 先例），文件末尾 model_rebuild() 补全。\n\ncadence（B §10.6/§11.5）：once = ISO-8601 时刻；recurring = interval（ISO-8601 duration，如\n`PT1H`）或 **cron 五段式**（`分 时 日 月 周`，服务器本地时区，无秒/年/@keyword——M5 v1.3 扩），\n且创建时须与 `loop_contract.cadence` 一致（server 校验，不一致 → 422）。cadence 在 contracts 侧\n是纯 str（无语义校验器）：cron 值域解析/塌缩式重排的判定归 H4 server 侧单点（纪律 7）。",
+    "properties": {
+     "anchor_channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Anchor Channel Id",
+      "type": "string"
+     },
+     "anchor_message_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Anchor Message Id"
+     },
+     "anchor_task_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Anchor Task Id"
+     },
+     "cadence": {
+      "title": "Cadence",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "loop_contract": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/LoopContractBody"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "cadence",
+     "anchor_channel_id"
+    ],
+    "title": "ReminderCreate",
+    "type": "object"
+   },
+   "ReminderKind": {
+    "enum": [
+     "once",
+     "recurring"
+    ],
+    "title": "ReminderKind",
+    "type": "string"
+   },
+   "ReminderPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "agent_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Agent Member Id",
+      "type": "string"
+     },
+     "anchor_channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Anchor Channel Id",
+      "type": "string"
+     },
+     "anchor_message_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Anchor Message Id"
+     },
+     "anchor_task_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Anchor Task Id"
+     },
+     "cadence": {
+      "title": "Cadence",
+      "type": "string"
+     },
+     "cancelled_by_member_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cancelled By Member Id"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/ReminderKind"
+     },
+     "loop_contract_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loop Contract Id"
+     },
+     "next_fire_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Next Fire At",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/ReminderStatus",
+      "default": "active"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "agent_member_id",
+     "kind",
+     "cadence",
+     "anchor_channel_id",
+     "next_fire_at",
+     "created_at"
+    ],
+    "title": "ReminderPublic",
+    "type": "object"
+   },
+   "ReminderStatus": {
+    "enum": [
+     "active",
+     "cancelled",
+     "done"
+    ],
+    "title": "ReminderStatus",
+    "type": "string"
+   },
+   "Runtime": {
+    "enum": [
+     "claude_code",
+     "codex"
+    ],
+    "title": "Runtime",
+    "type": "string"
+   },
+   "SearchJumps": {
+    "additionalProperties": false,
+    "description": "GET /search 的跳转分组（名称子串命中，NOCASE）。",
+    "properties": {
+     "channels": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/ChannelPublic"
+      },
+      "title": "Channels",
+      "type": "array"
+     },
+     "members": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/MemberPublic"
+      },
+      "title": "Members",
+      "type": "array"
+     }
+    },
+    "title": "SearchJumps",
+    "type": "object"
+   },
+   "SearchKind": {
+    "description": "GET /search?kind=（B §9.6.1；缺省全搜）。",
+    "enum": [
+     "message",
+     "task"
+    ],
+    "title": "SearchKind",
+    "type": "string"
+   },
+   "SearchMessageResult": {
+    "additionalProperties": false,
+    "properties": {
+     "message": {
+      "$ref": "#/components/schemas/MessagePublic"
+     },
+     "snippet": {
+      "title": "Snippet",
+      "type": "string"
+     }
+    },
+    "required": [
+     "message",
+     "snippet"
+    ],
+    "title": "SearchMessageResult",
+    "type": "object"
+   },
+   "SearchResponse": {
+    "additionalProperties": false,
+    "description": "搜索（B §9.6）——GET /search，三分组。",
+    "properties": {
+     "jumps": {
+      "$ref": "#/components/schemas/SearchJumps"
+     },
+     "messages": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/SearchMessageResult"
+      },
+      "title": "Messages",
+      "type": "array"
+     },
+     "tasks": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/TaskPublic"
+      },
+      "title": "Tasks",
+      "type": "array"
+     }
+    },
+    "required": [
+     "jumps"
+    ],
+    "title": "SearchResponse",
+    "type": "object"
+   },
+   "SkillsPut": {
+    "additionalProperties": false,
+    "properties": {
+     "skills": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Skills",
+      "type": "array"
+     }
+    },
+    "required": [
+     "skills"
+    ],
+    "title": "SkillsPut",
+    "type": "object"
+   },
+   "TaskContractPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "body": {
+      "$ref": "#/components/schemas/JsonValue"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "created_by_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Created By Member Id",
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/ContractKind"
+     },
+     "reminder_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reminder Id"
+     },
+     "revision": {
+      "default": 1,
+      "title": "Revision",
+      "type": "integer"
+     },
+     "superseded_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Superseded At"
+     },
+     "task_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Id"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "kind",
+     "version",
+     "body",
+     "created_by_member_id",
+     "created_at"
+    ],
+    "title": "TaskContractPublic",
+    "type": "object"
+   },
+   "TaskDetail": {
+    "additionalProperties": false,
+    "description": "GET /tasks/{id}（B §9.8）。",
+    "properties": {
+     "contracts": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/TaskContractPublic"
+      },
+      "title": "Contracts",
+      "type": "array"
+     },
+     "task": {
+      "$ref": "#/components/schemas/TaskPublic"
+     },
+     "usage": {
+      "$ref": "#/components/schemas/TaskUsage"
+     },
+     "worktree": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/WorktreePublic"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "task",
+     "usage"
+    ],
+    "title": "TaskDetail",
+    "type": "object"
+   },
+   "TaskLevel": {
+    "enum": [
+     "l1",
+     "l2"
+    ],
+    "title": "TaskLevel",
+    "type": "string"
+   },
+   "TaskMergeAccepted": {
+    "additionalProperties": false,
+    "description": "POST /tasks/{task_id}/merge 202 响应（DEDAG B v1.6 §14）。\n\nstatus：accepted=已受理异步执行；merged=幂等命中（worktree 已 merged，不再下发）。",
+    "properties": {
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "task_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Task Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "task_id",
+     "status"
+    ],
+    "title": "TaskMergeAccepted",
+    "type": "object"
+   },
+   "TaskPatch": {
+    "additionalProperties": false,
+    "description": "元数据补丁（B §4.7）——PATCH /tasks/{id}；不写 task_events，广播 task.updated。\n\n`level`：升格载体（M3 P-2 拍板）——仅 `l1→l2` 单向放行；`l2→l1` 或非法值由 server\n校验拒 422 TASK_TRANSITION_INVALID（rule=D1）。升格本身不写 task_events。",
+    "properties": {
+     "level": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TaskLevel"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "silence_override_h": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Silence Override H"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     }
+    },
+    "title": "TaskPatch",
+    "type": "object"
+   },
+   "TaskPublic": {
+    "additionalProperties": false,
+    "properties": {
+     "channel_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Channel Id",
+      "type": "string"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "created_by_member_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Created By Member Id",
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "level": {
+      "$ref": "#/components/schemas/TaskLevel",
+      "default": "l1"
+     },
+     "number": {
+      "title": "Number",
+      "type": "integer"
+     },
+     "owner_member_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner Member Id"
+     },
+     "project_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id"
+     },
+     "root_message_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Root Message Id",
+      "type": "string"
+     },
+     "silence_override_h": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Silence Override H"
+     },
+     "status": {
+      "$ref": "#/components/schemas/TaskStatus",
+      "default": "todo"
+     },
+     "status_changed_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Status Changed At",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     },
+     "writes_code": {
+      "default": false,
+      "title": "Writes Code",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "channel_id",
+     "number",
+     "root_message_id",
+     "title",
+     "created_by_member_id",
+     "status_changed_at",
+     "created_at"
+    ],
+    "title": "TaskPublic",
+    "type": "object"
+   },
+   "TaskStatus": {
+    "enum": [
+     "todo",
+     "in_progress",
+     "in_review",
+     "done",
+     "closed"
+    ],
+    "title": "TaskStatus",
+    "type": "string"
+   },
+   "TaskStatusChange": {
+    "additionalProperties": false,
+    "description": "状态写（B §9.1）——POST /tasks/{id}/status。\n\n非法边 → 422 TASK_TRANSITION_INVALID；to==当前 → 幂等 200。",
+    "properties": {
+     "to": {
+      "$ref": "#/components/schemas/TaskStatus"
+     }
+    },
+    "required": [
+     "to"
+    ],
+    "title": "TaskStatusChange",
+    "type": "object"
+   },
+   "TaskUsage": {
+    "additionalProperties": false,
+    "description": "TaskDetail 的成本聚合（token_usage_events 按 task_id 汇总）。",
+    "properties": {
+     "cache_read_tokens": {
+      "default": 0,
+      "title": "Cache Read Tokens",
+      "type": "integer"
+     },
+     "cache_write_tokens": {
+      "default": 0,
+      "title": "Cache Write Tokens",
+      "type": "integer"
+     },
+     "events": {
+      "default": 0,
+      "title": "Events",
+      "type": "integer"
+     },
+     "input_tokens": {
+      "default": 0,
+      "title": "Input Tokens",
+      "type": "integer"
+     },
+     "output_tokens": {
+      "default": 0,
+      "title": "Output Tokens",
+      "type": "integer"
+     }
+    },
+    "title": "TaskUsage",
+    "type": "object"
+   },
+   "TasksReporting": {
+    "additionalProperties": false,
+    "description": "W7 覆盖率诚实标注：reporting = 有 usage 上报的任务数，total = 聚合集任务总数\n（未上报任务计入分母，B §13.4）。level=task 时恒 {0/1, 1}。",
+    "properties": {
+     "reporting": {
+      "default": 0,
+      "title": "Reporting",
+      "type": "integer"
+     },
+     "total": {
+      "default": 0,
+      "title": "Total",
+      "type": "integer"
+     }
+    },
+    "title": "TasksReporting",
+    "type": "object"
+   },
+   "TokenSummary": {
+    "additionalProperties": false,
+    "description": "deployments.token_summary 新账快照（契约 B §13.4）：上次 success 部署以来 merged 任务集\n聚合。task_ids 按 id 稳定排序、最多 50 项（details 有界先例 §12.12 #4）。",
+    "properties": {
+     "task_ids": {
+      "items": {
+       "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+       "type": "string"
+      },
+      "title": "Task Ids",
+      "type": "array"
+     },
+     "tasks_reporting": {
+      "$ref": "#/components/schemas/TasksReporting"
+     },
+     "usage": {
+      "$ref": "#/components/schemas/UsageBucket"
+     }
+    },
+    "required": [
+     "usage",
+     "tasks_reporting"
+    ],
+    "title": "TokenSummary",
+    "type": "object"
+   },
+   "UiTheme": {
+    "enum": [
+     "dark",
+     "light",
+     "system"
+    ],
+    "title": "UiTheme",
+    "type": "string"
+   },
+   "UsageBreakdownItem": {
+    "additionalProperties": false,
+    "description": "UsageReport.breakdown 逐子项（rollup=true 附）：agent 逐任务 / canvas 逐节点任务。",
+    "properties": {
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "ref": {
+      "title": "Ref",
+      "type": "string"
+     },
+     "usage": {
+      "$ref": "#/components/schemas/UsageBucket"
+     }
+    },
+    "required": [
+     "ref",
+     "label",
+     "usage"
+    ],
+    "title": "UsageBreakdownItem",
+    "type": "object"
+   },
+   "UsageBucket": {
+    "additionalProperties": false,
+    "description": "token 聚合四字段 + 事件计数（§9.8 同源同形；永不折算货币，W7）。",
+    "properties": {
+     "cache_read_tokens": {
+      "default": 0,
+      "title": "Cache Read Tokens",
+      "type": "integer"
+     },
+     "cache_write_tokens": {
+      "default": 0,
+      "title": "Cache Write Tokens",
+      "type": "integer"
+     },
+     "events": {
+      "default": 0,
+      "title": "Events",
+      "type": "integer"
+     },
+     "input_tokens": {
+      "default": 0,
+      "title": "Input Tokens",
+      "type": "integer"
+     },
+     "output_tokens": {
+      "default": 0,
+      "title": "Output Tokens",
+      "type": "integer"
+     }
+    },
+    "title": "UsageBucket",
+    "type": "object"
+   },
+   "UsageLevel": {
+    "description": "`GET /usage?level=`（契约 B §13.4）三层聚合维度值域（?filter=/?kind= 枚举先例）。",
+    "enum": [
+     "task",
+     "agent",
+     "canvas"
+    ],
+    "title": "UsageLevel",
+    "type": "string"
+   },
+   "UsageReport": {
+    "additionalProperties": false,
+    "description": "GET /usage?level=task|agent|canvas&ref=&rollup=（B §13.4，响应形状冻结）。\n\n永不折算货币（W7）；`tasks_reporting` 诚实标注覆盖率（level=task 恒 {0/1, 1}）；rollup=true\n时附 `breakdown` 逐子项明细，默认省略。聚合 SQL/新账推导活 server 单点（纪律 7）。",
+    "properties": {
+     "breakdown": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/UsageBreakdownItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Breakdown"
+     },
+     "level": {
+      "$ref": "#/components/schemas/UsageLevel"
+     },
+     "ref": {
+      "title": "Ref",
+      "type": "string"
+     },
+     "tasks_reporting": {
+      "$ref": "#/components/schemas/TasksReporting"
+     },
+     "usage": {
+      "$ref": "#/components/schemas/UsageBucket"
+     }
+    },
+    "required": [
+     "level",
+     "ref",
+     "usage",
+     "tasks_reporting"
+    ],
+    "title": "UsageReport",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "WorkspaceCreate": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "slug": {
+      "title": "Slug",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "slug"
+    ],
+    "title": "WorkspaceCreate",
+    "type": "object"
+   },
+   "WorkspacePatch": {
+    "additionalProperties": false,
+    "properties": {
+     "attachment_max_mb": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Attachment Max Mb"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "notif_desktop": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notif Desktop"
+     },
+     "notif_sound": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notif Sound"
+     },
+     "onboarding_greeting": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Onboarding Greeting"
+     },
+     "setup_state": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "$ref": "#/components/schemas/JsonValue"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Setup State"
+     },
+     "slug": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Slug"
+     },
+     "ui_theme": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/UiTheme"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "title": "WorkspacePatch",
+    "type": "object"
+   },
+   "WorkspacePublic": {
+    "additionalProperties": false,
+    "properties": {
+     "attachment_max_mb": {
+      "default": 200,
+      "title": "Attachment Max Mb",
+      "type": "integer"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "notif_desktop": {
+      "default": true,
+      "title": "Notif Desktop",
+      "type": "boolean"
+     },
+     "notif_sound": {
+      "default": false,
+      "title": "Notif Sound",
+      "type": "boolean"
+     },
+     "onboarding_greeting": {
+      "default": false,
+      "title": "Onboarding Greeting",
+      "type": "boolean"
+     },
+     "setup_state": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/JsonValue"
+      },
+      "title": "Setup State",
+      "type": "object"
+     },
+     "slug": {
+      "title": "Slug",
+      "type": "string"
+     },
+     "ui_theme": {
+      "$ref": "#/components/schemas/UiTheme",
+      "default": "dark"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "slug",
+     "created_at"
+    ],
+    "title": "WorkspacePublic",
+    "type": "object"
+   },
+   "WorktreeConsoleItem": {
+    "additionalProperties": false,
+    "description": "管理台一行：DB 登记行 ∪ 磁盘孤儿行（合账 key = project_id+task_id）。\n\nderived：ok = DB∩磁盘或终态无树的正常态；missing = active 登记但磁盘无（丢失）；\norphan = 磁盘有树但无非-cleaned 登记（id/status/时间戳皆 None，task_id 由目录名解析）。",
+    "properties": {
+     "branch": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Branch"
+     },
+     "channel_id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Channel Id"
+     },
+     "cleaned_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cleaned At"
+     },
+     "computer_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Computer Id",
+      "type": "string"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "derived": {
+      "enum": [
+       "ok",
+       "missing",
+       "orphan"
+      ],
+      "title": "Derived",
+      "type": "string"
+     },
+     "id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
+     "live": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/WorktreeLive"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "merge_commit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Merge Commit"
+     },
+     "merged_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Merged At"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "project_id": {
+      "title": "Project Id",
+      "type": "string"
+     },
+     "project_name": {
+      "title": "Project Name",
+      "type": "string"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/WorktreeStatus"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "task_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Id"
+     },
+     "task_title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Title"
+     }
+    },
+    "required": [
+     "project_id",
+     "project_name",
+     "computer_id",
+     "path",
+     "derived"
+    ],
+    "title": "WorktreeConsoleItem",
+    "type": "object"
+   },
+   "WorktreeConsoleReply": {
+    "additionalProperties": false,
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/WorktreeConsoleItem"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "scans": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/WorktreeScanStatus"
+      },
+      "title": "Scans",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "WorktreeConsoleReply",
+    "type": "object"
+   },
+   "WorktreeLive": {
+    "additionalProperties": false,
+    "description": "live=1 时 daemon 扫描附加的实时字段（该机离线/扫描失败 → 整个 live=None）。",
+    "properties": {
+     "ahead": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ahead"
+     },
+     "behind": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Behind"
+     },
+     "dirty": {
+      "default": false,
+      "title": "Dirty",
+      "type": "boolean"
+     },
+     "head_commit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Head Commit"
+     }
+    },
+    "title": "WorktreeLive",
+    "type": "object"
+   },
+   "WorktreePublic": {
+    "additionalProperties": false,
+    "properties": {
+     "branch": {
+      "title": "Branch",
+      "type": "string"
+     },
+     "cleaned_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cleaned At"
+     },
+     "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "title": "Created At",
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Id",
+      "type": "string"
+     },
+     "merge_commit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Merge Commit"
+     },
+     "merged_at": {
+      "anyOf": [
+       {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Merged At"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "project_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Project Id",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/WorktreeStatus"
+     },
+     "task_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Task Id",
+      "type": "string"
+     },
+     "workspace_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Workspace Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "workspace_id",
+     "project_id",
+     "task_id",
+     "branch",
+     "path",
+     "status",
+     "created_at"
+    ],
+    "title": "WorktreePublic",
+    "type": "object"
+   },
+   "WorktreeScanStatus": {
+    "additionalProperties": false,
+    "properties": {
+     "computer_id": {
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "title": "Computer Id",
+      "type": "string"
+     },
+     "status": {
+      "enum": [
+       "ok",
+       "offline",
+       "timeout"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "computer_id",
+     "status"
+    ],
+    "title": "WorktreeScanStatus",
+    "type": "object"
+   },
+   "WorktreeStatus": {
+    "enum": [
+     "active",
+     "merged",
+     "conflicted",
+     "cleaned"
+    ],
+    "title": "WorktreeStatus",
+    "type": "string"
+   }
+  }
+ },
+ "info": {
+  "title": "CoAgentia mock server",
+  "version": "0.1.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/__mock/play": {
+   "post": {
+    "description": "回放 fixtures 时间线（M6 一屏验证的驱动按钮）。\n\n内联 await：事件在各 delay 间实时广播，响应在回放完成后返回——\n单 loop 下无孤儿任务，TestClient 与 uvicorn 行为一致。",
+    "operationId": "play_timeline___mock_play_post",
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Play Timeline   Mock Play Post"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Play Timeline"
+   }
+  },
+  "/__mock/reset": {
+   "post": {
+    "operationId": "reset_state___mock_reset_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Reset State   Mock Reset Post"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Reset State"
+   }
+  },
+  "/api/activity": {
+   "get": {
+    "operationId": "list_activity_api_activity_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "filter",
+      "required": false,
+      "schema": {
+       "$ref": "#/components/schemas/ActivityFilter",
+       "default": "all"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_ActivityItemPublic_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Activity"
+   }
+  },
+  "/api/activity/{activity_id}/done": {
+   "post": {
+    "operationId": "mark_activity_done_api_activity__activity_id__done_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "activity_id",
+      "required": true,
+      "schema": {
+       "title": "Activity Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActivityItemPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Mark Activity Done"
+   }
+  },
+  "/api/agents": {
+   "post": {
+    "operationId": "create_agent_api_agents_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AgentCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AgentPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Agent"
+   }
+  },
+  "/api/agents/{member_id}": {
+   "delete": {
+    "operationId": "delete_agent_api_agents__member_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Agent"
+   },
+   "get": {
+    "operationId": "get_agent_api_agents__member_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AgentPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Agent"
+   },
+   "patch": {
+    "operationId": "patch_agent_api_agents__member_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AgentPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AgentPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Agent"
+   }
+  },
+  "/api/agents/{member_id}/diagnostics": {
+   "get": {
+    "operationId": "get_diagnostics_api_agents__member_id__diagnostics_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after_seq",
+      "required": false,
+      "schema": {
+       "default": 0,
+       "title": "After Seq",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "type",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Type"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_DiagnosticEventPublic_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Diagnostics"
+   }
+  },
+  "/api/agents/{member_id}/diagnostics/export": {
+   "get": {
+    "operationId": "export_diagnostics_api_agents__member_id__diagnostics_export_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export Diagnostics"
+   }
+  },
+  "/api/agents/{member_id}/home/file": {
+   "get": {
+    "operationId": "home_file_api_agents__member_id__home_file_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "path",
+      "required": true,
+      "schema": {
+       "title": "Path",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Home File Api Agents  Member Id  Home File Get"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Home File"
+   }
+  },
+  "/api/agents/{member_id}/home/tree": {
+   "get": {
+    "description": "daemon 查询帧代理（契约 D §6）；mock 回一棵固定小树（Raft 磁盘侧同构）。",
+    "operationId": "home_tree_api_agents__member_id__home_tree_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "path",
+      "required": false,
+      "schema": {
+       "default": "/",
+       "title": "Path",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Home Tree Api Agents  Member Id  Home Tree Get"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Home Tree"
+   }
+  },
+  "/api/agents/{member_id}/lifecycle": {
+   "post": {
+    "operationId": "agent_lifecycle_api_agents__member_id__lifecycle_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LifecycleRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AgentPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Agent Lifecycle"
+   }
+  },
+  "/api/agents/{member_id}/reminders": {
+   "get": {
+    "operationId": "list_reminders_api_agents__member_id__reminders_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ReminderPublic"
+         },
+         "title": "Response List Reminders Api Agents  Member Id  Reminders Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Reminders"
+   }
+  },
+  "/api/agents/{member_id}/skills": {
+   "get": {
+    "operationId": "get_skills_api_agents__member_id__skills_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AgentSkillPublic"
+         },
+         "title": "Response Get Skills Api Agents  Member Id  Skills Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Skills"
+   },
+   "put": {
+    "operationId": "put_skills_api_agents__member_id__skills_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkillsPut"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AgentSkillPublic"
+         },
+         "title": "Response Put Skills Api Agents  Member Id  Skills Put",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Skills"
+   }
+  },
+  "/api/channels": {
+   "get": {
+    "operationId": "list_channels_api_channels_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelsSnapshot"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Channels"
+   },
+   "post": {
+    "operationId": "create_channel_api_channels_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ChannelCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Channel"
+   }
+  },
+  "/api/channels/{channel_id}": {
+   "delete": {
+    "operationId": "delete_channel_api_channels__channel_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Channel"
+   },
+   "patch": {
+    "operationId": "patch_channel_api_channels__channel_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ChannelPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Channel"
+   }
+  },
+  "/api/channels/{channel_id}/archive": {
+   "post": {
+    "operationId": "archive_channel_api_channels__channel_id__archive_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Archive Channel"
+   }
+  },
+  "/api/channels/{channel_id}/files": {
+   "get": {
+    "operationId": "list_channel_files_api_channels__channel_id__files_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_FilePublic_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Channel Files"
+   }
+  },
+  "/api/channels/{channel_id}/members": {
+   "post": {
+    "operationId": "add_channel_member_api_channels__channel_id__members_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ChannelMemberAdd"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Add Channel Member Api Channels  Channel Id  Members Post"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Add Channel Member"
+   }
+  },
+  "/api/channels/{channel_id}/members/{member_id}": {
+   "delete": {
+    "operationId": "remove_channel_member_api_channels__channel_id__members__member_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Remove Channel Member"
+   }
+  },
+  "/api/channels/{channel_id}/messages": {
+   "get": {
+    "operationId": "get_messages_api_channels__channel_id__messages_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     },
+     {
+      "in": "query",
+      "name": "before",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Before"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_MessagePublic_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Messages"
+   },
+   "post": {
+    "operationId": "post_message_api_channels__channel_id__messages_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MessageCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MessageCreated"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Message"
+   }
+  },
+  "/api/channels/{channel_id}/notification-setting": {
+   "get": {
+    "description": "GET 无行回默认 {mode: all}（B §4.5）；dm 422 / Agent 403 活真 server（纪律 4）。",
+    "operationId": "get_notification_setting_api_channels__channel_id__notification_setting_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelNotificationSettingPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Notification Setting"
+   },
+   "put": {
+    "description": "PUT upsert 懒建（B §4.5）：mock 回请求 mode 的形状（自治/dm 422 活真 server）。",
+    "operationId": "put_notification_setting_api_channels__channel_id__notification_setting_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NotificationSettingPut"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelNotificationSettingPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Notification Setting"
+   }
+  },
+  "/api/channels/{channel_id}/projects": {
+   "post": {
+    "operationId": "bind_project_api_channels__channel_id__projects_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProjectBind"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelProjectPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Bind Project"
+   }
+  },
+  "/api/channels/{channel_id}/projects/{project_id}": {
+   "delete": {
+    "operationId": "unbind_project_api_channels__channel_id__projects__project_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "project_id",
+      "required": true,
+      "schema": {
+       "title": "Project Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Unbind Project"
+   }
+  },
+  "/api/channels/{channel_id}/read-position": {
+   "put": {
+    "operationId": "put_read_position_api_channels__channel_id__read_position_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReadPositionPut"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReadPositionPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Read Position"
+   }
+  },
+  "/api/channels/{channel_id}/unarchive": {
+   "post": {
+    "operationId": "unarchive_channel_api_channels__channel_id__unarchive_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "channel_id",
+      "required": true,
+      "schema": {
+       "title": "Channel Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Unarchive Channel"
+   }
+  },
+  "/api/computers": {
+   "get": {
+    "operationId": "list_computers_api_computers_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ComputerPublic"
+         },
+         "title": "Response List Computers Api Computers Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Computers"
+   },
+   "post": {
+    "operationId": "add_computer_api_computers_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ComputerCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ComputerCreated"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Add Computer"
+   }
+  },
+  "/api/computers/{computer_id}": {
+   "delete": {
+    "operationId": "remove_computer_api_computers__computer_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "computer_id",
+      "required": true,
+      "schema": {
+       "title": "Computer Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Remove Computer"
+   },
+   "patch": {
+    "operationId": "rename_computer_api_computers__computer_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "computer_id",
+      "required": true,
+      "schema": {
+       "title": "Computer Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ComputerPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ComputerPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rename Computer"
+   }
+  },
+  "/api/computers/{computer_id}/fs": {
+   "get": {
+    "description": "computer 级只读目录浏览（选择仓库路径）：mock 回固定两层形状；真盘符枚举活真 daemon。",
+    "operationId": "browse_fs_api_computers__computer_id__fs_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "computer_id",
+      "required": true,
+      "schema": {
+       "title": "Computer Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "path",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Path"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FsTreeReply"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Browse Fs"
+   }
+  },
+  "/api/computers/{computer_id}/worktrees/cleanup-orphan": {
+   "post": {
+    "description": "清理磁盘孤儿树（B §4.11 扩）：无 DB 行、不广播；mock 回 removed 形状，判定活真 server。",
+    "operationId": "cleanup_orphan_api_computers__computer_id__worktrees_cleanup_orphan_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "computer_id",
+      "required": true,
+      "schema": {
+       "title": "Computer Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OrphanCleanup"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OrphanCleanupResult"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cleanup Orphan"
+   }
+  },
+  "/api/deployments/{deployment_id}": {
+   "get": {
+    "operationId": "get_deployment_api_deployments__deployment_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "deployment_id",
+      "required": true,
+      "schema": {
+       "title": "Deployment Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DeploymentPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Deployment"
+   }
+  },
+  "/api/deployments/{deployment_id}/log": {
+   "get": {
+    "description": "server 直读落盘日志（B §13.3，不依赖 daemon 在线）：mock 回固定尾巴形状（无翻页）。",
+    "operationId": "get_deployment_log_api_deployments__deployment_id__log_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "deployment_id",
+      "required": true,
+      "schema": {
+       "title": "Deployment Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "default": 0,
+       "title": "After",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DeploymentLogPage"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Deployment Log"
+   }
+  },
+  "/api/dms": {
+   "post": {
+    "operationId": "open_dm_api_dms_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DmCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Open Dm"
+   }
+  },
+  "/api/files": {
+   "post": {
+    "operationId": "upload_file_api_files_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_file_api_files_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FilePublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload File"
+   }
+  },
+  "/api/files/{file_id}/content": {
+   "get": {
+    "operationId": "file_content_api_files__file_id__content_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "file_id",
+      "required": true,
+      "schema": {
+       "title": "File Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "File Content"
+   }
+  },
+  "/api/held-drafts": {
+   "get": {
+    "description": "被扣草稿清单（§6 重同步清单成员，status=held = 现行被扣）；mock 恒空，形状源非逻辑源。",
+    "operationId": "list_held_drafts_api_held_drafts_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "in": "query",
+      "name": "channel_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Channel Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_HeldDraftPublic_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Held Drafts"
+   }
+  },
+  "/api/held-drafts/{held_draft_id}/discard": {
+   "post": {
+    "description": "丢弃草稿：mock 回 discarded 形状；guard_feedback 直投活真 server。",
+    "operationId": "discard_held_draft_api_held_drafts__held_draft_id__discard_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "held_draft_id",
+      "required": true,
+      "schema": {
+       "title": "Held Draft Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HeldDraftResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Discard Held Draft"
+   }
+  },
+  "/api/held-drafts/{held_draft_id}/reevaluate": {
+   "post": {
+    "description": "触发重评估（G4）：mock 回 reevaluating 形状；hub 同步桥/死锁规避活真 server。",
+    "operationId": "reevaluate_held_draft_api_held_drafts__held_draft_id__reevaluate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "held_draft_id",
+      "required": true,
+      "schema": {
+       "title": "Held Draft Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HeldDraftResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reevaluate Held Draft"
+   }
+  },
+  "/api/held-drafts/{held_draft_id}/release": {
+   "post": {
+    "description": "放行原样发送（G3）：mock 回落消息 + released 形状；跳过 freshness 复查语义活真 server。",
+    "operationId": "release_held_draft_api_held_drafts__held_draft_id__release_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "held_draft_id",
+      "required": true,
+      "schema": {
+       "title": "Held Draft Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HeldDraftReleaseResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Release Held Draft"
+   }
+  },
+  "/api/members": {
+   "get": {
+    "operationId": "list_members_api_members_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "include_removed",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Include Removed",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/MemberPublic"
+         },
+         "title": "Response List Members Api Members Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Members"
+   }
+  },
+  "/api/members/{member_id}": {
+   "patch": {
+    "operationId": "patch_member_api_members__member_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "member_id",
+      "required": true,
+      "schema": {
+       "title": "Member Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MemberPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MemberPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Member"
+   }
+  },
+  "/api/messages/{message_id}/task": {
+   "post": {
+    "operationId": "convert_message_to_task_api_messages__message_id__task_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "message_id",
+      "required": true,
+      "schema": {
+       "title": "Message Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ConvertToTask"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Convert Message To Task"
+   }
+  },
+  "/api/messages/{message_id}/thread": {
+   "get": {
+    "operationId": "get_thread_api_messages__message_id__thread_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "message_id",
+      "required": true,
+      "schema": {
+       "title": "Message Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_MessagePublic_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Thread"
+   }
+  },
+  "/api/presence": {
+   "get": {
+    "operationId": "get_presence_api_presence_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PresenceSnapshot"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Presence"
+   }
+  },
+  "/api/projects": {
+   "get": {
+    "operationId": "list_projects_api_projects_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ProjectPublic"
+         },
+         "title": "Response List Projects Api Projects Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Projects"
+   },
+   "post": {
+    "operationId": "create_project_api_projects_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProjectCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Project"
+   }
+  },
+  "/api/projects/{project_id}": {
+   "delete": {
+    "operationId": "delete_project_api_projects__project_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project_id",
+      "required": true,
+      "schema": {
+       "title": "Project Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Project"
+   },
+   "patch": {
+    "operationId": "patch_project_api_projects__project_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project_id",
+      "required": true,
+      "schema": {
+       "title": "Project Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProjectPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Project"
+   }
+  },
+  "/api/projects/{project_id}/deployments": {
+   "post": {
+    "description": "触发部署（B §13.2；R8 全员含 Agent 无角色校验，请求体空）：mock 回 queued 形状；\n409 不排队/branch·commit 直查主干 HEAD/deploy.run 下发活真 server。",
+    "operationId": "create_deployment_api_projects__project_id__deployments_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project_id",
+      "required": true,
+      "schema": {
+       "title": "Project Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DeploymentPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Deployment"
+   }
+  },
+  "/api/reminders": {
+   "post": {
+    "operationId": "create_reminder_api_reminders_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReminderCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReminderPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Reminder"
+   }
+  },
+  "/api/reminders/{reminder_id}": {
+   "delete": {
+    "operationId": "cancel_reminder_api_reminders__reminder_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "reminder_id",
+      "required": true,
+      "schema": {
+       "title": "Reminder Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cancel Reminder"
+   }
+  },
+  "/api/search": {
+   "get": {
+    "operationId": "search_api_search_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "q",
+      "required": false,
+      "schema": {
+       "default": "",
+       "title": "Q",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "kind",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/SearchKind"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Kind"
+      }
+     },
+     {
+      "in": "query",
+      "name": "from_member",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From Member"
+      }
+     },
+     {
+      "in": "query",
+      "name": "in_channel",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "In Channel"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Search"
+   }
+  },
+  "/api/tasks": {
+   "get": {
+    "operationId": "list_tasks_api_tasks_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "channel_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Channel Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "in": "query",
+      "name": "owner",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Owner"
+      }
+     },
+     {
+      "in": "query",
+      "name": "creator",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Creator"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_TaskPublic_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Tasks"
+   }
+  },
+  "/api/tasks/{task_id}": {
+   "get": {
+    "operationId": "get_task_detail_api_tasks__task_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskDetail"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Task Detail"
+   },
+   "patch": {
+    "operationId": "patch_task_api_tasks__task_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TaskPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Task"
+   }
+  },
+  "/api/tasks/{task_id}/assign": {
+   "post": {
+    "operationId": "assign_task_api_tasks__task_id__assign_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AssignRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Assign Task"
+   }
+  },
+  "/api/tasks/{task_id}/claim": {
+   "post": {
+    "operationId": "claim_task_api_tasks__task_id__claim_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Claim Task"
+   }
+  },
+  "/api/tasks/{task_id}/contracts": {
+   "get": {
+    "description": "M3 契约读取（形状源非逻辑源，纪律 4）：mock 恒空，修订链/T7 只活真 server。",
+    "operationId": "get_task_contracts_api_tasks__task_id__contracts_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/TaskContractPublic"
+         },
+         "title": "Response Get Task Contracts Api Tasks  Task Id  Contracts Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Task Contracts"
+   },
+   "post": {
+    "description": "M3 契约提交（形状源非逻辑源，纪律 4）：mock 回契约行形状；kind↔schema 二次\nmodel_validate/修订链只活真 server（E2）。",
+    "operationId": "submit_task_contract_api_tasks__task_id__contracts_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ContractCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskContractPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Submit Task Contract"
+   }
+  },
+  "/api/tasks/{task_id}/contracts/request-draft": {
+   "post": {
+    "description": "让 @Agent 起草契约（B §4.3；P-3）：mock 回受理形状；S1 定向直投与 503\nDAEMON_OFFLINE 判定只活真 server。",
+    "operationId": "request_contract_draft_api_tasks__task_id__contracts_request_draft_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ContractDraftRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Request Contract Draft Api Tasks  Task Id  Contracts Request Draft Post"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Request Contract Draft"
+   }
+  },
+  "/api/tasks/{task_id}/diff": {
+   "get": {
+    "operationId": "get_task_diff_api_tasks__task_id__diff_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DiffPayload"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Task Diff"
+   }
+  },
+  "/api/tasks/{task_id}/force-start": {
+   "post": {
+    "description": "人类强制启动（裁决 3）：mock 回任务现状形状；投递放行/双留痕/Agent 403 C3 活真 server。",
+    "operationId": "force_start_task_api_tasks__task_id__force_start_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Force Start Task"
+   }
+  },
+  "/api/tasks/{task_id}/merge": {
+   "post": {
+    "description": "任务级合并（B v1.6 §14）：mock 恒回 accepted 受理形状；真合并/幂等判定活真 server。",
+    "operationId": "merge_task_api_tasks__task_id__merge_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskMergeAccepted"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Merge Task"
+   }
+  },
+  "/api/tasks/{task_id}/preview": {
+   "delete": {
+    "description": "下发 preview.stop（B §13.1）：mock 回 recycled 形状；回收判定活真 server。",
+    "operationId": "stop_preview_api_tasks__task_id__preview_delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PreviewSessionPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Stop Preview"
+   },
+   "get": {
+    "description": "纯读（B §13.1）：mock 回现状形状；无活跃会话 404 活真 server。",
+    "operationId": "get_preview_api_tasks__task_id__preview_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PreviewSessionPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Preview"
+   },
+   "post": {
+    "description": "ensure+touch 幂等（B §13.1）：mock 回 running 会话形状；健康检查/端口分配活真 daemon。",
+    "operationId": "start_preview_api_tasks__task_id__preview_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PreviewSessionPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Start Preview"
+   }
+  },
+  "/api/tasks/{task_id}/status": {
+   "post": {
+    "operationId": "set_task_status_api_tasks__task_id__status_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TaskStatusChange"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Set Task Status"
+   }
+  },
+  "/api/tasks/{task_id}/unclaim": {
+   "post": {
+    "operationId": "unclaim_task_api_tasks__task_id__unclaim_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "task_id",
+      "required": true,
+      "schema": {
+       "title": "Task Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskPublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Unclaim Task"
+   }
+  },
+  "/api/usage": {
+   "get": {
+    "description": "三层成本聚合（B §13.4；永不折算货币）：mock 回形状源；聚合 SQL/覆盖率/新账活真 server。",
+    "operationId": "get_usage_api_usage_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "level",
+      "required": false,
+      "schema": {
+       "$ref": "#/components/schemas/UsageLevel",
+       "default": "task"
+      }
+     },
+     {
+      "in": "query",
+      "name": "ref",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Ref"
+      }
+     },
+     {
+      "in": "query",
+      "name": "rollup",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Rollup",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UsageReport"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Usage"
+   }
+  },
+  "/api/workspace": {
+   "get": {
+    "operationId": "get_workspace_api_workspace_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkspacePublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Workspace"
+   },
+   "patch": {
+    "operationId": "patch_workspace_api_workspace_patch",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkspacePatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkspacePublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Workspace"
+   },
+   "post": {
+    "operationId": "create_workspace_api_workspace_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkspaceCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkspacePublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Workspace"
+   }
+  },
+  "/api/worktrees": {
+   "get": {
+    "description": "工作树管理台读面（B §4.11 扩）：mock 回骨架 + 孤儿行形状；合账/live 字段活真 server。",
+    "operationId": "list_worktrees_api_worktrees_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "live",
+      "required": false,
+      "schema": {
+       "default": 0,
+       "title": "Live",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorktreeConsoleReply"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Worktrees"
+   }
+  },
+  "/api/worktrees/{worktree_id}/cleanup": {
+   "post": {
+    "description": "清理登记的终态树（B §4.11 扩）：mock 回 cleaned 形状 + 广播；CAS/预览门/护栏活真 server。",
+    "operationId": "cleanup_worktree_api_worktrees__worktree_id__cleanup_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "worktree_id",
+      "required": true,
+      "schema": {
+       "title": "Worktree Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorktreePublic"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cleanup Worktree"
+   }
+  }
+ }
+}

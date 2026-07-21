@@ -119,14 +119,31 @@ jobs:
       - name: TypeScript generation is byte-deterministic
         shell: pwsh
         run: |
-          pnpm gen:ts
-          $generated = Join-Path $env:GITHUB_WORKSPACE 'packages/contracts-ts/src/generated'
-          $first = Get-ChildItem -LiteralPath $generated -File | Sort-Object FullName | ForEach-Object {
-            "$($_.Name):$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash)"
+          $fixture = Join-Path $env:GITHUB_WORKSPACE 'packages/fixtures/p0-generator-inputs'
+          $build = Join-Path $env:GITHUB_WORKSPACE 'build'
+          New-Item -ItemType Directory -Path $build -Force | Out-Null
+          foreach ($name in @('contracts.schema.json', 'openapi.json', 'constants.json')) {
+            Copy-Item -LiteralPath (Join-Path $fixture $name) -Destination (Join-Path $build $name) -Force
+          }
+          $generated = @(
+            'packages/contracts-ts/src/generated/models.ts',
+            'packages/contracts-ts/src/generated/rest.ts',
+            'packages/contracts-ts/src/generated/constants.ts',
+            'apps/daemon-ts/src/generated/constants.ts'
+          ) | ForEach-Object { Join-Path $env:GITHUB_WORKSPACE $_ }
+          $expected = $generated | Sort-Object | ForEach-Object {
+            "$($_):$((Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash)"
           }
           pnpm gen:ts
-          $second = Get-ChildItem -LiteralPath $generated -File | Sort-Object FullName | ForEach-Object {
-            "$($_.Name):$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash)"
+          $first = $generated | Sort-Object | ForEach-Object {
+            "$($_):$((Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash)"
+          }
+          if (Compare-Object -ReferenceObject $expected -DifferenceObject $first) {
+            throw 'TypeScript generation differs from committed output'
+          }
+          pnpm gen:ts
+          $second = $generated | Sort-Object | ForEach-Object {
+            "$($_):$((Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash)"
           }
           if (Compare-Object -ReferenceObject $first -DifferenceObject $second) {
             throw 'TypeScript generation changed between consecutive runs'
@@ -232,4 +249,14 @@ jobs:
           pnpm gen
           git diff --exit-code
       - run: pnpm --filter @coagentia/web --fail-if-no-match build
+      - name: Report repository dirt before the P0 mother gate
+        shell: pwsh
+        run: |
+          $status = git status --porcelain=v1 --untracked-files=all
+          if ($status) {
+            Write-Host 'Repository state before pnpm verify:p0:'
+            $status | ForEach-Object { Write-Host $_ }
+          } else {
+            Write-Host 'Repository state before pnpm verify:p0: clean'
+          }
       - run: pnpm verify:p0

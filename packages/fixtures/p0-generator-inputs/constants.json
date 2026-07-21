@@ -1,0 +1,81 @@
+{
+ "DAEMON": {
+  "ACK_TIMEOUT_SEC": 10,
+  "BUFFER_DEPLOY_LOG_MAX_BYTES": 5242880,
+  "BUFFER_DIAGNOSTICS_MAX": 10000,
+  "BUFFER_USAGE_MAX": 100000,
+  "CLOSE_PROTOCOL_MISMATCH": 4400,
+  "CLOSE_SUPERSEDED": 4001,
+  "COAGENTIA_MCP_TOOLS": [
+   "send_message",
+   "get_messages",
+   "get_thread",
+   "upload_file",
+   "get_file",
+   "create_reminder",
+   "cancel_reminder",
+   "list_channels",
+   "list_members",
+   "list_tasks",
+   "get_task",
+   "claim_task",
+   "unclaim_task",
+   "set_task_status",
+   "search",
+   "trigger_deploy",
+   "submit_task_contract",
+   "create_task",
+   "trigger_merge"
+  ],
+  "CODEX_DISALLOWED_TOOLS": [],
+  "DAEMON_PROTOCOL_V": 1,
+  "DAEMON_WS_PATH": "/api/daemon/ws",
+  "DISALLOWED_TOOLS": [
+   "EnterPlanMode",
+   "ExitPlanMode",
+   "SendMessage",
+   "CronCreate",
+   "CronDelete",
+   "CronList",
+   "ScheduleWakeup",
+   "TaskCreate",
+   "TaskGet",
+   "TaskList",
+   "TaskOutput",
+   "TaskStop",
+   "TaskUpdate",
+   "Workflow",
+   "EnterWorktree",
+   "ExitWorktree",
+   "DesignSync"
+  ],
+  "RECONCILE_INTERVAL_SEC": 60
+ },
+ "ORCHESTRATOR_ROLE_TEMPLATE_DESCRIPTION_PREFILL": "本频道的对话式委派协调者：@它并给一句话需求，它会理解澄清后用 create_task 逐个派活（正文 @建议负责人即唤醒，认领仍走 claim 防重）、盯交付进展、经 trigger_merge 指挥合并入主干，并阶段性汇总进展与风险（判断归模型、控制归引擎——DEDAG 委派模式）。",
+ "ORCHESTRATOR_ROLE_TEMPLATE_KEY": "orchestrator",
+ "ORCHESTRATOR_ROLE_TEMPLATE_NAME": "Orchestrator（对话式委派协调者）",
+ "TASK_TRANSITIONS": {
+  "closed": [
+   "todo"
+  ],
+  "done": [],
+  "in_progress": [
+   "closed",
+   "in_review",
+   "todo"
+  ],
+  "in_review": [
+   "closed",
+   "done",
+   "in_progress"
+  ],
+  "todo": [
+   "closed",
+   "in_progress"
+  ]
+ },
+ "UNCLAIMABLE_STATUSES": [
+  "closed",
+  "done"
+ ]
+}

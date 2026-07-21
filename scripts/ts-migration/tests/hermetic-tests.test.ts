@@ -209,3 +209,30 @@ test('Windows hermetic workflow uses native exit-86 guards and proves intercepti
   assert.match(hermetic, /spawnSync\(process\.execPath/u);
   assert.doesNotMatch(hermetic, /Join-Path \$denyRoot ['"]node\.(?:exe|cmd)['"]/u);
 });
+
+test('Windows hermetic generation replays tracked P0 inputs and matches committed outputs twice', () => {
+  const workflow = fs.readFileSync(
+    path.join(process.cwd(), '.github', 'workflows', 'ts-migration-p0.yml'),
+    'utf8',
+  );
+  const hermetic = workflow.split(/^  git-browser-integration-windows:/mu, 1)[0] ?? '';
+  const fixture = path.join(process.cwd(), 'packages', 'fixtures', 'p0-generator-inputs');
+  for (const name of ['contracts.schema.json', 'openapi.json', 'constants.json']) {
+    assert.equal(fs.existsSync(path.join(fixture, name)), true, `missing frozen generator input: ${name}`);
+    assert.match(hermetic, new RegExp(`['"]${name.replace('.', '\\.')}['"]`, 'u'));
+  }
+  for (const generated of [
+    'packages/contracts-ts/src/generated/models.ts',
+    'packages/contracts-ts/src/generated/rest.ts',
+    'packages/contracts-ts/src/generated/constants.ts',
+    'apps/daemon-ts/src/generated/constants.ts',
+  ]) {
+    assert.match(hermetic, new RegExp(generated.replaceAll('/', '\\/'), 'u'));
+  }
+  assert.match(hermetic, /Compare-Object -ReferenceObject \$expected -DifferenceObject \$first/u);
+  assert.match(hermetic, /Compare-Object -ReferenceObject \$first -DifferenceObject \$second/u);
+
+  const attributes = fs.readFileSync(path.join(process.cwd(), '.gitattributes'), 'utf8');
+  assert.match(attributes, /^packages\/contracts-ts\/src\/generated\/\*\.ts text eol=lf$/mu);
+  assert.match(attributes, /^apps\/daemon-ts\/src\/generated\/\*\.ts text eol=lf$/mu);
+});
