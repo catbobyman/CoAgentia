@@ -1,6 +1,6 @@
 {
-  "baseline_sha": "238aef645338ca4fe105c6a2d913a64a99343551",
-  "baseline_tree_sha": "7d43354ee04ba150b522cd46b98074882b457174",
+  "baseline_sha": "a2fa540036be69a79774d1b5f446fd02bd5935f3",
+  "baseline_tree_sha": "d257fef2617458f18e9dd98dc292c6c2ec6fc75a",
   "collector": "vitest-json-reporter",
   "commands": [
     {
@@ -32,7 +32,7 @@
     "version": "4.1.10"
   },
   "schema_version": 1,
-  "source_fingerprint_sha256": "276bb1aa2e1128cad13a3f8142835622e595c2174340d819054922479ea79935",
+  "source_fingerprint_sha256": "43be57c73a7c9049d056050eb9eb8e6e83642248b46b792c851d52abe4250f17",
   "source_state": {
     "scopes": [
       "apps/daemon-ts",
@@ -43,8 +43,8 @@
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml"
     ],
-    "tracked_entries_sha256": "614866793248bc1cc6b199ca35cd348e06bd4a004be4483e9d6fa99cb3d86373",
-    "tracked_entry_count": 214,
+    "tracked_entries_sha256": "ae9f26338fe32f42af5ead7ff949a60e5ba1f6662de6e97d53739d27c068692d",
+    "tracked_entry_count": 218,
     "worktree_status": "clean",
     "worktree_status_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
