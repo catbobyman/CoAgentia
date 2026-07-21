@@ -1,6 +1,6 @@
 {
-  "baseline_sha": "238aef645338ca4fe105c6a2d913a64a99343551",
-  "baseline_tree_sha": "7d43354ee04ba150b522cd46b98074882b457174",
+  "baseline_sha": "f90d4234bc4303ed4980d19898adca50ed804f8a",
+  "baseline_tree_sha": "10b48b15335fac64b283d7d33f0e016494155530",
   "collect_command": "uv run pytest --collect-only -q",
   "environment": {
     "FORCE_COLOR": "0",
