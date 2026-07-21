@@ -67,12 +67,17 @@ export function verifyP0EvidenceOnlyRepositoryState(
       });
     }
 
-    const commits = runGit(repoRoot, ['rev-list', '--reverse', `${baseline}..${head}`])
+    // Audit the published branch as a sequence of resulting trees.  Side-branch
+    // commits are represented by the merge result, and a history-only merge
+    // whose tree equals its first parent must not look like it changed every
+    // path inherited from the second parent.
+    const commits = runGit(repoRoot, ['rev-list', '--first-parent', '--reverse', `${baseline}..${head}`])
       .split(/\r?\n/u)
       .filter((item) => item.length > 0);
     for (const commit of commits) {
+      const firstParent = runGit(repoRoot, ['rev-parse', '--verify', `${commit}^1`]).trim();
       const changed = runGit(repoRoot, [
-        'diff-tree', '--root', '--no-commit-id', '--name-only', '-r', '-m', '-z', commit, '--',
+        'diff', '--no-renames', '--name-only', '-z', firstParent, commit, '--',
       ])
         .split('\0')
         .filter((item) => item.length > 0)

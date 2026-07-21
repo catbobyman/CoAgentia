@@ -138,6 +138,63 @@ test('P0 artifacts require a clean baseline and evidence-only commits afterwards
   }
 });
 
+test('P0 evidence history audits merge results against the first parent', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coagentia-evidence-merge-'));
+  try {
+    const git = (...args: string[]): string => execFileSync('git', args, {
+      cwd: tempRoot,
+      encoding: 'utf8',
+      stdio: 'pipe',
+      windowsHide: true,
+    });
+    git('init');
+    git('config', 'user.name', 'CoAgentia Test');
+    git('config', 'user.email', 'coagentia-test@example.invalid');
+    fs.writeFileSync(path.join(tempRoot, 'README.md'), 'baseline\n', 'utf8');
+    git('add', 'README.md');
+    git('commit', '-m', 'baseline');
+    const baseline = git('rev-parse', 'HEAD').trim();
+    const mainBranch = git('branch', '--show-current').trim();
+
+    const evidencePath = path.join(tempRoot, 'docs', 'verify', 'ts-migration', 'artifact.json');
+    fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+    fs.writeFileSync(evidencePath, '{}\n', 'utf8');
+    git('add', 'docs/verify/ts-migration/artifact.json');
+    git('commit', '-m', 'evidence');
+
+    git('checkout', '-b', 'published-history', baseline);
+    fs.writeFileSync(path.join(tempRoot, 'README.md'), 'published branch drift\n', 'utf8');
+    git('add', 'README.md');
+    git('commit', '-m', 'published branch history');
+    git('checkout', mainBranch);
+    git('merge', '--no-ff', '-s', 'ours', 'published-history', '-m', 'reconcile published history');
+    assert.equal(
+      verifyP0EvidenceOnlyRepositoryState(tempRoot, baseline, 'fixture').ok,
+      true,
+      'a merge with no first-parent tree change must remain evidence-clean',
+    );
+
+    git('checkout', '-b', 'product-change');
+    const disguisedPath = path.join('docs', 'reviews', 'ts-migration', 'README.md');
+    fs.mkdirSync(path.join(tempRoot, path.dirname(disguisedPath)), { recursive: true });
+    git('mv', 'README.md', disguisedPath);
+    git('commit', '-m', 'disguise product path as evidence');
+    git('checkout', mainBranch);
+    git('merge', '--no-ff', 'product-change', '-m', 'merge product change');
+    const drift = verifyP0EvidenceOnlyRepositoryState(tempRoot, baseline, 'fixture');
+    assert.equal(
+      drift.issues.some((issue) => issue.code === 'fixture_non_evidence_history'),
+      true,
+      'renaming a non-evidence source into an evidence prefix must remain a violation',
+    );
+  } finally {
+    const resolved = path.resolve(tempRoot);
+    assert.equal(path.basename(resolved).startsWith('coagentia-evidence-merge-'), true);
+    assert.equal(resolved.startsWith(path.resolve(os.tmpdir())), true);
+    fs.rmSync(resolved, { recursive: true, force: true });
+  }
+});
+
 test('strict target collection rejects a bare array manifest', () => {
   const result = parseTargetCollection(['server/example.test.ts::case']);
   assert.equal(result.issues.some((issue) => issue.code === 'target_not_object'), true);

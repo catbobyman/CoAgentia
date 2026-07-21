@@ -59,11 +59,20 @@ jobs:
           }
           '@
           $guardExe = Join-Path $denyRoot 'coagentia-hermetic-deny.exe'
-          Add-Type `
-            -TypeDefinition $guardSource `
-            -Language CSharp `
-            -OutputAssembly $guardExe `
-            -OutputType ConsoleApplication
+          $windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+          if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
+            throw "Windows PowerShell compiler host is unavailable: $windowsPowerShell"
+          }
+          $env:COAGENTIA_GUARD_SOURCE = $guardSource
+          $env:COAGENTIA_GUARD_EXE = $guardExe
+          try {
+            & $windowsPowerShell -NoLogo -NoProfile -NonInteractive -Command `
+              'Add-Type -TypeDefinition $env:COAGENTIA_GUARD_SOURCE -Language CSharp -OutputAssembly $env:COAGENTIA_GUARD_EXE -OutputType ConsoleApplication'
+            if ($LASTEXITCODE -ne 0) { throw "Guard compilation failed: $LASTEXITCODE" }
+          } finally {
+            Remove-Item Env:COAGENTIA_GUARD_SOURCE -ErrorAction SilentlyContinue
+            Remove-Item Env:COAGENTIA_GUARD_EXE -ErrorAction SilentlyContinue
+          }
           $guardCmd = "@echo off`r`necho COAGENTIA_HERMETIC_DENY: %~n0 1>&2`r`nexit /b 86`r`n"
           foreach ($name in @('python', 'python3', 'py', 'uv', 'pip', 'pip3', 'node-gyp', 'git')) {
             Copy-Item -LiteralPath $guardExe -Destination (Join-Path $denyRoot "$name.exe") -Force

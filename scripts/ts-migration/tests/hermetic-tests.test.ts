@@ -200,6 +200,7 @@ test('Windows hermetic workflow uses native exit-86 guards and proves intercepti
   }
   assert.match(hermetic, /Add-Type/u);
   assert.match(hermetic, /-OutputType ConsoleApplication/u);
+  assert.match(hermetic, /WindowsPowerShell\/v1\.0\/powershell\.exe/u);
   assert.match(hermetic, /return 86;/u);
   assert.match(hermetic, /Copy-Item[^\n]+\$name\.exe/u);
   assert.match(hermetic, /Set-Content[^\n]+\$name\.cmd/u);
