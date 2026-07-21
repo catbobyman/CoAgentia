@@ -3,7 +3,7 @@
 > 评审日期：2026-07-20
 > 首个实现：`27c044dfdf97283f7618a6d454a1499fe8e75fec`
 > 最终工具/CI 修复基线：`f90d4234bc4303ed4980d19898adca50ed804f8a`
-> 冻结制品基线：`a2fa540036be69a79774d1b5f446fd02bd5935f3`
+> 最终收口/冻结制品基线：`97aaf6249ec652fed80bd70de65f74e69fdeeeb9`
 > 执行规则来源：[仓库根 plan.md](../../../plan.md)
 > 评审结论：PASS（Critical = 0，Major = 0）
 > 阶段结论：P0 PASS（reviewed/accepted）；`TS-P0-01`～`TS-P0-06` 全部闭环

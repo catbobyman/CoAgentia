@@ -1,6 +1,6 @@
 {
-  "baseline_sha": "a2fa540036be69a79774d1b5f446fd02bd5935f3",
-  "baseline_tree_sha": "d257fef2617458f18e9dd98dc292c6c2ec6fc75a",
+  "baseline_sha": "97aaf6249ec652fed80bd70de65f74e69fdeeeb9",
+  "baseline_tree_sha": "68b6d1d95872f200082e9a86a090d66fd93ab3ab",
   "entries": [
     {
       "disposition": "keep",
@@ -1174,7 +1174,7 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "10404b02ce6be5223d71d61441b31683718a66ddc95b95c8c4fd2e446fa1196e",
-      "git_blob": "f0c7ca9e77b2adff6daef1d00f8f5590cb0aa96d",
+      "git_blob": "4559403b684ed26243475f60efe522e84902fc6a",
       "id": "doc-command:docs/project-handoffs/CURRENT-HANDOFF.md#L11-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
@@ -1189,8 +1189,8 @@
     {
       "disposition": "replace",
       "file_mode": "100644",
-      "fingerprint": "8ff004976181a539366f21909729e82711d196deda930ae9ce08d48922efa551",
-      "git_blob": "f0c7ca9e77b2adff6daef1d00f8f5590cb0aa96d",
+      "fingerprint": "b7e94e06b32512b5ea11917d14b038798ff450812617a86070ad1d690bd546af",
+      "git_blob": "4559403b684ed26243475f60efe522e84902fc6a",
       "id": "doc-command:docs/project-handoffs/CURRENT-HANDOFF.md#L14-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
@@ -1206,7 +1206,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "9c204d28d51a941848180577ef5a82dc7706a8b437c0cc923e485b8eccc79f81",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L120-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1222,7 +1222,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "4920f68ef9f20c301be627234b5af27106ee10fc9ad188bdbf74924ff6c2a1f5",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L133-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1238,7 +1238,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "875b814c817c8b6108854f47a1da9451cfea927f33c91d1907ad5ba4a6381663",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L166-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1254,7 +1254,7 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "f99bfb4e472fd811c6064ac0966ed9ea36e58d8be4af1225da6dafe886668f1f",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L201-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
@@ -1270,7 +1270,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "66a684aaba24bbec872f544976cf04e2a8b91e5e9129381eebf98425f3a1ef75",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L220-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1286,14 +1286,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "66a684aaba24bbec872f544976cf04e2a8b91e5e9129381eebf98425f3a1ef75",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L286-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L288-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 286"
+        "active documentation command at line 288"
       ],
       "target": null,
       "target_phase": null
@@ -1302,14 +1302,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "9234373f20e0b1ad28b6ae1c670c25fb11ac2295459701928bb1a12ecfdcef80",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L287-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L289-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 287"
+        "active documentation command at line 289"
       ],
       "target": null,
       "target_phase": null
@@ -1318,14 +1318,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "9234373f20e0b1ad28b6ae1c670c25fb11ac2295459701928bb1a12ecfdcef80",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L296-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L298-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 296"
+        "active documentation command at line 298"
       ],
       "target": null,
       "target_phase": null
@@ -1334,14 +1334,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "66a684aaba24bbec872f544976cf04e2a8b91e5e9129381eebf98425f3a1ef75",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L299-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L301-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 299"
+        "active documentation command at line 301"
       ],
       "target": null,
       "target_phase": null
@@ -1350,14 +1350,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "972e90eba6c155aa51d174a18086c10280d9334f6aae4741f767da701b48eace",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L369-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L371-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 369"
+        "active documentation command at line 371"
       ],
       "target": null,
       "target_phase": null
@@ -1366,14 +1366,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "b04ab428b277031088bcf14394bdd2ff5184b1e90f25474408e208a3f9333f02",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L369-2",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L371-2",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 369"
+        "active documentation command at line 371"
       ],
       "target": null,
       "target_phase": null
@@ -1382,14 +1382,14 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "bc2d63f118db88b60ecfd85dc07da65e08f058eff4a09c552663d43992154edf",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L370-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L372-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
       "path": "plan.md",
       "rationale": "活跃文档中的 Python 工具链命令必须随最终清场改为纯 TS",
       "source_reasons": [
-        "active documentation command at line 370"
+        "active documentation command at line 372"
       ],
       "target": "pure-TS command documented at the same active entry",
       "target_phase": "E"
@@ -1398,14 +1398,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "4121404d8c73dc88465cde2e3d973023e193615f2cc6686cf404b7ffc6a65788",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L390-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L392-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 390"
+        "active documentation command at line 392"
       ],
       "target": null,
       "target_phase": null
@@ -1414,7 +1414,7 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "e0438131b06a3f21abb2088b7406acb792dbd9db1ff0243694815525e496435b",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L44-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
@@ -1430,7 +1430,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "89e97d02e20d0999145c15d23371f4b27930268d7797e58fc1e6e89fcb8e7525",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L44-2",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1446,14 +1446,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "3fd4c2c224ce560a38a090097993de7ac205405166ff10f2b4aa3cb05aa74ba8",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L505-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L507-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 505"
+        "active documentation command at line 507"
       ],
       "target": null,
       "target_phase": null
@@ -1462,14 +1462,14 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "43973eedc66189e7f5ed397caac6d1d00ae2aa858639d85f30b6951c680147ed",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L520-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L522-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
       "path": "plan.md",
       "rationale": "活跃文档中的 Python 工具链命令必须随最终清场改为纯 TS",
       "source_reasons": [
-        "active documentation command at line 520"
+        "active documentation command at line 522"
       ],
       "target": "pure-TS command documented at the same active entry",
       "target_phase": "E"
@@ -1478,14 +1478,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "873467771534065b898c2550aaac7acd4032343f6f97fcd89a800621b371fe98",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L533-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L535-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 533"
+        "active documentation command at line 535"
       ],
       "target": null,
       "target_phase": null
@@ -1494,14 +1494,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "3bb1b515c8ddedc424d172acbe5fdb49bcefbb2119f5f04521e1b28ec36a6a34",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L536-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L538-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 536"
+        "active documentation command at line 538"
       ],
       "target": null,
       "target_phase": null
@@ -1510,14 +1510,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "875b814c817c8b6108854f47a1da9451cfea927f33c91d1907ad5ba4a6381663",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L537-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L539-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 537"
+        "active documentation command at line 539"
       ],
       "target": null,
       "target_phase": null
@@ -1526,14 +1526,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "f75daabb08d6ccf33ab2d7b88f1c1bfc1aff5022d76a5fc59ec38e259c69088a",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L563-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L565-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 563"
+        "active documentation command at line 565"
       ],
       "target": null,
       "target_phase": null
@@ -1542,7 +1542,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "def67fdc18a2fdcc3a692db135ced0be84bb8db259e214fc10d1172b641c68a6",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L57-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1558,14 +1558,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "89e97d02e20d0999145c15d23371f4b27930268d7797e58fc1e6e89fcb8e7525",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L616-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L618-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 616"
+        "active documentation command at line 618"
       ],
       "target": null,
       "target_phase": null
@@ -1574,7 +1574,7 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "ac26b7d3a81560a22e038769d5fe2d539101f785b105a94f7276a03a87f3beaf",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L65-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
@@ -1590,14 +1590,14 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "7464fbc876ef7d8b63f16dd8580e91e45b8498b7a1318acfc0801b9047669bc9",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L674-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L676-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
       "path": "plan.md",
       "rationale": "活跃文档中的 Python 工具链命令必须随最终清场改为纯 TS",
       "source_reasons": [
-        "active documentation command at line 674"
+        "active documentation command at line 676"
       ],
       "target": "pure-TS command documented at the same active entry",
       "target_phase": "E"
@@ -1606,14 +1606,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "2f3265ea6f075e06ecf043f9d3234d41b6d50ffd2cf24be8a33ed2c4eae62ddc",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L675-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L677-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 675"
+        "active documentation command at line 677"
       ],
       "target": null,
       "target_phase": null
@@ -1622,14 +1622,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "17f7707e97c76bff0726b15af29dcf0b65db1c6460f136bf6de0dfe7d71189c9",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L676-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L678-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 676"
+        "active documentation command at line 678"
       ],
       "target": null,
       "target_phase": null
@@ -1638,14 +1638,14 @@
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "6272acfe2a7652a4daaf8bc6ef1403fce64089a5862ecd6f58fd3532709cd62c",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L717-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L719-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
       "path": "plan.md",
       "rationale": "活跃文档中的 Python 工具链命令必须随最终清场改为纯 TS",
       "source_reasons": [
-        "active documentation command at line 717"
+        "active documentation command at line 719"
       ],
       "target": "pure-TS command documented at the same active entry",
       "target_phase": "E"
@@ -1654,14 +1654,14 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "c7b8429cbd4f858a7bf9a9fc89a7fdfe3e01ea88a29026f350f7d34b152006eb",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L718-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L720-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 718"
+        "active documentation command at line 720"
       ],
       "target": null,
       "target_phase": null
@@ -1670,39 +1670,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "2bf94146b95bceec13e2415f88bfe1ba338fcead439a42102b3b025ef5f3a73d",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L733-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 733"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "972e90eba6c155aa51d174a18086c10280d9334f6aae4741f767da701b48eace",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L734-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 734"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "b04ab428b277031088bcf14394bdd2ff5184b1e90f25474408e208a3f9333f02",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L735-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1717,8 +1685,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "599775a1215e6839eff6e41765d3153d212ec7be9de5dcddec6493f5cce9494e",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "972e90eba6c155aa51d174a18086c10280d9334f6aae4741f767da701b48eace",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L736-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1733,8 +1701,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "b2f6ba8201aec90b1a8054124aa03f3a52d79d3636bbf7708ee4e80918a2ed57",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "b04ab428b277031088bcf14394bdd2ff5184b1e90f25474408e208a3f9333f02",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L737-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1749,8 +1717,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "63c0442899e922b6777554bd9e6ac6d469f3675ec2935a3730b662a8d3e5ed65",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "599775a1215e6839eff6e41765d3153d212ec7be9de5dcddec6493f5cce9494e",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L738-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1765,8 +1733,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "29313b53aad3d47d54cd7acf94c4c76cb791b440c9e0831784296f35cfa6924a",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "b2f6ba8201aec90b1a8054124aa03f3a52d79d3636bbf7708ee4e80918a2ed57",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L739-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1781,8 +1749,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "b219b1dc9babddd86388accb31e92f866faaa14c95b60154fad065f41bea0c92",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "63c0442899e922b6777554bd9e6ac6d469f3675ec2935a3730b662a8d3e5ed65",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L740-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1797,8 +1765,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "1b5163a7a9dfb9a374ddd37f8679b612aad0b90f73ec6e9d9ea4857f3e6bc260",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "29313b53aad3d47d54cd7acf94c4c76cb791b440c9e0831784296f35cfa6924a",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L741-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1813,8 +1781,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "66a684aaba24bbec872f544976cf04e2a8b91e5e9129381eebf98425f3a1ef75",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "b219b1dc9babddd86388accb31e92f866faaa14c95b60154fad065f41bea0c92",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L742-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1829,8 +1797,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "875b814c817c8b6108854f47a1da9451cfea927f33c91d1907ad5ba4a6381663",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "1b5163a7a9dfb9a374ddd37f8679b612aad0b90f73ec6e9d9ea4857f3e6bc260",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L743-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1845,8 +1813,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "76b022439c6ea375c2f7f16030faccdb23921128545c173cb55e877a69486cc4",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "66a684aaba24bbec872f544976cf04e2a8b91e5e9129381eebf98425f3a1ef75",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L744-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1861,8 +1829,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "c582f20180be1254b750387b86ab3dde0d1a4561ac510a61630b3bf8e474a1b4",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "875b814c817c8b6108854f47a1da9451cfea927f33c91d1907ad5ba4a6381663",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L745-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1877,8 +1845,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "2cfc7521af29b5b64efa430e81c832a188f88688d4f4665c15d6f3563c86e375",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "76b022439c6ea375c2f7f16030faccdb23921128545c173cb55e877a69486cc4",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L746-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1893,8 +1861,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "1404693cfb0ec1457a2ce9f7a8359a42ff11a371d2ba80ba5f86dddd2455eed8",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "c582f20180be1254b750387b86ab3dde0d1a4561ac510a61630b3bf8e474a1b4",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L747-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1909,8 +1877,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "9795ec5cf5ff00d8c6753f93946e387ebf1b0c6c913d9b8b45d66b3dc46f3825",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "2cfc7521af29b5b64efa430e81c832a188f88688d4f4665c15d6f3563c86e375",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L748-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1925,8 +1893,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "9234373f20e0b1ad28b6ae1c670c25fb11ac2295459701928bb1a12ecfdcef80",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "1404693cfb0ec1457a2ce9f7a8359a42ff11a371d2ba80ba5f86dddd2455eed8",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L749-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1941,8 +1909,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "def67fdc18a2fdcc3a692db135ced0be84bb8db259e214fc10d1172b641c68a6",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "9795ec5cf5ff00d8c6753f93946e387ebf1b0c6c913d9b8b45d66b3dc46f3825",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L750-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -1957,40 +1925,40 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
+      "fingerprint": "9234373f20e0b1ad28b6ae1c670c25fb11ac2295459701928bb1a12ecfdcef80",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L751-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 751"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "def67fdc18a2fdcc3a692db135ced0be84bb8db259e214fc10d1172b641c68a6",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L752-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 752"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
       "fingerprint": "b207bf4ae873cb41d3fae2c60f7731417e4a2d0b3a19ef0880609553c6c47484",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L753-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 753"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "511c53f2ecd9520d07be59785749df8c6271413554ca8c15ace4ea46a6d98335",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L754-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 754"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "c56b6dcacc7557e8d6767d97ea9ae567bf9a6a79c5507ebb9dc32b75fbae9008",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L755-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2005,8 +1973,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "ce7983a011fb5a83991ec82cda14c4ca72cd1454729ffeeca4dd0fe8c5ba5cc9",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "511c53f2ecd9520d07be59785749df8c6271413554ca8c15ace4ea46a6d98335",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L756-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2021,8 +1989,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "32065fb519e1fb217d80ed7fe9534074ee351c4fe6cd521e4af1b39a8bd58885",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "c56b6dcacc7557e8d6767d97ea9ae567bf9a6a79c5507ebb9dc32b75fbae9008",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L757-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2037,8 +2005,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "51c1826d0ae04b37b1887c4badc64cc8e071f21e4a59dab978eed609aeea9fd1",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "ce7983a011fb5a83991ec82cda14c4ca72cd1454729ffeeca4dd0fe8c5ba5cc9",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L758-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2053,8 +2021,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "0b513bad8a5d366a34ccb8cbceac54b73bc66b7db63b0146fc78c45cc2762cd7",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "32065fb519e1fb217d80ed7fe9534074ee351c4fe6cd521e4af1b39a8bd58885",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L759-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2067,17 +2035,49 @@
       "target_phase": null
     },
     {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "51c1826d0ae04b37b1887c4badc64cc8e071f21e4a59dab978eed609aeea9fd1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L760-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 760"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "0b513bad8a5d366a34ccb8cbceac54b73bc66b7db63b0146fc78c45cc2762cd7",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L761-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 761"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
       "disposition": "replace",
       "file_mode": "100644",
       "fingerprint": "1855fcb238870ae1d384c5c3a5a5cb0b945ab9514c492b3992941115bdd97fe3",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L768-1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L770-1",
       "kind": "doc-command",
       "owner": "owner:E-documentation",
       "path": "plan.md",
       "rationale": "活跃文档中的 Python 工具链命令必须随最终清场改为纯 TS",
       "source_reasons": [
-        "active documentation command at line 768"
+        "active documentation command at line 770"
       ],
       "target": "pure-TS command documented at the same active entry",
       "target_phase": "E"
@@ -2086,39 +2086,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "9630052d08145683d03240171b1199175d272570349bdc192b46a5ebf5e67638",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L771-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 771"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "d37df37c14e60aba9145d5471e94a8f81f8c41a65b5447f079e77f1334f3e268",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L772-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 772"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "f65b1035b710daad47ec440a07c6e0f2f6d094f7be06b0c296ee75558af72f99",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L773-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2133,8 +2101,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "2f6d463d40acc7e03db11e9b294ec03ae936c04e115eb76256631efd6ef39d05",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "d37df37c14e60aba9145d5471e94a8f81f8c41a65b5447f079e77f1334f3e268",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L774-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2149,8 +2117,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "873467771534065b898c2550aaac7acd4032343f6f97fcd89a800621b371fe98",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "f65b1035b710daad47ec440a07c6e0f2f6d094f7be06b0c296ee75558af72f99",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L775-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2165,8 +2133,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "875b814c817c8b6108854f47a1da9451cfea927f33c91d1907ad5ba4a6381663",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "2f6d463d40acc7e03db11e9b294ec03ae936c04e115eb76256631efd6ef39d05",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L776-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2181,8 +2149,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "3bb1b515c8ddedc424d172acbe5fdb49bcefbb2119f5f04521e1b28ec36a6a34",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "873467771534065b898c2550aaac7acd4032343f6f97fcd89a800621b371fe98",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L777-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2197,8 +2165,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "9234373f20e0b1ad28b6ae1c670c25fb11ac2295459701928bb1a12ecfdcef80",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "875b814c817c8b6108854f47a1da9451cfea927f33c91d1907ad5ba4a6381663",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L778-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2213,40 +2181,40 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
+      "fingerprint": "3bb1b515c8ddedc424d172acbe5fdb49bcefbb2119f5f04521e1b28ec36a6a34",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L779-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 779"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "9234373f20e0b1ad28b6ae1c670c25fb11ac2295459701928bb1a12ecfdcef80",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L780-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 780"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
       "fingerprint": "f6249278501ca3fa103eed0bbdd2af638462f1c1e65307d507d2ea6c937bc3b0",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L781-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 781"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "fee785aa74feb231b796f7531447953c1bec624f6855368f5423e0c0170cff7e",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L782-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 782"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "5044de7a910ad9d36d3465359e0b696ae553fb194b31112b2ef51c1caa684c1d",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L783-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2261,8 +2229,8 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "b04ab428b277031088bcf14394bdd2ff5184b1e90f25474408e208a3f9333f02",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "fingerprint": "fee785aa74feb231b796f7531447953c1bec624f6855368f5423e0c0170cff7e",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L784-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2277,15 +2245,47 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "def67fdc18a2fdcc3a692db135ced0be84bb8db259e214fc10d1172b641c68a6",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L787-1",
+      "fingerprint": "5044de7a910ad9d36d3465359e0b696ae553fb194b31112b2ef51c1caa684c1d",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L785-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 787"
+        "active documentation command at line 785"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "b04ab428b277031088bcf14394bdd2ff5184b1e90f25474408e208a3f9333f02",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L786-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 786"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "def67fdc18a2fdcc3a692db135ced0be84bb8db259e214fc10d1172b641c68a6",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L789-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 789"
       ],
       "target": null,
       "target_phase": null
@@ -2294,39 +2294,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "8856adfad3b7ba335bd8a4998d7a6c6270f0e030956bbc067619c6873b7ed468",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L790-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 790"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "9ce9d3800c63a65840666f6ec6013401131dc9cc3577bbf9cffe17f99124caa1",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L791-1",
-      "kind": "doc-command",
-      "owner": "owner:repository-maintainers",
-      "path": "plan.md",
-      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
-      "source_reasons": [
-        "active documentation command at line 791"
-      ],
-      "target": null,
-      "target_phase": null
-    },
-    {
-      "disposition": "keep",
-      "file_mode": "100644",
-      "fingerprint": "d70bd164d2dafc7c5c1e36fce81af15f182a22bb37016eb2b1a06d82f81a8afd",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L792-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -2341,15 +2309,47 @@
     {
       "disposition": "keep",
       "file_mode": "100644",
-      "fingerprint": "4920f68ef9f20c301be627234b5af27106ee10fc9ad188bdbf74924ff6c2a1f5",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
-      "id": "doc-command:plan.md#L832-1",
+      "fingerprint": "9ce9d3800c63a65840666f6ec6013401131dc9cc3577bbf9cffe17f99124caa1",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L793-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
       "path": "plan.md",
       "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
       "source_reasons": [
-        "active documentation command at line 832"
+        "active documentation command at line 793"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "d70bd164d2dafc7c5c1e36fce81af15f182a22bb37016eb2b1a06d82f81a8afd",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L794-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 794"
+      ],
+      "target": null,
+      "target_phase": null
+    },
+    {
+      "disposition": "keep",
+      "file_mode": "100644",
+      "fingerprint": "4920f68ef9f20c301be627234b5af27106ee10fc9ad188bdbf74924ff6c2a1f5",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
+      "id": "doc-command:plan.md#L834-1",
+      "kind": "doc-command",
+      "owner": "owner:repository-maintainers",
+      "path": "plan.md",
+      "rationale": "当前已是 TypeScript/Node 入口或平台配置；内容 fingerprint 继续受 inventory 门保护",
+      "source_reasons": [
+        "active documentation command at line 834"
       ],
       "target": null,
       "target_phase": null
@@ -2358,7 +2358,7 @@
       "disposition": "keep",
       "file_mode": "100644",
       "fingerprint": "fd660bcd63c60dbb93b62853168da6f36d6995e9d1d30c906cb9baccf586e53f",
-      "git_blob": "60b6703de126ca82f2e28ba079973584505cf66b",
+      "git_blob": "9dffe30c95ae90a243e1ebf5df54fede30bcb5b4",
       "id": "doc-command:plan.md#L87-1",
       "kind": "doc-command",
       "owner": "owner:repository-maintainers",
@@ -7190,6 +7190,6 @@
   ],
   "kind": "coagentia.migration-inventory",
   "policy_version": "p0-v1",
-  "scan_scope_sha256": "5e759b580c9e99f6dc7063246d637fb71cf200891df0df28e6ccd07011eb5188",
+  "scan_scope_sha256": "7bd3b2078ce54af917ebfeadccbafec3b7aa6e3ae35002cfc4f6aa4900b766b6",
   "schema_version": 1
 }
