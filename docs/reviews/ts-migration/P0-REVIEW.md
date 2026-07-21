@@ -6,7 +6,7 @@
 > 冻结制品基线：`a2fa540036be69a79774d1b5f446fd02bd5935f3`
 > 执行规则来源：[仓库根 plan.md](../../../plan.md)
 > 评审结论：PASS（Critical = 0，Major = 0）
-> 阶段结论：P0 仍为 IN PROGRESS；TS-P0-03 外部 Windows runner 证据未取得
+> 阶段结论：P0 PASS（reviewed/accepted）；`TS-P0-01`～`TS-P0-06` 全部闭环
 
 ## 1. 评审范围
 
@@ -40,16 +40,16 @@ owner 授权首次 push 后，[GitHub Actions #29798911693](https://github.com/c
 - daemon 全量：`270 passed / 4 skipped / 23 files`。
 - web：`266 passed / 47 files`。
 - Python oracle：`977 passed / 4 skipped`；冻结 collection 为 `981`。
-- target/ledger/inventory/authority mutants：`8/8`、`45/45`、`18/18`、`35/35`。
+- target/ledger/inventory/authority mutants：`8/8`、`45/45`、`18/18`、`39/39`。
 - Git + Chromium integration smoke：PASS。
 - `pnpm typecheck`、`uv run ruff check .`、`pnpm gen` 双跑 zero diff、frozen install、web build：PASS。
 
-## 4. 未闭环项与裁决
+## 4. 阶段结论与后续边界
 
-唯一未闭环项仍为 TS-P0-03：owner 已授权 push，前两次 fresh-run 均已如实保留为红线并完成针对性修复与独立复核；当前等待绑定 `a2fa540` 冻结证据的第三次全新 Windows runner 全绿 URL/SHA。本地运行和静态解析不能替代该外部证据。
+`TS-P0-03` 已由 [GitHub Actions #29801764794](https://github.com/catbobyman/CoAgentia/actions/runs/29801764794) 闭环，绑定 SHA `c754ceb60d9056257e180dc1a78e6b7a258bde27`：Hermetic core、Git+Chromium integration、Legacy Python oracle 三 job 全绿。结合两轮独立复核 Critical/Major/Minor = 0，P0 六项验收全部 reviewed/accepted。
 
-在取得并归档该 run URL/SHA 前：
+后续边界：
 
-1. P0 保持 IN PROGRESS。
-2. 不进入 P1、A 或 B 波次。
-3. 不把本地绿线表述为外部 runner 已通过。
+1. P1 前置已满足，可按根计划另起阶段任务书与证据。
+2. 不越过 P1/P2-cal/P2 依赖提前进入 A 或 B 波次。
+3. P0 校准快照不取得契约权威；P1 负责正式冻结 schema/OpenAPI。

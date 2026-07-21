@@ -341,6 +341,7 @@ function githubConfigurationRootReference(relativePath: string, text: string): {
 export function verifyPlanAuthority(repo = '.'): ValidationResult {
   const repoRoot = path.resolve(repo);
   const issues: ValidationIssue[] = [];
+  let rootPhase: 'p0_in_progress' | 'p0_complete_p1_ready' | undefined;
   const tracked = trackedRepositoryPaths(repoRoot);
   if (tracked !== undefined) {
     for (const required of [ROOT_PLAN, AUTHORITY_RECORD, ...HISTORICAL_PLANS, ...ACTIVE_ENTRYPOINTS]) {
@@ -362,8 +363,32 @@ export function verifyPlanAuthority(repo = '.'): ValidationResult {
     if (!/owner 已于 2026-07-20 批准/u.test(rootPlan)) {
       issues.push({ code: 'authority_root_approval_missing', message: '根计划必须保留 owner 批准记录', subject: ROOT_PLAN });
     }
-    if (!/\| P0 基线\/试验裁决 \| \*\*进行中\*\*/u.test(rootPlan)) {
-      issues.push({ code: 'authority_root_phase_mismatch', message: 'P0 期间根计划进度账本必须标记 P0 进行中', subject: ROOT_PLAN });
+    const currentStatuses = [...rootPlan.matchAll(/^> 当前状态：([^\r\n]+)$/gmu)].map((match) => match[1]);
+    const p0Rows = [...rootPlan.matchAll(/^\| P0 基线\/试验裁决 \| ([^|\r\n]+) \|/gmu)]
+      .map((match) => match[1]?.trim());
+    const p1Rows = [...rootPlan.matchAll(/^\| P1 冻结事实源 \| ([^|\r\n]+) \|/gmu)]
+      .map((match) => match[1]?.trim());
+    const p0InProgress = currentStatuses.length === 1
+      && currentStatuses[0] === 'P0「基线、范围和当前试验裁决」进行中'
+      && p0Rows.length === 1
+      && p0Rows[0] === '**进行中**'
+      && p1Rows.length === 1
+      && p1Rows[0] === '未开始';
+    const p0Complete = currentStatuses.length === 1
+      && currentStatuses[0] === 'P0「基线、范围和当前试验裁决」已完成并 reviewed；P1 可进入但尚未启动'
+      && p0Rows.length === 1
+      && p0Rows[0] === '**已完成（reviewed/accepted）**'
+      && p1Rows.length === 1
+      && p1Rows[0] === '**未开始（可进入）**'
+      && /^\| P1 冻结事实源 \| \*\*未开始（可进入）\*\* \| \*\*P0 reviewed 已满足\*\* \|/mu.test(rootPlan);
+    if (p0InProgress) rootPhase = 'p0_in_progress';
+    else if (p0Complete) rootPhase = 'p0_complete_p1_ready';
+    else {
+      issues.push({
+        code: 'authority_root_phase_mismatch',
+        message: '根计划阶段必须是 P0 进行中，或 P0 reviewed/accepted 且 P1 仅为可进入未启动',
+        subject: ROOT_PLAN,
+      });
     }
     if (
       rejectsRootPlan(ROOT_PLAN, rootPlan)
@@ -380,7 +405,16 @@ export function verifyPlanAuthority(repo = '.'): ValidationResult {
     if (!hasRootPlanLink(AUTHORITY_RECORD, authority)) {
       issues.push({ code: 'authority_record_root_link_missing', message: '权威声明必须链接仓库根 plan.md', subject: AUTHORITY_RECORD });
     }
-    if (!authority.includes('P0（进行中）')) {
+    const authorityPhases = [...authority.matchAll(/^> 当前阶段：([^\r\n]+)$/gmu)].map((match) => match[1]);
+    const expectedAuthorityPhase = rootPhase === 'p0_in_progress'
+      ? 'P0（进行中）'
+      : rootPhase === 'p0_complete_p1_ready'
+        ? 'P0 已完成并 reviewed；P1 可进入但尚未启动'
+        : undefined;
+    const authorityPhaseMatches = expectedAuthorityPhase !== undefined
+      && authorityPhases.length === 1
+      && authorityPhases[0] === expectedAuthorityPhase;
+    if (!authorityPhaseMatches) {
       issues.push({ code: 'authority_record_phase_mismatch', message: '权威声明阶段必须与根计划一致', subject: AUTHORITY_RECORD });
     }
     if (rejectsRootPlan(AUTHORITY_RECORD, authority) || hasUnboundAuthorityClaim(AUTHORITY_RECORD, authority)) {
@@ -481,7 +515,7 @@ interface AuthorityMutant {
 
 function writeFixture(root: string): void {
   const values: Record<string, string> = {
-    'plan.md': '# plan v1.0\nowner 已于 2026-07-20 批准\n| P0 基线/试验裁决 | **进行中** |\n',
+    'plan.md': '# plan v1.0\n> 当前状态：P0「基线、范围和当前试验裁决」进行中\nowner 已于 2026-07-20 批准\n| P0 基线/试验裁决 | **进行中** | owner approved | evidence |\n| P1 冻结事实源 | 未开始 | P0 reviewed | evidence |\n',
     'README.md': '[plan](plan.md) 唯一 active authority\n',
     'README_EN.md': '[plan](plan.md) is the only active authority.\n',
     'README_JA.md': '[plan](plan.md) は唯一の active authority です。\n',
@@ -490,7 +524,7 @@ function writeFixture(root: string): void {
     'docs/project-handoffs/README.md': '[plan](../../plan.md) 唯一执行权威\n## 原文件迁移表\n',
     'docs/project-handoffs/TS-MIGRATION-ROADMAP.md': '> **执行状态：SUPERSEDED / HISTORICAL**\n> [plan](../../plan.md)\n',
     'docs/project-handoffs/TS-DEV-PLAN.md': '> **执行状态：SUPERSEDED / HISTORICAL**\n> [plan](../../plan.md)\n',
-    'docs/verify/ts-migration/PLAN-AUTHORITY.md': '[plan](../../../plan.md)\nP0（进行中）\nTS-MIGRATION-ROADMAP.md\nTS-DEV-PLAN.md\n',
+    'docs/verify/ts-migration/PLAN-AUTHORITY.md': '[plan](../../../plan.md)\n> 当前阶段：P0（进行中）\nTS-MIGRATION-ROADMAP.md\nTS-DEV-PLAN.md\n',
     '.github/workflows/p0.yml': 'name: TS migration\nenv:\n  MIGRATION_PLAN: plan.md\n',
   };
   for (const [relative, text] of Object.entries(values)) {
@@ -526,6 +560,46 @@ export function runAuthoritySyntheticMutants(): { ok: boolean; passed: number; t
     {
       name: 'authority record removed', code: 'authority_required_file_missing',
       mutate: (root) => { fs.rmSync(path.join(root, ...AUTHORITY_RECORD.split('/'))); },
+    },
+    {
+      name: 'P0 completion without a P1 ready boundary is rejected', code: 'authority_root_phase_mismatch',
+      mutate: (root) => {
+        fs.writeFileSync(
+          path.join(root, 'plan.md'),
+          '# plan v1.0\nowner 已于 2026-07-20 批准\n| P0 基线/试验裁决 | **已完成（reviewed/accepted）** |\n| P1 冻结事实源 | **进行中** |\n',
+          'utf8',
+        );
+      },
+    },
+    {
+      name: 'authority record cannot announce completion before the root plan', code: 'authority_record_phase_mismatch',
+      mutate: (root) => {
+        fs.writeFileSync(
+          path.join(root, ...AUTHORITY_RECORD.split('/')),
+          '[plan](../../../plan.md)\n> 当前阶段：P0 已完成并 reviewed；P1 可进入但尚未启动\nTS-MIGRATION-ROADMAP.md\nTS-DEV-PLAN.md\n',
+          'utf8',
+        );
+      },
+    },
+    {
+      name: 'P0 completion cannot coexist with a duplicate P1 in-progress row', code: 'authority_root_phase_mismatch',
+      mutate: (root) => {
+        fs.writeFileSync(
+          path.join(root, 'plan.md'),
+          '# plan v1.0\n> 当前状态：P0「基线、范围和当前试验裁决」已完成并 reviewed；P1 可进入但尚未启动\nowner 已于 2026-07-20 批准\n| P0 基线/试验裁决 | **已完成（reviewed/accepted）** | owner approved | evidence |\n| P1 冻结事实源 | **未开始（可进入）** | **P0 reviewed 已满足** | evidence |\n| P1 冻结事实源 | **进行中** | P0 reviewed | evidence |\n',
+          'utf8',
+        );
+      },
+    },
+    {
+      name: 'authority record cannot contain both phase declarations', code: 'authority_record_phase_mismatch',
+      mutate: (root) => {
+        fs.appendFileSync(
+          path.join(root, ...AUTHORITY_RECORD.split('/')),
+          '> 当前阶段：P0 已完成并 reviewed；P1 可进入但尚未启动\n',
+          'utf8',
+        );
+      },
     },
     {
       name: 'second active plan', code: 'authority_second_active_plan',

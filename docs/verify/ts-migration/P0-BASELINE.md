@@ -1,6 +1,6 @@
 # P0 可复现基线
 
-> 状态：IN PROGRESS
+> 状态：COMPLETE（reviewed/accepted）
 > 阶段：P0「基线、范围和当前试验裁决」
 > 执行规则来源：[仓库根 plan.md](../../../plan.md)
 > 计划代码基准：`54f1372`
@@ -107,21 +107,23 @@ P1 将从本清单冻结 operation 全字段、WS 帧/时序、DDL/触发器/索
 | `pnpm -F @coagentia/web build` | Vite build 通过；保留既有 chunk-size warning | ✅ |
 | `pnpm p0:integration:smoke` | 真 Git Unicode/空格路径 commit + Playwright Chromium | ✅ |
 | `pnpm verify:oracle-collection` | 981 项与冻结 oracle 精确一致 | ✅ |
-| `pnpm verify:p0` | tools 31/31；target mutants 8/8；ledger mutants 45/45；inventory mutants 18/18；authority mutants 35/35 | ✅ |
+| `pnpm verify:p0` | tools 31/31；target mutants 8/8；ledger mutants 45/45；inventory mutants 18/18；authority mutants 39/39 | ✅ |
 
 首次外部 fresh-run 为 [GitHub Actions #29798911693](https://github.com/catbobyman/CoAgentia/actions/runs/29798911693)，绑定 SHA `7988a923308974287036869f0de61d94c72d1fb5`。该 run 暴露 PowerShell 7 guard 编译和 merge history 审计两项缺陷，如实保留为红线证据。
 
-第二次 fresh-run 为 [GitHub Actions #29800210719](https://github.com/catbobyman/CoAgentia/actions/runs/29800210719)，绑定 SHA `82f6f82b26d3440bb05981f905d7d4a9ca81d338`。native deny guard、legacy 回归、生成与 build 已通过；hermetic job 实证 fresh clone 没有 ignored `build/*.json`，legacy 母账则实证 Windows `core.autocrlf` 下四个 generated 文件出现 zero-diff/status-dirty。`f90d423` 以 tracked P0 校准快照重放生成、比较 committed→first→second 四文件哈希，并用精确 `.gitattributes` 固定这四类输出为 LF；独立复核为 Critical/Major/Minor = 0。第三次 fresh-run 待取得。
+第二次 fresh-run 为 [GitHub Actions #29800210719](https://github.com/catbobyman/CoAgentia/actions/runs/29800210719)，绑定 SHA `82f6f82b26d3440bb05981f905d7d4a9ca81d338`。native deny guard、legacy 回归、生成与 build 已通过；hermetic job 实证 fresh clone 没有 ignored `build/*.json`，legacy 母账则实证 Windows `core.autocrlf` 下四个 generated 文件出现 zero-diff/status-dirty。`f90d423` 以 tracked P0 校准快照重放生成、比较 committed→first→second 四文件哈希，并用精确 `.gitattributes` 固定这四类输出为 LF；独立复核为 Critical/Major/Minor = 0。
+
+第三次 fresh-run [GitHub Actions #29801764794](https://github.com/catbobyman/CoAgentia/actions/runs/29801764794) 绑定 SHA `c754ceb60d9056257e180dc1a78e6b7a258bde27` 并全绿：Hermetic core `2m18s`、Git + Chromium integration `3m42s`、Legacy Python oracle `9m56s`。三份 P0 generator inputs 仅作校准快照；正式 schema/OpenAPI 冻结仍归 P1。
 
 ## 8. P0 验收表
 
 | ID | 结果 | 证据 |
 |---|---|---|
-| TS-P0-01 基准/dirty/tests 可解释 | 本地通过 | 本文 + 试验裁决 + 981 oracle |
-| TS-P0-02 全入口与 inventory 一一对应 | 本地通过 | 449 项 `migration-inventory.json` + verifier |
-| TS-P0-03 全新 Windows runner 可复现 | 两次红，二次修复待复跑 | [#29798911693](https://github.com/catbobyman/CoAgentia/actions/runs/29798911693) 与 [#29800210719](https://github.com/catbobyman/CoAgentia/actions/runs/29800210719) 依次暴露四项 fresh Windows 机制缺陷；`f90d423` 已修复并通过独立复核，仍需全绿 run URL/SHA |
-| TS-P0-04 独立评审无漏入口/命令 | 本地通过 | `docs/reviews/ts-migration/P0-REVIEW.md`；Critical/Major = 0 |
-| TS-P0-05 test-ledger mutants 逐类被拒 | 本地通过 | ledger 45/45 + target 8/8 + tooling 31/31 |
-| TS-P0-06 `plan.md` authority 单源检查 | 本地通过 | `PLAN-AUTHORITY.md` + scanner 35/35 mutants |
+| TS-P0-01 基准/dirty/tests 可解释 | **accepted** | 本文 + 试验裁决 + 981 oracle |
+| TS-P0-02 全入口与 inventory 一一对应 | **accepted** | 449 项 `migration-inventory.json` + verifier |
+| TS-P0-03 全新 Windows runner 可复现 | **accepted** | [#29801764794](https://github.com/catbobyman/CoAgentia/actions/runs/29801764794) / `c754ceb` 三 job 全绿 |
+| TS-P0-04 独立评审无漏入口/命令 | **accepted** | `docs/reviews/ts-migration/P0-REVIEW.md`；Critical/Major/Minor = 0 |
+| TS-P0-05 test-ledger mutants 逐类被拒 | **accepted** | ledger 45/45 + target 8/8 + tooling 31/31 |
+| TS-P0-06 `plan.md` authority 单源检查 | **accepted** | `PLAN-AUTHORITY.md` + scanner 39/39 mutants（含 P0→P1 排他状态边界） |
 
-P0 只在六项全部 reviewed/accepted 后改为完成；未授权的外部 CI 跑次是当前唯一明示门，不会被本地绿线替代，也不会提前进入 P1/A/B。
+六项现已全部 reviewed/accepted，P0 完成。下一阶段只能按根 `plan.md` 进入 P1；本结论不授权提前进入 P2/A/B、发布 npm 或执行不可逆清场。
